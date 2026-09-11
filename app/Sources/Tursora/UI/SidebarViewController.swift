@@ -27,6 +27,38 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         init(_ p: PlacesModel.Place) { place = p }
     }
 
+    // Source-list cells stretch their standard imageView to the row height.
+    // An independent symbol view keeps every glyph on the same square canvas.
+    private final class PlaceCell: NSTableCellView {
+        let symbolView = NSImageView()
+        init(identifier: NSUserInterfaceItemIdentifier) {
+            super.init(frame: .zero)
+            self.identifier = identifier
+            let label = NSTextField(labelWithString: "")
+            label.lineBreakMode = .byTruncatingTail
+            label.translatesAutoresizingMaskIntoConstraints = false
+            symbolView.translatesAutoresizingMaskIntoConstraints = false
+            symbolView.imageScaling = .scaleProportionallyUpOrDown
+            addSubview(symbolView)
+            addSubview(label)
+            textField = label
+            NSLayoutConstraint.activate([
+                symbolView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+                symbolView.centerYAnchor.constraint(equalTo: centerYAnchor),
+                symbolView.widthAnchor.constraint(equalToConstant: 18),
+                symbolView.heightAnchor.constraint(equalToConstant: 18),
+                label.leadingAnchor.constraint(equalTo: symbolView.trailingAnchor, constant: 6),
+                label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+                label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ])
+        }
+        required init?(coder: NSCoder) { fatalError() }
+    }
+
+    func symbolView(atRow row: Int) -> NSImageView? {
+        (outlineView.view(atColumn: 0, row: row, makeIfNecessary: true) as? PlaceCell)?.symbolView
+    }
+
     private var nodes: [SectionNode] = []
     private var isSyncingSelection = false
     private static let headerID = NSUserInterfaceItemIdentifier("header")
@@ -56,7 +88,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     }
 
     override func loadView() {
-        view = NSView()
+        let background = NSVisualEffectView()
+        background.material = .sidebar
+        background.blendingMode = .behindWindow
+        view = background
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("main"))
         outlineView.addTableColumn(column)
         outlineView.outlineTableColumn = column
@@ -148,7 +183,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     @objc private func ctxEject(_ s: Any?) {
         guard let p = clickedPlace else { return }
         do { try NSWorkspace.shared.unmountAndEjectDevice(at: p.url) }
-        catch { NSAlert(error: error).runModal() }
+        catch {
+            if SmokeTest.isRequested { print("Eject failed: \(error.localizedDescription)") }
+            else if let window = view.window { NSAlert(error: error).beginSheetModal(for: window) }
+        }
     }
 
     // MARK: - Drag & drop: reorder favourites, add folders, drop files onto places
@@ -292,12 +330,13 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             return cell
         }
         guard let node = item as? PlaceNode else { return nil }
-        let cell = (outlineView.makeView(withIdentifier: Self.placeID, owner: self) as? NSTableCellView)
-            ?? NSTableCellView.make(identifier: Self.placeID, withIcon: true)
+        let cell = (outlineView.makeView(withIdentifier: Self.placeID, owner: self) as? PlaceCell)
+            ?? PlaceCell(identifier: Self.placeID)
         cell.textField?.stringValue = node.place.name
-        cell.imageView?.image = NSImage(systemSymbolName: node.place.symbolName,
-                                        accessibilityDescription: node.place.name)
-        cell.imageView?.contentTintColor = .controlAccentColor
+        cell.symbolView.image = NSImage(systemSymbolName: node.place.symbolName,
+                                        accessibilityDescription: node.place.name)?
+            .withSymbolConfiguration(.init(pointSize: 16, weight: .regular))
+        cell.symbolView.contentTintColor = .controlAccentColor
         return cell
     }
 

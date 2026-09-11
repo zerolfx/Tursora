@@ -8,7 +8,8 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     let model: DirectoryModel
     let collectionView = FileCollectionView()
     let scrollView = NSScrollView()
-    private let layout = NSCollectionViewFlowLayout()
+    private var layout = NSCollectionViewFlowLayout()
+    private var layoutSignature: [Int] = []
 
     var viewController: NSViewController { self }
     var focusView: NSView { collectionView }
@@ -26,7 +27,9 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         get { collectionView.menu }
         set { collectionView.menu = newValue }
     }
-    var cutURLs: Set<URL> = [] { didSet { collectionView.reloadData() } }
+    var cutURLs: Set<URL> = [] {
+        didSet { if cutURLs != oldValue { reloadData() } }
+    }
 
     private(set) var iconSize: CGFloat = 64
     private(set) var showPreviews = true
@@ -113,10 +116,23 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     // MARK: - FileViewing
 
     func reloadData() {
-        let selected = selectedItems.map(\.name)
-        layout.headerReferenceSize = model.isGrouped ? NSSize(width: 0, height: GroupHeaderView.height) : .zero
+        let selected = selectedItems.map(\.url)
         collectionView.reloadData()
-        if !selected.isEmpty { select(names: selected) }
+        let signature = [model.isGrouped ? 1 : 0] + model.groups.map { $0.nodes.count }
+        if layoutSignature != signature {
+            // A reused offscreen flow layout can keep stale section counts on
+            // macOS 26 even after invalidation. Replace it when topology changes.
+            layoutSignature = signature
+            layout = NSCollectionViewFlowLayout()
+            layout.minimumInteritemSpacing = 8
+            layout.minimumLineSpacing = 12
+            layout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+            layout.sectionHeadersPinToVisibleBounds = true
+            applyItemSize()
+            collectionView.collectionViewLayout = layout
+        } else { applyItemSize(); layout.invalidateLayout() }
+        collectionView.needsLayout = true
+        if !selected.isEmpty { select(urls: selected) }
     }
 
     var selectedItems: [FileItem] {
@@ -143,6 +159,13 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         onSelectionChanged?()
     }
 
+    func select(urls: [URL]) {
+        let paths = Set(urls.compactMap { indexPath(for: $0) })
+        collectionView.selectionIndexPaths = paths
+        if let first = paths.sorted().first { collectionView.scrollToItems(at: [first], scrollPosition: .nearestHorizontalEdge) }
+        onSelectionChanged?()
+    }
+
     /// Clamped both ways: NSClipView.scroll(to:) does not constrain, and a
     /// value captured mid rubber-band (negative) or from a longer listing
     /// would otherwise leave blank space above or below the rows.
@@ -163,6 +186,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         collectionView.selectionIndexPaths = [ip]
         collectionView.scrollToItems(at: [ip], scrollPosition: .nearestHorizontalEdge)
         guard let cell = collectionView.item(at: ip) as? FileCollectionItem else { return }
+        cell.label.stringValue = item.name
         cell.beginEditingName(delegate: self, baseNameOnly: !item.isNavigable)
     }
 
@@ -191,9 +215,20 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     // MARK: - Layout
 
     private func applyItemSize() {
-        let width = max(iconSize + 28, 96)
+        let available = scrollView.contentSize.width
+        let preferred = max(iconSize + 28, 96)
+        let width = available > 0 ? min(preferred, max(1, available - 24)) : preferred
+        let drawnIconSize = min(iconSize, max(1, width - 16))
         let labelHeight: CGFloat = iconSize < 48 ? 30 : 34
-        layout.itemSize = NSSize(width: width, height: iconSize + 8 + labelHeight)
+        let size = NSSize(width: width, height: drawnIconSize + 8 + labelHeight)
+        if layout.itemSize != size { layout.itemSize = size }
+        let header = model.isGrouped ? NSSize(width: max(1, available), height: GroupHeaderView.height) : .zero
+        if layout.headerReferenceSize != header { layout.headerReferenceSize = header }
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        applyItemSize()
     }
 
     private func refreshSelectionEmphasis() {
@@ -295,7 +330,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
               let node = cell.representedObject as? FileNode else { return }
         let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if newName.isEmpty || newName == node.item.name || newName.contains("/") {
-            field.stringValue = node.item.name
+            field.stringValue = node.item.displayName
             cell.refreshAppearance()
             return
         }
@@ -304,7 +339,13 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            view.window?.makeFirstResponder(collectionView)     // ends editing; text reverts in didEndEditing
+            if let field = control as? NSTextField,
+               let cell = collectionView.indexPathsForVisibleItems().compactMap({ collectionView.item(at: $0) as? FileCollectionItem }).first(where: { $0.label === field }),
+               let node = cell.representedObject as? FileNode {
+                textView.string = node.item.name
+                field.stringValue = node.item.name
+            }
+            view.window?.makeFirstResponder(collectionView)
             return true
         }
         return false
@@ -440,7 +481,7 @@ final class FileCollectionItem: NSCollectionViewItem {
         self.iconSize = iconSize
         self.faded = faded
         iconView.image = item.icon(size: iconSize)
-        label.stringValue = item.name
+        label.stringValue = item.displayName
         label.font = .systemFont(ofSize: iconSize < 48 ? 11 : 12)
         view.toolTip = item.name
         layoutSubviews()
@@ -454,7 +495,8 @@ final class FileCollectionItem: NSCollectionViewItem {
     private func layoutSubviews() {
         guard let v = view as? ItemView else { return }
         let w = v.bounds.width
-        let iconFrame = NSRect(x: (w - iconSize) / 2, y: 4, width: iconSize, height: iconSize)
+        let drawnSize = min(iconSize, max(1, w - 16))
+        let iconFrame = NSRect(x: (w - drawnSize) / 2, y: 4, width: drawnSize, height: drawnSize)
         iconView.frame = iconFrame
         let labelHeight = iconSize < 48 ? 30 : 34
         let labelFrame = NSRect(x: 4, y: iconFrame.maxY + 4, width: w - 8, height: CGFloat(labelHeight))

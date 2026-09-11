@@ -1,7 +1,7 @@
 import AppKit
 
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate,
-                                  NSToolbarItemValidation, NSMenuItemValidation, BrowserHost, NSSearchFieldDelegate {
+                                  NSToolbarItemValidation, NSMenuItemValidation, BrowserHost, NSSearchFieldDelegate, NSSharingServicePickerToolbarItemDelegate {
 
     let provider: FileProvider
     let places: PlacesModel
@@ -9,10 +9,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     let tabs: TabsController
     var browser: BrowserViewController { tabs.current }
 
+    private let contentSplitController = NSSplitViewController()
+    private(set) var terminalPanel: TerminalPanelController?
+    private var terminalItem: NSSplitViewItem?
+    private var preferencesObserver: NSObjectProtocol?
+    private var displayedExtensions = AppPreferences.showFileExtensions
     private let splitViewController = NSSplitViewController()
     private var backButton: LongPressMenuButton?
     private var forwardButton: LongPressMenuButton?
     private var viewModeControl: NSSegmentedControl?
+    private var shareItem: NSSharingServicePickerToolbarItem?
     private var searchItem: NSSearchToolbarItem?
     var searchField: NSSearchField? { searchItem?.searchField }
     private var keyMonitor: Any?
@@ -21,11 +27,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     var onClose: (() -> Void)?
 
     private enum ToolbarID {
+        static let sidebar = NSToolbarItem.Identifier("tursora.sidebar")
         static let back = NSToolbarItem.Identifier("tursora.back")
         static let forward = NSToolbarItem.Identifier("tursora.forward")
         static let up = NSToolbarItem.Identifier("tursora.up")
         static let viewMode = NSToolbarItem.Identifier("tursora.viewMode")
         static let search = NSToolbarItem.Identifier("tursora.search")
+        static let share = NSToolbarItem.Identifier("tursora.share")
+        static let more = NSToolbarItem.Identifier("tursora.more")
         static let group = NSToolbarItem.Identifier("tursora.group")
     }
 
@@ -41,6 +50,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             backing: .buffered, defer: false)
         window.minSize = NSSize(width: 560, height: 360)
         window.toolbarStyle = .unified
+        window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .automatic
         window.tabbingMode = .disallowed          // D1: tabs are ours, not the window's
         window.setFrameAutosaveName("TursoraMainWindow")
@@ -49,19 +59,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         window.delegate = self
         tabs.host = self
 
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        // Keep both panes flush at their shared edge; only the window owns outer corners.
+        let sidebarItem = NSSplitViewItem(viewController: sidebar)
         sidebarItem.minimumThickness = 160
         sidebarItem.maximumThickness = 320
         sidebarItem.canCollapse = true
+        sidebarItem.preferredThicknessFraction = 0.2
+        sidebarItem.holdingPriority = .defaultHigh
+        sidebarItem.collapseBehavior = .preferResizingSiblingsWithFixedSplitView
         splitViewController.addSplitViewItem(sidebarItem)
         splitViewController.addSplitViewItem(NSSplitViewItem(viewController: tabs))
-        window.contentViewController = splitViewController
+        splitViewController.splitView.dividerStyle = .thin
+        contentSplitController.splitView.isVertical = false
+        contentSplitController.splitView.dividerStyle = .thin
+        contentSplitController.addSplitViewItem(NSSplitViewItem(viewController: splitViewController))
+        window.contentViewController = contentSplitController
 
         let toolbar = NSToolbar(identifier: "TursoraMainToolbar")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
         window.toolbar = toolbar
+        window.contentView?.layoutSubtreeIfNeeded()
+        splitViewController.splitView.setPosition(190, ofDividerAt: 0)
 
         tabs.onCurrentLocationChanged = { [weak self] url in self?.locationChanged(url) }
         tabs.onTabsChanged = { [weak self] in self?.validateNavigation(); self?.syncFilterUI() }
@@ -70,27 +90,65 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         sidebar.onDropFiles = { [weak self] urls, dest, op in self?.browser.dropFiles(urls, to: dest, op: op) }
         window.initialFirstResponder = browser.focusView
         installEventMonitors()
+        preferencesObserver = NotificationCenter.default.addObserver(forName: .tursoraPreferencesChanged, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            if self.displayedExtensions != AppPreferences.showFileExtensions {
+                self.displayedExtensions = AppPreferences.showFileExtensions
+                for pane in self.tabs.pages.flatMap(\.panes) {
+                    let selection = pane.fileView.selectedItems.map(\.url)
+                    let scrollOffset = pane.fileView.scrollOffset
+                    pane.fileView.reloadData()
+                    pane.fileView.select(urls: selection)
+                    pane.fileView.scrollOffset = scrollOffset
+                }
+            }
+            if !AppPreferences.experimentalTerminalEnabled { self.hideTerminal() }
+        }
     }
     required init?(coder: NSCoder) { fatalError() }
 
     private func locationChanged(_ url: URL) {
         guard let window else { return }
         window.title = provider.displayName(for: url)
-        window.subtitle = (url.path as NSString).abbreviatingWithTildeInPath
+        window.subtitle = ""
         window.representedURL = url          // proxy icon + ⌘-click path menu, for free
         sidebar.syncSelection(to: url)
+        terminalPanel?.followDirectory(url)
         validateNavigation()
         syncFilterUI()
     }
 
-    // MARK: - Filter (Finder-style: toolbar search field + scope bar)
+    @objc func toggleTerminal(_ sender: Any?) {
+        guard AppPreferences.experimentalTerminalEnabled else { return }
+        if terminalPanel != nil { hideTerminal(); return }
+        let panel = TerminalPanelController(initialDirectory: browser.currentURL ?? provider.homeURL)
+        panel.onClose = { [weak self] in self?.hideTerminal() }
+        terminalPanel = panel
+        let item = NSSplitViewItem(viewController: panel)
+        item.minimumThickness = 120
+        item.preferredThicknessFraction = 0.32
+        terminalItem = item
+        contentSplitController.addSplitViewItem(item)
+        contentSplitController.splitView.setPosition(max(180, contentSplitController.view.bounds.height * 0.68), ofDividerAt: 0)
+        panel.focus()
+    }
+
+    func hideTerminal() {
+        terminalPanel?.shutdown()
+        if let terminalItem { contentSplitController.removeSplitViewItem(terminalItem) }
+        terminalItem = nil
+        terminalPanel = nil
+        window?.makeFirstResponder(browser.focusView)
+    }
+
+    // MARK: - Current-directory name filter
 
     private var isSearchFieldFocused: Bool {
         guard let f = searchField, let editor = f.currentEditor() else { return false }
         return window?.firstResponder === editor
     }
 
-    /// Apply text from the search field to the current pane and show the scope bar.
+    /// Apply text from the toolbar to the current pane.
     func applyFilter(_ text: String) {
         browser.nameFilter = text
         if searchField?.stringValue != text { searchField?.stringValue = text }
@@ -106,7 +164,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         window?.makeFirstResponder(browser.focusView)
     }
 
-    /// ⌘F — Finder's File ▸ Find: focus the toolbar search field.
+    /// The configured Filter shortcut focuses the current-directory name field.
     /// True while we hold the toolbar item expanded via beginSearchInteraction.
     private var searchInteractionActive = false
     var searchInteractionActiveForTesting: Bool { searchInteractionActive }
@@ -139,7 +197,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// The field belongs to the window, the filter to the pane: keep them in step.
     private func syncFilterUI() {
-        let scope = tabs.scopeBar
         // The field shows the *current pane's* filter. While the user types,
         // every keystroke already reached the pane, so the two agree and
         // nothing is clobbered; after a pane switch they differ and the field
@@ -147,16 +204,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if let f = searchField, f.stringValue != browser.nameFilter {
             f.stringValue = browser.nameFilter
         }
-        scope.folderName = browser.currentURL.map { provider.displayName(for: $0) } ?? ""
-        if let url = browser.currentURL {
-            let icon = NSWorkspace.shared.icon(forFile: url.path); icon.size = NSSize(width: 16, height: 16)
-            scope.folderIcon = icon
-        }
-        scope.summary = browser.filterSummary
-        scope.isHidden = !browser.isFiltering          // Finder: the scope bar appears once there is text
     }
 
-    var isScopeBarVisible: Bool { !tabs.scopeBar.isHidden }
     var isSearchFieldFocusedForTesting: Bool { isSearchFieldFocused }
 
     // NSSearchFieldDelegate
@@ -187,6 +236,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         backButton?.isEnabled = browser.canGoBack
         forwardButton?.isEnabled = browser.canGoForward
         viewModeControl?.selectedSegment = browser.viewMode == .icons ? 0 : 1
+        shareItem?.isEnabled = !sharingItems.isEmpty
         window?.toolbar?.validateVisibleItems()
     }
 
@@ -266,6 +316,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func openSelection(_ sender: Any?) { browser.openSelection() }
     @objc func toggleHiddenFiles(_ sender: Any?) { browser.showsHiddenFiles.toggle() }
     @objc func newFolder(_ sender: Any?) { browser.newFolder() }
+    @objc func compressSelection(_ sender: Any?) { browser.compressSelection(sender) }
+    @objc func extractSelection(_ sender: Any?) { browser.extractSelection(sender) }
+    @objc func connectToServer(_ sender: Any?) {
+        let initiatingPane = browser
+        ServerConnectionController.show(relativeTo: window) { [weak initiatingPane] url in
+            guard let initiatingPane, initiatingPane.view.window != nil else { return }
+            initiatingPane.navigate(to: url)
+        }
+    }
     @objc func getInfo(_ sender: Any?) { browser.getInfo(sender) }
     @objc func getSummaryInfo(_ sender: Any?) { browser.getSummaryInfo(sender) }
     @objc func showInspector(_ sender: Any?) { browser.showInspector(sender) }
@@ -287,12 +346,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         browser.fileList.setSort(key: browser.model.sortKey, ascending: !browser.model.ascending)
     }
 
+    // Favorites keeps keyboard focus in the sidebar. Window-level fallbacks
+    // keep grouping available when the active browser is not in the responder chain.
+    @objc func groupBy(_ sender: NSMenuItem) { browser.groupBy(sender) }
+    @objc func toggleGroups(_ sender: Any?) { browser.toggleGroups(sender) }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(toggleTerminal(_:)):
+            item.title = terminalPanel == nil ? "Show Terminal" : "Hide Terminal"
+            return AppPreferences.experimentalTerminalEnabled
         case #selector(goBack(_:)):     return browser.canGoBack
         case #selector(goForward(_:)):  return browser.canGoForward
         case #selector(goUp(_:)):       return browser.canGoUp
-        case #selector(openSelection(_:)): return !browser.fileList.selectedItems.isEmpty
+        case #selector(openSelection(_:)): return !browser.fileView.selectedItems.isEmpty
+        case #selector(performFileAction(_:)): return validateFileAction(item)
+        case #selector(compressSelection(_:)), #selector(extractSelection(_:)):
+            return browser.validateMenuItem(item)
         case #selector(toggleHiddenFiles(_:)):
             item.state = browser.showsHiddenFiles ? .on : .off
             return true
@@ -304,6 +374,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.title = tabs.isSplit ? (tabs.currentPage.activeSide == .left ? "Close Left Pane" : "Close Right Pane") : "Split View"
             return true
         case #selector(focusOtherPane(_:)): return tabs.isSplit
+        case #selector(toggleSidebar(_:)):
+            item.title = isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
+            return true
         case #selector(focusFilter(_:)):
             item.state = browser.isFiltering ? .on : .off; return true
         case #selector(nextTab(_:)), #selector(previousTab(_:)): return tabs.count > 1
@@ -313,6 +386,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(toggleSortOrder(_:)):
             item.state = browser.model.ascending ? .on : .off
             return true
+        case #selector(groupBy(_:)), #selector(toggleGroups(_:)):
+            return browser.validateMenuItem(item)
         default: return true
         }
     }
@@ -322,14 +397,67 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case ToolbarID.back:    return browser.canGoBack
         case ToolbarID.forward: return browser.canGoForward
         case ToolbarID.up:      return browser.canGoUp
+        case ToolbarID.share:   return !sharingItems.isEmpty
         default: return true
         }
+    }
+
+    var sharingItems: [URL] { browser.fileView.selectedItems.map(\.url) }
+
+    func items(for pickerToolbarItem: NSSharingServicePickerToolbarItem) -> [Any] { sharingItems }
+
+    func selectionDidChange(in pane: BrowserViewController) {
+        guard pane === browser else { return }
+        shareItem?.isEnabled = !sharingItems.isEmpty
+    }
+
+    private func validateFileAction(_ item: NSMenuItem) -> Bool {
+        guard let raw = item.representedObject as? String, let action = MainMenu.FileAction(rawValue: raw) else { return false }
+        let count = browser.fileView.selectedItems.count
+        switch action {
+        case .newFolder, .getInfo: return browser.currentURL != nil
+        case .rename: return count == 1
+        case .compress:
+            item.title = browser.compressionTitle
+            return count > 0
+        case .extract: return browser.canExtractSelection
+        case .paste:
+            return browser.validateMenuItem(NSMenuItem(title: "", action: #selector(BrowserViewController.paste(_:)), keyEquivalent: ""))
+        default: return count > 0
+        }
+    }
+
+    @objc func performFileAction(_ sender: NSMenuItem) {
+        guard validateFileAction(sender), let raw = sender.representedObject as? String,
+              let action = MainMenu.FileAction(rawValue: raw) else { return }
+        switch action {
+        case .newFolder: browser.newFolder()
+        case .open: browser.openSelection()
+        case .getInfo: browser.getInfo(sender)
+        case .quickLook: browser.quickLook(sender)
+        case .rename: browser.renameSelection(sender)
+        case .duplicate: browser.duplicate(sender)
+        case .compress: browser.compressSelection(sender)
+        case .extract: browser.extractSelection(sender)
+        case .copy: browser.copy(sender)
+        case .paste: browser.paste(sender)
+        case .trash: browser.moveToTrash(sender)
+        }
+    }
+
+    var isSidebarCollapsed: Bool { splitViewController.splitViewItems[0].isCollapsed }
+
+    @objc func toggleSidebar(_ sender: Any?) {
+        let item = splitViewController.splitViewItems[0]
+        item.isCollapsed.toggle()
+        // Restoring focus avoids leaving it in an invisible outline view.
+        if item.isCollapsed { window?.makeFirstResponder(browser.focusView) }
     }
 
     // MARK: - NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.viewMode, ToolbarID.group, ToolbarID.search]
+        [ToolbarID.sidebar, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.viewMode, ToolbarID.group, ToolbarID.share, ToolbarID.more, ToolbarID.search]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -339,6 +467,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         switch id {
+        case ToolbarID.sidebar:
+            let item = navItem(id, "Toggle Sidebar", "sidebar.leading", #selector(toggleSidebar(_:)))
+            item.visibilityPriority = .user
+            return item
         case ToolbarID.back:
             let (item, button) = historyItem(id, "Back", "chevron.left", #selector(goBack(_:)), back: true)
             backButton = button; return item
@@ -346,6 +478,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let (item, button) = historyItem(id, "Forward", "chevron.right", #selector(goForward(_:)), back: false)
             forwardButton = button; return item
         case ToolbarID.up:      return navItem(id, "Enclosing Folder", "arrow.up", #selector(goUp(_:)))
+        case ToolbarID.share:
+            let item = NSSharingServicePickerToolbarItem(itemIdentifier: id)
+            item.label = "Share"
+            item.toolTip = "Share selected items"
+            item.delegate = self
+            item.autovalidates = false
+            item.isEnabled = !sharingItems.isEmpty
+            shareItem = item
+            return item
+        case ToolbarID.more:
+            let item = NSMenuToolbarItem(itemIdentifier: id)
+            item.label = "More"
+            item.toolTip = "More actions"
+            item.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "More actions")
+            item.showsIndicator = false
+            item.menu = MainMenu.actionsMenu(target: self)
+            return item
         case ToolbarID.group:
             // Finder's Group button: a menu of the Group By keys (items validate through the responder chain).
             let item = NSMenuToolbarItem(itemIdentifier: id)
@@ -362,7 +511,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.paletteLabel = "Filter"
             item.preferredWidthForSearchField = 200
             item.resignsFirstResponderWithCancel = true
-            item.searchField.placeholderString = "Filter"
+            item.searchField.placeholderString = "Filter by Name"
+            item.searchField.toolTip = "Filter this folder by name. Supports * and ? wildcards. Escape clears the filter."
             item.searchField.sendsSearchStringImmediately = true
             item.searchField.sendsWholeSearchString = false
             item.searchField.delegate = self
@@ -427,6 +577,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func windowWillClose(_ notification: Notification) {
         removeEventMonitors()
+        hideTerminal()
+        if let preferencesObserver { NotificationCenter.default.removeObserver(preferencesObserver) }
+        preferencesObserver = nil
         onClose?()
     }
 }

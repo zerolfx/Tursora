@@ -2,12 +2,16 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
+    private var preferencesObserver: NSObjectProtocol?
     private var windowControllers: [MainWindowController] = []
     let provider: FileProvider = LocalFileProvider()
     let places = PlacesModel()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build()
+        preferencesObserver = NotificationCenter.default.addObserver(forName: .tursoraPreferencesChanged, object: nil, queue: .main) { _ in
+            if let menu = NSApp.mainMenu { MainMenu.applyPreferences(to: menu) }
+        }
         let wc = newWindow(self)
         NSApp.activate(ignoringOtherApps: true)
         if SmokeTest.isRequested { SmokeTest.run(wc) }
@@ -17,7 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// closes nothing by itself, so do it here.
     func applicationWillTerminate(_ notification: Notification) {
         InfoWindowController.closeAll()
+        windowControllers.forEach { $0.hideTerminal() }
+        ArchiveBrowserController.shutdownAll()
     }
+
+    @objc func showSettings(_ sender: Any?) { SettingsWindowController.show() }
 
     /// A file manager stays alive with no windows open, like Finder does.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

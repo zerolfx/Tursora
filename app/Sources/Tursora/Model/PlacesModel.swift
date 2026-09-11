@@ -183,7 +183,7 @@ final class PlacesModel {
 
     private func locations() -> [Place] {
         let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsRemovableKey,
-                                      .volumeIsInternalKey, .volumeIsEjectableKey]
+                                      .volumeIsInternalKey, .volumeIsEjectableKey, .volumeIsLocalKey]
         let urls = FileManager.default.mountedVolumeURLs(
             includingResourceValuesForKeys: keys,
             options: [.skipHiddenVolumes]) ?? []
@@ -192,15 +192,30 @@ final class PlacesModel {
             let name = v?.volumeName ?? url.lastPathComponent
             let removable = (v?.volumeIsRemovable ?? false) || (v?.volumeIsEjectable ?? false)
             let internalVolume = v?.volumeIsInternal ?? true
-            let symbol = removable ? "externaldrive"
-                       : internalVolume ? "internaldrive" : "externaldrive.connected.to.line.below"
+            let symbol = Self.volumeSymbol(isLocal: v?.volumeIsLocal ?? true,
+                                           isInternal: internalVolume, isRemovable: removable)
             return Place(name: name, url: url, symbolName: symbol)
         }
     }
 
     func isEjectable(_ url: URL) -> Bool {
-        let keys: Set<URLResourceKey> = [.volumeIsEjectableKey, .volumeIsRemovableKey]
+        let keys: Set<URLResourceKey> = [.volumeIsEjectableKey, .volumeIsRemovableKey,
+                                       .volumeIsLocalKey, .isVolumeKey]
         guard let v = try? url.resourceValues(forKeys: keys) else { return false }
-        return (v.volumeIsEjectable ?? false) || (v.volumeIsRemovable ?? false)
+        return Self.canEjectVolume(isVolume: v.isVolume ?? false, isLocal: v.volumeIsLocal ?? true,
+                                   isRemovable: v.volumeIsRemovable ?? false,
+                                   isEjectable: v.volumeIsEjectable ?? false)
+    }
+
+    /// A remote share can be unmounted without being a removable device.
+    /// Only volume roots qualify, never an ordinary favourite within a disk.
+    static func canEjectVolume(isVolume: Bool, isLocal: Bool, isRemovable: Bool, isEjectable: Bool) -> Bool {
+        isVolume && (!isLocal || isRemovable || isEjectable)
+    }
+
+    static func volumeSymbol(isLocal: Bool, isInternal: Bool, isRemovable: Bool) -> String {
+        if !isLocal { return "network" }
+        return isRemovable ? "externaldrive"
+            : isInternal ? "internaldrive" : "externaldrive.connected.to.line.below"
     }
 }

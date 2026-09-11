@@ -1,7 +1,7 @@
 # Tursora vs Finder — 功能差距与难度
 
 依据本机 Finder 的菜单 nib（`Finder.app/Contents/Resources/Base.lproj/MenuBar.nib`、`ArrangeByMenu.nib`，用 `strings` 抽出的菜单项）逐项对照。
-不含 Tags、Recents、Shared / iCloud / AirDrop / 网络（已排除或远程范围）。
+Tags 与 Import from iPhone 明确不做；Recents、Shared / iCloud / AirDrop 暂不在此表展开。系统服务器挂载纳入 Go 菜单对照。
 
 **难度**按一个熟悉 AppKit 的人、含 smoke test 与真机验证估：
 S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 行，新 view/controller 或改 model）· L 3–5 天（400–1000 行，新子系统或跨层）· XL > 1 周（> 1000 行，或依赖没有公开 API 的东西）。
@@ -11,16 +11,16 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
-| **Get Info**（⌘I）/ Show Inspector（⌥⌘I）/ Get Summary Info（⌃⌘I） | ✅ 已做 | — | 见 PLAN 2.10。未做：Tags、Stationery pad、ACL、改 owner/group（要提权，无公开 API → 单独算 L）、Apply to enclosed items |
+| **Get Info**（⌘I）/ Show Inspector（⌥⌘I）/ Get Summary Info（⌃⌘I） | ✅ 已做 | — | 见 PLAN 2.10。未做：Stationery pad、ACL、改 owner/group（要提权，无公开 API → 单独算 L）、Apply to enclosed items |
 | **Rename（多选 = 批量重命名对话框）** | 单选 ✅ 批量 ❌ | M | 替换文本 / 添加文本 / 格式三种模式；连锁改名（a→b 而 b 也在批里）要两遍临时名 |
 | **New Folder with Selection**（⌃⌘N） | ❌ | S | createDirectory + 现有 transfer；撤销要合成一个组 |
-| **Compress** / Compress with password | ❌ | M | `ditto -ck --keepParent` 或 Archive Utility；多选要先克隆到暂存目录；密码版 macOS 26 才有 |
+| **Compress** / Compress with password | 普通 ZIP ✅；密码 ❌ | 密码 M | 压缩 / 解压支持重名保留、撤销重做；可选只读 ZIP 浏览默认关闭 |
 | **Make Alias**（⌃⌘A）/ Show Original（⌘R） | ❌ | M | `URL.bookmarkData(options: .suitableForBookmarkFile)` + `writeBookmarkData`；⌘R 与我们的 Reload 冲突 |
 | Always Open With（⌥ + Open With） | ❌ | S | `setDefaultApplication(at:toOpen:)`（已在 Get Info 的 Change All 用上）；上下文菜单要保留备选项对 |
 | **Show Package Contents** | ❌ | S | 右键 .app 直接 navigate 进包目录 |
 | Add to Dock | ❌ | M | 只有写 `com.apple.dock.plist` + 重启 Dock 这条路，格式未文档化 |
 | Print | ❌ | S | `NSWorkspace.open(_:withApplicationAt:configuration:)` 让默认程序打印，无回执 |
-| Share… | ❌ | S | `NSSharingServicePicker`；上下文菜单是复制出来的，要注意子菜单懒加载 |
+| Share… | ✅ 工具栏系统分享选择器 | — | 按活动 pane 的选中文件分享；不直接发送 |
 | Slideshow（⌥空格） | ❌ | S | `QLPreviewPanel.enterFullScreenMode`；方向键当前会改选择，要拦 |
 | Customize Folder（文件夹颜色/表情，macOS 26） | ❌ | XL | 存储格式私有（可能在 IconServices 数据库里），不可靠 |
 | Copy as Pathname（⌥⌘C） | ✅ Copy Path | S | 只是把快捷键对齐，做成 Copy 的 ⌥ 备选项 |
@@ -58,7 +58,7 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 | **Computer / Desktop / Documents / Downloads / Applications / Utilities / Library（⌥）** | 只有 Home | S | ⇧⌘C 与 Copy to Other Pane、⇧⌘D 与 Split View 冲突，要先让位 |
 | **Recent Folders ▸**（含 Clear Menu） | ❌ | M | 跨会话持久化；每个新标签的首次 Home 也会被记，要过滤 |
 | Go to Folder（⇧⌘G） | ✅ 进地址栏编辑 | — | 行为等价 |
-| Connect to Server（⌘K） | ❌ | L | NetFS 挂载 + 历史 + 错误码映射；v1 外 |
+| Connect to Server（⌘K） | ✅ 系统 NetFS | 历史 / 发现待做 | SMB、NFS、WebDAV、legacy AFP；真实服务端互操作未实测 |
 
 ## Window 菜单
 
@@ -72,8 +72,8 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
 | **Spring-loaded folders** | ❌ | M | `NSSpringLoadingDestination`，列表、图标、侧栏、面包屑四处；NSOutlineView 自带的悬停展开不能重复触发 |
-| **Finder 设置窗口** | ❌ | L | 窗口本身不难，但好几个开关背后的功能还没有（扩展名、废纸篓策略、Keep folders on top） |
-| 显示/隐藏文件扩展名 + 改扩展名警告 | ❌ | M | 全局开关 + 每文件 flag（Get Info 已能改 flag）；.app 全系统隐藏扩展名，排序/分组仍按真名 |
+| **Finder 设置窗口** | ✅ 基础设置 | 扩展项 M–L | 扩展名显示、过滤快捷键、默认关闭的终端 / ZIP 浏览实验；废纸篓策略、Keep folders on top 等未实现 |
+| 显示/隐藏文件扩展名 + 改扩展名警告 | 显示开关 ✅；警告 ❌ | 警告 M | 全局只改列表 / 图标标签，普通文件夹名不变；重命名、排序、过滤保留真名；不是 Finder 逐文件 flag 策略的完整复制 |
 | Quick Actions（Rotate / Markup / Create PDF） | ❌ | L | Finder 的注册表是私有的，Markup 无公开 API；只能自己实现 Rotate/Create PDF |
 | 右键 ▸ Services 菜单 | ❌ | S | `NSApp.servicesMenu`；一个 NSMenu 只能有一个父菜单，上下文菜单要复制 |
 | 废纸篓视图（Put Back、清空） | ❌ | L | 本机已验证 `ls ~/.Trash` 被拒：需要 Full Disk Access，无系统弹窗，用户得手动授权 |
@@ -84,7 +84,16 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 
 ## 建议顺序（按成本）
 
-1. S：Deselect All、Move Items Here、Copy as Pathname 对齐、New Folder with Selection、Show Package Contents、Always Open With、Share、Print、Slideshow、Eject All、Go 菜单快捷键、Cycle Through Windows、Services 菜单、别名解析
-2. M：批量重命名、Compress、Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、Spring-loaded、扩展名显示、Paste Exactly、Show Clipboard、Add to Dock、快捷键对齐
-3. L：Column 视图、Gallery 视图、Show View Options（每目录视图属性）、设置窗口、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、Connect to Server
+1. S：Deselect All、Move Items Here、Copy as Pathname 对齐、New Folder with Selection、Show Package Contents、Always Open With、Print、Slideshow、Eject All、Go 菜单快捷键、Cycle Through Windows、Services 菜单、别名解析
+2. M：批量重命名、Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、Spring-loaded、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、快捷键对齐
+3. L：Column 视图、Gallery 视图、Show View Options（每目录视图属性）、完整偏好策略、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、服务器发现 / 历史 / 重连
 4. XL / 不建议：Customize Folder、Smart Folders、FinderSync 角标
+
+## 2026-09-12 更新
+
+- [x] 工具栏 More 常用文件操作与系统分享按钮。
+- [x] ZIP Compress / Extract，重名保留、后台处理、撤销重做。密码与其他格式未实现。
+- [x] Connect to Server（⌘K）与系统挂载网络卷的浏览 / Eject；真实服务端互操作尚未实测。
+- [x] 基础设置窗口、扩展名显示开关、自定义名称过滤快捷键。
+- [x] 默认关闭的终端面板与 ZIP 只读浏览实验。
+- Tags、Import from iPhone 为明确不做的产品边界。

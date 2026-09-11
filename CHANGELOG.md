@@ -1,6 +1,25 @@
 # Changelog
 
-Dates are commit dates. Every entry below was verified by the in-app smoke test (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)); the count at the end of an entry is the number of checks at that point.
+Historical entries record development dates and their smoke-test counts where available. The current unreleased changes are tracked separately until final integrated verification completes (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
+
+## Unreleased — settings, native services and optional workspaces
+
+- Add a native Settings window (⌘,), immediate filename-extension display preferences, and a configurable name-filter shortcut with conflict checks and reset.
+- Add two experiments, both disabled by default: a window-bottom SwiftTerm 1.15.0 PTY terminal (F4), and a separate read-only ZIP browser. Navigation updates only the terminal's manual restart destination; hiding/restarting ends its session. ZIP files open as temporary copies without archive writeback.
+- Add ZIP Compress / Extract with undo/redo, safe unique output names and isolated processing; normal ZIP Open still extracts when browsing is disabled.
+- Add Connect to Server (⌘K) through system NetFS, network-volume classification and Eject; no real server connection has been validated yet.
+- Fix grouping after Favorites navigation, align sidebar/content edges, stabilize the sidebar toggle, remove the duplicate title-bar path and passive filter scope row, and correct Favorites icon sizing.
+- Add the toolbar More menu and system sharing picker; remove file-tag functionality by design. Import from iPhone is also intentionally excluded.
+- Redesign the app mark as two glass panes forming an abstract tail fin, with one full-bleed icon background.
+- Expand the README and add a build-artifact workflow plus a separate manual Release workflow.
+- Preserve exact file selections through appearance and external refreshes, including same-named files in expanded folders; Escape cancels inline rename in both views.
+- Rebuild stale icon-grid layouts when grouping changes; use the scroll viewport when verifying Info section widths.
+- Verification: 605 checks passed three consecutive full runs; release bundle, signature, resources and ZIP round-trip checks passed. Additional computer-use checks for Settings, Terminal and ZIP browsing await an unlocked Mac.
+
+## 2026-09-12 — application icon and squashed baseline
+
+- Squashed the 42 existing commits into one baseline, preserving file contents and the GitHub noreply author identity. Historical entries below omit their superseded individual commit hashes.
+- Added the blue glass folder application icon, a transparent 1024px PNG master, a 16–1024px ICNS family, and bundle icon registration. Master alpha/dimensions and icon-family sizes are covered by the smoke test. 392 checks.
 
 ## 2026-09-12 — startup verification and UI fixes
 
@@ -16,34 +35,34 @@ Dates are commit dates. Every entry below was verified by the in-app smoke test 
 
 ## 2026-09-11 — Get Info
 
-- `8841469` Finder's Get Info (⌘I), Inspector (⌥⌘I) and Summary Info (⌃⌘I) windows with Finder's own sections and labels; SF Symbol icons on menu items taken from Finder's `MenuBar.nib`. 355 checks.
-- `b6d398f` Review fixes: FSEvents filtered to the item and its siblings; rebuilds deferred while typing; each section bound to the URL it was built for; renames followed (in-app hint, outside by inode); section expansion applied in `init`; comments saved on quit. 367 checks.
+- Finder's Get Info (⌘I), Inspector (⌥⌘I) and Summary Info (⌃⌘I) windows with Finder's own sections and labels; SF Symbol icons on menu items taken from Finder's `MenuBar.nib`. 355 checks.
+- Review fixes: FSEvents filtered to the item and its siblings; rebuilds deferred while typing; each section bound to the URL it was built for; renames followed (in-app hint, outside by inode); section expansion applied in `init`; comments saved on quit. 367 checks.
 
 ## 2026-09-11 — groups, filter, conflicts
 
-- `a9065f0` Filter bar; Finder-style conflict dialog with Keep Both / Skip / Stop / Replace / Merge and "Apply to all".
-- `aa56cbe` Finder-style filter UI: toolbar search field and scope bar. `c37b303` the field folds back when focus leaves it empty.
-- `2434e57` Finder's Use Groups / Group By in both views; `cc6f3cf` group labels taken from Finder's string table.
-- `d85975e` No blank space above the rows after navigating during a scroll bounce.
-- `3e68e9e` Gap list against Finder's menu nib.
+- Filter bar; Finder-style conflict dialog with Keep Both / Skip / Stop / Replace / Merge and "Apply to all".
+- Finder-style filter UI: toolbar search field and scope bar. the field folds back when focus leaves it empty.
+- Finder's Use Groups / Group By in both views; group labels taken from Finder's string table.
+- No blank space above the rows after navigating during a scroll bounce.
+- Gap list against Finder's menu nib.
 
 ## 2026-09-11 — split view, icon view, live refresh
 
-- `b905008` Dolphin-style split view: one or two panes per tab, drag a tab into the content area to split.
-- `84fe1be` Icon view (`NSCollectionView`), Dolphin zoom ladders, Quick Look thumbnails as previews.
-- `75e3564` Panes refresh on outside changes (FSEvents); no rename after a drag. `66201fd` Rename guard independent of drag timing; files drop onto tabs. `e7ab2e3` Gap list against Dolphin.
+- Dolphin-style split view: one or two panes per tab, drag a tab into the content area to split.
+- Icon view (`NSCollectionView`), Dolphin zoom ladders, Quick Look thumbnails as previews.
+- Panes refresh on outside changes (FSEvents); no rename after a drag. Rename guard independent of drag timing; files drop onto tabs. Gap list against Dolphin.
 
 ## 2026-09-11 — M1 to M5
 
-- `fe83991` M1: window, sidebar, file list, navigation, launchable `.app`.
-- `12ca3e1` M2/M3: tabs, address bar, context menus, mouse navigation. `eb26331` First tab's view stayed hidden.
-- `657f974` M4/M5: quick navigation and file operations (copy/cut/paste, duplicate, rename, trash, drag & drop, Quick Look, undo).
-- `3af5f90` Folders expand in place; Finder-style delayed click-to-rename. `4535a62` Sidebar reorder target, address-bar overflow, real autocompletion. `54cf04e` Completion rows cut off. `44b819c` Every favourite reorderable and removable.
+- M1: window, sidebar, file list, navigation, launchable `.app`.
+- M2/M3: tabs, address bar, context menus, mouse navigation. First tab's view stayed hidden.
+- M4/M5: quick navigation and file operations (copy/cut/paste, duplicate, rename, trash, drag & drop, Quick Look, undo).
+- Folders expand in place; Finder-style delayed click-to-rename. Sidebar reorder target, address-bar overflow, real autocompletion. Completion rows cut off. Every favourite reorderable and removable.
 
 ## 2026-09-10 — pivot to a native rewrite
 
-- `9dfd2aa` v1 plan for a Swift + AppKit rewrite; model layer seeded.
+- v1 plan for a Swift + AppKit rewrite; model layer seeded.
 
 ## 2026-08-19 — Phase 0 audit of porting Dolphin/KIO
 
-- `2783774` … `076d244` Source audit with twelve sections, adversarial verification, and the report that concluded a native rewrite was the better path ([docs/audit/](docs/audit/)).
+- … Source audit with twelve sections, adversarial verification, and the report that concluded a native rewrite was the better path ([docs/audit/](docs/audit/)).

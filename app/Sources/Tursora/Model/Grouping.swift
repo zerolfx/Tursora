@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 /// Finder's View ▸ Group By keys, in Finder's menu order.
 enum GroupKey: String, CaseIterable {
-    case none, name, kind, application, dateLastOpened, dateAdded, dateModified, dateCreated, size, tags
+    case none, name, kind, application, dateLastOpened, dateAdded, dateModified, dateCreated, size
 
     var title: String {
         switch self {
@@ -16,7 +16,6 @@ enum GroupKey: String, CaseIterable {
         case .dateModified: return "Date Modified"
         case .dateCreated: return "Date Created"
         case .size: return "Size"
-        case .tags: return "Tags"
         }
     }
 }
@@ -69,7 +68,6 @@ enum Grouping {
         case .dateAdded: return dateBucket(item.addedDate, now: now)
         case .dateLastOpened: return dateBucket(item.accessDate, now: now)
         case .size: return sizeBucket(item)
-        case .tags: return tagBucket(item)
         }
     }
 
@@ -162,12 +160,4 @@ enum Grouping {
         return ("From \(sizeFormatter.string(fromByteCount: lower)) to \(sizeFormatter.string(fromByteCount: upper))", 100 - decade)
     }
 
-    // MARK: Tags — first tag alphabetically; untagged last
-
-    static func tagBucket(_ item: FileItem) -> (title: String, order: Int) {
-        guard let tag = item.tags.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }).first else {
-            return ("No Tags", 1)
-        }
-        return (tag, 0)
-    }
 }

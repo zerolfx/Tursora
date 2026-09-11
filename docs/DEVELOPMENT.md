@@ -6,10 +6,11 @@ Tursora is a Swift Package with one executable target, built with the Command Li
 
 | | |
 |---|---|
-| Toolchain | Xcode Command Line Tools with Swift 6.3 or newer (`xcode-select --install`); full Xcode is not needed |
+| Toolchain | Xcode Command Line Tools with Swift 6.2+ and the macOS 26 SDK (`xcode-select --install`); tested with Swift 6.2.4 / SDK 26.2; full Xcode is not needed |
 | Deployment target | macOS 14 (`Package.swift`); developed and tested on macOS 26 |
 | Language mode | Swift 5 (`swift-tools-version:5.9`) — see [DECISIONS.md](DECISIONS.md) D7 |
-| Frameworks | AppKit, Quartz (Quick Look UI), QuickLookThumbnailing, CoreServices (FSEvents, Spotlight MDItem) |
+| Frameworks | AppKit, Quartz (Quick Look UI), QuickLookThumbnailing, CoreServices (FSEvents, Spotlight MDItem), NetFS |
+| Swift package dependency | SwiftTerm 1.15.0 (exact pin); fetched by SPM on the first build |
 
 ## Build, run, package
 
@@ -25,7 +26,9 @@ cd app && .build/debug/Tursora             # run it (no bundle: plain process, o
 cd app && tools/make-app.sh                # release build → app/build/Tursora.app (ad-hoc signed)
 ```
 
-`make-app.sh [debug|release]` assembles the bundle: `Info.plist` (bundle id `com.tursora.Tursora`, TCC usage strings, version from `git rev-list --count`), the executable, and an ad-hoc `codesign`. Override with `TURSORA_BUNDLE_ID`, `TURSORA_VERSION`, `TURSORA_BUILD`.
+`app/Resources/AppIcon.png` is the 1024px RGBA icon master; `AppIcon.icns` is the checked-in macOS icon family. Run `app/tools/make-icon.sh` from the repository root after changing the master (uses system `sips` and `iconutil`). The smoke test checks PNG dimensions/alpha and the ICNS representations.
+
+`make-app.sh [debug|release]` assembles the bundle: `Info.plist` (bundle id `com.tursora.Tursora`, TCC usage strings, version from `git rev-list --count`), the executable, `AppIcon.icns` registered through `CFBundleIconFile`, and an ad-hoc `codesign`. Override with `TURSORA_BUNDLE_ID`, `TURSORA_VERSION`, `TURSORA_BUILD`.
 
 To try a change in the packaged app, rebuild and relaunch:
 
@@ -34,6 +37,8 @@ cd app && tools/make-app.sh && pkill -f "Tursora.app/Contents/MacOS/Tursora"; op
 ```
 
 The debug binary and the packaged app have **different UserDefaults domains** (the bare process has no bundle id), so favourites, view preferences and Info-section state do not carry over between them.
+
+The packaging script also includes `SwiftTerm_SwiftTerm.bundle` and `SwiftTerm-LICENSE.txt`. Keep the resource bundle in `Contents/Resources`; building only the executable is not a complete distributable. Experimental terminal support is compiled in but remains disabled until enabled in Settings and opened with F4.
 
 ## The smoke test
 
@@ -107,3 +112,19 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 2. `tools/make-app.sh`, launch `build/Tursora.app`, click through what the smoke test cannot see (popups, overlays, Info window layout, menu icons).
 3. Update [../CHANGELOG.md](../CHANGELOG.md), the spec if behaviour changed, and the gap lists if something moved to ✅.
 4. Commit with the smoke-test count in the message.
+
+## GitHub Actions
+
+`.github/workflows/build.yml` builds a release application on `macos-26` (Apple Silicon) for main pushes, pull requests, or manual runs. It verifies the ad-hoc signature, plist, and icon, then archives the bundle with `ditto` so executable permissions survive. Each artifact includes a ZIP and SHA-256 checksum, retained for 14 days.
+
+`.github/workflows/release.yml` has only `workflow_dispatch`. Run it on `main` with a version such as `0.1.0` or `0.2.0-beta.1` and the prerelease switch when appropriate. It rejects existing tags and unsafe/invalid version strings, packages the exact dispatch SHA, then creates the version tag and GitHub Release with generated notes. The bundle's short version uses the numeric portion; the filename and release retain the prerelease suffix. No automatic release is triggered by a push or tag.
+
+The workflows validate packaging; run the AppKit smoke suite three times in a desktop session before committing. Hosted workflow execution is only verified once these files are pushed and a run completes. Current releases are ad-hoc signed, not Developer ID signed or notarized.
+
+### Reusing icon layouts and measuring scroll content
+
+On macOS 26, an offscreen `NSCollectionViewFlowLayout` can retain old ungrouped section attributes after both `reloadData()` and `invalidateLayout()`. Recreate the layout when the grouped flag or section item counts change. Smoke coverage checks actual supplementary headers and cross-section item frames after switching panes and view modes.
+
+Info sections fill the scroll view's clip viewport, not its outer frame. A legacy vertical scroller consumes horizontal space when the document exceeds the screen-height cap; layout assertions must compare against `scrollView.contentView.bounds.width`.
+
+Selection preservation and rename hints use full standardized URLs. Basenames alone can select an unrelated root file after extracting or refreshing an expanded folder containing the same name.

@@ -268,6 +268,10 @@ enum FileOperations {
 
     static func report(_ failures: [Failure], in window: NSWindow?) {
         guard !failures.isEmpty else { return }
+        if SmokeTest.isRequested {
+            failures.forEach { print("File operation failed: \($0.url.lastPathComponent): \($0.error.localizedDescription)") }
+            return
+        }
         let alert = NSAlert()
         alert.messageText = failures.count == 1
             ? "“\(failures[0].url.lastPathComponent)” couldn’t be processed."

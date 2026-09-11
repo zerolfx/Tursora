@@ -38,7 +38,14 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     private(set) var showPreviews = true
 
     /// Items marked by ⌘X are drawn faded until pasted or the pasteboard changes.
-    var cutURLs: Set<URL> = [] { didSet { tableView.reloadData() } }
+    var cutURLs: Set<URL> = [] {
+        didSet {
+            guard cutURLs != oldValue else { return }
+            let selected = selectedItems.map(\.url)
+            reloadData()
+            select(urls: selected)
+        }
+    }
 
     private var shownGeneration = -1
 
@@ -230,6 +237,15 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         if let first = rows.first { tableView.scrollRowToVisible(first) }
     }
 
+    func select(urls: [URL]) {
+        let targets = Set(urls.map { $0.standardizedFileURL })
+        let rows = IndexSet((0..<tableView.numberOfRows).filter {
+            item(atRow: $0).map { targets.contains($0.url.standardizedFileURL) } ?? false
+        })
+        tableView.selectRowIndexes(rows, byExtendingSelection: false)
+        if let first = rows.first { tableView.scrollRowToVisible(first) }
+    }
+
     /// Clamped both ways: NSClipView.scroll(to:) does not constrain, and a
     /// value captured mid rubber-band (negative) or from a longer listing
     /// would otherwise leave blank space above or below the rows.
@@ -266,6 +282,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         tableView.scrollRowToVisible(row)
         guard let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView,
               let field = cell.textField else { return }
+        field.stringValue = item.name
         field.isEditable = true
         tableView.editColumn(0, row: row, with: nil, select: true)
         guard let editor = field.currentEditor() else { field.isEditable = false; return }
@@ -282,10 +299,19 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         guard row >= 0, let item = item(atRow: row) else { return }
         let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if newName.isEmpty || newName == item.name || newName.contains("/") {
-            field.stringValue = item.name            // revert
+            field.stringValue = item.displayName            // revert
             return
         }
         onRenameCommitted?(item, newName)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.cancelOperation(_:)),
+              let field = control as? NSTextField, let item = item(atRow: tableView.row(for: field)) else { return false }
+        textView.string = item.name
+        field.stringValue = item.name
+        view.window?.makeFirstResponder(tableView)
+        return true
     }
 
     // MARK: - Actions
@@ -455,7 +481,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
                     cell.imageView?.image = cached
                 }
             }
-            cell.textField?.stringValue = item.name
+            cell.textField?.stringValue = item.displayName
             cell.textField?.textColor = item.isHidden ? .secondaryLabelColor : .labelColor
             cell.textField?.isEditable = false          // beginRename turns it on
             cell.textField?.delegate = self
