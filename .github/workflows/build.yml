@@ -1,0 +1,51 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: macOS application (Apple Silicon)
+    # Standard macos-26 runners are arm64, not universal/Intel builders.
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          swift --version
+      - name: Build and verify application bundle
+        working-directory: app
+        run: |
+          tools/make-app.sh
+          test "$(lipo -archs build/Tursora.app/Contents/MacOS/Tursora)" = arm64
+          codesign --verify --deep --strict build/Tursora.app
+          plutil -lint build/Tursora.app/Contents/Info.plist
+          test -s build/Tursora.app/Contents/Resources/AppIcon.icns
+          ditto -c -k --sequesterRsrc --keepParent build/Tursora.app build/Tursora-macOS-arm64.zip
+          ditto -x -k build/Tursora-macOS-arm64.zip "$RUNNER_TEMP/tursora-unpacked"
+          test -x "$RUNNER_TEMP/tursora-unpacked/Tursora.app/Contents/MacOS/Tursora"
+          codesign --verify --deep --strict "$RUNNER_TEMP/tursora-unpacked/Tursora.app"
+          cd build
+          shasum -a 256 Tursora-macOS-arm64.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tursora-macOS-arm64-${{ github.sha }}
+          path: |
+            app/build/Tursora-macOS-arm64.zip
+            app/build/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

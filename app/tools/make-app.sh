@@ -10,18 +10,41 @@ BUNDLE_ID="${TURSORA_BUNDLE_ID:-com.tursora.Tursora}"
 VERSION="${TURSORA_VERSION:-0.1.0}"
 BUILD_NUMBER="${TURSORA_BUILD:-$(git -C "$(dirname "$0")/.." rev-list --count HEAD 2>/dev/null || echo 1)}"
 
+# Reject malformed metadata before building or replacing the existing bundle.
+case "$CONFIG" in
+    debug|release) ;;
+    *) echo 'Usage: tools/make-app.sh [debug|release]' >&2; exit 1 ;;
+esac
+[[ "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]] || {
+    echo 'TURSORA_BUNDLE_ID must be a reverse-DNS identifier.' >&2; exit 1;
+}
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+    echo 'TURSORA_VERSION must contain three numeric components (for example 0.1.0).' >&2; exit 1;
+}
+[[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+    echo 'TURSORA_BUILD must be a positive integer.' >&2; exit 1;
+}
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/build"
 APP="$OUT/$APP_NAME.app"
 
 cd "$ROOT"
-swift build -c "$CONFIG" 2>&1 | grep -vE "SwiftUICore|^\[|Write " || true
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/$EXEC_NAME"
+swift build -c "$CONFIG"
+BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+BIN="$BIN_DIR/$EXEC_NAME"
 [ -x "$BIN" ] || { echo "build failed: $BIN missing" >&2; exit 1; }
+SWIFTTERM_RESOURCES="$BIN_DIR/SwiftTerm_SwiftTerm.bundle"
+[ -d "$SWIFTTERM_RESOURCES" ] || { echo "build failed: SwiftTerm resource bundle missing" >&2; exit 1; }
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$EXEC_NAME"
+cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+# SwiftTerm 1.15.0 probes Bundle.main.resourceURL directly, intentionally
+# avoiding SwiftPM's generated Bundle.module accessor and its build-path fallback.
+cp -R "$SWIFTTERM_RESOURCES" "$APP/Contents/Resources/"
+cp "$ROOT/Resources/SwiftTerm-LICENSE.txt" "$APP/Contents/Resources/SwiftTerm-LICENSE.txt"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -34,6 +57,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleInfoDictionaryVersion</key>  <string>6.0</string>
     <key>CFBundleName</key>                   <string>Tursora</string>
     <key>CFBundleDisplayName</key>            <string>$APP_NAME</string>
+    <key>CFBundleIconFile</key>               <string>AppIcon</string>
     <key>CFBundlePackageType</key>            <string>APPL</string>
     <key>CFBundleShortVersionString</key>     <string>$VERSION</string>
     <key>CFBundleVersion</key>                <string>$BUILD_NUMBER</string>
@@ -64,5 +88,5 @@ PLIST
 
 echo -n "APPL????" > "$APP/Contents/PkgInfo"
 # Ad-hoc signature: required for arm64 binaries to launch at all.
-codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1
+codesign --force --sign - --timestamp=none "$APP"
 echo "→ $APP"

@@ -9,7 +9,6 @@ final class TabsController: NSViewController {
     weak var host: BrowserHost? { didSet { pages.forEach { $0.host = host } } }
 
     let tabBar = TabBarView()
-    let scopeBar = SearchScopeBar()
     let addressBar = BreadcrumbBar()
     private let container = NSView()
     private let splitDropOverlay = SplitDropOverlay()
@@ -69,18 +68,20 @@ final class TabsController: NSViewController {
 
     override func loadView() {
         view = NSView()
-        scopeBar.isHidden = true
-        let stack = NSStackView(views: [scopeBar, tabBar, addressBar, container])
+        let stack = NSStackView(views: [tabBar, addressBar, container])
         stack.orientation = .vertical
         stack.spacing = 0
-        stack.alignment = .width
+        stack.alignment = .leading
         stack.distribution = .fill
         view.pinToEdges(stack)
         NSLayoutConstraint.activate([
-            scopeBar.heightAnchor.constraint(equalToConstant: SearchScopeBar.height),
             tabBar.heightAnchor.constraint(equalToConstant: TabBarView.height),
             addressBar.heightAnchor.constraint(equalToConstant: BreadcrumbBar.height),
         ])
+        for row in [tabBar, addressBar, container] {
+            row.leadingAnchor.constraint(equalTo: stack.leadingAnchor).isActive = true
+            row.trailingAnchor.constraint(equalTo: stack.trailingAnchor).isActive = true
+        }
         container.setContentHuggingPriority(.defaultLow, for: .vertical)
         for p in pages { attach(p) }
         container.pinToEdges(splitDropOverlay)

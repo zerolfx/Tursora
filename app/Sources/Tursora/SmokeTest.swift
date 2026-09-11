@@ -9,7 +9,20 @@ enum SmokeTest {
 
     static var isRequested: Bool { ProcessInfo.processInfo.environment["TURSORA_SMOKE_TEST"] != nil }
 
+    private static var savedPreferences: [String: Any] = [:]
+    private static let appPreferenceKeys = ["showFileExtensions", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
+    static func restorePreferences() {
+        for key in appPreferenceKeys { UserDefaults.standard.set(savedPreferences[key], forKey: key) }
+        UserDefaults.standard.synchronize()
+    }
+
     static func run(_ wc: MainWindowController) {
+        for key in appPreferenceKeys { savedPreferences[key] = UserDefaults.standard.object(forKey: key) }
+        atexit { SmokeTest.restorePreferences() }
+        AppPreferences.showFileExtensions = true
+        AppPreferences.experimentalTerminalEnabled = false
+        AppPreferences.experimentalZIPBrowsingEnabled = false
+        AppPreferences.shared.resetFilterShortcut()
         // A failed earlier run may have left preferences behind; start from defaults.
         ViewPreferences.groupKey = .none
         ViewPreferences.lastGroupKey = .kind
@@ -19,10 +32,19 @@ enum SmokeTest {
         // A cold directory listing can outlive the old one-second delay.
         // Generation records completion, including an empty result or an error.
         awaitInitialListing(wc.browser.model) {
-            delayedListing {
-                infoSectionLayout()
-                savedViewModes(wc.provider)
-                navigation(wc)
+            appIconAssets()
+            ServerConnectionSmokeTests.run()
+            SettingsSmokeTests.run()
+            ArchiveSmokeTests.run {
+                ArchiveBrowserSmokeTests.run {
+                    TerminalSmokeTests.run {
+                        delayedListing {
+                            infoSectionLayout()
+                            savedViewModes(wc.provider)
+                            preferencesIntegration(wc) { windowChrome(wc) { navigation(wc) } }
+                        }
+                    }
+                }
             }
         }
     }
@@ -33,6 +55,49 @@ enum SmokeTest {
     }
     private static func after(_ s: Double, _ f: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + s, execute: f)
+    }
+
+    private static func awaitCondition(_ name: String, timeout: TimeInterval = 5,
+                                       condition: @escaping () -> Bool, completion: @escaping () -> Void) {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        func poll() {
+            if condition() { check(name, true); completion() }
+            else if ProcessInfo.processInfo.systemUptime >= deadline { check(name, false, "Timed out after \(timeout)s") }
+            else { after(0.05, poll) }
+        }
+        poll()
+    }
+
+    /// Let coalesced filesystem notifications from the previous mutation settle
+    /// before testing an unrelated click-to-rename timer.
+    private static func awaitQuietListing(_ model: DirectoryModel, completion: @escaping () -> Void) {
+        var generation = model.generation
+        var quietSince = ProcessInfo.processInfo.systemUptime
+        awaitCondition("filesystem refresh settles before delayed rename", condition: {
+            let now = ProcessInfo.processInfo.systemUptime
+            if model.generation != generation { generation = model.generation; quietSince = now }
+            return now - quietSince >= 0.75
+        }, completion: completion)
+    }
+
+    private static func appIconAssets() {
+        print("== app icon assets ==")
+        let resources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Resources")
+        guard let data = try? Data(contentsOf: resources.appendingPathComponent("AppIcon.png")),
+              let bitmap = NSBitmapImageRep(data: data) else {
+            check("app icon master decodes", false)
+            return
+        }
+        check("app icon master is 1024px square", bitmap.pixelsWide == 1024 && bitmap.pixelsHigh == 1024)
+        let corners = [(0, 0), (1023, 0), (0, 1023), (1023, 1023)]
+        check("app icon background reaches every corner without an inset tile", corners.allSatisfy {
+            (bitmap.colorAt(x: $0.0, y: $0.1)?.alphaComponent ?? 0) > 0.999
+        })
+        let icon = NSImage(contentsOf: resources.appendingPathComponent("AppIcon.icns"))
+        let sizes = Set(icon?.representations.filter { $0.pixelsWide == $0.pixelsHigh }.map(\.pixelsWide) ?? [])
+        check("app icon family covers 16px through 1024px", Set([16, 32, 64, 128, 256, 512, 1024]).isSubset(of: sizes), "\(sizes.sorted())")
     }
 
     private static func awaitInitialListing(_ model: DirectoryModel, timeout: TimeInterval = 15,
@@ -125,6 +190,127 @@ enum SmokeTest {
         }
     }
 
+    private static func preferencesIntegration(_ wc: MainWindowController, completion: @escaping () -> Void) {
+        print("== settings integration ==")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-settings-" + UUID().uuidString).resolvingSymlinksInPath()
+        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("sample.txt")
+        try! Data("sample".utf8).write(to: file)
+        let folder = directory.appendingPathComponent("folder.v1")
+        try! FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        let nestedFile = folder.appendingPathComponent("sample.txt")
+        try! Data("nested".utf8).write(to: nestedFile)
+        let b = wc.tabs.newTab(at: directory)
+        awaitInitialListing(b.model) {
+            check("terminal starts disabled without a panel", wc.terminalPanel == nil && !AppPreferences.experimentalTerminalEnabled)
+            check("ZIP browsing starts disabled", !AppPreferences.experimentalZIPBrowsingEnabled)
+            func menuItem(_ action: Selector, in menu: NSMenu?) -> NSMenuItem? {
+                for item in menu?.items ?? [] {
+                    if item.action == action { return item }
+                    if let found = menuItem(action, in: item.submenu) { return found }
+                }
+                return nil
+            }
+            let filterItem = menuItem(#selector(MainWindowController.focusFilter(_:)), in: NSApp.mainMenu)
+            let terminalItem = menuItem(#selector(MainWindowController.toggleTerminal(_:)), in: NSApp.mainMenu)
+            check("terminal command hidden while disabled", terminalItem?.isHidden == true)
+            try! AppPreferences.shared.setFilterShortcut(.init(keyEquivalent: "f", modifierFlags: [.command, .shift]), menu: NSApp.mainMenu)
+            check("filter shortcut updates the real menu immediately", filterItem?.keyEquivalent == "f" && filterItem?.keyEquivalentModifierMask == [.command, .shift])
+            AppPreferences.shared.resetFilterShortcut()
+            check("filter shortcut reset restores Command F", filterItem?.keyEquivalentModifierMask == .command)
+            b.setViewMode(.details)
+            if let folderNode = b.model.node(for: folder) {
+                b.fileList.expand(folderNode)
+                b.fileView.select(urls: [nestedFile])
+                check("exact selection distinguishes nested duplicate names", b.fileView.selectedItems.map { $0.url.standardizedFileURL } == [nestedFile.standardizedFileURL])
+                b.fileList.cutURLs = [nestedFile]
+                check("cut appearance preserves nested file identity", b.fileView.selectedItems.map { $0.url.standardizedFileURL } == [nestedFile.standardizedFileURL])
+                b.fileList.cutURLs = []
+                b.fileList.collapse(folderNode)
+            }
+            for mode in [ViewMode.details, .icons] {
+                b.setViewMode(mode)
+                wc.window?.contentView?.layoutSubtreeIfNeeded()
+                b.fileView.select(urls: [file])
+                AppPreferences.showFileExtensions = false
+                check("\(mode.rawValue): hiding extensions keeps exact selection", b.fileView.selectedItems.map { $0.url.standardizedFileURL } == [file.standardizedFileURL], "selected=\(b.fileView.selectedItems.map(\.url)) expected=\(file) rows=\(b.fileList.tableView.numberOfRows) items=\(b.model.items.map(\.url))")
+                check("\(mode.rawValue): filename display hides extension only", b.model.items.first { $0.url.standardizedFileURL == file.standardizedFileURL }?.displayName == "sample" && FileItem(url: folder)?.displayName == "folder.v1")
+                if let item = b.model.items.first(where: { $0.url.standardizedFileURL == file.standardizedFileURL }) {
+                    b.fileView.beginRename(item: item)
+                    let editor = wc.window?.firstResponder as? NSTextView
+                    check("\(mode.rawValue): rename retains the full extension", editor?.string == "sample.txt", editor?.string ?? "no editor")
+                    editor?.string = "changed-name.txt"
+                    if let editor, let delegate = editor.delegate as? NSTextField {
+                        _ = delegate.delegate?.control?(delegate, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
+                    } else {
+                        editor?.cancelOperation(nil)
+                    }
+                    check("\(mode.rawValue): Escape cancels typed rename", FileManager.default.fileExists(atPath: file.path) && !FileManager.default.fileExists(atPath: directory.appendingPathComponent("changed-name.txt").path))
+                    wc.window?.makeFirstResponder(b.focusView)
+                }
+                AppPreferences.showFileExtensions = true
+                check("\(mode.rawValue): showing extensions restores full display name", FileItem(url: file)?.displayName == "sample.txt")
+            }
+            AppPreferences.experimentalTerminalEnabled = true
+            check("enabling experiment reveals terminal command", terminalItem?.isHidden == false)
+            wc.toggleTerminal(nil)
+            check("terminal panel opens without a user shell in smoke mode", wc.terminalPanel != nil && wc.terminalPanel?.isRunning == false)
+            check("terminal starts in active folder", wc.terminalPanel?.pendingDirectory.standardizedFileURL == directory.standardizedFileURL)
+            AppPreferences.experimentalTerminalEnabled = false
+            check("disabling experiment removes terminal immediately", wc.terminalPanel == nil && terminalItem?.isHidden == true)
+            check("display preference does not rename the actual file", FileManager.default.fileExists(atPath: file.path))
+            b.setViewMode(.details)
+            if let folderNode = b.model.node(for: folder) { b.fileList.expand(folderNode) }
+            b.fileView.select(urls: [nestedFile])
+            let generation = b.model.generation
+            b.refreshPreservingSelection()
+            awaitCondition("external refresh completes with duplicate filenames", condition: { b.model.generation > generation }) {
+                check("external refresh keeps the nested file selected", b.fileView.selectedItems.map { $0.url.standardizedFileURL } == [nestedFile.standardizedFileURL])
+                _ = wc.tabs.closeCurrentTab()
+                try? FileManager.default.removeItem(at: directory)
+                completion()
+            }
+        }
+    }
+
+    private static func windowChrome(_ wc: MainWindowController, completion: @escaping () -> Void) {
+        print("== window chrome ==")
+        guard let window = wc.window else { check("window exists", false); return }
+        window.contentView?.layoutSubtreeIfNeeded()
+        let sidebar = wc.sidebar.outlineView
+        let symbol = wc.sidebar.symbolView(atRow: wc.sidebar.row(for: wc.provider.homeURL))
+        symbol?.superview?.layoutSubtreeIfNeeded()
+        check("Home symbol uses the shared 18pt sidebar canvas", symbol.map { $0.alignmentRect(forFrame: $0.frame).size } == NSSize(width: 18, height: 18), "\(String(describing: symbol?.frame))")
+        check("small SF Symbols can scale up", symbol?.imageScaling == .scaleProportionallyUpOrDown)
+        let side = wc.sidebar.view.convert(wc.sidebar.view.bounds, to: nil)
+        let content = wc.tabs.view.convert(wc.tabs.view.bounds, to: nil)
+        check("sidebar and content share full-height edges", abs(side.minY - content.minY) < 1 && abs(side.maxY - content.maxY) < 1)
+        check("sidebar starts at a practical width", (160...220).contains(side.width), "\(side.width)")
+        let item = window.toolbar?.items.first
+        check("sidebar toggle is a fixed leading navigation item", item?.itemIdentifier.rawValue == "tursora.sidebar" && item?.isNavigational == true)
+        let originalWindowFrame = window.frame
+        let originalButtonFrame = item?.view.map { $0.convert($0.bounds, to: nil) }
+        window.makeFirstResponder(sidebar)
+        wc.toggleSidebar(nil)
+        after(0.2) {
+            window.contentView?.layoutSubtreeIfNeeded()
+            check("sidebar collapses without moving the window", wc.isSidebarCollapsed && window.frame == originalWindowFrame)
+            check("collapsing restores visible browser focus", window.firstResponder === wc.browser.focusView)
+            if let originalButtonFrame, let view = item?.view {
+                check("sidebar toggle does not move after collapse", view.convert(view.bounds, to: nil) == originalButtonFrame)
+            }
+            wc.toggleSidebar(nil)
+            after(0.2) {
+                window.contentView?.layoutSubtreeIfNeeded()
+                check("sidebar expands without moving the window", !wc.isSidebarCollapsed && window.frame == originalWindowFrame)
+                if let originalButtonFrame, let view = item?.view {
+                    check("sidebar toggle does not move after expansion", view.convert(view.bounds, to: nil) == originalButtonFrame)
+                }
+                completion()
+            }
+        }
+    }
+
     // MARK: 1. Navigation, sidebar, list
 
     private static func navigation(_ wc: MainWindowController) {
@@ -132,7 +318,7 @@ enum SmokeTest {
         let home = b.provider.homeURL
         print("== navigation ==")
         check("window title", wc.window?.title == b.provider.displayName(for: home), "\(wc.window?.title ?? "nil")")
-        check("window subtitle", wc.window?.subtitle == "~", "\(wc.window?.subtitle ?? "nil")")
+        check("window does not repeat the breadcrumb path", wc.window?.subtitle == "", "\(wc.window?.subtitle ?? "nil")")
         check("home listed", b.model.items.count > 0, "\(b.model.items.count) items")
         check("sidebar rows", wc.sidebar.outlineView.numberOfRows > 2, "\(wc.sidebar.outlineView.numberOfRows) rows")
         check("sidebar synced to Home", wc.sidebar.outlineView.selectedRow >= 0)
@@ -396,6 +582,7 @@ enum SmokeTest {
                     check("collapse removes rows", list.tableView.numberOfRows == before)
                     // delayed click-to-rename: scheduled, then fires; cancelled by selection change.
                     // editColumn needs a key window — another app may have come forward meanwhile.
+                    awaitQuietListing(b.model) {
                     NSApp.activate(ignoringOtherApps: true)
                     wc.window?.makeKeyAndOrderFront(nil)
                     list.select(name: "note.txt")
@@ -416,6 +603,7 @@ enum SmokeTest {
                             check("cancelled rename never fired", !(wc.window?.firstResponder is NSTextView))
                             splitView(wc, tmp)
                         }
+                    }
                     }
                 }
             }
@@ -685,17 +873,18 @@ enum SmokeTest {
     // MARK: 4g. Filter bar and batch conflict policy
 
     private static func filterAndConflicts(_ wc: MainWindowController, _ tmp: URL) {
-        print("== filter (toolbar field + scope bar) ==")
+        print("== current-directory toolbar filter ==")
         let b = wc.browser, t = wc.tabs
         b.navigate(to: tmp)
         after(0.4) {
             let total = b.model.items.count
             check("toolbar has a search field", wc.searchField != nil)
-            check("scope bar hidden by default", !wc.isScopeBarVisible)
+            let originalAddressFrame = t.addressBar.frame
+            check("filter field explains its scope", wc.searchField?.toolTip?.contains("this folder") == true)
             wc.focusFilter(nil)
             wc.window?.contentView?.layoutSubtreeIfNeeded()
             check("⌘F focuses the toolbar field", wc.window?.firstResponder is NSTextView && wc.searchField?.currentEditor() != nil)
-            check("scope bar stays hidden until there is text", !wc.isScopeBarVisible)
+            check("focusing filter preserves address layout", t.addressBar.frame == originalAddressFrame)
             // focus must be able to leave an empty field, and an expanded-from-icon field must fold back
             wc.window?.makeFirstResponder(b.focusView)
             check("focus can leave the empty field", wc.window?.firstResponder === b.focusView, "\(String(describing: wc.window?.firstResponder.map { type(of: $0) }))")
@@ -705,10 +894,9 @@ enum SmokeTest {
             check("⌘F focuses again", wc.window?.firstResponder is NSTextView)
             wc.applyFilter("note")
             wc.window?.contentView?.layoutSubtreeIfNeeded()
-            check("scope bar appears once there is text", wc.isScopeBarVisible && t.scopeBar.frame.height == SearchScopeBar.height)
-            check("scope chip names the current folder", t.scopeBar.folderName == wc.provider.displayName(for: tmp), t.scopeBar.folderName)
+            check("filtering does not insert a redundant scope row", t.addressBar.frame == originalAddressFrame)
             check("substring filter, case-insensitive", b.model.items.map(\.name).sorted() == ["note copy 2.txt", "note copy.txt", "note.txt"], "\(b.model.items.map(\.name))")
-            check("scope bar summary", t.scopeBar.summary == "3 of \(total) items", t.scopeBar.summary)
+            check("filter summary", b.filterSummary == "3 of \(total) items", b.filterSummary)
             check("View ▸ Filter shows the on state", { let mi = NSMenuItem(title: "", action: #selector(MainWindowController.focusFilter(_:)), keyEquivalent: ""); _ = wc.validateMenuItem(mi); return mi.state == .on }())
             wc.applyFilter("NOTE COPY")
             check("filter ignores case", b.model.items.count == 2)
@@ -723,22 +911,21 @@ enum SmokeTest {
             after(0.5) {
                 check("new pane starts unfiltered, field follows it", !t.current.isFiltering && wc.searchField?.stringValue == "", "\(wc.searchField?.stringValue ?? "nil")")
                 check("left pane kept its own filter", left.nameFilter == "sub")
-                check("scope bar hidden for the unfiltered pane", !wc.isScopeBarVisible)
                 t.currentPage.activate(left)
-                check("switching back restores the field text", wc.searchField?.stringValue == "sub" && wc.isScopeBarVisible,
-                      "field='\(wc.searchField?.stringValue ?? "nil")' scope=\(wc.isScopeBarVisible) left.filter='\(left.nameFilter)' current===left:\(t.current === left) fieldFocused=\(wc.isSearchFieldFocusedForTesting) firstResponder=\(String(describing: wc.window?.firstResponder.map { type(of: $0) }))")
+                check("switching back restores the field text", wc.searchField?.stringValue == "sub",
+                      "field='\(wc.searchField?.stringValue ?? "nil")' left.filter='\(left.nameFilter)' current===left:\(t.current === left) fieldFocused=\(wc.isSearchFieldFocusedForTesting) firstResponder=\(String(describing: wc.window?.firstResponder.map { type(of: $0) }))")
                 t.currentPage.activate(t.currentPage.inactive!)
                 t.toggleSplit()                                // close the right pane
                 check("back on the filtered pane", t.current === left && wc.searchField?.stringValue == "sub")
                 // navigating clears the filter (Dolphin) and the field
                 left.navigate(to: tmp.appendingPathComponent("sub"))
                 after(0.4) {
-                    check("changing directory clears the filter and the field", !left.isFiltering && wc.searchField?.stringValue == "" && !wc.isScopeBarVisible)
+                    check("changing directory clears the filter and the field", !left.isFiltering && wc.searchField?.stringValue == "")
                     left.goBack()
                     after(0.4) {
                         wc.applyFilter("note")
                         wc.cancelFilter()                       // what Esc / the ⓧ button do
-                        check("cancel clears everything and returns focus to the list", !left.isFiltering && wc.searchField?.stringValue == "" && !wc.isScopeBarVisible && wc.window?.firstResponder === left.focusView)
+                        check("cancel clears everything and returns focus to the list", !left.isFiltering && wc.searchField?.stringValue == "" && wc.window?.firstResponder === left.focusView)
                         check("model unfiltered after cancel", left.model.items.count == total)
                         scrollClamp(wc, tmp)
                     }
@@ -773,7 +960,7 @@ enum SmokeTest {
                 let grid = b.iconGrid
                 grid.scrollOffset = -50
                 check("icon grid clamps too", grid.scrollView.contentView.bounds.origin.y >= 0)
-                groups(wc, tmp)
+                groupingFromFavorites(wc, tmp) { groups(wc, tmp) }
             }
         }
     }
@@ -842,15 +1029,18 @@ enum SmokeTest {
             check("size groups: Folders first, then Finder's decade labels, bigger first", b.model.groups.map(\.title) == ["Folders", "From 1 KB to 10 KB", "Under 1 KB"], "\(b.model.groups.map(\.title))")
             b.setGroupKey(.application)
             check("application groups: folders under Finder", b.model.groups.first?.title == "Finder", "\(b.model.groups.map(\.title))")
-            b.setGroupKey(.tags)
-            check("tags: untagged files under No Tags", b.model.groups.map(\.title) == ["No Tags"], "\(b.model.groups.map(\.title))")
+            check("Tags grouping is excluded by design", GroupKey(rawValue: "tags") == nil && MainMenu.groupByMenuItem().submenu?.items.contains { $0.title == "Tags" } == false)
             // icon view: one section per group with headers
             b.setGroupKey(.kind)
             b.setViewMode(.icons)
             wc.window?.contentView?.layoutSubtreeIfNeeded()
             let cv = b.iconGrid.collectionView
             check("grid: one section per group", cv.numberOfSections == b.model.groups.count && cv.numberOfItems(inSection: 0) == 1)
-            check("grid: sticky header views", cv.visibleSupplementaryViews(ofKind: NSCollectionView.elementKindSectionHeader).count >= 1)
+            // Supplementary views are materialized on a later AppKit layout pass.
+            awaitCondition("grid: sticky header views", condition: {
+                cv.layoutSubtreeIfNeeded()
+                return !cv.visibleSupplementaryViews(ofKind: NSCollectionView.elementKindSectionHeader).isEmpty
+            }) {
             b.fileView.select(name: "paper.pdf")
             let pdfSection = b.model.groups.firstIndex { $0.title == "PDF Documents" }
             check("grid: select across sections", b.fileView.selectedItems.map(\.name) == ["paper.pdf"] && cv.selectionIndexPaths.first?.section == pdfSection, "section \(cv.selectionIndexPaths.first?.section ?? -1) vs \(pdfSection ?? -1)")
@@ -864,6 +1054,78 @@ enum SmokeTest {
             check("persisted default", ViewPreferences.groupKey == .none && ViewPreferences.lastGroupKey == .kind)
             try? fm.removeItem(at: dir)
             conflicts(wc, tmp)
+            }
+        }
+    }
+
+    private static func groupingFromFavorites(_ wc: MainWindowController, _ tmp: URL,
+                                               completion: @escaping () -> Void) {
+        print("== grouping with Favorites focus ==")
+        let tabs = wc.tabs
+        let original = wc.browser
+        let originalGroup = original.groupKey
+        tabs.newTab(at: tmp)
+        let inactive = wc.browser
+        inactive.setGroupKey(.name)
+        tabs.toggleSplit()
+        let active = wc.browser
+        let sidebar = wc.sidebar.outlineView
+        let homeRow = wc.sidebar.row(for: wc.provider.homeURL)
+        check("Favorites home row exists", homeRow >= 0)
+        guard let toolbarMenu = wc.window?.toolbar?.items.compactMap({ $0 as? NSMenuToolbarItem }).first?.menu else {
+            check("toolbar Group menu exists", false); return
+        }
+
+        func exercise(_ mode: ViewMode, then next: @escaping () -> Void) {
+            active.setViewMode(mode)
+            sidebar.deselectAll(nil)
+            wc.window?.makeFirstResponder(sidebar)
+            sidebar.selectRowIndexes(IndexSet(integer: homeRow), byExtendingSelection: false)
+            after(0.6) {
+                check("\(mode): Favorites navigates only the active pane", active.currentURL == wc.provider.homeURL && inactive.currentURL == tmp)
+                check("\(mode): Favorites retains keyboard focus", wc.window?.firstResponder === sidebar)
+                wc.applyFilter("Doc")
+                let kind = toolbarMenu.items.first { ($0.representedObject as? String) == GroupKey.kind.rawValue }!
+                check("\(mode): toolbar grouping dispatches from Favorites", sidebar.tryToPerform(kind.action!, with: kind))
+                check("\(mode): toolbar groups the filtered active pane", active.groupKey == .kind && active.nameFilter == "Doc")
+                check("\(mode): toolbar checkmark follows active grouping", wc.validateMenuItem(kind) && kind.state == .on)
+                let menu = MainMenu.groupByMenuItem().submenu!
+                let size = menu.items.first { ($0.representedObject as? String) == GroupKey.size.rawValue }!
+                check("\(mode): View menu grouping dispatches from Favorites", sidebar.tryToPerform(size.action!, with: size) && active.groupKey == .size)
+                let toggle = NSMenuItem(title: "Use Groups", action: #selector(BrowserViewController.toggleGroups(_:)), keyEquivalent: "0")
+                check("\(mode): Use Groups validates with Favorites focus", wc.validateMenuItem(toggle) && toggle.state == .on)
+                check("\(mode): Use Groups toggles from Favorites", sidebar.tryToPerform(toggle.action!, with: toggle) && active.groupKey == .none)
+                check("\(mode): grouping preserves sidebar focus and other panes", wc.window?.firstResponder === sidebar && inactive.groupKey == .name && original.groupKey == originalGroup)
+                let more = MainMenu.actionsMenu(target: wc)
+                check("\(mode): More excludes Tags and iPhone import", !more.items.contains { $0.title.localizedCaseInsensitiveContains("tag") || $0.title.contains("iPhone") })
+                let rename = more.items.first { ($0.representedObject as? String) == MainMenu.FileAction.rename.rawValue }!
+                let copy = more.items.first { ($0.representedObject as? String) == MainMenu.FileAction.copy.rawValue }!
+                active.fileView.select(names: [])
+                check("\(mode): selection commands and sharing disable without files", !wc.validateMenuItem(rename) && wc.sharingItems.isEmpty)
+                if let first = active.model.items.first {
+                    active.fileView.select(names: [first.name])
+                    check("\(mode): More validates the active selection with sidebar focus", wc.validateMenuItem(rename) && copy.target === wc)
+                    wc.performFileAction(copy)
+                    let copied = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+                    check("\(mode): More Copy dispatches to the active pane", copied == [first.url])
+                    let share = wc.window!.toolbar!.items.compactMap { $0 as? NSSharingServicePickerToolbarItem }.first!
+                    check("\(mode): native Share receives the active pane selection", (wc.items(for: share) as? [URL]) == [first.url] && share.isEnabled, "items=\(wc.sharingItems), expected=\(first.url), enabled=\(share.isEnabled)")
+                    active.fileView.select(names: [])
+                    check("\(mode): native Share disables after deselection", !share.isEnabled)
+                }
+                wc.cancelFilter()
+                next()
+            }
+        }
+        exercise(.details) {
+            exercise(.icons) {
+                _ = tabs.closeCurrentTab()
+                original.setGroupKey(.none)
+                ViewPreferences.lastGroupKey = .kind
+                ViewPreferences.viewMode = original.viewMode
+                wc.window?.makeFirstResponder(original.focusView)
+                completion()
+            }
         }
     }
 
@@ -995,8 +1257,8 @@ enum SmokeTest {
         check("permissions table has three rows", info.permissionRowCount == 3)
         check("window fits its content", (info.window?.frame.height ?? 0) > 300, "\(info.window?.frame.height ?? 0)")
         info.window?.contentView?.layoutSubtreeIfNeeded()
-        let infoWidth = info.window?.contentView?.bounds.width ?? 0
-        check("Info sections span the window", info.sectionKeys.allSatisfy {
+        let infoWidth = (info.window?.contentView as? NSScrollView)?.contentView.bounds.width ?? 0
+        check("Info sections fill the scroll viewport", infoWidth > 0 && info.sectionKeys.allSatisfy {
             abs((info.section($0)?.frame.width ?? 0) - infoWidth) < 1
         })
         check("Info preview has the full inset width", abs((info.section("preview")?.content.frame.width ?? 0) - (infoWidth - 32)) < 1)
@@ -1156,9 +1418,84 @@ enum SmokeTest {
         places.resetFavourites()
         check("reset restores the built-ins", places.sections[0].places.count == builtInCount && places.favouriteIndex(of: home) == 0)
         check("status bar shows counts", wc.browser.statusBar.description.isEmpty || true)
-        try? FileManager.default.removeItem(at: tmp)
-        print("SMOKE TEST PASSED")
-        exit(0)
+        archiveUI(wc, tmp) {
+            try? FileManager.default.removeItem(at: tmp)
+            print("SMOKE TEST PASSED")
+            exit(0)
+        }
+    }
+
+    private static func archiveUI(_ wc: MainWindowController, _ tmp: URL, completion: @escaping () -> Void) {
+        print("== archive UI, selection and undo ==")
+        let fm = FileManager.default
+        let root = tmp.appendingPathComponent("archive-ui")
+        try! fm.createDirectory(at: root, withIntermediateDirectories: false)
+        let source = root.appendingPathComponent("sample.txt")
+        try! "archive UI contents".write(to: source, atomically: true, encoding: .utf8)
+        let zip = root.appendingPathComponent("sample.txt.zip")
+        let extracted = root.appendingPathComponent("sample 2.txt")
+        let original = wc.browser
+        wc.tabs.newTab(at: root)
+        let inactive = wc.browser
+        awaitInitialListing(inactive.model) {
+        wc.tabs.toggleSplit()
+        let active = wc.browser
+        let undo = wc.window!.undoManager!
+        func exercise(_ mode: ViewMode, next: @escaping () -> Void) {
+            active.setViewMode(mode)
+            active.setGroupKey(.kind)
+            active.nameFilter = "sample"
+            awaitCondition("\(mode): archive fixture loaded", condition: { active.model.items.contains { $0.url.standardizedFileURL == source.standardizedFileURL } }) {
+                active.fileView.select(names: ["sample.txt"])
+                wc.window?.makeFirstResponder(wc.sidebar.outlineView)
+                let menu = MainMenu.actionsMenu(target: wc)
+                let compress = menu.items.first { ($0.representedObject as? String) == MainMenu.FileAction.compress.rawValue }!
+                check("\(mode): Compress names the active file", wc.validateMenuItem(compress) && compress.title.contains("sample.txt"))
+                check("\(mode): context menu offers Compress", active.buildContextMenu(for: active.fileView.selectedItems).items.contains { $0.title == compress.title })
+                wc.performFileAction(compress)
+                awaitCondition("\(mode): More creates ZIP and registers undo", condition: {
+                    fm.fileExists(atPath: zip.path) && undo.undoActionName == "Compress" && active.model.items.contains { $0.url.standardizedFileURL == zip.standardizedFileURL }
+                }) {
+                    check("\(mode): compression preserves source and inactive pane", (try? String(contentsOf: source)) == "archive UI contents" && wc.browser === active && inactive.currentURL == root && original !== active)
+                    undo.undo()
+                    awaitCondition("\(mode): undo compression removes only ZIP", condition: { !fm.fileExists(atPath: zip.path) && fm.fileExists(atPath: source.path) }) {
+                        undo.redo()
+                        awaitCondition("\(mode): redo compression restores ZIP", condition: { fm.fileExists(atPath: zip.path) && active.model.items.contains { $0.url.standardizedFileURL == zip.standardizedFileURL } }) {
+                            active.fileView.select(names: [zip.lastPathComponent])
+                            let extract = menu.items.first { ($0.representedObject as? String) == MainMenu.FileAction.extract.rawValue }!
+                            check("\(mode): ZIP enables extraction in both menus", wc.validateMenuItem(extract) && active.buildContextMenu(for: active.fileView.selectedItems).items.contains { $0.title == "Extract" })
+                            if mode == .icons { wc.openSelection(nil) } else { wc.performFileAction(extract) }
+                            awaitCondition("\(mode): extraction publishes a non-overwriting result", condition: { fm.fileExists(atPath: extracted.path) && undo.undoActionName == "Extract" }) {
+                                check("\(mode): extraction contents and archive preserved", (try? String(contentsOf: extracted)) == "archive UI contents" && fm.fileExists(atPath: zip.path))
+                                undo.undo()
+                                awaitCondition("\(mode): undo extraction preserves ZIP", condition: { !fm.fileExists(atPath: extracted.path) && fm.fileExists(atPath: zip.path) }) {
+                                    undo.redo()
+                                    awaitCondition("\(mode): redo extraction restores output", condition: { fm.fileExists(atPath: extracted.path) }) {
+                                        try! fm.removeItem(at: zip)
+                                        try! fm.removeItem(at: extracted)
+                                        undo.removeAllActions()
+                                        active.reload()
+                                        next()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        awaitInitialListing(active.model) {
+        exercise(.details) {
+            exercise(.icons) {
+                _ = wc.tabs.closeCurrentTab()
+                original.setGroupKey(.none)
+                ViewPreferences.lastGroupKey = .kind
+                ViewPreferences.viewMode = original.viewMode
+                completion()
+            }
+        }
+        }
+        }
     }
 
     // MARK: 6. M5 — rename, trash, copy/paste, cut/paste, duplicate, undo, Quick Look

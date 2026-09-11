@@ -1,33 +1,38 @@
 # Architecture
 
-Tursora is one Swift executable target, `app/Sources/Tursora`, split into `Model/` (no AppKit views, headlessly testable) and `UI/` (AppKit). Everything is built in code — no nibs, no storyboards. This document is the code map; the intended behaviour is in [SPEC.md](SPEC.md), the reasons in [DECISIONS.md](DECISIONS.md).
+Tursora is one Swift executable target, `app/Sources/Tursora`, split into `Model/` (no AppKit views, headlessly testable) and `UI/` (AppKit). The terminal depends on SwiftTerm 1.15.0, pinned by SPM; the rest of the interface is AppKit. Everything is built in code — no nibs, no storyboards. This document is the code map; the intended behaviour is in [SPEC.md](SPEC.md), the reasons in [DECISIONS.md](DECISIONS.md).
 
 ## 1. Object graph at runtime
 
 ```
 NSApplication
-└─ AppDelegate                      one LocalFileProvider + one PlacesModel, shared by all windows
-   └─ MainWindowController ×N       NSWindow, NSToolbar (delegate), BrowserHost, NSSearchFieldDelegate
-      └─ NSSplitViewController
-         ├─ SidebarViewController   NSOutlineView over PlacesModel
-         └─ TabsController          SearchScopeBar · TabBarView · BreadcrumbBar · container of TabPages · SplitDropOverlay
-            └─ TabPage ×tabs        NSSplitView with 1–2 panes, activeIndex, click monitor
-               └─ BrowserViewController ×pane
-                  ├─ DirectoryModel, NavigationHistory, DirectoryWatcher
-                  ├─ fileView: FileViewing  = FileListViewController (always) | IconGridViewController (lazy)
-                  ├─ StatusBarView, active-pane indicator, error label, context NSMenu (delegate)
-                  └─ QLPreviewPanel data source / delegate
-InfoWindowController ×open          static registry `openWindows` + `inspector`; not owned by any window
+└─ AppDelegate                          shared LocalFileProvider + PlacesModel
+   └─ MainWindowController ×N           window, toolbar, BrowserHost
+      └─ contentSplitController         horizontal divider: browser above, optional terminal below
+         ├─ splitViewController         vertical divider
+         │  ├─ SidebarViewController    outline over PlacesModel
+         │  └─ TabsController           tab bar, breadcrumb, TabPages, split drop overlay
+         │     └─ TabPage ×tabs         1–2 panes, activeIndex
+         │        └─ BrowserViewController ×pane
+         │           ├─ DirectoryModel, NavigationHistory, DirectoryWatcher
+         │           ├─ fileView: FileViewing = FileListViewController | IconGridViewController
+         │           ├─ StatusBarView, active indicator, error label, context menu
+         │           └─ Quick Look data source / delegate
+         └─ TerminalPanelController?    SwiftTerm LocalProcessTerminalView + owned PTY
+InfoWindowController ×open              registry + Inspector
+SettingsWindowController                shared window over AppPreferences.Store
+ServerConnectionController              shared address window + NetFS request
+ArchiveBrowserController ×ZIP           separate read-only windows; retained temporary sessions
 ```
 
 - **`main.swift`** creates `NSApplication`, an `AppDelegate`, sets `.regular` activation policy, runs.
-- **`AppDelegate`** owns the one `LocalFileProvider` and the one `PlacesModel`, plus `windowControllers`. `newWindow(at:)` builds a controller, cascades it and installs `wc.onClose`. On launch it builds `MainMenu.build()` and, if `SmokeTest.isRequested`, calls `SmokeTest.run(wc)`. `applicationWillTerminate` closes Info windows so a comment still being typed is saved.
-- **`MainWindowController`** (one per window) owns the `NSWindow`, an `NSSplitViewController` (sidebar item + `TabsController` item), the `NSToolbar` (it is the delegate), `SidebarViewController` and `TabsController`. It **is** the `BrowserHost` (`tabs.host = self`) and the delegate of the toolbar's `NSSearchToolbarItem`. It holds `backButton`/`forwardButton` (`LongPressMenuButton`), `viewModeControl`, `searchItem`, and two local `NSEvent` monitors (⌃Tab, ⌘1–9, ⌘=; mouse buttons 4/5).
-- **`TabsController`** owns, top to bottom in one `NSStackView`: `SearchScopeBar`, `TabBarView`, `BreadcrumbBar` (`addressBar`), and a container holding every `TabPage` view plus a `SplitDropOverlay`. State: `pages`, `currentIndex`, `closedTabs` (max 10). Callbacks out: `onCurrentLocationChanged`, `onTabsChanged`.
+- **`AppDelegate`** owns the one `LocalFileProvider` and the one `PlacesModel`, plus `windowControllers`. `newWindow(at:)` builds a controller, cascades it and installs `wc.onClose`. On launch it builds `MainMenu.build()` and, if `SmokeTest.isRequested`, calls `SmokeTest.run(wc)`. `applicationWillTerminate` saves Info edits, shuts down owned terminal sessions, and closes temporary ZIP sessions. It also observes preference changes to update the actual menu shortcut and experimental terminal visibility.
+- **`MainWindowController`** (one per window) owns the `NSWindow`, a vertical-divider split (sidebar + tabs) inside a horizontal-divider split (browser + optional terminal), the `NSToolbar` (it is the delegate), `SidebarViewController` and `TabsController`. It **is** the `BrowserHost` (`tabs.host = self`) and the delegate of the toolbar's `NSSearchToolbarItem`. It holds `backButton`/`forwardButton` (`LongPressMenuButton`), `viewModeControl`, `searchItem`, and two local `NSEvent` monitors (⌃Tab, ⌘1–9, ⌘=; mouse buttons 4/5).
+- **`TabsController`** owns, top to bottom in one `NSStackView`: `TabBarView`, `BreadcrumbBar` (`addressBar`), and a container holding every `TabPage` view plus a `SplitDropOverlay`. State: `pages`, `currentIndex`, `closedTabs` (max 10). Callbacks out: `onCurrentLocationChanged`, `onTabsChanged`.
 - **`TabPage`** = one tab: 1–2 `BrowserViewController`s in a vertical-divider `NSSplitView` (it is the delegate), `activeIndex`, and a click monitor that activates whichever pane was clicked. Callbacks out: `onActivePaneChanged`, `onPaneLocationChanged`.
 - **`BrowserViewController`** = one pane. Owns a `DirectoryModel`, a `NavigationHistory`, the two file views (current one as `fileView: FileViewing`), `StatusBarView`, the pane's context menu (it is the `NSMenuDelegate`) and a `DirectoryWatcher`. `weak var host: BrowserHost?` reaches the window.
 - **`FileViewing`** is the protocol both file views implement; the browser is the sole consumer of their closures.
-- **Chrome** (toolbar, breadcrumb, tab bar, scope bar, completion popup) is window-level and always reflects `tabs.currentPage.active`.
+- **Chrome** (toolbar, breadcrumb, tab bar, completion popup) is window-level and always reflects `tabs.currentPage.active`. The terminal belongs to the window, not a tab: location updates change its pending restart destination, never write commands into its PTY.
 
 ## 2. Per file
 
@@ -36,10 +41,10 @@ InfoWindowController ×open          static registry `openWindows` + `inspector`
 | File | Responsibility |
 |---|---|
 | `FileProvider.swift` | `protocol FileProvider` (`listDirectory(_:)`, `homeURL`, `displayName(for:)`) — the single filesystem seam; `LocalFileProvider` implements it with `FileManager`. `listDirectory` blocks; callers run it off the main thread. |
-| `FileItem.swift` | Immutable value for one listing entry: `url, name, isDirectory, isPackage, isHidden, isSymlink, size, modificationDate, creationDate, accessDate, addedDate, tags, contentType`, all read once via `resourceKeys`. Derived: `isNavigable`, `icon(size:)`, `kindDescription`, `displaySize`, `displayDate`. Never re-stats during sort or draw. |
+| `FileItem.swift` | Immutable value for one listing entry: `url, name, isDirectory, isPackage, isHidden, isSymlink, size, modificationDate, creationDate, accessDate, addedDate, contentType`, all read once via `resourceKeys`. Derived: `isNavigable`, `displayName` (extension preference only), `icon(size:)`, `kindDescription`, `displaySize`, `displayDate`. Identity and rename always use `name` / URL. Never re-stats during sort or draw. |
 | `DirectoryModel.swift` | `FileNode` (class, identity-stable across reloads, keyed by URL) and `DirectoryModel`: `url`, `allNodes`, `nodes`, `groups`, `generation`, and the arrangement inputs `showHidden`, `nameFilter`, `groupKey`, `foldersFirst`, `sortKey`, `ascending` (each `didSet` → `resort()`). `load(_:completion:)` lists off-main with a `loadToken` guard and merges into existing nodes; `reload`, `setSort`, `loadChildren(of:refresh:)` (synchronous), `node(for:)`, `indexOf(url:)`, `item(at:)`, `matches(_:filter:)` (wildcards when `*`/`?`). Private `arrange` = hidden filter + name filter + sort, recursing into loaded children. Never mutates the filesystem. |
 | `DirectoryWatcher.swift` | FSEvents wrapper (file events, 0.25 s latency, dispatched on main). Also defines `Notification.Name.tursoraDirectoriesChanged` and `enum DirectoryChanges` with `post(_:renamed:)` and `affected(sources:destination:)`. |
-| `Grouping.swift` | `GroupKey` (Finder's ten keys), `GroupNode` (title + nodes + sort order), and the pure `Grouping.split(_:by:now:)` with `nameBucket`, `kindBucket`, `applicationBucket`, `dateBucket`, `sizeBucket`, `tagBucket`. No UI, no I/O beyond `NSWorkspace.urlForApplication`. |
+| `Grouping.swift` | `GroupKey` (nine keys including None; Tags excluded by design), `GroupNode` (title + nodes + sort order), and the pure `Grouping.split(_:by:now:)` with `nameBucket`, `kindBucket`, `applicationBucket`, `dateBucket`, `sizeBucket`. No UI, no I/O beyond `NSWorkspace.urlForApplication`. |
 | `NavigationHistory.swift` | Linear `entries` + `index`; `push` (dedupes the current URL, truncates forward, trims to 100), `goBack`, `goForward`, `go(to:)`, `recordViewState(selectedName:scrollOffset:)`, `backEntries`/`forwardEntries` for the long-press menus. Knows nothing about views. |
 | `FileOperations.swift` | All mutation: `uniqueURL`, `duplicateURL`, `rename` (via the name resource, so case-only renames work on APFS), `trash` (returns original/trashed pairs), `delete`, `sameVolume`, `duplicate`, and `transfer(_:to:kind:conflict:progress:completion:)` with `BatchPolicy` (apply-to-all) and recursive `merge`. UI-facing helpers: `askConflict(in:_:)` (Finder's conflict dialog rebuilt: Keep Both / Merge / Skip / Stop / Replace + "Apply to all") and `report(_:in:)`. |
 | `FileInfo.swift` | Every fact behind Get Info, computed headlessly: `whereString`, `dateString`, `Size` + `computeSize(of:countingChildren:update:)` → cancellable `SizeCalculation`, `sizeString`/`headerSizeString`, `isLocked`/`setLocked`, `hasHiddenExtension`/`setHiddenExtension`, `comment`/`setComment` (xattr `com.apple.metadata:kMDItemFinderComment`), `moreInfo` (Spotlight), `bundleInfo`, `volumeInfo`, `original`, `applications(toOpen:)`, `Permissions`/`Privilege`/`Who`, `privilege`, `mode(_:setting:for:isFolder:)`, `setMode`, `accessSummary`, `fileID`/`sibling(of:withFileID:)`, `kind`, `summaryKind`. Reads flags through `FileManager.attributesOfItem`, not URL resource values (D15). |
@@ -47,6 +52,10 @@ InfoWindowController ×open          static registry `openWindows` + `inspector`
 | `PathCompleter.swift` | Pure: `resolveDirectory(_:cwd:home:)`, `completions(for:cwd:home:includeHidden:)` (directories only, trailing `/`, packages skipped), `splitLastComponent`. |
 | `ThumbnailProvider.swift` | Singleton Quick Look thumbnail cache: `canPreview(_:)`, `thumbnail(for:size:scale:completion:)` returns a cached image synchronously or calls back on main; `NSCache` keyed by path·size·mtime·bytes, coalesced `pending`, remembered `unsupported`. |
 | `ZoomLevel.swift` | `ViewMode`, the two zoom ladders, `defaultIndex`, `clamp`, `previewThreshold = 32`; `ViewPreferences` is the only reader/writer of the view-related `UserDefaults` keys. |
+| `AppPreferences.swift` | Persistent extension-label display, validated filter shortcut, and default-off experimental flags. Injectable `Store` and `.tursoraPreferencesChanged`; no shell/archive work is triggered by a preference getter. |
+| `ArchiveOperations.swift` | `FileOperations` ZIP creation/extraction, isolated staging, containment validation, exclusive publication, metadata/quarantine preservation. |
+| `ArchiveBrowsingSession.swift` | Private extracted snapshot for read-only browsing, containment-checked navigation/opening, cleanup through `FileOperations`; never replaces the original ZIP. |
+| `ServerConnection.swift` | URL validation and asynchronous NetFS mount/cancel; system authentication; returns mounted file URLs. |
 
 ### UI/
 
@@ -63,13 +72,16 @@ InfoWindowController ×open          static registry `openWindows` + `inspector`
 | `BreadcrumbBar.swift` | Dolphin's URL navigator: `url`, `onNavigate`, `onEndEditing`, `beginEditing()`/`endEditing()`/`commit(_:)`, static `segments(for:home:)`, manual layout with overflow folding and shrinking, `subfolderMenu(of:current:)`, and edit-mode completion (`textChanged`, `accept(candidate:)`, `acceptCompletion`, `typedText`, `inlineCompletion`) driving `CompletionPopup`. |
 | `CompletionPopup.swift` | Non-activating borderless child panel with a click-only table: `show(_:below:in:)`, `hide()`, `moveSelection(by:)`, `selectedCandidate`, `candidates`. |
 | `TabBarView.swift` | Draws tabs; `reload(titles:selected:)`, reorder by drag, drag-below-the-strip reporting (`onDragOutside`/`onDropOutside`), file drops (`dropOperationForTab`, `performDrop(urls:sourceMask:onTabAt:)`, `beginAutoActivation`, `autoActivationDelay = 0.8`). `TabItemView` handles hover, close button, middle-click close. |
-| `SearchScopeBar.swift` | Passive: `folderName`, `folderIcon`, `summary`, fixed height 30. |
 | `StatusBarView.swift` | `update(itemCount:totalCount:selectedCount:directory:)`, `setZoom(index:count:)`/`onZoomChanged`, `beginBusy`/`endBusy` (nested-safe spinner). |
 | `InfoWindowController.swift` | Get Info / Summary / Inspector. Statics: `show(for:relativeTo:)` (>10 items → summary; an existing window is re-fronted), `showSummary`, `showInspector`, `closeAll`, `openWindows`, `inspectorWindow`. Instance: `rebuild()` (tears down and rebuilds all sections), `scheduleRebuild()` (150 ms debounce), `isEditing`/`rebuildDeferred`, section builders (`generalContent`, `nameContent`, `commentsContent`, `openWithContent`, `previewContent`, `sharingContent`), `commitRename`, `saveComment`, `setLocked`, `setHiddenExtension`, `setPrivilege`, `setDefaultApplication`, `follow(_:to:)`, `parentsChanged`, `fitWindow`, `sync(with:force:)`/`syncWithMainWindow`, plus test accessors. Also `InfoSection` (collapsible, persists its own expansion) and the `canBecomeMain == false` window/panel subclasses. Defines `.tursoraSelectionChanged`. |
 | `LongPressMenuButton.swift` | Click fires the action; long-press (0.35 s) or right-click pops `menuProvider()`. |
 | `ViewHelpers.swift` | `NSView.pinToEdges(_:insets:)`, `NSTableCellView.make(identifier:withIcon:alignment:iconSize:)`. |
+| `SettingsWindowController.swift` | Native settings controls and `ShortcutRecorderButton`; captures shortcuts before menu dispatch, rejects conflicts inline, persists via the store, and observes external changes. |
+| `TerminalPanelController.swift` | Pinned SwiftTerm AppKit terminal and PTY lifecycle, safe argv-based launch configuration, restart target, explicit shutdown/reaping; no navigation-to-shell command injection. |
+| `ArchiveBrowserController.swift` | Dedicated read-only ZIP window with folder/history/path navigation and explicit external opening of temporary copies. Sessions are retained until application shutdown. |
+| `ServerConnectionController.swift` | Address input and inline errors, mount progress/cancellation, success callback to the initiating browser. |
 | `MainMenu.swift` | Builds the whole menu bar in code with `nil` targets so the responder chain resolves them; `groupByMenuItem()` is shared with the toolbar Group item; `MenuIcons.image` resolves `"a|b"` SF Symbol fallbacks. |
-| `SmokeTest.swift` | See §6 and [DEVELOPMENT.md](DEVELOPMENT.md). |
+| `SmokeTest.swift` and `*SmokeTests.swift` | Integration chain plus isolated settings, archive, ZIP-browser, server, and terminal checks; see §6 and [DEVELOPMENT.md](DEVELOPMENT.md). |
 
 ## 3. Data flow walkthroughs
 
@@ -79,7 +91,7 @@ InfoWindowController ×open          static registry `openWindows` + `inspector`
 3. `DirectoryModel.load` lists off-main, merges, bumps `generation`, `resort()` → `Grouping.split` → `onChange`.
 4. `onChange` → `fileView.reloadData()` + `updateStatus()`.
 5. The completion runs `restoreViewState()` (pending selection, else the history entry's `selectedName`/`scrollOffset`).
-6. `onLocationChanged` → `TabPage.onPaneLocationChanged` → `TabsController.refreshChrome()` (tab titles + `addressBar.url`) and, for the active pane of the current tab, `onCurrentLocationChanged` → `MainWindowController.locationChanged` → window title/subtitle/`representedURL`, `sidebar.syncSelection(to:)`, `validateNavigation()`, `syncFilterUI()`.
+6. `onLocationChanged` → `TabPage.onPaneLocationChanged` → `TabsController.refreshChrome()` (tab titles + `addressBar.url`) and, for the active pane of the current tab, `onCurrentLocationChanged` → `MainWindowController.locationChanged` → hidden window title and `representedURL` (empty subtitle), `sidebar.syncSelection(to:)`, terminal restart destination, `validateNavigation()`, `syncFilterUI()`.
 
 **(b) Move by drag, with undo.**
 1. `FileListViewController.acceptDrop` (or the grid / sidebar / tab bar) computes `dropOperation(for:into:sourceMask:)` and calls `onDropFiles`.
@@ -93,7 +105,7 @@ InfoWindowController ×open          static registry `openWindows` + `inspector`
 
 **(d) Selection → status bar / Quick Look / Inspector.** View selection change → `FileViewing.onSelectionChanged` → browser closure: `updateStatus()`, post `.tursoraSelectionChanged` with `object: self`, `panel.reloadData()` if a visible `QLPreviewPanel` exists. The Inspector observes the notification, checks the poster is the active pane of the main (or key, or only) `MainWindowController`, then `sync(with:)` → `urls = selection` (or the folder when empty) → `scheduleRebuild()`.
 
-**(e) Filter and groups.** Typing in the toolbar field → `controlTextDidChange` → `MainWindowController.applyFilter` → `browser.nameFilter` → `DirectoryModel.nameFilter` `didSet` → `resort()` → `arrange` → `Grouping.split` → `onChange` → `reloadData` + `updateStatus`; then `syncFilterUI()` updates the scope bar. Groups: View ▸ Group By / toolbar Group menu → `groupBy` or `toggleGroups` → `setGroupKey` → `model.groupKey` `didSet` → same path; `ViewPreferences.groupKey`/`lastGroupKey` are written. The list renders `model.groups` as group rows; the grid as one section per group.
+**(e) Filter and groups.** Typing in the toolbar field → `controlTextDidChange` → `MainWindowController.applyFilter` → `browser.nameFilter` → `DirectoryModel.nameFilter` `didSet` → `resort()` → `arrange` → `Grouping.split` → `onChange` → `reloadData` + `updateStatus`; then `syncFilterUI()` follows the active pane in the toolbar field. Groups: View ▸ Group By / toolbar Group menu → `groupBy` or `toggleGroups` → `setGroupKey` → `model.groupKey` `didSet` → same path; `ViewPreferences.groupKey`/`lastGroupKey` are written. The list renders `model.groups` as group rows; the grid as one section per group.
 
 **(f) Get Info build / rebuild.** ⌘I → `MainWindowController.getInfo` → `browser.getInfo` → `InfoWindowController.show(for: infoTargets, relativeTo:)` → registry check → `init` → `buildChrome()` + `rebuild()`. `rebuild()` cancels the size calculation, saves any comment, empties the stack, adds header + `general`, `moreInfo`, `name`, `comments`, `openWith` (files only), `preview`, `sharing`, records `fileIDs`, starts the size calculation, watches the parent, fits the window. Rebuilds are deferred while `isEditing` and resumed from `controlTextDidEndEditing`/`textDidEndEditing`. Renames: in-app ones arrive as `.tursoraDirectoriesChanged` with `renamedFrom`/`renamedTo` → `follow(from:to:)` rewrites `urls` and every per-section URL; outside renames arrive via FSEvents → `parentsChanged()` → for missing items `FileInfo.sibling(of:withFileID:)` finds the same inode → `follow`. A truly deleted item closes the window (the Inspector re-syncs instead).
 
@@ -105,6 +117,7 @@ InfoWindowController ×open          static registry `openWindows` + `inspector`
 |---|---|---|---|
 | `.tursoraDirectoriesChanged` (`"tursora.directoriesChanged"`, userInfo `directories`, optional `renamedFrom`/`renamedTo`) | `DirectoryWatcher.swift` | `DirectoryChanges.post` — from `BrowserViewController` (`newFolder`, `duplicate`, `trash`, `deletePermanently`, `rename`, `transfer`, undo) and `InfoWindowController` (`rename`, `toggleLocked`, `toggleHiddenExtension`, `setPrivilege`) | `BrowserViewController.directoriesChanged`, `InfoWindowController.directoriesChanged` |
 | `.tursoraSelectionChanged` (`"tursora.selectionChanged"`, object = the pane) | `InfoWindowController.swift` | `BrowserViewController` (selection closure, and `load`) | `InfoWindowController` in `.inspector` mode |
+| `.tursoraPreferencesChanged` (`"Tursora.preferencesChanged"`, object = the store) | `AppPreferences.swift` | `AppPreferences.Store` on a changed value | `AppDelegate` updates menus; windows refresh extension labels / shut down disabled terminals; Settings refreshes controls |
 | `PlacesModel.didChange` | `PlacesModel.swift` | `PlacesModel.notify()` (mount/unmount/rename, `saveOrder`, `resetFavourites`) | `SidebarViewController.placesChanged` |
 
 Plus AppKit's `NSWorkspace.didMount/didUnmount/didRenameVolume` (PlacesModel) and `NSWindow.didBecomeMainNotification` (Inspector).
@@ -115,7 +128,7 @@ Plus AppKit's `NSWorkspace.didMount/didUnmount/didRenameVolume` (PlacesModel) an
 
 **Undo grouping.** `asUndoGroup(_:actionName:_:)` closes any stale automatic group, opens one explicit group, registers, names it, closes it, then closes the event group again — each operation is a self-contained undo group. Undo handlers re-register their inverse (move ⇄ move, copy → trash, rename → rename) and re-post `DirectoryChanges`. The Info window registers its rename on its own `window.undoManager` (D13).
 
-**Error reporting.** `BrowserViewController.report(_:context:)` and `InfoWindowController.report(_:)` print to stdout when `SmokeTest.isRequested` (a modal would hang a headless run), otherwise `presentError`/`NSAlert`. `FileOperations.report` always uses an `NSAlert`.
+**Error reporting.** `BrowserViewController.report(_:context:)` and `InfoWindowController.report(_:)` print to stdout when `SmokeTest.isRequested` (a modal would hang a headless run), otherwise `presentError`/`NSAlert`. `FileOperations.report` and sidebar Eject errors also suppress modal UI in smoke mode. Settings and server errors appear inline; ZIP-browser errors stay in its status area.
 
 **Finder-semantics helpers.** `FileListViewController.dropOperation(for:into:sourceMask:)` (⌥ = copy, same volume = move, cross-volume = copy, own folder = no-op) is the one drop rule, used by list, grid, sidebar and tab bar. `FileOperations.uniqueURL` ("Report 2.pdf") and `duplicateURL` ("Report copy.pdf"). `FileOperations.askConflict` is the conflict dialog. `clickedItems` (selection if the clicked row is in it, else the clicked row) is the context-menu target rule.
 
@@ -124,6 +137,7 @@ Plus AppKit's `NSWorkspace.didMount/didUnmount/didRenameVolume` (PlacesModel) an
 | Where | Keys |
 |---|---|
 | `ViewPreferences` (UserDefaults) | `viewMode`, `zoom.details`, `zoom.icons`, `groupKey`, `lastGroupKey`, `showPreviews` |
+| `AppPreferences.Store` (UserDefaults) | `showFileExtensions` (default true), `experimentalTerminalEnabled` / `experimentalZIPBrowsingEnabled` (default false), `filterShortcutKey` / `filterShortcutModifiers` (default ⌘F) |
 | `PlacesModel` (UserDefaults) | `favouritesOrder` (written by `saveOrder`, removed by `resetFavourites`); legacy `favouriteBookmarks` read for migration |
 | `InfoSection` (UserDefaults) | `InfoSection.<key>` per section |
 | Window | frame autosave name `TursoraMainWindow`; toolbar identifier `TursoraMainToolbar` |
@@ -136,8 +150,16 @@ The debug binary (no bundle) and `Tursora.app` (bundle id `com.tursora.Tursora`)
 
 Off the main thread: the **root directory listing** (`DirectoryModel.load` on `.global(qos: .userInitiated)`, result delivered to main and dropped if `loadToken` moved on); **copy/move** (`FileOperations.transfer`; the conflict handler hops back with `DispatchQueue.main.sync` so it can run a modal alert; `progress` and `completion` on main); **size calculation** (`FileInfo.computeSize`, throttled `update` on main every ~0.25 s plus a final call, cancellable); **thumbnails** (`QLThumbnailGenerator`, cache write and coalesced callbacks on main). On the main thread: subfolder listings (`loadChildren`), `trash`/`rename`/`delete`/`duplicate`, all `FileInfo` flag/comment/permission writes, and the FSEvents callback. Bursts are coalesced by `scheduleRefresh` (0.15 s) and `InfoWindowController.scheduleRebuild` (0.15 s).
 
+Archive work runs off-main and delivers completion on main; ZIP browsing uses a generation guard to discard stale listings. NetFS async completion is scheduled on main. SwiftTerm manages PTY I/O; explicit terminal shutdown signals only the owned session and reaps its child off-main. No existing shell receives automatic `cd` input.
+
 ## 6. The smoke test
 
-Enabled by `TURSORA_SMOKE_TEST`. `SmokeTest.run(wc)` resets leaked preferences (`ViewPreferences.groupKey = .none`, `lastGroupKey = .kind`, `viewMode = .details`, plus `setGroupKey(.none)`/`setViewMode(.details)` on the browser) and waits for the initial model generation with a 15-second deadline, polling on the main queue. Before navigation, a delayed empty provider verifies waiting beyond one second without blocking the run loop, an isolated Info section verifies width, collapse, and resize behaviour, and new panes verify both persisted view modes. `check(_:_:_:)` prints `ok`/`FAIL` and exits 1 on the first failure; `after(_:_:)` is `asyncAfter` on main. Sections are `private static func`s that end by calling the next one, usually inside an `after`, so the chain is one long asynchronous sequence ending in `SMOKE TEST PASSED`. Temp dirs: `narrowAddressBar` uses `tursora-narrow-<pid>`; `contextMenus` creates `tursora-smoke-<pid>` under `FileManager.temporaryDirectory` and passes it as `tmp` to every later section; `favouritesAndHistory` removes it last.
+Enabled by `TURSORA_SMOKE_TEST`. Application preferences are saved, reset for deterministic integration checks, and restored through `atexit`. Isolated `SettingsSmokeTests` uses its own defaults domain and notification center; server tests use a mock, and terminal tests use a controlled `/bin/sh` PTY without user startup files instead of starting the interactive user shell. `SmokeTest.run(wc)` resets leaked preferences (`ViewPreferences.groupKey = .none`, `lastGroupKey = .kind`, `viewMode = .details`, plus `setGroupKey(.none)`/`setViewMode(.details)` on the browser) and waits for the initial model generation with a 15-second deadline, polling on the main queue. Before navigation, a delayed empty provider verifies waiting beyond one second without blocking the run loop, an isolated Info section verifies width, collapse, and resize behaviour, and new panes verify both persisted view modes. `check(_:_:_:)` prints `ok`/`FAIL` and exits 1 on the first failure; `after(_:_:)` is `asyncAfter` on main. Sections are `private static func`s that end by calling the next one, usually inside an `after`, so the chain is one long asynchronous sequence ending in `SMOKE TEST PASSED`. Temp dirs: `narrowAddressBar` uses `tursora-narrow-<pid>`; `contextMenus` creates `tursora-smoke-<pid>` under `FileManager.temporaryDirectory` and passes it as `tmp` to every later section; `favouritesAndHistory` removes it last.
 
-Order: `run` → initial-listing wait → `delayedListing` → `infoSectionLayout` → `savedViewModes` → `navigation` → `insideFolder` → `backHome` → `tabs` → `addressBarEditing` → `narrowAddressBar` → `contextMenus` → `fileOperations` → `copyPaste` → `duplicateAndTrash` → `expansion` → `splitView` → `tabDragSplit` → `viewModes` → `liveRefresh` → `crossTabDrag` → `filterAndConflicts` → `scrollClamp` → `groups` → `conflicts` → `getInfo` → `infoWindow` → `infoWindowFollows` → `favouritesAndHistory` → exit.
+Order starts with `run` → initial-listing wait → icon / server / settings / archive / ZIP-browser / terminal suites → `delayedListing` → `infoSectionLayout` → `savedViewModes` → preferences integration / window chrome → `navigation` → `insideFolder` → `backHome` → `tabs` → `addressBarEditing` → `narrowAddressBar` → `contextMenus` → `fileOperations` → `copyPaste` → `duplicateAndTrash` → `expansion` → `splitView` → `tabDragSplit` → `viewModes` → `liveRefresh` → `crossTabDrag` → `filterAndConflicts` → `scrollClamp` → `groups` → `conflicts` → `getInfo` → `infoWindow` → `infoWindowFollows` → `favouritesAndHistory` → exit.
+
+## Native archive and server services
+
+`ArchiveOperations.swift` extends `FileOperations` with asynchronous ZIP creation/extraction, private staging, exclusive publication, system metadata and quarantine handling. `BrowserViewController` captures inputs, tracks busy state, registers output undo, and posts directory changes. `ArchiveSmokeTests` covers isolated model operations and malicious fixtures; `SmokeTest.archiveUI` covers both views, menus, grouping/filtering, splits and undo/redo.
+
+`ServerConnection` implements `ServerMounting` through NetFS async mount/cancel. `ServerConnectionController` owns address validation and inline state; the system owns authentication. Success returns local file URLs. `PlacesModel` observes workspace mount notifications and classifies network volumes. `ServerConnectionSmokeTests` uses a mock mount service and never contacts a server.

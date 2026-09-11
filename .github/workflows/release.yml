@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version without v (for example 0.1.0 or 0.2.0-beta.1)'
+        required: true
+        type: string
+      prerelease:
+        description: Mark as a prerelease
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release (Apple Silicon)
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate version and require a new tag
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -m)" = arm64
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo 'Expected a version such as 0.1.0 or 0.2.0-beta.1' >&2
+            exit 1
+          fi
+          if [[ "$VERSION" == *-* && "$PRERELEASE" != true ]]; then
+            echo 'Versions with a suffix must be marked as prereleases.' >&2
+            exit 1
+          fi
+          if git show-ref --verify --quiet "refs/tags/v$VERSION"; then
+            echo "Tag v$VERSION already exists; releases are never overwritten." >&2
+            exit 1
+          fi
+      - name: Build and verify application bundle
+        working-directory: app
+        env:
+          TURSORA_BUILD: ${{ github.run_number }}
+        shell: bash
+        run: |
+          TURSORA_VERSION="${VERSION%%-*}" tools/make-app.sh
+          test "$(lipo -archs build/Tursora.app/Contents/MacOS/Tursora)" = arm64
+          codesign --verify --deep --strict build/Tursora.app
+          plutil -lint build/Tursora.app/Contents/Info.plist
+          test -s build/Tursora.app/Contents/Resources/AppIcon.icns
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent build/Tursora.app "dist/Tursora-$VERSION-macOS-arm64.zip"
+          ditto -x -k "dist/Tursora-$VERSION-macOS-arm64.zip" "$RUNNER_TEMP/tursora-unpacked"
+          test -x "$RUNNER_TEMP/tursora-unpacked/Tursora.app/Contents/MacOS/Tursora"
+          codesign --verify --deep --strict "$RUNNER_TEMP/tursora-unpacked/Tursora.app"
+          cd dist
+          shasum -a 256 "Tursora-$VERSION-macOS-arm64.zip" > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tursora-release-${{ inputs.version }}
+          path: app/dist/*
+          if-no-files-found: error
+      - name: Publish release from this exact commit
+        shell: bash
+        run: |
+          # Creating a ref is atomic: fail if another actor created this tag
+          # during the build, rather than publishing against an unrelated SHA.
+          gh api --method POST "repos/$GH_REPO/git/refs" \
+            -f "ref=refs/tags/v$VERSION" -f "sha=$GITHUB_SHA"
+          flags=()
+          if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
+          gh release create "v$VERSION" app/dist/* \
+            --verify-tag \
+            --title "Tursora $VERSION" \
+            --generate-notes \
+            "${flags[@]}"

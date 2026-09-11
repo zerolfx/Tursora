@@ -30,6 +30,7 @@ protocol FileViewing: AnyObject {
     func reloadData()
     func select(name: String?)
     func select(names: [String])
+    func select(urls: [URL])
     func openSelection()
     func beginRename(item: FileItem)
     /// The item after the last selected one (what to select after a delete).

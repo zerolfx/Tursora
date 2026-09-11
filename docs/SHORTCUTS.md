@@ -8,6 +8,7 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Item | Shortcut | Handler |
 |---|---|---|
 | About Tursora | — | `NSApplication` |
+| Settings… | ⌘, | `AppDelegate.showSettings`; applies changes immediately |
 | Hide Tursora / Hide Others / Show All | ⌘H / ⌥⌘H / — | `NSApplication` |
 | Quit Tursora | ⌘Q | `NSApplication`; `AppDelegate.applicationWillTerminate` closes Info windows so a half-typed comment is saved |
 
@@ -24,6 +25,7 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Get Summary Info (⌃ alternate) | ⌃⌘I | `info.circle` | One window for all items | `InfoWindowController.showSummary` |
 | Rename | — | `pencil` | Inline rename; enabled for exactly one item | `BrowserViewController.renameSelection` |
 | Duplicate | ⌘D | `plus.square.on.square` | Undoable | `BrowserViewController.duplicate` |
+| Compress / Extract | — | `doc.zipper` | ZIP creation/extraction with undo; also in More and context menus | `MainWindowController` → active `BrowserViewController` |
 | Move to Trash | ⌘⌫ | `trash` | Undoable; selects the next item (Dolphin; Finder selects nothing) | `BrowserViewController.moveToTrash` |
 | Delete Immediately… | ⌥⌘⌫ | `trash` | Confirmation, then unrecoverable | `BrowserViewController.deletePermanently` |
 | Close Tab | ⌘W | — | Title flips to "Close Window" with one tab | `MainWindowController.closeTab` |
@@ -46,15 +48,16 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Zoom In / Zoom Out | ⌘+ / ⌘- (⌘= also) | `plus.magnifyingglass` / `minus.magnifyingglass` | Steps the per-mode ladder (icons 32…512, list 16…64) |
 | Actual Size | ⌘0 | — | 64 pt icons / 16 pt rows |
 | Show Previews | ⇧⌘P | — | Thumbnails from 32 pt up (Finder's ⇧⌘P is the preview pane) |
-| Filter | ⌘F | `magnifyingglass` | Focuses the toolbar search field; checkmark while filtering |
+| Filter | ⌘F by default; configurable | `magnifyingglass` | Focuses the toolbar name-filter field; checkmark while filtering |
 | Show Hidden Files | ⇧⌘. | — | Per pane |
 | Reload | ⌘R | `arrow.clockwise` | (Finder: Show Original) |
 | Use Groups | ⌃⌘0 | `square.grid.3x1.below.line.grid.1x2` | Off → back to the last key (Kind first) |
-| Group By ▸ None · Name · Kind · Application · Date Last Opened · Date Added · Date Modified · Date Created · Size · Tags | ⌃⌘0 · ⌃⌘1 · ⌃⌘2 · — · ⌃⌘3 … ⌃⌘8 | `arrow.up.arrow.down` | Same submenu as the toolbar Group button |
+| Group By ▸ None · Name · Kind · Application · Date Last Opened · Date Added · Date Modified · Date Created · Size | ⌃⌘0 · ⌃⌘1 · ⌃⌘2 · — · ⌃⌘3 … ⌃⌘7 | `arrow.up.arrow.down` | Same submenu as the toolbar Group button |
 | Sort By ▸ Name / Date Modified / Size / Kind · Ascending | — | — | Driven through the table so the header arrow stays in sync |
 | Split View | ⇧⌘D | `rectangle.split.2x1` | Title becomes "Close Left/Right Pane" while split (Dolphin's toggle; Finder: ⇧⌘D = Desktop) |
 | Focus Other Pane | ⌥⇥ | — | Split only |
 | Show Sidebar | ⌃⌘S | `sidebar.leading` | (Finder: ⌥⌘S) |
+| Show / Hide Terminal | F4 | — | Present only when Terminal panel is enabled in Settings; hiding ends the session |
 
 ### Go
 | Item | Shortcut | Icon |
@@ -64,6 +67,7 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Home | ⇧⌘H | `house` |
 | Edit Location | ⌘L | — (Finder: Make Alias) |
 | Go to Folder… | ⇧⌘G | `arrow.forward.folder` (opens the breadcrumb's edit mode, like ⌘L) |
+| Connect to Server… | ⌘K | `rectangle.connected.to.line.below` |
 
 ### Window
 Minimize ⌘M · Zoom · Show Previous Tab ⇧⌘[ · Show Next Tab ⇧⌘] (disabled with one tab) · Bring All to Front. Help is empty.
@@ -149,8 +153,25 @@ Closing a tab prefers the tab to the right (Safari). The strip hides itself with
 
 ## Filter (`MainWindowController`)
 
-⌘F focuses the toolbar search field, expanding it via `beginSearchInteraction` when the toolbar has folded it to an icon. Typing filters live. Finder's scope bar appears once there is text ("Filter: [folder] · 3 of 12 items") and the status bar switches to "N of M items". Esc or ⓧ clears the filter and returns focus to the file view; merely leaving the field keeps a non-empty filter (Finder). The filter is per pane (Dolphin) and cleared on directory change.
+The configured filter shortcut (⌘F by default) focuses the toolbar field, expanding it via `beginSearchInteraction` when folded to an icon. Typing filters names live; the status bar shows "N of M items" and no scope row is added. Esc or ⓧ clears the filter and returns focus to the file view; leaving the field keeps a non-empty filter. It is per pane and clears on directory change. Filtering uses complete filenames even when extensions are hidden; it does not recursively search folders or file contents.
+
+## Settings and experimental features
+
+Settings (⌘,) offers extension-label display, the Filter by Name shortcut recorder, and two experiments that default off. Shortcut recording requires Command or Control, optionally Option/Shift; it rejects existing command conflicts. Escape cancels recording and Reset restores ⌘F. The menu binding updates immediately.
+
+With **Terminal panel** enabled, F4 toggles a window-wide panel below the file panes. Opening starts an interactive shell in the active folder. Navigation changes only the destination for **Restart in Current Folder**; it never types `cd` into the running session. Restart ends the shell/current command and asks for confirmation when a foreground command is detected. F4 to hide, the panel close button, disabling the experiment, closing its window, or quitting Tursora ends the session.
+
+With **Browse ZIP archives** enabled, normal Open/double-click of a ZIP opens a separate read-only archive window. Return opens the selected entry, ⌘↑ goes up, and ⌘[ goes back; breadcrumb segments also navigate. Files open as temporary copies retained until Tursora quits. External edits do not update the ZIP; use Save As to retain them. With the experiment off, Open extracts beside the ZIP. Explicit Extract always remains available.
 
 ## Get Info (`InfoWindowController`)
 
 ⌘I opens one window per item and re-fronts an existing one; past 10 items it falls back to the summary window (Finder). ⌃⌘I makes a single "Multiple Item Info" window (one item falls back to ⌘I). ⌥⌘I opens the floating Inspector, which follows `.tursoraSelectionChanged` from the active pane and shows summary mode for several items. Targets are the selection, or the current folder when nothing is selected. Info windows take key but never main; they open with nothing focused. Inside: Return or focus-out in the name field renames (undoable with ⌘Z in that window); the Locked, Hide extension and privilege controls apply immediately; comments save on focus-out, close and quit.
+
+## Toolbar actions
+
+- More (ellipsis): New Folder, Open, Get Info, Quick Look, Rename, Duplicate, Copy, Paste, Move to Trash. Commands target the active pane even while the sidebar has focus.
+- Share: the system sharing picker for selected files, disabled without a selection.
+- Toggle Sidebar: fixed leading button; Show/Hide Sidebar (`⌃⌘S`) performs the same action.
+- Filter by Name: current-folder substring/wildcard filtering, without an additional scope row.
+- Compress: File / More / selection context menu. Name includes the single filename or selection count.
+- Extract: File / More / ZIP context menu; normal ZIP Open also extracts while experimental browsing is off. Compress and Extract support Undo / Redo.

@@ -9,6 +9,7 @@ protocol BrowserHost: AnyObject {
     func openInNewWindow(_ url: URL)
     func openInOtherPane(_ url: URL)
     func transferToOtherPane(_ urls: [URL], move: Bool)
+    func selectionDidChange(in pane: BrowserViewController)
     func viewModeDidChange(in pane: BrowserViewController)
 }
 
@@ -115,16 +116,16 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         scheduleRefresh()
     }
 
-    /// Old name → new name for items renamed since the last refresh, so the
+    /// Old URL → new URL for items renamed since the last refresh, so the
     /// selection follows them instead of being dropped.
-    private var pendingRenames: [String: String] = [:]
+    private var pendingRenames: [URL: URL] = [:]
 
     @objc private func directoriesChanged(_ note: Notification) {
         guard let dirs = note.userInfo?["directories"] as? [URL],
               dirs.contains(where: { isDisplaying($0.standardizedFileURL.path) }) else { return }
         if let from = note.userInfo?["renamedFrom"] as? URL, let to = note.userInfo?["renamedTo"] as? URL,
            isDisplaying(from.deletingLastPathComponent().path) {
-            pendingRenames[from.lastPathComponent] = to.lastPathComponent
+            pendingRenames[from.standardizedFileURL] = to.standardizedFileURL
         }
         scheduleRefresh()
     }
@@ -142,11 +143,11 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func refreshPreservingSelection() {
         let renames = pendingRenames
         pendingRenames = [:]
-        let names = fileView.selectedItems.map { renames[$0.name] ?? $0.name }
+        let urls = fileView.selectedItems.map { renames[$0.url.standardizedFileURL] ?? $0.url }
         let offset = fileView.scrollOffset
         model.reload { [weak self] in
             guard let self else { return }
-            self.fileView.select(names: names)
+            self.fileView.select(urls: urls)
             self.fileView.scrollOffset = offset
         }
     }
@@ -225,7 +226,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         set { model.nameFilter = newValue; onFilterChanged?(newValue) }
     }
     var isFiltering: Bool { !model.nameFilter.isEmpty }
-    /// "3 of 12 items" for the scope bar.
+    /// Summary of the current directory name filter.
     var filterSummary: String {
         guard isFiltering else { return "" }
         return "\(model.items.count) of \(model.unfilteredCount) items"
@@ -454,6 +455,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         statusBar.update(itemCount: model.items.count,
                          totalCount: model.nameFilter.isEmpty ? nil : model.unfilteredCount,
                          selectedCount: fileView.selectedItems.count, directory: currentURL)
+        host?.selectionDidChange(in: self)
     }
 
     private func reloadSelecting(_ names: [String]) {
@@ -536,6 +538,77 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         fileView.beginRename(item: item)
     }
 
+    static func compressionTitle(for urls: [URL]) -> String {
+        urls.count == 1 ? "Compress “\(urls[0].lastPathComponent)”" : urls.isEmpty ? "Compress" : "Compress \(urls.count) Items"
+    }
+    var compressionTitle: String { Self.compressionTitle(for: selectedURLs) }
+    var canExtractSelection: Bool {
+        !fileView.selectedItems.isEmpty && fileView.selectedItems.allSatisfy { !$0.isDirectory && FileOperations.canExtractArchive($0.url) }
+    }
+
+    @objc func compressSelection(_ sender: Any?) {
+        compress(selectedURLs)
+    }
+
+    @objc func extractSelection(_ sender: Any?) {
+        guard canExtractSelection else { return }
+        extract(selectedURLs)
+    }
+
+    func compress(_ urls: [URL], completion: (() -> Void)? = nil) {
+        guard !urls.isEmpty, let destination = currentURL else { completion?(); return }
+        statusBar.beginBusy()
+        FileOperations.compress(urls: urls, to: destination) { [weak self] result in
+            guard let self else { completion?(); return }
+            self.finishArchive(result, destination: destination, actionName: "Compress")
+            self.statusBar.endBusy()
+            completion?()
+        }
+    }
+
+    func extract(_ archives: [URL], completion: (() -> Void)? = nil) {
+        guard !archives.isEmpty else { completion?(); return }
+        let startingURL = currentURL
+        statusBar.beginBusy()
+        var created: [URL] = []
+        var failures: [FileOperations.Failure] = []
+        func next(_ index: Int) {
+            guard index < archives.count else {
+                self.statusBar.endBusy()
+                self.registerUndoTrash(created, actionName: "Extract")
+                if self.currentURL == startingURL {
+                    self.model.reload { [weak self] in self?.fileView.select(urls: created) }
+                }
+                else { self.reload() }
+                DirectoryChanges.post(DirectoryChanges.affected(sources: created))
+                FileOperations.report(failures, in: self.view.window)
+                completion?()
+                return
+            }
+            let archive = archives[index]
+            FileOperations.extract(archive: archive, to: archive.deletingLastPathComponent()) { result in
+                switch result {
+                case .success(let url): created.append(url)
+                case .failure(let error): failures.append(.init(url: archive, error: error))
+                }
+                next(index + 1)
+            }
+        }
+        next(0)
+    }
+
+    private func finishArchive(_ result: Result<URL, Error>, destination: URL, actionName: String) {
+        switch result {
+        case .success(let url):
+            registerUndoTrash([url], actionName: actionName)
+            if currentURL?.standardizedFileURL == destination.standardizedFileURL {
+                model.reload { [weak self] in self?.fileView.select(urls: [url]) }
+            }
+            DirectoryChanges.post([destination])
+        case .failure(let error): report(error, context: actionName.lowercased())
+        }
+    }
+
     @objc func quickLook(_ sender: Any?) { toggleQuickLook() }
 
     func rename(_ item: FileItem, to name: String) {
@@ -616,7 +689,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
                     catch { me.report(error, context: "undo move \(to.path) → \(from.path)") }
                 }
                 me.registerUndoMove(reversed, actionName: actionName)     // redo
-                me.reloadSelecting(reversed.map(\.to.lastPathComponent))
+                me.model.reload { [weak me] in me?.fileView.select(urls: reversed.map(\.to)) }
                 DirectoryChanges.post(pairs.flatMap { [$0.from.deletingLastPathComponent(), $0.to.deletingLastPathComponent()] })
             }
         }
@@ -631,6 +704,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
                     me.registerUndoMove(pairs.map { (from: $0.original, to: $0.trashed) }, actionName: actionName)
                 } catch { me.report(error, context: "undo copy (trash)") }
                 me.reload()
+                DirectoryChanges.post(DirectoryChanges.affected(sources: urls))
             }
         }
     }
@@ -659,6 +733,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             return hasSelection
         case #selector(renameSelection(_:)):
             return fileView.selectedItems.count == 1
+        case #selector(compressSelection(_:)):
+            item.title = compressionTitle; return hasSelection
+        case #selector(extractSelection(_:)): return canExtractSelection
         case #selector(viewAsIcons(_:)):
             item.state = viewMode == .icons ? .on : .off; return true
         case #selector(viewAsList(_:)):
@@ -693,6 +770,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc func getInfo(_ sender: Any?) { InfoWindowController.show(for: infoTargets, relativeTo: view.window) }
     @objc func getSummaryInfo(_ sender: Any?) { InfoWindowController.showSummary(for: infoTargets, relativeTo: view.window) }
     @objc func showInspector(_ sender: Any?) { InfoWindowController.showInspector(relativeTo: view.window) }
+    @objc private func ctxCompress(_ sender: Any?) { compress(contextTargets.map(\.url)) }
+    @objc private func ctxExtract(_ sender: Any?) { extract(contextTargets.map(\.url)) }
     @objc private func ctxGetInfo(_ s: Any?) {
         let targets = contextTargets.map(\.url)
         InfoWindowController.show(for: targets.isEmpty ? infoTargets : targets, relativeTo: view.window)
@@ -765,6 +844,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         add("Get Info", #selector(ctxGetInfo(_:)), symbol: "info.circle")
         if items.count == 1 { add("Rename", #selector(ctxRename(_:)), symbol: "pencil") }
         add("Duplicate", #selector(ctxDuplicate(_:)), symbol: "plus.square.on.square")
+        add(Self.compressionTitle(for: items.map(\.url)), #selector(ctxCompress(_:)), symbol: "doc.zipper")
+        if items.allSatisfy({ !$0.isDirectory && FileOperations.canExtractArchive($0.url) }) {
+            add("Extract", #selector(ctxExtract(_:)), symbol: "doc.zipper")
+        }
         add("Move to Trash", #selector(ctxTrash(_:)), symbol: "trash")
         menu.addItem(.separator())
         add("Cut", #selector(ctxCut(_:)), symbol: "scissors")
@@ -901,7 +984,12 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         if item.isNavigable {
             navigate(to: item.url)
         } else {
-            NSWorkspace.shared.open(item.url)
+            if FileOperations.canExtractArchive(item.url) {
+                if AppPreferences.experimentalZIPBrowsingEnabled {
+                    ArchiveBrowserController.open(archive: item.url, relativeTo: view.window)
+                } else { extract([item.url]) }
+            }
+            else { NSWorkspace.shared.open(item.url) }
         }
     }
 

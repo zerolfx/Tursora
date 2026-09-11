@@ -17,13 +17,12 @@ struct FileItem {
     let creationDate: Date?
     let accessDate: Date?
     let addedDate: Date?
-    let tags: [String]
     let contentType: UTType?
 
     static let resourceKeys: [URLResourceKey] = [
         .nameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey,
         .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey,
-        .creationDateKey, .contentAccessDateKey, .addedToDirectoryDateKey, .tagNamesKey,
+        .creationDateKey, .contentAccessDateKey, .addedToDirectoryDateKey,
         .contentTypeKey, .localizedTypeDescriptionKey,
     ]
 
@@ -42,13 +41,19 @@ struct FileItem {
         self.creationDate = v.creationDate
         self.accessDate = v.contentAccessDate
         self.addedDate = v.addedToDirectoryDate
-        self.tags = v.tagNames ?? []
         self.contentType = v.contentType
         self.localizedType = v.localizedTypeDescription
     }
 
     /// True when a double-click should navigate into it rather than open it.
     var isNavigable: Bool { isDirectory && !isPackage }
+
+    /// A presentation preference only; identity, filtering and rename retain the full name.
+    var displayName: String {
+        guard !AppPreferences.showFileExtensions, !isNavigable else { return name }
+        let base = (name as NSString).deletingPathExtension
+        return base.isEmpty ? name : base
+    }
 
     var icon: NSImage { icon(size: 16) }
 
