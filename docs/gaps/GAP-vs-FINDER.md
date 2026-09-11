@@ -1,0 +1,90 @@
+# Tursora vs Finder — 功能差距与难度
+
+依据本机 Finder 的菜单 nib（`Finder.app/Contents/Resources/Base.lproj/MenuBar.nib`、`ArrangeByMenu.nib`，用 `strings` 抽出的菜单项）逐项对照。
+不含 Tags、Recents、Shared / iCloud / AirDrop / 网络（已排除或远程范围）。
+
+**难度**按一个熟悉 AppKit 的人、含 smoke test 与真机验证估：
+S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 行，新 view/controller 或改 model）· L 3–5 天（400–1000 行，新子系统或跨层）· XL > 1 周（> 1000 行，或依赖没有公开 API 的东西）。
+估算方法：7 个按类别的 agent 对着 Tursora 源码逐项估（工时、行数、要碰的文件、API），再由部分对抗性复核（"更难"/"更容易"各一方）校正；余下由我按同样尺度校正。**粗体** = 高频且成本低到中。
+
+## File 菜单
+
+| Finder | Tursora | 难度 | 备注 |
+|---|---|---|---|
+| **Get Info**（⌘I）/ Show Inspector（⌥⌘I）/ Get Summary Info（⌃⌘I） | ✅ 已做 | — | 见 PLAN 2.10。未做：Tags、Stationery pad、ACL、改 owner/group（要提权，无公开 API → 单独算 L）、Apply to enclosed items |
+| **Rename（多选 = 批量重命名对话框）** | 单选 ✅ 批量 ❌ | M | 替换文本 / 添加文本 / 格式三种模式；连锁改名（a→b 而 b 也在批里）要两遍临时名 |
+| **New Folder with Selection**（⌃⌘N） | ❌ | S | createDirectory + 现有 transfer；撤销要合成一个组 |
+| **Compress** / Compress with password | ❌ | M | `ditto -ck --keepParent` 或 Archive Utility；多选要先克隆到暂存目录；密码版 macOS 26 才有 |
+| **Make Alias**（⌃⌘A）/ Show Original（⌘R） | ❌ | M | `URL.bookmarkData(options: .suitableForBookmarkFile)` + `writeBookmarkData`；⌘R 与我们的 Reload 冲突 |
+| Always Open With（⌥ + Open With） | ❌ | S | `setDefaultApplication(at:toOpen:)`（已在 Get Info 的 Change All 用上）；上下文菜单要保留备选项对 |
+| **Show Package Contents** | ❌ | S | 右键 .app 直接 navigate 进包目录 |
+| Add to Dock | ❌ | M | 只有写 `com.apple.dock.plist` + 重启 Dock 这条路，格式未文档化 |
+| Print | ❌ | S | `NSWorkspace.open(_:withApplicationAt:configuration:)` 让默认程序打印，无回执 |
+| Share… | ❌ | S | `NSSharingServicePicker`；上下文菜单是复制出来的，要注意子菜单懒加载 |
+| Slideshow（⌥空格） | ❌ | S | `QLPreviewPanel.enterFullScreenMode`；方向键当前会改选择，要拦 |
+| Customize Folder（文件夹颜色/表情，macOS 26） | ❌ | XL | 存储格式私有（可能在 IconServices 数据库里），不可靠 |
+| Copy as Pathname（⌥⌘C） | ✅ Copy Path | S | 只是把快捷键对齐，做成 Copy 的 ⌥ 备选项 |
+| New Smart Folder / Burn Folder / Burn Disc | ❌ | XL | 依赖 Spotlight 搜索视图（NSMetadataQuery 只看已索引位置，结果不确定）；刻录忽略 |
+| Eject All（⌥⌘E） | ❌ | S | 逐个 `unmountAndEjectDevice`，要放后台；同一物理盘的分区会一起弹 |
+
+## Edit 菜单
+
+| Finder | Tursora | 难度 | 备注 |
+|---|---|---|---|
+| **Move Items Here**（⌥⌘V） | ❌ | S | 已有 transfer(.move)；做成 Paste 的 ⌥ 备选项 |
+| Paste Exactly / Duplicate Exactly（⌥） | ❌ | M | 保留属主/权限要 `NSWorkspace.requestAuthorization(to: .replaceFile)`，异步授权与现有 transfer 的队列要接起来 |
+| **Deselect All**（⌥⌘A） | ❌ | S | 几行；侧栏/地址栏有焦点时不可用（和 Finder 一样） |
+| Show Clipboard | ❌ | M | 一个列出剪贴板 URL 的窗口，定时刷新 |
+
+## View 菜单
+
+| Finder | Tursora | 难度 | 备注 |
+|---|---|---|---|
+| **as Columns**（⌘3） | ❌ | L | 第三个 `FileViewing` 实现（NSBrowser 或自绘），末列预览、←→ 进出、拖放、改名、右键都要有；⌘3 与标签页 ⌘1–9 冲突 |
+| as Gallery（⌘4） | ❌ | L | 大 QLPreviewView + 底部缩略条；QLPreviewView 要单例复用，有焦点和自动播放的怪癖 |
+| **Show Preview**（⇧⌘P 右侧预览栏） | ❌ | M | 复用 Get Info 的 FileInfo + QLPreviewView；我们的 ⇧⌘P 现在是"显示缩略图"，要先挪 |
+| **Show View Options**（⌘J，每文件夹视图设置） | ❌ | L | 现在视图状态是"每 pane + 全局默认"，每目录持久化要自己的存储（不能写 .DS_Store） |
+| Clean Up / Snap to Grid / 图标自由摆放 | ❌ | L | 图标视图从流式网格改成自由布局 + 每文件夹坐标持久化；NSCollectionView 内部拖动现在被当成文件投放拒绝 |
+| Toolbar（⌥⌘T）/ Path Bar（⌥⌘P）/ Status Bar（⌘/）/ Tab Bar（⇧⌘T）开关 | 只有 Sidebar | M | 本身简单；⇧⌘T 与我们的"恢复关闭的标签"冲突 |
+| **Customize Toolbar…** | ❌ | M | `allowsUserCustomization = true` + 更多 allowed items；delegate 现在对调色板的副本也存引用，要改 |
+| Show All Tabs（标签总览） | ❌ | M | 截图隐藏 view 在 macOS 14 上可能是空位图，要先试 |
+| Increase/Decrease Icon Size | ✅ 缩放 | — | |
+| Enter Full Screen | ✅ 系统 | — | |
+
+## Go 菜单
+
+| Finder | Tursora | 难度 | 备注 |
+|---|---|---|---|
+| **Computer / Desktop / Documents / Downloads / Applications / Utilities / Library（⌥）** | 只有 Home | S | ⇧⌘C 与 Copy to Other Pane、⇧⌘D 与 Split View 冲突，要先让位 |
+| **Recent Folders ▸**（含 Clear Menu） | ❌ | M | 跨会话持久化；每个新标签的首次 Home 也会被记，要过滤 |
+| Go to Folder（⇧⌘G） | ✅ 进地址栏编辑 | — | 行为等价 |
+| Connect to Server（⌘K） | ❌ | L | NetFS 挂载 + 历史 + 错误码映射；v1 外 |
+
+## Window 菜单
+
+| Finder | Tursora | 难度 | 备注 |
+|---|---|---|---|
+| Move Tab to New Window / Merge All Windows | ❌ | M | TabsController 加 release/adopt page；自定义标签栏，不用 NSWindow tabbing |
+| Cycle Through Windows（⌘`） | ❌ | S | 没有公开的 cycleWindows:，自己按 orderedWindows 轮；系统级 ⌘` 热键可能先吃掉按键 |
+
+## 非菜单行为
+
+| Finder | Tursora | 难度 | 备注 |
+|---|---|---|---|
+| **Spring-loaded folders** | ❌ | M | `NSSpringLoadingDestination`，列表、图标、侧栏、面包屑四处；NSOutlineView 自带的悬停展开不能重复触发 |
+| **Finder 设置窗口** | ❌ | L | 窗口本身不难，但好几个开关背后的功能还没有（扩展名、废纸篓策略、Keep folders on top） |
+| 显示/隐藏文件扩展名 + 改扩展名警告 | ❌ | M | 全局开关 + 每文件 flag（Get Info 已能改 flag）；.app 全系统隐藏扩展名，排序/分组仍按真名 |
+| Quick Actions（Rotate / Markup / Create PDF） | ❌ | L | Finder 的注册表是私有的，Markup 无公开 API；只能自己实现 Rotate/Create PDF |
+| 右键 ▸ Services 菜单 | ❌ | S | `NSApp.servicesMenu`；一个 NSMenu 只能有一个父菜单，上下文菜单要复制 |
+| 废纸篓视图（Put Back、清空） | ❌ | L | 本机已验证 `ls ~/.Trash` 被拒：需要 Full Disk Access，无系统弹窗，用户得手动授权 |
+| Finder 别名双击解析 | 跟随符号链接 | S | `URL(resolvingAliasFileAt:options: .withoutMounting)`，只在打开时解析 |
+| FinderSync 角标（云同步状态） | ❌ | XL | 只有 iCloud 的 ubiquity 键是公开的；Dropbox 等的角标无公开 API |
+| 中文本地化 | ❌ | L | 代码里建的菜单/字符串全部抽出；SPM 资源包在 .app 与裸二进制两种启动方式下都要找得到 |
+| 快捷键与 Finder 对齐（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌘O、⌘I） | ⌘I ✅ | M | 菜单在运行中重建；同键多项的备选项要保持相邻 |
+
+## 建议顺序（按成本）
+
+1. S：Deselect All、Move Items Here、Copy as Pathname 对齐、New Folder with Selection、Show Package Contents、Always Open With、Share、Print、Slideshow、Eject All、Go 菜单快捷键、Cycle Through Windows、Services 菜单、别名解析
+2. M：批量重命名、Compress、Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、Spring-loaded、扩展名显示、Paste Exactly、Show Clipboard、Add to Dock、快捷键对齐
+3. L：Column 视图、Gallery 视图、Show View Options（每目录视图属性）、设置窗口、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、Connect to Server
+4. XL / 不建议：Customize Folder、Smart Folders、FinderSync 角标

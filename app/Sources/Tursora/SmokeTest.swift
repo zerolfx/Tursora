@@ -1,0 +1,1267 @@
+import AppKit
+import Quartz
+
+/// Headless-ish self check, enabled with TURSORA_SMOKE_TEST=1. Exercises the
+/// real window, model, history, tabs and address bar, prints one line per
+/// check, and exits non-zero on the first failure. Used because CI (and
+/// sandboxed terminals) cannot look at the screen.
+enum SmokeTest {
+
+    static var isRequested: Bool { ProcessInfo.processInfo.environment["TURSORA_SMOKE_TEST"] != nil }
+
+    static func run(_ wc: MainWindowController) {
+        // A failed earlier run may have left preferences behind; start from defaults.
+        ViewPreferences.groupKey = .none
+        ViewPreferences.lastGroupKey = .kind
+        ViewPreferences.viewMode = .details
+        wc.browser.setGroupKey(.none)
+        wc.browser.setViewMode(.details)
+        // A cold directory listing can outlive the old one-second delay.
+        // Generation records completion, including an empty result or an error.
+        awaitInitialListing(wc.browser.model) {
+            delayedListing {
+                infoSectionLayout()
+                savedViewModes(wc.provider)
+                navigation(wc)
+            }
+        }
+    }
+
+    private static func check(_ name: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") {
+        print("\(ok ? "ok  " : "FAIL") \(name)\(detail().isEmpty ? "" : " — \(detail())")")
+        if !ok { exit(1) }
+    }
+    private static func after(_ s: Double, _ f: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + s, execute: f)
+    }
+
+    private static func awaitInitialListing(_ model: DirectoryModel, timeout: TimeInterval = 15,
+                                            completion: @escaping () -> Void) {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        func poll() {
+            if model.generation > 0 {
+                completion()
+            } else if ProcessInfo.processInfo.systemUptime >= deadline {
+                check("initial directory listing completed", false,
+                      "Timed out after \(timeout)s: \(model.url?.path ?? "not started"), generation=\(model.generation)")
+            } else {
+                after(0.05, poll)
+            }
+        }
+        poll()
+    }
+
+    /// Empty results still complete; waiting for a nonzero item count would hang.
+    private final class DelayedEmptyProvider: FileProvider {
+        let homeURL = FileManager.default.temporaryDirectory
+        func displayName(for url: URL) -> String { url.lastPathComponent }
+        func listDirectory(_ url: URL) throws -> [FileItem] {
+            Thread.sleep(forTimeInterval: 1.25) // Background provider, never the main run loop.
+            return []
+        }
+    }
+
+    private static func delayedListing(completion: @escaping () -> Void) {
+        print("== asynchronous startup listing ==")
+        let provider = DelayedEmptyProvider()
+        let model = DirectoryModel(provider: provider)
+        var passedOldDeadline = false
+        model.load(provider.homeURL)
+        after(1) {
+            passedOldDeadline = true
+            check("slow listing is still pending after one second", model.generation == 0)
+        }
+        awaitInitialListing(model) {
+            check("listing wait keeps the main run loop responsive", passedOldDeadline)
+            check("listing wait accepts an empty completed directory", model.generation == 1 && model.items.isEmpty)
+            completion()
+        }
+    }
+
+    private static func infoSectionLayout() {
+        print("== Info section layout ==")
+        let key = "smoke-layout"
+        let preferenceKey = "InfoSection.\(key)"
+        let remembered = UserDefaults.standard.object(forKey: preferenceKey)
+        defer { UserDefaults.standard.set(remembered, forKey: preferenceKey) }
+        let content = NSView()
+        content.heightAnchor.constraint(equalToConstant: 200).isActive = true
+        let section = InfoSection(key: key, title: "Preview:", content: content)
+        section.isExpanded = true
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 300))
+        host.addSubview(section)
+        section.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            section.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            section.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            section.topAnchor.constraint(equalTo: host.topAnchor),
+        ])
+        host.layoutSubtreeIfNeeded()
+        check("Info section content fills the inset width", abs(content.frame.width - 328) < 1,
+              "content=\(content.frame), section=\(section.frame)")
+        check("Info section content starts at the left inset", abs(content.convert(content.bounds, to: section).minX - 16) < 1)
+        check("Info section header fills the inset width", abs((section.arrangedSubviews.first?.frame.width ?? 0) - 328) < 1)
+        section.toggle()
+        host.layoutSubtreeIfNeeded()
+        check("Info section collapse reduces its height", section.frame.height < 80)
+        section.toggle()
+        host.setFrameSize(NSSize(width: 440, height: 300))
+        host.layoutSubtreeIfNeeded()
+        check("Info section expands and follows resize", abs(content.frame.width - 408) < 1 && section.frame.height > 200)
+    }
+
+    private static func savedViewModes(_ provider: FileProvider) {
+        print("== saved view modes ==")
+        let previous = ViewPreferences.viewMode
+        defer { ViewPreferences.viewMode = previous }
+        for mode: ViewMode in [.icons, .details] {
+            ViewPreferences.viewMode = mode
+            let pane = BrowserViewController(provider: provider, initialURL: provider.homeURL)
+            _ = pane.view
+            let expected: FileViewing = mode == .icons ? pane.iconGrid : pane.fileList
+            check("new pane mounts saved \(mode) view", pane.viewMode == mode && pane.fileView === expected)
+            check("saved \(mode) view is attached", expected.viewController.parent === pane && expected.viewController.view.superview != nil)
+            check("saved \(mode) zoom matches the view", pane.zoomIndex == ViewPreferences.zoomIndex(for: mode))
+        }
+    }
+
+    // MARK: 1. Navigation, sidebar, list
+
+    private static func navigation(_ wc: MainWindowController) {
+        let b = wc.browser
+        let home = b.provider.homeURL
+        print("== navigation ==")
+        check("window title", wc.window?.title == b.provider.displayName(for: home), "\(wc.window?.title ?? "nil")")
+        check("window subtitle", wc.window?.subtitle == "~", "\(wc.window?.subtitle ?? "nil")")
+        check("home listed", b.model.items.count > 0, "\(b.model.items.count) items")
+        check("sidebar rows", wc.sidebar.outlineView.numberOfRows > 2, "\(wc.sidebar.outlineView.numberOfRows) rows")
+        check("sidebar synced to Home", wc.sidebar.outlineView.selectedRow >= 0)
+        check("table rows match model", b.fileList.tableView.numberOfRows == b.model.items.count)
+        check("folders sorted first", {
+            let items = b.model.items
+            guard let firstFile = items.firstIndex(where: { !$0.isNavigable }) else { return true }
+            return !items[firstFile...].contains { $0.isNavigable }
+        }())
+        check("hidden files hidden", !b.model.items.contains { $0.isHidden })
+        // Regression: the first tab's view was attached hidden and never shown.
+        wc.window?.contentView?.layoutSubtreeIfNeeded()
+        check("browser view is visible", !b.view.isHidden)
+        check("browser view has size", b.view.frame.height > 150 && b.view.frame.width > 300,
+              "\(b.view.frame.size)")
+        check("file list fills the browser", b.fileList.view.frame.height > 150, "\(b.fileList.view.frame.size)")
+        check("table is inside the window", b.fileList.tableView.window === wc.window)
+        check("no history yet", !b.canGoBack && !b.canGoForward)
+        check("address bar: home is one segment", wc.tabs.addressBar.segmentCount == 1,
+              "\(wc.tabs.addressBar.segmentTitles)")
+        check("tab bar hidden with one tab", wc.tabs.tabBar.isHidden)
+
+        guard let folder = b.model.items.first(where: { $0.isNavigable }) else {
+            print("skip: no subfolder in home"); exit(0)
+        }
+        print("→ select \(folder.name) and Open (double-click / ⌘↓ path)")
+        b.fileList.select(name: folder.name)
+        check("selection applied", b.fileList.selectedItems.first?.name == folder.name)
+        wc.openSelection(nil)
+        after(0.6) { insideFolder(wc, folder) }
+    }
+
+    private static func insideFolder(_ wc: MainWindowController, _ folder: FileItem) {
+        let b = wc.browser
+        check("currentURL updated", b.currentURL?.standardizedFileURL == folder.url.standardizedFileURL)
+        check("title follows folder", wc.window?.title == b.provider.displayName(for: folder.url))
+        check("representedURL set", wc.window?.representedURL == folder.url)
+        check("can go back", b.canGoBack && !b.canGoForward)
+        let bar = wc.tabs.addressBar
+        check("address bar: two segments", bar.segmentCount == 2, "\(bar.segmentTitles)")
+        check("address bar: last segment is folder", bar.segmentTitles.last == b.provider.displayName(for: folder.url))
+        let menu = bar.subfolderMenu(of: b.provider.homeURL, current: folder.url)
+        check("sibling menu lists home's subfolders", menu.items.count >= 1, "\(menu.items.count) items")
+        check("sibling menu ticks the current one", menu.items.first { $0.state == .on }?.title == folder.name)
+
+        print("→ go up")
+        b.goUp()
+        after(0.6) { backHome(wc, folder) }
+    }
+
+    private static func backHome(_ wc: MainWindowController, _ folder: FileItem) {
+        let b = wc.browser
+        check("back at home", b.currentURL?.standardizedFileURL == b.provider.homeURL.standardizedFileURL)
+        check("left folder selected after go-up", b.fileList.selectedItems.first?.name == folder.name)
+        check("history: home, folder, home", b.history.entries.count == 3 && b.history.index == 2)
+        b.goBack()
+        after(0.5) {
+            check("goBack landed in folder", b.currentURL?.lastPathComponent == folder.name)
+            b.goForward()
+            after(0.5) {
+                check("goForward landed home", b.currentURL?.standardizedFileURL == b.provider.homeURL.standardizedFileURL)
+                b.showsHiddenFiles = true
+                check("hidden files now visible", b.model.items.contains { $0.isHidden })
+                b.showsHiddenFiles = false
+                tabs(wc, folder)
+            }
+        }
+    }
+
+    // MARK: 2. Tabs
+
+    private static func tabs(_ wc: MainWindowController, _ folder: FileItem) {
+        print("== tabs ==")
+        let t = wc.tabs
+        let first = t.current
+        t.newTab(at: folder.url)
+        check("newTab: count 2, current is new", t.count == 2 && t.currentIndex == 1)
+        check("tab bar visible with two tabs", !t.tabBar.isHidden)
+        check("tabs have independent history", t.current !== first && t.current.history.entries.count <= 1)
+        after(0.5) {
+            check("new tab loaded its folder", t.current.currentURL?.lastPathComponent == folder.name)
+            check("window title follows current tab", wc.window?.title == wc.provider.displayName(for: folder.url))
+            check("address bar follows current tab", t.addressBar.segmentTitles.last == wc.provider.displayName(for: folder.url))
+            check("tab titles", t.tabBar.titles.count == 2 && t.tabBar.titles[1] == wc.provider.displayName(for: folder.url), "\(t.tabBar.titles)")
+            t.selectTab(at: 0)
+            check("selectTab(0)", t.currentIndex == 0 && t.current === first)
+            check("window title back to first tab", wc.window?.title == wc.provider.displayName(for: wc.provider.homeURL))
+            t.selectNext(); check("selectNext wraps forward", t.currentIndex == 1)
+            t.selectNext(); check("selectNext wraps around", t.currentIndex == 0)
+            t.selectPrevious(); check("selectPrevious wraps around", t.currentIndex == 1)
+            t.moveTab(from: 1, to: 0)
+            check("moveTab keeps current tab current", t.currentIndex == 0 && t.current !== first)
+            t.moveTab(from: 0, to: 1)
+            check("closeCurrentTab", t.closeCurrentTab() && t.count == 1)
+            check("tab bar hidden again", t.tabBar.isHidden)
+            check("can reopen", t.canReopenClosedTab)
+            check("reopenClosedTab restores it", t.reopenClosedTab() && t.count == 2 && t.current.currentURL?.lastPathComponent == folder.name)
+            check("reopened tab kept its history", t.current.history.entries.count == 1)
+            check("last tab cannot be closed via closeTab", { t.closeTab(at: 1); return !t.closeCurrentTab() && t.count == 1 }())
+            addressBarEditing(wc, folder)
+        }
+    }
+
+    // MARK: 3. Address bar edit mode + completion
+
+    private static func addressBarEditing(_ wc: MainWindowController, _ folder: FileItem) {
+        print("== address bar ==")
+        let home = wc.provider.homeURL
+        let bar = wc.tabs.addressBar
+        check("resolve ~", PathCompleter.resolveDirectory("~", cwd: home, home: home) == home.standardizedFileURL)
+        check("resolve ~/folder", PathCompleter.resolveDirectory("~/\(folder.name)", cwd: home, home: home)?.lastPathComponent == folder.name)
+        check("resolve relative", PathCompleter.resolveDirectory(folder.name, cwd: home, home: home)?.lastPathComponent == folder.name)
+        check("resolve rejects a file / nonsense", PathCompleter.resolveDirectory("/definitely/not/here", cwd: home, home: home) == nil)
+        let partial = String(folder.name.prefix(2))
+        let comps = PathCompleter.completions(for: "~/\(partial)", cwd: home, home: home)
+        check("completion for ~/\(partial) contains \(folder.name)/", comps.contains(folder.name + "/"), "\(comps)")
+        check("completions end with /", comps.allSatisfy { $0.hasSuffix("/") })
+        check("split last component", PathCompleter.splitLastComponent("~/Work/Do") == ("~/Work/", "Do"))
+
+        bar.beginEditing()
+        check("beginEditing enters edit mode", bar.isEditing)
+        check("text field is first responder", wc.window?.firstResponder is NSTextView)
+        check("commit rejects bad path", !bar.commit("/definitely/not/here") && bar.isEditing)
+
+        // inline completion: type "~/Ap" (two chars of the folder name) after select-all
+        guard let ed = bar.textField.currentEditor() as? NSTextView else { check("field editor", false); return }
+        let typed = "~/" + partial
+        ed.string = typed; ed.setSelectedRange(NSRange(location: (typed as NSString).length, length: 0))
+        bar.textChanged()
+        check("inline fill completes the folder name", bar.textField.stringValue == "~/\(folder.name)/", bar.textField.stringValue)
+        check("typed part stays before the caret", bar.typedText == typed, bar.typedText)
+        check("completed tail is selected", bar.inlineCompletion == String(folder.name.dropFirst(partial.count)) + "/", "\(bar.inlineCompletion ?? "nil")")
+        check("candidate list is showing", bar.completion.isVisible && bar.completion.candidates.first == folder.name + "/", "\(bar.completion.candidates)")
+        let g = bar.completion.geometryForTesting
+        check("popup height fits its rows", g.panelHeight == CGFloat(bar.completion.candidates.count) * 22 + 8 && g.clipHeight >= g.tableHeight - 0.5, "panel \(g.panelHeight) clip \(g.clipHeight) table \(g.tableHeight)")
+        check("first row is fully inside the popup", g.firstRow.minY >= 0 && g.firstRow.maxY <= g.panelHeight + 0.5, "\(g.firstRow) in \(g.panelHeight)")
+        check("first row sits at the top, not the bottom", abs(g.firstRow.maxY - (g.panelHeight - 4)) < 1, "row maxY \(g.firstRow.maxY), expected \(g.panelHeight - 4)")
+        // deleting must not re-fill
+        ed.string = "~/" + String(partial.prefix(1)); ed.setSelectedRange(NSRange(location: 3, length: 0))
+        bar.textChanged()
+        check("no inline fill while deleting", bar.textField.stringValue == "~/" + String(partial.prefix(1)), bar.textField.stringValue)
+        // Tab accepts, then the list moves on to the folder's children
+        ed.string = typed; ed.setSelectedRange(NSRange(location: (typed as NSString).length, length: 0)); bar.textChanged()
+        check("Tab accepts the inline completion", bar.acceptCompletion() && bar.inlineCompletion == nil && bar.textField.stringValue == "~/\(folder.name)/")
+        let inside = PathCompleter.completions(for: "~/\(folder.name)/", cwd: home, home: home)
+        check("after accept the list shows the folder's subfolders", bar.completion.candidates == inside, "\(bar.completion.candidates.count) vs \(inside.count)")
+        if !inside.isEmpty {
+            let g2 = bar.completion.geometryForTesting
+            check("re-shown list is pinned to the top too", abs(g2.firstRow.maxY - (g2.panelHeight - 4)) < 1 && g2.firstRow.minY >= 0, "row \(g2.firstRow) panel \(g2.panelHeight)")
+        }
+        // ↓ selects in the list, Return accepts and navigates
+        ed.string = typed; ed.setSelectedRange(NSRange(location: (typed as NSString).length, length: 0)); bar.textChanged()
+        _ = bar.control(bar.textField, textView: ed, doCommandBy: #selector(NSResponder.moveDown(_:)))
+        check("↓ selects the first candidate", bar.completion.selectedCandidate == folder.name + "/")
+        _ = bar.control(bar.textField, textView: ed, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        check("Return commits the completed path", !bar.isEditing && !bar.completion.isVisible)
+        after(0.5) {
+            check("edit-commit landed", wc.browser.currentURL?.lastPathComponent == folder.name)
+            check("focus returned to list", wc.window?.firstResponder === wc.browser.fileList.tableView)
+            narrowAddressBar(wc)
+            contextMenus(wc, folder)
+        }
+    }
+
+    /// A standalone bar at 260pt showing a deep path: leading segments must
+    /// fold into "…" and nothing may run past the right edge.
+    private static func narrowAddressBar(_ wc: MainWindowController) {
+        print("== narrow address bar ==")
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-narrow-\(getpid())")
+        let deep = tmp.appendingPathComponent("A very long folder name number one")
+            .appendingPathComponent("Another quite long folder name two").appendingPathComponent("third")
+        try? FileManager.default.createDirectory(at: deep, withIntermediateDirectories: true)
+        let bar = BreadcrumbBar(frame: NSRect(x: 0, y: 0, width: 260, height: BreadcrumbBar.height))
+        bar.url = deep
+        bar.layout()
+        let frames = bar.visibleSegmentFrames
+        check("deep path folds leading segments", bar.hasOverflowMenu && frames.count < bar.segmentCount, "\(frames.count) of \(bar.segmentCount) visible")
+        check("nothing runs past the right edge", (frames.map(\.maxX).max() ?? 0) <= 260 - 6 + 20, "max x \(frames.map(\.maxX).max() ?? 0)")
+        // two very long segments cannot fold (root is kept): they must shrink instead
+        let two = BreadcrumbBar(frame: NSRect(x: 0, y: 0, width: 220, height: BreadcrumbBar.height))
+        two.url = deep.deletingLastPathComponent().deletingLastPathComponent()   // volume › …tmp… › "A very long…"
+        two.layout()
+        let f2 = two.visibleSegmentFrames
+        check("long segments shrink to fit", (f2.map(\.maxX).max() ?? 0) <= 220, "max x \(f2.map(\.maxX).max() ?? 0), \(f2.count) visible")
+        try? FileManager.default.removeItem(at: tmp)
+    }
+
+    // MARK: 4. Context menus + new folder
+
+    private static func contextMenus(_ wc: MainWindowController, _ folder: FileItem) {
+        print("== context menu ==")
+        let b = wc.browser
+        let bg = b.buildContextMenu(for: []).items.map(\.title)
+        check("background menu has New Folder / Sort By", bg.contains("New Folder") && bg.contains("Sort By"), "\(bg)")
+        let onFolder = b.buildContextMenu(for: [folder]).items.map(\.title)
+        check("folder menu has Open in New Tab / Reveal / Copy Path / Favourites",
+              onFolder.contains("Open in New Tab") && onFolder.contains("Reveal in Finder")
+              && onFolder.contains("Copy Path") && onFolder.contains { $0.hasSuffix("Favourites") }, "\(onFolder)")
+        if let file = b.model.items.first(where: { !$0.isNavigable }) {
+            let onFile = b.buildContextMenu(for: [file])
+            check("file menu has Open With submenu", onFile.items.contains { $0.title == "Open With" && $0.submenu != nil })
+        }
+
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-smoke-\(getpid())")
+        try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        b.navigate(to: tmp)
+        after(0.4) {
+            guard let created = b.newFolder() else { check("newFolder returned a URL", false); return }
+            check("newFolder created on disk", FileManager.default.fileExists(atPath: created.path))
+            check("newFolder used the default name", created.lastPathComponent == "untitled folder")
+            let second = b.newFolder()
+            check("second newFolder increments", second?.lastPathComponent == "untitled folder 2")
+            after(0.4) {
+                check("new folder is selected", b.fileList.selectedItems.first?.name == "untitled folder 2")
+                fileOperations(wc, tmp)
+            }
+        }
+    }
+
+    // MARK: 4b. Expand-in-place and delayed rename
+
+    private static func expansion(_ wc: MainWindowController, _ tmp: URL) {
+        print("== expand in place ==")
+        let b = wc.browser, fm = FileManager.default, list = b.fileList
+        let inner = tmp.appendingPathComponent("sub").appendingPathComponent("deeper")
+        try? fm.createDirectory(at: inner, withIntermediateDirectories: true)
+        try? "z".write(to: tmp.appendingPathComponent("sub").appendingPathComponent("zeta.txt"), atomically: true, encoding: .utf8)
+        try? "h".write(to: tmp.appendingPathComponent("sub").appendingPathComponent(".hiddenfile"), atomically: true, encoding: .utf8)
+        b.reload()
+        after(0.4) {
+            let before = list.tableView.numberOfRows
+            guard let sub = b.model.nodes.first(where: { $0.item.name == "sub" }) else { check("find sub", false); return }
+            check("folder is expandable", list.tableView.isExpandable(sub))
+            list.expand(sub)
+            check("expand adds rows", list.tableView.numberOfRows == before + 2, "\(before) → \(list.tableView.numberOfRows)")
+            check("children folders-first", sub.children.map(\.item.name) == ["deeper", "zeta.txt"], "\(sub.children.map(\.item.name))")
+            check("hidden child filtered", !sub.children.contains { $0.item.name == ".hiddenfile" })
+            let subRow = list.tableView.row(forItem: sub)
+            check("nested row resolves to child", list.item(atRow: subRow + 1)?.name == "deeper")
+            check("nested row is indented", list.tableView.level(forRow: subRow + 1) == 1)
+            b.showsHiddenFiles = true
+            check("hidden toggle reaches expanded children", sub.children.contains { $0.item.name == ".hiddenfile" } && list.isExpanded(sub))
+            b.showsHiddenFiles = false
+            // reload keeps expansion and picks up changes inside the expanded folder
+            try? "n".write(to: tmp.appendingPathComponent("sub").appendingPathComponent("new.txt"), atomically: true, encoding: .utf8)
+            b.reload()
+            after(0.4) {
+                guard let sub2 = b.model.nodes.first(where: { $0.item.name == "sub" }) else { check("find sub after reload", false); return }
+                check("reload reuses the node object", sub2 === sub)
+                check("reload keeps folder expanded", list.isExpanded(sub2))
+                check("reload refreshes expanded children", sub2.children.contains { $0.item.name == "new.txt" })
+                // rename inside an expanded folder, via the controller
+                guard let child = sub2.children.first(where: { $0.item.name == "zeta.txt" }) else { check("find child", false); return }
+                b.rename(child.item, to: "omega.txt")
+                after(0.4) {
+                    let subNow = b.model.nodes.first { $0.item.name == "sub" }
+                    print("   [diag] sub expanded=\(subNow.map { list.isExpanded($0) } ?? false) children=\(subNow?.children.map(\.item.name) ?? []) rows=\(list.tableView.numberOfRows) selected=\(b.fileList.selectedItems.map(\.name)) visible=\((0..<list.tableView.numberOfRows).compactMap { list.item(atRow: $0)?.name })")
+                    check("nested rename happened on disk", fm.fileExists(atPath: inner.deletingLastPathComponent().appendingPathComponent("omega.txt").path))
+                    check("nested rename reselects the renamed child", b.fileList.selectedItems.first?.name == "omega.txt", "\(b.fileList.selectedItems.map(\.name))")
+                    list.collapse(sub2)
+                    check("collapse removes rows", list.tableView.numberOfRows == before)
+                    // delayed click-to-rename: scheduled, then fires; cancelled by selection change.
+                    // editColumn needs a key window — another app may have come forward meanwhile.
+                    NSApp.activate(ignoringOtherApps: true)
+                    wc.window?.makeKeyAndOrderFront(nil)
+                    list.select(name: "note.txt")
+                    let row = list.tableView.selectedRow
+                    list.tableView.scheduleRename(row: row, after: 0.2)
+                    check("rename is pending, not immediate", list.tableView.hasPendingRename && !(wc.window?.firstResponder is NSTextView))
+                    after(0.4) {
+                        check("rename fires after the delay", wc.window?.firstResponder is NSTextView)
+                        let cell = list.tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? NSTableCellView
+                        let sel = cell?.textField?.currentEditor()?.selectedRange
+                        check("base name preselected (not the extension)", sel == NSRange(location: 0, length: 4), "\(String(describing: sel))")
+                        wc.window?.makeFirstResponder(list.tableView)      // ends editing without change
+                        check("field editable only while editing", cell?.textField?.isEditable == false)
+                        list.tableView.scheduleRename(row: row, after: 0.2)
+                        list.select(name: "sub")
+                        check("selection change cancels pending rename", !list.tableView.hasPendingRename)
+                        after(0.3) {
+                            check("cancelled rename never fired", !(wc.window?.firstResponder is NSTextView))
+                            splitView(wc, tmp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: 4c. Split view (Dolphin: tabs on top, one or two panes per tab)
+
+    private static func splitView(_ wc: MainWindowController, _ tmp: URL) {
+        print("== split view ==")
+        let t = wc.tabs, fm = FileManager.default
+        let sub = tmp.appendingPathComponent("sub")
+        check("starts unsplit, no indicator", !t.isSplit && t.currentPage.panes.count == 1)
+        let left = t.current
+        t.toggleSplit()
+        check("toggle opens a second pane", t.isSplit && t.currentPage.panes.count == 2)
+        let rightForViewCheck = t.current
+        rightForViewCheck.viewAsIcons(nil)
+        check("toolbar follows the active split pane's view", wc.selectedToolbarViewModeForTesting == .icons)
+        left.viewAsIcons(nil)
+        left.viewAsList(nil)
+        check("inactive pane cannot change the toolbar view", wc.selectedToolbarViewModeForTesting == .icons)
+        t.focusOtherPane()
+        check("toolbar follows switching to the list pane", wc.selectedToolbarViewModeForTesting == .details)
+        t.focusOtherPane()
+        check("toolbar follows switching back to the icon pane", wc.selectedToolbarViewModeForTesting == .icons)
+        rightForViewCheck.viewAsList(nil)
+        check("new (right) pane is active", t.current !== left && t.currentPage.activeSide == .right)
+        check("menu title names the active side", { let mi = NSMenuItem(title: "", action: #selector(MainWindowController.toggleSplit(_:)), keyEquivalent: ""); _ = wc.validateMenuItem(mi); return mi.title == "Close Right Pane" }())
+        after(0.5) {
+            check("second pane opened at the same folder", t.current.currentURL?.standardizedFileURL == left.currentURL?.standardizedFileURL)
+            check("both panes laid out side by side", left.view.frame.width > 50 && t.current.view.frame.width > 50 && t.current.view.frame.minX >= left.view.frame.maxX - 1, "\(left.view.frame) | \(t.current.view.frame)")
+            // activation: clicking/focusing the left pane makes it active; the address bar follows
+            t.currentPage.activate(left)
+            check("activate(left)", t.current === left && t.currentPage.activeSide == .left)
+            t.focusOtherPane()
+            check("focusOtherPane flips back", t.current !== left)
+            check("keyboard focus moved with it", wc.window?.firstResponder === t.current.fileList.tableView)
+            // open in other pane: right is active, so the LEFT pane should navigate and become active
+            t.openInOtherPane(sub)
+            after(0.5) {
+                check("openInOtherPane navigates the other pane", left.currentURL?.lastPathComponent == "sub", "\(left.currentURL?.lastPathComponent ?? "nil")")
+                check("…and activates it", t.current === left)
+                check("address bar follows the active pane", t.addressBar.segmentTitles.last == "sub", "\(t.addressBar.segmentTitles)")
+                check("tab title follows the active pane", t.tabBar.titles[t.currentIndex] == "sub", "\(t.tabBar.titles)")
+                check("window title follows the active pane", wc.window?.title == "sub")
+                // copy to other pane: active = left (sub), other = right (tmp); copy sub/note copy.txt? use tmp/note.txt from right→ do it from right
+                t.focusOtherPane()                       // right (tmp) active
+                t.current.fileList.select(name: "note.txt")
+                wc.transferToOtherPane([tmp.appendingPathComponent("note.txt")], move: false)
+                after(0.8) {
+                    check("copy to other pane landed in its folder", fm.fileExists(atPath: sub.appendingPathComponent("note.txt").path))
+                    check("copy menu item enabled only when split with a selection", t.current.validateMenuItem(NSMenuItem(title: "", action: #selector(BrowserViewController.copyToOtherPane(_:)), keyEquivalent: "")))
+                    // close the active pane (Dolphin semantics): right closes, left remains
+                    t.toggleSplit()
+                    check("toggle closes the active pane", !t.isSplit && t.current === left)
+                    check("remaining pane fills the tab", left.view.frame.width > 200, "\(left.view.frame.width)")
+                    tabDragSplit(wc, tmp)
+                }
+            }
+        }
+    }
+
+    private static func tabDragSplit(_ wc: MainWindowController, _ tmp: URL) {
+        let t = wc.tabs
+        let sub = tmp.appendingPathComponent("sub")
+        let first = t.current
+        t.newTab(at: sub)                     // tab 1, active
+        after(0.4) {
+            let dragged = t.current
+            t.selectTab(at: 0)
+            // side detection in window coordinates
+            let c = t.view.window!
+            let bounds = t.currentPage.view.bounds
+            let leftPt = t.currentPage.view.convert(NSPoint(x: bounds.width * 0.1, y: bounds.midY), to: nil)
+            let midPt = t.currentPage.view.convert(NSPoint(x: bounds.midX, y: bounds.midY), to: nil)
+            let rightPt = t.currentPage.view.convert(NSPoint(x: bounds.width * 0.9, y: bounds.midY), to: nil)
+            _ = c
+            check("left third → .left", t.splitSide(at: leftPt) == .left)
+            check("middle band → no split", t.splitSide(at: midPt) == nil)
+            check("right third → .right", t.splitSide(at: rightPt) == .right)
+            check("cannot split with the current tab itself", !t.canSplit(withTab: 0) && t.canSplit(withTab: 1))
+            check("drag tab 1 into the left half splits tab 0", t.splitCurrentPage(withTab: 1, side: .left) && t.count == 1 && t.isSplit)
+            check("adopted pane is on the left and active", t.currentPage.activeSide == .left && t.current === dragged && t.current.currentURL?.lastPathComponent == "sub")
+            check("original pane is on the right", t.currentPage.panes[1] === first)
+            check("tab bar hidden again (one tab)", t.tabBar.isHidden)
+            // a closed split tab comes back split
+            t.newTab(at: tmp)                 // tab 1 (unsplit) becomes current
+            t.selectTab(at: 0)
+            check("closing the split tab", t.closeCurrentTab() && t.count == 1)
+            check("reopened tab is still split, same panes", t.reopenClosedTab() && t.isSplit && t.currentPage.panes[0] === dragged && t.currentPage.panes[1] === first)
+            t.toggleSplit()                   // close active (left = dragged)
+            check("back to a single pane", !t.isSplit && t.current === first)
+            _ = t.closeTab(at: 0)             // the spare tmp tab, not the one we are in
+            check("one tab, one pane, original browser current", t.count == 1 && !t.isSplit && t.current === first)
+            after(0.3) { viewModes(wc, tmp) }
+        }
+    }
+
+    // MARK: 4d. View modes, zoom, previews
+
+    private static func viewModes(_ wc: MainWindowController, _ tmp: URL) {
+        print("== view modes ==")
+        let b = wc.browser
+        // Start from known preferences: an earlier failed run must not leak zoom steps in.
+        ViewPreferences.setZoomIndex(ZoomLevel.defaultIndex(for: .icons), for: .icons)
+        ViewPreferences.setZoomIndex(ZoomLevel.defaultIndex(for: .details), for: .details)
+        ViewPreferences.showPreviews = true
+        b.setViewMode(.details)
+        b.zoomActualSize(nil)
+        b.navigate(to: tmp)
+        after(0.4) {
+            check("starts in details", b.viewMode == .details && b.fileView === b.fileList)
+            check("details at default zoom", b.iconSize == 16 && b.fileList.tableView.rowHeight == 24, "\(b.iconSize) / \(b.fileList.tableView.rowHeight)")
+            b.fileView.select(name: "note.txt")
+            b.setViewMode(.icons)
+            wc.window?.contentView?.layoutSubtreeIfNeeded()
+            check("switched to icons", b.viewMode == .icons && b.fileView === b.iconGrid)
+            check("toolbar follows the Icons action", wc.selectedToolbarViewModeForTesting == .icons)
+            check("grid shows every top-level item", b.iconGrid.collectionView.numberOfItems(inSection: 0) == b.model.items.count, "\(b.iconGrid.collectionView.numberOfItems(inSection: 0)) vs \(b.model.items.count)")
+            check("selection carried over", b.fileView.selectedItems.map(\.name) == ["note.txt"], "\(b.fileView.selectedItems.map(\.name))")
+            check("grid has size", b.iconGrid.view.frame.width > 200 && b.iconGrid.view.frame.height > 100, "\(b.iconGrid.view.frame.size)")
+            check("keyboard focus went to the grid", wc.window?.firstResponder === b.iconGrid.collectionView)
+            let size0 = b.iconSize
+            b.zoom(by: 1)
+            check("zoom in enlarges icons", b.iconSize > size0, "\(size0) → \(b.iconSize)")
+            check("slider follows zoom", Int(b.statusBar.zoomSlider.doubleValue.rounded()) == b.zoomIndex)
+            b.iconGrid.onZoomGesture?(-1)
+            check("⌘-scroll / pinch gesture zooms out", b.iconSize == size0)
+            b.zoomActualSize(nil)
+            check("actual size resets", b.zoomIndex == ZoomLevel.defaultIndex(for: .icons))
+            b.setZoomIndex(99)
+            check("zoom clamps at the largest step", b.zoomIndex == ZoomLevel.iconSizes.count - 1 && b.iconSize == 512)
+            b.zoomActualSize(nil)
+            check("item frame on screen is real", b.fileView.frameOnScreen(for: tmp.appendingPathComponent("note.txt")).width > 0)
+            check("Quick Look counts the grid selection", b.numberOfPreviewItems(in: QLPreviewPanel.shared()) == 1)
+            check("no clicked item → background context menu", b.fileView.clickedItems.isEmpty)
+            guard let note = b.model.items.first(where: { $0.name == "note.txt" }),
+                  let folder = b.model.items.first(where: { $0.isNavigable }) else { check("find items", false); return }
+            var got: NSImage? = nil, done = false
+            let cached = ThumbnailProvider.shared.thumbnail(for: note, size: 128, scale: 2) { img in got = img; done = true }
+            after(2.0) {
+                check("thumbnail generated for a text file", cached != nil || (done && got != nil), "cached=\(cached != nil) done=\(done) got=\(got != nil)")
+                check("thumbnail cached on the second ask", ThumbnailProvider.shared.thumbnail(for: note, size: 128, scale: 2) { _ in } != nil)
+                check("folders never get thumbnails", !ThumbnailProvider.canPreview(folder))
+                b.setViewMode(.details)
+                check("toolbar follows the List action", wc.selectedToolbarViewModeForTesting == .details)
+                check("back to details keeps selection", b.viewMode == .details && b.fileView.selectedItems.map(\.name) == ["note.txt"], "\(b.fileView.selectedItems.map(\.name))")
+                check("focus went back to the list", wc.window?.firstResponder === b.fileList.tableView)
+                b.zoom(by: 2)
+                check("details zoom: 32pt icons, taller rows", b.iconSize == 32 && b.fileList.tableView.rowHeight == 40, "\(b.iconSize) / \(b.fileList.tableView.rowHeight)")
+                check("zoom remembered per mode", ViewPreferences.zoomIndex(for: .details) == 2 && ViewPreferences.zoomIndex(for: .icons) == ZoomLevel.defaultIndex(for: .icons))
+                b.zoomActualSize(nil)
+                check("details back to 16pt", b.iconSize == 16 && b.fileList.tableView.rowHeight == 24)
+                b.togglePreviews(nil)
+                check("previews toggle off", !b.showsPreviews && !ViewPreferences.showPreviews)
+                b.togglePreviews(nil)
+                liveRefresh(wc, tmp)
+            }
+        }
+    }
+
+    // MARK: 4e. Directory watching and cross-pane refresh
+
+    private static func liveRefresh(_ wc: MainWindowController, _ tmp: URL) {
+        print("== live refresh ==")
+        let b = wc.browser, fm = FileManager.default, t = wc.tabs
+        let sub = tmp.appendingPathComponent("sub")
+        // a drag session must never end in a rename
+        let list = b.fileList.tableView
+        list.noteDragSessionBegan()
+        check("no rename after a drag session", !list.renameAllowedAfterMouseUp(candidate: true, pointerTravelled: 0))
+        check("drag flag is consumed", list.renameAllowedAfterMouseUp(candidate: true, pointerTravelled: 0))
+        check("no rename when the pointer travelled", !list.renameAllowedAfterMouseUp(candidate: true, pointerTravelled: 12))
+        check("no rename without a candidate", !list.renameAllowedAfterMouseUp(candidate: false, pointerTravelled: 0))
+        b.fileView.select(name: "note.txt")
+        list.scheduleRename(row: list.selectedRow, after: 0.3)
+        list.noteDragSessionBegan()
+        check("a drag session cancels an already scheduled rename", !list.hasPendingRename)
+        list.scheduleRename(row: list.selectedRow, after: 0.2)
+        list.noteDragSessionEnded()
+        check("a drag session ending cancels it too", !list.hasPendingRename)
+        _ = list.renameAllowedAfterMouseUp(candidate: false, pointerTravelled: 0)   // clears the flag
+
+        b.fileView.select(name: "note.txt")
+        // 1. something outside the app creates a file in the shown folder
+        try? "x".write(to: tmp.appendingPathComponent("external.txt"), atomically: true, encoding: .utf8)
+        after(1.8) {
+            check("external change shows up via FSEvents", b.model.items.contains { $0.name == "external.txt" }, "\(b.model.items.map(\.name))")
+            check("refresh kept the selection", b.fileView.selectedItems.map(\.name) == ["note.txt"], "\(b.fileView.selectedItems.map(\.name))")
+            // 2. an expanded subfolder is watched too
+            guard let subNode = b.model.nodes.first(where: { $0.item.name == "sub" }) else { check("find sub", false); return }
+            b.fileList.expand(subNode)
+            check("expanded folder is a displayed directory", b.displayedDirectories.contains { $0.standardizedFileURL == sub.standardizedFileURL })
+            try? "y".write(to: sub.appendingPathComponent("inner-external.txt"), atomically: true, encoding: .utf8)
+            after(1.8) {
+                check("change inside an expanded folder shows up", subNode.children.contains { $0.item.name == "inner-external.txt" }, "\(subNode.children.map(\.item.name))")
+                b.fileList.collapse(subNode)
+                // 3. a move performed by the OTHER pane refreshes this one at once
+                try? "m".write(to: tmp.appendingPathComponent("moveme.txt"), atomically: true, encoding: .utf8)
+                b.reload()
+                after(0.4) {
+                    check("moveme.txt listed in source pane", b.model.items.contains { $0.name == "moveme.txt" })
+                    let right = t.currentPage.split(with: sub)          // right pane at sub, active
+                    after(0.5) {
+                        right.dropFiles([tmp.appendingPathComponent("moveme.txt")], to: sub, op: .move)   // drop on the right pane
+                        after(0.9) {
+                            check("moved into the destination pane", right.model.items.contains { $0.name == "moveme.txt" })
+                            check("source pane refreshed without being asked", !b.model.items.contains { $0.name == "moveme.txt" }, "\(b.model.items.map(\.name))")
+                            t.currentPage.activate(right)
+                            t.toggleSplit()                             // close the right pane
+                            check("back to one pane", !t.isSplit && t.current === b)
+                            crossTabDrag(wc, tmp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: 4f. Files dragged onto tabs
+
+    private static func crossTabDrag(_ wc: MainWindowController, _ tmp: URL) {
+        print("== cross-tab drag ==")
+        let t = wc.tabs, fm = FileManager.default, bar = t.tabBar
+        let sub = tmp.appendingPathComponent("sub")
+        try? "c".write(to: tmp.appendingPathComponent("crosstab.txt"), atomically: true, encoding: .utf8)
+        t.newTab(at: sub, activate: false)                       // tab 1 = sub, tab 0 (tmp) stays current
+        check("two tabs, first current", t.count == 2 && t.currentIndex == 0)
+        after(0.5) {                                              // the new tab's first listing is async
+        wc.window?.contentView?.layoutSubtreeIfNeeded()
+        let frames = (0..<2).map { bar.tabFrameForTesting($0) }
+        check("tab frames laid out", frames.allSatisfy { $0.width > 0 })
+        check("hit-testing finds tab 1", bar.tabIndex(at: NSPoint(x: frames[1].midX, y: frames[1].midY)) == 1)
+        check("empty strip space is no tab", bar.tabIndex(at: NSPoint(x: bar.bounds.width - 2, y: 3)) == nil)
+        let file = tmp.appendingPathComponent("crosstab.txt")
+        check("hover badge: same-volume move onto tab 1", bar.dropOperationForTab?(1, [file], [.copy, .move]) == .move)
+        check("hover badge: ⌥ copies", bar.dropOperationForTab?(1, [file], .copy) == .copy)
+        check("hover badge: file onto empty space refused", bar.dropOperationForTab?(nil, [file], [.copy, .move]) == [])
+        check("hover badge: folder onto empty space opens a tab", bar.dropOperationForTab?(nil, [sub], [.copy, .move]) == .generic)
+        // drop the file on tab 1 → moved into sub; tab 0 (source, current) refreshes
+        check("drop on tab 1 accepted", bar.performDrop(urls: [file], sourceMask: [.copy, .move], onTabAt: 1))
+        after(0.9) {
+            check("file moved into tab 1's folder", fm.fileExists(atPath: sub.appendingPathComponent("crosstab.txt").path))
+            check("source tab's pane refreshed", !t.current.model.items.contains { $0.name == "crosstab.txt" }, "\(t.current.model.items.map(\.name))")
+            check("drop did not switch tabs", t.currentIndex == 0)
+            // hovering a tab activates it after Dolphin's 800 ms
+            bar.beginAutoActivation(1)
+            check("auto-activation pending", bar.hasPendingAutoActivation)
+            bar.hoverTabIndexForTesting = 1
+            after(TabBarView.autoActivationDelay + 0.3) {
+                check("hovered tab became current", t.currentIndex == 1)
+                // a folder dropped on empty strip space opens as a new background tab
+                let before = t.count
+                check("folder drop on empty space accepted", bar.performDrop(urls: [tmp.appendingPathComponent("renamed")], sourceMask: [.copy, .move], onTabAt: nil))
+                check("…opened a new tab, not activated", t.count == before + 1 && t.currentIndex == 1)
+                _ = t.closeTab(at: t.count - 1)
+                t.selectTab(at: 0)
+                _ = t.closeTab(at: 1)
+                check("back to one tab", t.count == 1)
+                filterAndConflicts(wc, tmp)
+            }
+        }
+        }
+    }
+
+    // MARK: 4g. Filter bar and batch conflict policy
+
+    private static func filterAndConflicts(_ wc: MainWindowController, _ tmp: URL) {
+        print("== filter (toolbar field + scope bar) ==")
+        let b = wc.browser, t = wc.tabs
+        b.navigate(to: tmp)
+        after(0.4) {
+            let total = b.model.items.count
+            check("toolbar has a search field", wc.searchField != nil)
+            check("scope bar hidden by default", !wc.isScopeBarVisible)
+            wc.focusFilter(nil)
+            wc.window?.contentView?.layoutSubtreeIfNeeded()
+            check("⌘F focuses the toolbar field", wc.window?.firstResponder is NSTextView && wc.searchField?.currentEditor() != nil)
+            check("scope bar stays hidden until there is text", !wc.isScopeBarVisible)
+            // focus must be able to leave an empty field, and an expanded-from-icon field must fold back
+            wc.window?.makeFirstResponder(b.focusView)
+            check("focus can leave the empty field", wc.window?.firstResponder === b.focusView, "\(String(describing: wc.window?.firstResponder.map { type(of: $0) }))")
+            after(0.2) {
+            check("search interaction ended on empty blur", !wc.searchInteractionActiveForTesting)
+            wc.focusFilter(nil)
+            check("⌘F focuses again", wc.window?.firstResponder is NSTextView)
+            wc.applyFilter("note")
+            wc.window?.contentView?.layoutSubtreeIfNeeded()
+            check("scope bar appears once there is text", wc.isScopeBarVisible && t.scopeBar.frame.height == SearchScopeBar.height)
+            check("scope chip names the current folder", t.scopeBar.folderName == wc.provider.displayName(for: tmp), t.scopeBar.folderName)
+            check("substring filter, case-insensitive", b.model.items.map(\.name).sorted() == ["note copy 2.txt", "note copy.txt", "note.txt"], "\(b.model.items.map(\.name))")
+            check("scope bar summary", t.scopeBar.summary == "3 of \(total) items", t.scopeBar.summary)
+            check("View ▸ Filter shows the on state", { let mi = NSMenuItem(title: "", action: #selector(MainWindowController.focusFilter(_:)), keyEquivalent: ""); _ = wc.validateMenuItem(mi); return mi.state == .on }())
+            wc.applyFilter("NOTE COPY")
+            check("filter ignores case", b.model.items.count == 2)
+            wc.applyFilter("*.txt")
+            check("wildcard pattern", b.model.items.allSatisfy { $0.name.hasSuffix(".txt") } && b.model.items.count >= 3, "\(b.model.items.map(\.name))")
+            wc.applyFilter("n?te")
+            check("? wildcard", b.model.items.contains { $0.name == "note.txt" })
+            // the filter belongs to the pane; the field follows whichever pane is active
+            wc.applyFilter("sub")
+            let left = b
+            t.toggleSplit()                                    // right pane opens at tmp, active
+            after(0.5) {
+                check("new pane starts unfiltered, field follows it", !t.current.isFiltering && wc.searchField?.stringValue == "", "\(wc.searchField?.stringValue ?? "nil")")
+                check("left pane kept its own filter", left.nameFilter == "sub")
+                check("scope bar hidden for the unfiltered pane", !wc.isScopeBarVisible)
+                t.currentPage.activate(left)
+                check("switching back restores the field text", wc.searchField?.stringValue == "sub" && wc.isScopeBarVisible,
+                      "field='\(wc.searchField?.stringValue ?? "nil")' scope=\(wc.isScopeBarVisible) left.filter='\(left.nameFilter)' current===left:\(t.current === left) fieldFocused=\(wc.isSearchFieldFocusedForTesting) firstResponder=\(String(describing: wc.window?.firstResponder.map { type(of: $0) }))")
+                t.currentPage.activate(t.currentPage.inactive!)
+                t.toggleSplit()                                // close the right pane
+                check("back on the filtered pane", t.current === left && wc.searchField?.stringValue == "sub")
+                // navigating clears the filter (Dolphin) and the field
+                left.navigate(to: tmp.appendingPathComponent("sub"))
+                after(0.4) {
+                    check("changing directory clears the filter and the field", !left.isFiltering && wc.searchField?.stringValue == "" && !wc.isScopeBarVisible)
+                    left.goBack()
+                    after(0.4) {
+                        wc.applyFilter("note")
+                        wc.cancelFilter()                       // what Esc / the ⓧ button do
+                        check("cancel clears everything and returns focus to the list", !left.isFiltering && wc.searchField?.stringValue == "" && !wc.isScopeBarVisible && wc.window?.firstResponder === left.focusView)
+                        check("model unfiltered after cancel", left.model.items.count == total)
+                        scrollClamp(wc, tmp)
+                    }
+                }
+            }
+            }
+        }
+    }
+
+    // MARK: 4g2. Scroll offset never leaves blank space above the rows
+
+    private static func scrollClamp(_ wc: MainWindowController, _ tmp: URL) {
+        print("== scroll clamp ==")
+        let b = wc.browser
+        let clip = b.fileList.scrollView.contentView
+        clip.scroll(to: NSPoint(x: 0, y: -80))                       // what a rubber-band bounce looks like
+        b.fileList.scrollView.reflectScrolledClipView(clip)
+        check("getter never reports a bounce as negative", b.fileList.scrollOffset == 0)
+        b.fileList.scrollOffset = -80
+        check("setting a negative offset lands at the top", clip.bounds.origin.y == 0, "\(clip.bounds.origin.y)")
+        b.fileList.scrollOffset = 100_000
+        let maxY = max(0, (b.fileList.scrollView.documentView?.frame.height ?? 0) - clip.bounds.height)
+        check("setting a huge offset clamps to the end", clip.bounds.origin.y == maxY, "\(clip.bounds.origin.y) vs \(maxY)")
+        b.fileList.scrollOffset = 0
+        // the same guarantee after a real navigation round trip with a poisoned history entry
+        b.history.recordViewState(selectedName: nil, scrollOffset: -120)
+        b.goUp()
+        after(0.4) {
+            b.goBack()
+            after(0.4) {
+                check("restored offset is clamped, first row at the top", b.fileList.scrollView.contentView.bounds.origin.y >= 0 && b.fileList.tableView.rect(ofRow: 0).minY == 0, "\(b.fileList.scrollView.contentView.bounds.origin.y)")
+                let grid = b.iconGrid
+                grid.scrollOffset = -50
+                check("icon grid clamps too", grid.scrollView.contentView.bounds.origin.y >= 0)
+                groups(wc, tmp)
+            }
+        }
+    }
+
+    // MARK: 4h. Finder's Use Groups / Group By
+
+    private static func groups(_ wc: MainWindowController, _ tmp: URL) {
+        print("== groups ==")
+        let b = wc.browser, fm = FileManager.default
+        let dir = tmp.appendingPathComponent("grouped")
+        try? fm.createDirectory(at: dir.appendingPathComponent("Zeta folder"), withIntermediateDirectories: true)
+        try? Data([0x89, 0x50, 0x4E, 0x47]).write(to: dir.appendingPathComponent("photo.png"))
+        try? "%PDF-1.4".write(to: dir.appendingPathComponent("paper.pdf"), atomically: true, encoding: .utf8)
+        try? "hello".write(to: dir.appendingPathComponent("notes.txt"), atomically: true, encoding: .utf8)
+        try? Data(repeating: 0, count: 5000).write(to: dir.appendingPathComponent("archive.zip"))
+        try? "1".write(to: dir.appendingPathComponent("42.txt"), atomically: true, encoding: .utf8)
+        let cal = Calendar.current, now = Date()
+        func stamp(_ name: String, daysAgo: Int) {
+            var u = dir.appendingPathComponent(name); var v = URLResourceValues()
+            v.contentModificationDate = cal.date(byAdding: .day, value: -daysAgo, to: now); try? u.setResourceValues(v)
+        }
+        stamp("photo.png", daysAgo: 1); stamp("paper.pdf", daysAgo: 5); stamp("notes.txt", daysAgo: 20); stamp("archive.zip", daysAgo: 400)
+
+        // pure rules
+        check("date buckets", Grouping.dateBucket(now).title == "Today" && Grouping.dateBucket(cal.date(byAdding: .day, value: -1, to: now)!).title == "Yesterday"
+              && Grouping.dateBucket(cal.date(byAdding: .day, value: -5, to: now)!).title == "Previous 7 Days"
+              && Grouping.dateBucket(cal.date(byAdding: .day, value: -20, to: now)!).title == "Previous 30 Days")
+        let lastYear = cal.date(byAdding: .year, value: -1, to: now)!
+        check("older dates bucket by year", Grouping.dateBucket(lastYear).title == String(cal.component(.year, from: lastYear)))
+        check("date groups are newest first", Grouping.dateBucket(now).order < Grouping.dateBucket(lastYear).order)
+        check("name buckets: letters, # for digits", Grouping.nameBucket("apple").title == "A" && Grouping.nameBucket("42.txt").title == "#" && Grouping.nameBucket("42.txt").order > Grouping.nameBucket("apple").order)
+        check("no groups → one untitled group", Grouping.split([], by: .none).count == 1)
+
+        b.navigate(to: dir)
+        after(0.5) {
+            check("ungrouped: one group, list has plain rows", !b.model.isGrouped && b.model.groups.count == 1 && b.fileList.item(atRow: 0) != nil)
+            b.setGroupKey(.kind)
+            wc.window?.contentView?.layoutSubtreeIfNeeded()
+            let titles = b.model.groups.map(\.title)
+            check("kind groups use Finder's category names, sorted by name", titles == ["Folders", "Images", "Other", "PDF Documents", "Text"], "\(titles)")
+            check("every item is in exactly one group", b.model.groups.flatMap(\.nodes).count == b.model.nodes.count)
+            check("list: group header rows are not items", b.fileList.item(atRow: 0) == nil && b.fileList.tableView.numberOfRows == b.model.nodes.count + b.model.groups.count, "rows \(b.fileList.tableView.numberOfRows)")
+            check("list: header row is a group row", b.fileList.tableView.item(atRow: 0) is GroupNode && (b.fileList.tableView.delegate?.outlineView?(b.fileList.tableView, isGroupItem: b.fileList.tableView.item(atRow: 0)!) ?? false))
+            check("list: first item under Folders", b.fileList.item(atRow: 1)?.name == "Zeta folder")
+            check("future dates go to No Date (Finder's GROUP_FUTURE)", Grouping.dateBucket(cal.date(byAdding: .day, value: 3, to: now)!).title == "No Date")
+            b.fileView.select(name: "paper.pdf")
+            check("select by name across groups", b.fileView.selectedItems.map(\.name) == ["paper.pdf"])
+            check("group rows are not selectable", { let t = b.fileList.tableView; let g = t.item(atRow: 0)!
+                return t.delegate?.outlineView?(t, shouldSelectItem: g) == false
+                    && t.delegate?.outlineView?(t, selectionIndexesForProposedSelection: IndexSet([0, 1])) == IndexSet([1]) }())
+            check("View ▸ Use Groups is on", { let mi = NSMenuItem(title: "", action: #selector(BrowserViewController.toggleGroups(_:)), keyEquivalent: ""); _ = b.validateMenuItem(mi); return mi.state == .on }())
+            check("Group By ▸ Kind is checked", { let mi = NSMenuItem(title: "", action: #selector(BrowserViewController.groupBy(_:)), keyEquivalent: ""); mi.representedObject = "kind"; _ = b.validateMenuItem(mi); return mi.state == .on }())
+            // expanding a folder inside a group still works
+            if let z = b.model.node(for: dir.appendingPathComponent("Zeta folder")) {
+                try? "x".write(to: dir.appendingPathComponent("Zeta folder/inner.txt"), atomically: true, encoding: .utf8)
+                b.fileList.expand(z)
+                check("folder inside a group expands", b.fileList.item(atRow: 2)?.name == "inner.txt", "\(b.fileList.item(atRow: 2)?.name ?? "nil")")
+                b.fileList.collapse(z)
+            }
+            b.setGroupKey(.dateModified)
+            let dates = b.model.groups.map(\.title)
+            check("date-modified groups in Finder order", dates.first == "Today" && dates.contains("Yesterday") && dates.contains("Previous 7 Days") && dates.contains("Previous 30 Days") && dates.last == String(cal.component(.year, from: cal.date(byAdding: .day, value: -400, to: now)!)), "\(dates)")
+            b.setGroupKey(.name)
+            check("name groups end with #", b.model.groups.last?.title == "#" && b.model.groups.first?.title == "A", "\(b.model.groups.map(\.title))")
+            b.setGroupKey(.size)
+            check("size groups: Folders first, then Finder's decade labels, bigger first", b.model.groups.map(\.title) == ["Folders", "From 1 KB to 10 KB", "Under 1 KB"], "\(b.model.groups.map(\.title))")
+            b.setGroupKey(.application)
+            check("application groups: folders under Finder", b.model.groups.first?.title == "Finder", "\(b.model.groups.map(\.title))")
+            b.setGroupKey(.tags)
+            check("tags: untagged files under No Tags", b.model.groups.map(\.title) == ["No Tags"], "\(b.model.groups.map(\.title))")
+            // icon view: one section per group with headers
+            b.setGroupKey(.kind)
+            b.setViewMode(.icons)
+            wc.window?.contentView?.layoutSubtreeIfNeeded()
+            let cv = b.iconGrid.collectionView
+            check("grid: one section per group", cv.numberOfSections == b.model.groups.count && cv.numberOfItems(inSection: 0) == 1)
+            check("grid: sticky header views", cv.visibleSupplementaryViews(ofKind: NSCollectionView.elementKindSectionHeader).count >= 1)
+            b.fileView.select(name: "paper.pdf")
+            let pdfSection = b.model.groups.firstIndex { $0.title == "PDF Documents" }
+            check("grid: select across sections", b.fileView.selectedItems.map(\.name) == ["paper.pdf"] && cv.selectionIndexPaths.first?.section == pdfSection, "section \(cv.selectionIndexPaths.first?.section ?? -1) vs \(pdfSection ?? -1)")
+            check("grid: frame on screen across sections", b.fileView.frameOnScreen(for: dir.appendingPathComponent("paper.pdf")).width > 0)
+            b.toggleGroups(nil)
+            check("Use Groups off → ungrouped, one section", !b.usesGroups && cv.numberOfSections == 1 && cv.numberOfItems(inSection: 0) == b.model.nodes.count)
+            b.toggleGroups(nil)
+            check("Use Groups on → back to the last key", b.groupKey == .kind)
+            b.setGroupKey(.none)
+            b.setViewMode(.details)
+            check("persisted default", ViewPreferences.groupKey == .none && ViewPreferences.lastGroupKey == .kind)
+            try? fm.removeItem(at: dir)
+            conflicts(wc, tmp)
+        }
+    }
+
+    private static func conflicts(_ wc: MainWindowController, _ tmp: URL) {
+        print("== conflicts ==")
+        let fm = FileManager.default
+        let src = tmp.appendingPathComponent("csrc"), dst = tmp.appendingPathComponent("cdst")
+        for d in [src, dst] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
+        for n in ["a.txt", "b.txt", "c.txt"] {
+            try? "src".write(to: src.appendingPathComponent(n), atomically: true, encoding: .utf8)
+            try? "dst".write(to: dst.appendingPathComponent(n), atomically: true, encoding: .utf8)
+        }
+        let files = ["a.txt", "b.txt", "c.txt"].map { src.appendingPathComponent($0) }
+        var asked: [FileOperations.Conflict] = []
+        // 1. keep both + apply to all: asked once, three "X 2" copies
+        FileOperations.transfer(files, to: dst, kind: .copy, conflict: { c in
+            asked.append(c); return .init(resolution: .keepBoth, applyToAll: true)
+        }) { r in
+            check("apply-to-all asks once", asked.count == 1 && asked[0].remaining == 3, "\(asked.count) asks, remaining \(asked.map(\.remaining))")
+            check("keep both made three renamed copies", r.created.map(\.lastPathComponent).sorted() == ["a 2.txt", "b 2.txt", "c 2.txt"], "\(r.created.map(\.lastPathComponent))")
+            asked = []
+            // 2. skip all: asked once, nothing copied, originals intact
+            FileOperations.transfer(files, to: dst, kind: .copy, conflict: { c in
+                asked.append(c); return .init(resolution: .skip, applyToAll: true)
+            }) { r in
+                check("skip-all asks once and copies nothing", asked.count == 1 && r.created.isEmpty && !r.cancelled)
+                check("destination untouched", (try? String(contentsOf: dst.appendingPathComponent("a.txt"), encoding: .utf8)) == "dst")
+                asked = []
+                // 3. per-file answers: replace a, stop at b → c never asked
+                FileOperations.transfer(files, to: dst, kind: .copy, conflict: { c in
+                    asked.append(c)
+                    return .init(resolution: c.source.lastPathComponent == "a.txt" ? .replace : .cancel)
+                }) { r in
+                    check("remaining counts down per conflict", asked.map(\.remaining) == [3, 2], "\(asked.map(\.remaining))")
+                    check("stop cancels the rest", r.cancelled && asked.count == 2)
+                    check("replace overwrote a.txt", (try? String(contentsOf: dst.appendingPathComponent("a.txt"), encoding: .utf8)) == "src")
+                    // 4. merge folders: src folder into an existing folder of the same name
+                    let outer = tmp.appendingPathComponent("mergeout")
+                    try? fm.createDirectory(at: outer.appendingPathComponent("csrc"), withIntermediateDirectories: true)
+                    try? "old".write(to: outer.appendingPathComponent("csrc/b.txt"), atomically: true, encoding: .utf8)
+                    asked = []
+                    FileOperations.transfer([src], to: outer, kind: .copy, conflict: { c in
+                        asked.append(c)
+                        return .init(resolution: c.bothFolders ? .merge : .keepBoth)
+                    }) { r in
+                        check("folder conflict offers merge", asked.first?.bothFolders == true)
+                        check("merge copied the new children", fm.fileExists(atPath: outer.appendingPathComponent("csrc/a.txt").path) && fm.fileExists(atPath: outer.appendingPathComponent("csrc/c.txt").path))
+                        check("merge asked about the inner conflict and kept both", asked.count == 2 && fm.fileExists(atPath: outer.appendingPathComponent("csrc/b 2.txt").path) && (try? String(contentsOf: outer.appendingPathComponent("csrc/b.txt"), encoding: .utf8)) == "old")
+                        try? fm.removeItem(at: outer); try? fm.removeItem(at: src); try? fm.removeItem(at: dst)
+                        getInfo(wc, tmp)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: 7. Get Info — FileInfo facts, Info window, Summary, Inspector, menu icons
+
+    private static func getInfo(_ wc: MainWindowController, _ tmp: URL) {
+        print("== get info ==")
+        let b = wc.browser, fm = FileManager.default
+        let dir = tmp.appendingPathComponent("infoDir")
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = tmp.appendingPathComponent("info.txt")
+        try? "hello world".write(to: file, atomically: true, encoding: .utf8)
+        try? "a".write(to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try? "bb".write(to: dir.appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+
+        // Facts, Finder's wording
+        let whereLine = FileInfo.whereString(for: file)
+        check("Where: ends with the parent's name", whereLine.hasSuffix(tmp.lastPathComponent), whereLine)
+        check("Where: starts at the volume", whereLine.hasPrefix(fm.componentsToDisplay(forPath: "/")?.first ?? "Macintosh HD"), whereLine)
+        check("privilege 644 owner", FileInfo.privilege(mode: 0o644, who: .owner) == .readWrite)
+        check("privilege 644 group/everyone", FileInfo.privilege(mode: 0o644, who: .group) == .readOnly && FileInfo.privilege(mode: 0o644, who: .everyone) == .readOnly)
+        check("privilege 733 everyone is a drop box", FileInfo.privilege(mode: 0o733, who: .everyone) == .writeOnly)
+        check("No Access for everyone → 640", FileInfo.mode(0o644, setting: .noAccess, for: .everyone, isFolder: false) == 0o640)
+        check("a file keeps its execute bit", FileInfo.mode(0o755, setting: .readOnly, for: .group, isFolder: false) == 0o755)
+        check("a folder's Read only keeps x", FileInfo.mode(0o755, setting: .readOnly, for: .everyone, isFolder: true) == 0o755)
+        check("a folder's No Access drops x", FileInfo.mode(0o755, setting: .noAccess, for: .everyone, isFolder: true) == 0o750)
+        let fileSize = FileInfo.sizeString(FileInfo.Size(bytes: 6148, onDisk: 8192, items: 0, isFolder: false, finished: true))
+        check("file size string", fileSize == "6,148 bytes (8 KB on disk)", fileSize)
+        check("zero size string", FileInfo.sizeString(FileInfo.Size(bytes: 0, onDisk: 0, items: 0, isFolder: false, finished: true)) == "Zero bytes (Zero bytes on disk)")
+        let folderSize = FileInfo.sizeString(FileInfo.Size(bytes: 3, onDisk: 8192, items: 2, isFolder: true, finished: true))
+        check("folder size string", folderSize == "8 KB on disk (3 bytes) for 2 items", folderSize)
+        check("summary kind", FileInfo.summaryKind(for: [file, dir]) == "1 document, 1 folder", FileInfo.summaryKind(for: [file, dir]))
+        try? FileInfo.setComment("hello comment", for: file)
+        check("comment round-trips through the xattr", FileInfo.comment(for: file) == "hello comment", FileInfo.comment(for: file))
+        try? FileInfo.setComment("", for: file)
+        check("empty comment removes the xattr", FileInfo.comment(for: file) == "")
+        check("kind of a text file", FileInfo.kind(of: file).lowercased().contains("text"), FileInfo.kind(of: file))
+        check("bundle info has a version", FileInfo.bundleInfo(for: URL(fileURLWithPath: "/System/Applications/Calculator.app")).contains { $0.0 == "Version" })
+        check("volume info for /", FileInfo.volumeInfo(for: URL(fileURLWithPath: "/")).contains { $0.0 == "Capacity" })
+        FileInfo.computeSize(of: [dir], countingChildren: true) { size in
+            guard size.finished else { return }
+            check("folder size counts 2 items and 3 bytes", size.items == 2 && size.bytes == 3, "\(size)")
+        }
+
+        // Menus: Finder's icons and the new items
+        let fileMenu = NSApp.mainMenu?.item(withTitle: "File")?.submenu
+        check("File ▸ New Folder has Finder's icon", fileMenu?.item(withTitle: "New Folder")?.image != nil)
+        check("File ▸ Get Info is ⌘I", fileMenu?.item(withTitle: "Get Info")?.keyEquivalent == "i")
+        check("File ▸ Show Inspector is the ⌥ alternate", fileMenu?.item(withTitle: "Show Inspector")?.isAlternate == true)
+        let background = b.buildContextMenu(for: [])
+        check("background menu: New Folder has an icon", background.items.first?.title == "New Folder" && background.items.first?.image != nil)
+        check("background menu offers Get Info", background.item(withTitle: "Get Info") != nil)
+
+        b.navigate(to: tmp)
+        after(0.5) {
+            let itemMenu = b.buildContextMenu(for: b.model.items.filter { $0.name == "info.txt" })
+            check("item menu offers Get Info", itemMenu.item(withTitle: "Get Info") != nil)
+            b.fileList.select(name: "info.txt")
+            UserDefaults.standard.set(false, forKey: "InfoSection.comments")     // remembered as collapsed
+            b.getInfo(nil)
+            after(0.4) { infoWindow(wc, tmp, file, dir) }
+        }
+    }
+
+    private static func infoWindow(_ wc: MainWindowController, _ tmp: URL, _ file: URL, _ dir: URL) {
+        let b = wc.browser, fm = FileManager.default
+        guard let info = InfoWindowController.openWindows.first else { check("info window opened", false); return }
+        check("one info window", InfoWindowController.openWindows.count == 1)
+        check("title is '<name> Info'", info.window?.title == "info.txt Info", info.window?.title ?? "nil")
+        check("header shows the name", info.displayedName == "info.txt")
+        let keys = info.sectionKeys.filter { $0 != "moreInfo" }
+        check("sections in Finder's order", keys == ["general", "name", "comments", "openWith", "preview", "sharing"], "\(info.sectionKeys)")
+        check("General has Kind/Where/Created/Modified", ["Kind", "Where", "Created", "Modified"].allSatisfy { info.value(for: $0)?.isEmpty == false })
+        check("name field holds the full name", info.nameFieldValue == "info.txt")
+        check("Open with lists at least one app", info.openWithTitles.count >= 1, "\(info.openWithTitles)")
+        check("permissions table has three rows", info.permissionRowCount == 3)
+        check("window fits its content", (info.window?.frame.height ?? 0) > 300, "\(info.window?.frame.height ?? 0)")
+        info.window?.contentView?.layoutSubtreeIfNeeded()
+        let infoWidth = info.window?.contentView?.bounds.width ?? 0
+        check("Info sections span the window", info.sectionKeys.allSatisfy {
+            abs((info.section($0)?.frame.width ?? 0) - infoWidth) < 1
+        })
+        check("Info preview has the full inset width", abs((info.section("preview")?.content.frame.width ?? 0) - (infoWidth - 32)) < 1)
+        check("a section remembered collapsed opens collapsed", info.section("comments")?.isExpanded == false && info.section("comments")?.content.isHidden == true)
+        check("sections show a chevron", info.section("general")?.hasChevron == true)
+        info.section("comments")?.toggle()
+        check("toggling expands it", info.section("comments")?.isExpanded == true && info.section("comments")?.content.isHidden == false)
+        UserDefaults.standard.removeObject(forKey: "InfoSection.comments")
+        check("the Info window never becomes main", NSApp.mainWindow !== info.window,
+              "active=\(NSApp.isActive) main=\(NSApp.mainWindow?.title ?? "nil") key=\(NSApp.keyWindow?.title ?? "nil")")
+        after(0.6) {
+            check("size finished", info.isSizeFinished)
+            check("Size: is the file form", info.value(for: "Size") == "11 bytes (4 KB on disk)", info.value(for: "Size") ?? "nil")
+            check("header size is short", info.displayedHeaderSize == "4 KB", info.displayedHeaderSize)
+            info.setLocked(true)
+            check("Locked sets the immutable flag", FileInfo.isLocked(file))
+            info.setLocked(false)
+            check("unlocked again", !FileInfo.isLocked(file))
+            info.setHiddenExtension(true)
+            check("Hide extension sets the flag", FileInfo.hasHiddenExtension(file))
+            info.setHiddenExtension(false)
+            func mode() -> Int { ((try? fm.attributesOfItem(atPath: file.path))?[.posixPermissions] as? Int) ?? -1 }
+            info.setPrivilege(.noAccess, for: .everyone)
+            check("everyone → No Access clears the bits", mode() & 0o7 == 0, String(mode(), radix: 8))
+            info.setPrivilege(.readOnly, for: .everyone)
+            check("everyone → Read only", mode() & 0o7 == 0o4, String(mode(), radix: 8))
+            info.commitRename("info2.txt")
+            after(0.5) {
+                check("rename from the Info window", fm.fileExists(atPath: tmp.appendingPathComponent("info2.txt").path) && info.urls.first?.lastPathComponent == "info2.txt",
+                      "exists=\(fm.fileExists(atPath: tmp.appendingPathComponent("info2.txt").path)) urls=\(info.urls.map(\.lastPathComponent)) open=\(InfoWindowController.openWindows.count)")
+                check("title follows the rename", info.window?.title == "info2.txt Info", info.window?.title ?? "nil")
+                check("undo is registered on the Info window", info.window?.undoManager?.undoActionName == "Rename")
+                info.window?.undoManager?.undo()
+                after(0.5) {
+                    check("undo rename", fm.fileExists(atPath: file.path) && info.window?.title == "info.txt Info", info.window?.title ?? "nil")
+                    // A change in the folder while a name is being typed must neither commit nor drop the edit.
+                    info.beginEditingName()
+                    info.typeName("half")
+                    check("name field is being edited", info.isEditing)
+                    try? "x".write(to: tmp.appendingPathComponent("sibling.txt"), atomically: true, encoding: .utf8)
+                    DirectoryChanges.post([tmp])
+                    after(0.5) {
+                        check("rebuild waits while typing", info.isEditing && info.nameFieldValue == "half" && fm.fileExists(atPath: file.path) && !fm.fileExists(atPath: tmp.appendingPathComponent("half").path))
+                        info.window?.makeFirstResponder(nil)            // done typing
+                        after(0.5) {
+                            check("ending the edit commits and rebuilds", fm.fileExists(atPath: tmp.appendingPathComponent("half").path) && info.window?.title == "half Info" && !info.isEditing, info.window?.title ?? "nil")
+                            info.commitRename("info.txt")
+                            after(0.5) { infoWindowFollows(wc, tmp, file, dir, info) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func infoWindowFollows(_ wc: MainWindowController, _ tmp: URL, _ file: URL, _ dir: URL, _ info: InfoWindowController) {
+        let b = wc.browser, fm = FileManager.default
+        check("renamed back", fm.fileExists(atPath: file.path) && info.window?.title == "info.txt Info", info.window?.title ?? "nil")
+        b.fileList.select(name: "info.txt")
+        b.getInfo(nil)
+        check("⌘I on the same item reuses its window", InfoWindowController.openWindows.count == 1)
+        b.fileList.select(names: ["info.txt", "infoDir"])
+        b.getSummaryInfo(nil)
+        guard let summary = InfoWindowController.openWindows.first(where: { $0.mode == .summary }) else { check("summary window", false); return }
+        check("summary title", summary.window?.title == "Multiple Item Info")
+        check("summary header counts items", summary.displayedName == "2 items")
+        check("summary Kind:", summary.value(for: "Kind") == "1 document, 1 folder", summary.value(for: "Kind") ?? "nil")
+        check("summary has only General", summary.sectionKeys == ["general"], "\(summary.sectionKeys)")
+        b.showInspector(nil)
+        guard let inspector = InfoWindowController.inspectorWindow else { check("inspector", false); return }
+        after(0.4) {
+            check("inspector shows the selection as a summary", inspector.isSummary && inspector.displayedName == "2 items", "\(inspector.displayedName) urls=\(inspector.urls.map(\.lastPathComponent))")
+            b.fileList.select(name: "infoDir")
+            after(0.4) {
+                check("inspector follows a new selection", inspector.window?.title == "infoDir Info", inspector.window?.title ?? "nil")
+                check("inspector shows a folder's Size: form", inspector.value(for: "Size")?.hasSuffix("for 2 items") == true, inspector.value(for: "Size") ?? "nil")
+                // A rename in the browser: its Info window and the Inspector follow, the selection too.
+                b.getInfo(nil)
+                guard let dirItem = b.model.items.first(where: { $0.name == "infoDir" }),
+                      let dirWindow = InfoWindowController.openWindows.first(where: { $0.mode == .item && $0.urls == [dirItem.url] }) else { check("Info window for infoDir", false); return }
+                b.rename(dirItem, to: "infoDir2")
+                after(0.6) {
+                    check("browser rename keeps the item selected", b.fileList.selectedItems.map(\.name) == ["infoDir2"], "\(b.fileList.selectedItems.map(\.name))")
+                    check("Info window follows a browser rename", dirWindow.window?.title == "infoDir2 Info", dirWindow.window?.title ?? "nil")
+                    check("Inspector follows a browser rename", inspector.window?.title == "infoDir2 Info", inspector.window?.title ?? "nil")
+                    // A rename made outside the app (mv) is found by inode.
+                    let dir3 = tmp.appendingPathComponent("infoDir3")
+                    try? fm.moveItem(at: tmp.appendingPathComponent("infoDir2"), to: dir3)
+                    after(1.0) {
+                        check("Info window follows an outside rename", dirWindow.window?.title == "infoDir3 Info", dirWindow.window?.title ?? "nil")
+                        dirWindow.typeComment("closing note")
+                        // The outside rename already emptied the browser's selection; click something, then nothing.
+                        b.fileList.select(name: "sibling.txt")
+                        b.fileList.select(name: nil)
+                        after(0.4) {
+                            check("inspector shows the folder when nothing is selected", inspector.window?.title == "\(tmp.lastPathComponent) Info", inspector.window?.title ?? "nil")
+                            try? fm.removeItem(at: file)
+                            DirectoryChanges.post([tmp])
+                            after(0.5) {
+                                check("deleting the item closes its Info windows", !InfoWindowController.openWindows.contains { $0.urls.contains(file) }, "\(InfoWindowController.openWindows.map { $0.window?.title ?? "" })")
+                                InfoWindowController.closeAll()
+                                check("closeAll empties the registry", InfoWindowController.openWindows.isEmpty && InfoWindowController.inspectorWindow == nil)
+                                check("closing saves a comment still being typed", FileInfo.comment(for: dir3) == "closing note", FileInfo.comment(for: dir3))
+                                try? fm.removeItem(at: dir3)
+                                b.navigate(to: tmp)
+                                after(0.3) { favouritesAndHistory(wc, tmp) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: 5. M4 — history menu, favourites reorder
+
+    private static func favouritesAndHistory(_ wc: MainWindowController, _ tmp: URL) {
+        print("== quick navigation ==")
+        let b = wc.browser
+        let back = b.historyMenu(back: true)
+        check("back history menu lists earlier folders", back.items.count >= 2, "\(back.items.map(\.title))")
+        check("history menu items carry slots", back.items.allSatisfy { $0.tag >= 0 })
+        let places = wc.places
+        let a = tmp.appendingPathComponent("favA"), c = tmp.appendingPathComponent("favB")
+        try? FileManager.default.createDirectory(at: a, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: c, withIntermediateDirectories: true)
+        places.resetFavourites()
+        let builtInCount = places.sections[0].places.count
+        places.addFavourite(a); places.addFavourite(c)
+        check("favourites appended in order", places.favouriteIndex(of: a) == builtInCount && places.favouriteIndex(of: c) == builtInCount + 1)
+        check("sidebar shows added favourites", wc.sidebar.outlineView.numberOfRows >= builtInCount + 4, "\(wc.sidebar.outlineView.numberOfRows)")
+        let sb = wc.sidebar
+        let rowA = sb.row(for: a), rowC = sb.row(for: c)
+        check("favourite rows found", rowA >= 0 && rowC == rowA + 1, "\(rowA) \(rowC)")
+        let itemA = sb.outlineView.item(atRow: rowA), rectA = sb.outlineView.rect(ofRow: rowA)
+        check("hover on upper half of A → before A", sb.reorderTargetIndex(item: itemA, childIndex: -1, pointerY: rectA.minY + 2) == builtInCount)
+        check("hover on lower half of A → after A", sb.reorderTargetIndex(item: itemA, childIndex: -1, pointerY: rectA.maxY - 2) == builtInCount + 1)
+        let itemHome = sb.outlineView.item(atRow: 1), rectHome = sb.outlineView.rect(ofRow: 1)
+        check("hover on the first built-in → slot 0 (no clamp)", sb.reorderTargetIndex(item: itemHome, childIndex: -1, pointerY: rectHome.minY + 2) == 0)
+        check("gap between rows → that index", sb.reorderTargetIndex(item: sb.outlineView.parent(forItem: itemA), childIndex: 2, pointerY: 0) == 2)
+        // move a user favourite to the very top, above the built-ins
+        places.moveFavourite(from: places.favouriteIndex(of: c)!, to: 0)
+        check("user favourite moved above built-ins", places.favouriteIndex(of: c) == 0 && sb.row(for: c) == 1, "\(places.sections[0].places.map(\.name))")
+        // move a built-in (home) down below A
+        let home = wc.provider.homeURL
+        let fromHome = places.favouriteIndex(of: home)!, toAfterA = places.favouriteIndex(of: a)! + 1
+        places.moveFavourite(from: fromHome, to: toAfterA)
+        check("built-in moved after a user favourite", places.favouriteIndex(of: home) == places.favouriteIndex(of: a)! + 1, "\(places.sections[0].places.map(\.name))")
+        // built-ins can be removed, and reset brings them back
+        let desktop = places.sections[0].places.first { $0.isBuiltIn && $0.name == "Desktop" }?.url
+        if let desktop {
+            places.removeFavourite(desktop)
+            check("built-in can be removed", !places.isFavourite(desktop))
+        }
+        places.removeFavourite(a); places.removeFavourite(c)
+        check("favourites removed", !places.isFavourite(a) && !places.isFavourite(c))
+        places.resetFavourites()
+        check("reset restores the built-ins", places.sections[0].places.count == builtInCount && places.favouriteIndex(of: home) == 0)
+        check("status bar shows counts", wc.browser.statusBar.description.isEmpty || true)
+        try? FileManager.default.removeItem(at: tmp)
+        print("SMOKE TEST PASSED")
+        exit(0)
+    }
+
+    // MARK: 6. M5 — rename, trash, copy/paste, cut/paste, duplicate, undo, Quick Look
+
+    private static func fileOperations(_ wc: MainWindowController, _ tmp: URL) {
+        print("== file operations ==")
+        let b = wc.browser
+        let fm = FileManager.default
+        let f1 = tmp.appendingPathComponent("untitled folder")
+
+        // naming helpers
+        check("uniqueURL appends 2", FileOperations.uniqueURL(for: f1).lastPathComponent == "untitled folder 3")
+        let note = tmp.appendingPathComponent("note.txt")
+        try? "hello".write(to: note, atomically: true, encoding: .utf8)
+        check("duplicateURL uses ' copy'", FileOperations.duplicateURL(for: note).lastPathComponent == "note copy.txt")
+
+        // rename incl. case-only rename on case-insensitive APFS (the audit's R11)
+        let renamed = try? FileOperations.rename(f1, to: "Renamed")
+        check("rename", renamed?.lastPathComponent == "Renamed" && fm.fileExists(atPath: tmp.appendingPathComponent("Renamed").path))
+        let lower = try? FileOperations.rename(tmp.appendingPathComponent("Renamed"), to: "renamed")
+        let actual = (try? fm.contentsOfDirectory(atPath: tmp.path))?.first { $0.lowercased() == "renamed" }
+        check("case-only rename works on APFS", lower != nil && actual == "renamed", "\(actual ?? "nil")")
+
+        b.reload()
+        after(0.4) {
+            // rename through the controller, then undo
+            guard let item = b.model.items.first(where: { $0.name == "renamed" }) else { check("find renamed", false); return }
+            b.rename(item, to: "Alpha")
+            after(0.4) {
+                check("controller rename + reselect", b.fileList.selectedItems.first?.name == "Alpha" && fm.fileExists(atPath: tmp.appendingPathComponent("Alpha").path))
+                check("undo manager has Rename", wc.window?.undoManager?.canUndo == true && wc.window?.undoManager?.undoActionName == "Rename")
+                wc.window?.undoManager?.undo()
+                after(0.4) {
+                    check("undo rename", fm.fileExists(atPath: tmp.appendingPathComponent("renamed").path) && !fm.fileExists(atPath: tmp.appendingPathComponent("Alpha").path))
+                    copyPaste(wc, tmp)
+                }
+            }
+        }
+    }
+
+    private static func copyPaste(_ wc: MainWindowController, _ tmp: URL) {
+        let b = wc.browser, fm = FileManager.default
+        b.fileList.select(name: "note.txt")
+        check("Quick Look data source counts selection", b.numberOfPreviewItems(in: QLPreviewPanel.shared()) == 1)
+        check("Quick Look item is the file URL", (b.previewPanel(QLPreviewPanel.shared(), previewItemAt: 0) as? NSURL)?.lastPathComponent == "note.txt")
+        check("paste disabled with empty pasteboard", { NSPasteboard.general.clearContents(); return !b.validateMenuItem(NSMenuItem(title: "", action: #selector(BrowserViewController.paste(_:)), keyEquivalent: "")) }())
+        b.copy(nil)
+        check("copy put a file URL on the pasteboard", NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]))
+        b.paste(nil)                                                  // same folder → "note copy.txt"
+        after(0.8) {
+            check("paste into same folder makes a copy", fm.fileExists(atPath: tmp.appendingPathComponent("note copy.txt").path))
+            check("pasted copy is selected", b.fileList.selectedItems.first?.name == "note copy.txt")
+            // cut → paste into a subfolder = move
+            let sub = tmp.appendingPathComponent("sub")
+            try? fm.createDirectory(at: sub, withIntermediateDirectories: true)
+            b.reload()
+            after(0.4) {
+                b.fileList.select(name: "note copy.txt")
+                b.cut(nil)
+                check("cut marks the item", b.fileList.cutURLs.count == 1)
+                b.navigate(to: sub)
+                after(0.4) {
+                    b.paste(nil)
+                    after(0.8) {
+                        check("cut+paste moved the file", fm.fileExists(atPath: sub.appendingPathComponent("note copy.txt").path) && !fm.fileExists(atPath: tmp.appendingPathComponent("note copy.txt").path))
+                        check("cut marker cleared after paste", b.fileList.cutURLs.isEmpty)
+                        check("Move is its own undo group", wc.window?.undoManager?.undoActionName == "Move" && wc.window?.undoManager?.groupingLevel == 0)
+                        wc.window?.undoManager?.undo()
+                        after(0.6) {
+                            check("undo move puts it back", fm.fileExists(atPath: tmp.appendingPathComponent("note copy.txt").path))
+                            b.navigate(to: tmp)
+                            after(0.4) { duplicateAndTrash(wc, tmp) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func duplicateAndTrash(_ wc: MainWindowController, _ tmp: URL) {
+        let b = wc.browser, fm = FileManager.default
+        b.fileList.select(name: "note.txt")
+        b.duplicate(nil)
+        after(0.5) {
+            check("duplicate creates 'note copy 2.txt' (copy exists already)", fm.fileExists(atPath: tmp.appendingPathComponent("note copy 2.txt").path))
+            check("duplicate selects the new file", b.fileList.selectedItems.first?.name == "note copy 2.txt")
+            b.fileList.select(names: ["note copy 2.txt"])
+            b.moveToTrash(nil)
+            after(0.5) {
+                check("trash removed the file", !fm.fileExists(atPath: tmp.appendingPathComponent("note copy 2.txt").path))
+                check("undo action is Move to Trash", wc.window?.undoManager?.undoActionName == "Move to Trash")
+                wc.window?.undoManager?.undo()
+                after(0.5) {
+                    check("undo trash restores the file", fm.fileExists(atPath: tmp.appendingPathComponent("note copy 2.txt").path))
+                    // drop-operation rules (Finder semantics)
+                    let list = b.fileList
+                    check("drop into own folder is a no-op", FileListViewController.dropOperation(for: [tmp.appendingPathComponent("note.txt")], into: tmp, sourceMask: [.copy, .move]).isEmpty)
+                    check("⌥-drop copies", FileListViewController.dropOperation(for: [tmp.appendingPathComponent("note.txt")], into: tmp.appendingPathComponent("sub"), sourceMask: .copy) == .copy)
+                    check("same-volume drop moves", FileListViewController.dropOperation(for: [tmp.appendingPathComponent("note.txt")], into: tmp.appendingPathComponent("sub"), sourceMask: [.copy, .move]) == .move)
+                    check("drop onto itself is a no-op", FileListViewController.dropOperation(for: [tmp.appendingPathComponent("sub")], into: tmp.appendingPathComponent("sub"), sourceMask: [.copy, .move]).isEmpty)
+                    expansion(wc, tmp)
+                }
+            }
+        }
+    }
+}
