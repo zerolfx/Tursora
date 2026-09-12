@@ -36,6 +36,6 @@ strings /System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/Me
 
 ## 验证边界
 
-`SettingsSmokeTests.run()` 使用独立临时 UserDefaults domain 和 NotificationCenter，覆盖默认值、持久化、通知、冲突/无效绑定、重置、设置控件写入和刷新、录制事件与 Escape，以及窗口内布局。不打开设置窗口、不触发外部程序、终端或真实 ZIP 浏览。主流程的 `SmokeTest.preferencesIntegration` 另覆盖实际菜单绑定、实验开关入口、两种文件视图的扩展名显示与重命名真名；最终连续三轮及打包界面验证状态见 HANDOFF。
+`SettingsSmokeTests.run()` 使用独立临时 UserDefaults domain 和 NotificationCenter，覆盖默认值、持久化、通知、冲突/无效绑定、重置、设置控件写入和刷新、录制事件与 Escape，以及窗口内布局。不打开设置窗口、不触发外部程序、终端或真实 ZIP 浏览。主流程的 `SmokeTest.preferencesIntegration` 另覆盖实际菜单绑定、实验开关入口、两种文件视图的扩展名显示与重命名真名；当前验证状态见 [HANDOFF](../HANDOFF.md)。
 
-同 pane ZIP 替换了早期独立窗口实现，当前导航与只读行为的 computer-use 结果见[本轮记录](computer-use-2026-09-12-inline-zip.md)；最终 739 项 smoke 已连续三轮通过。截图为两个实验均关闭的示例状态；收尾恢复用户原有偏好为扩展名开、⌘F、终端关、ZIP 浏览开，不改变新安装时两个实验默认关闭的规则。
+同 pane ZIP 与设置的实际操作、示例截图和偏好恢复记录见[实机记录](computer-use-2026-09-12-inline-zip.md)。默认值按本文的数据表定义，不从演示截图或某位用户的当前偏好推断。

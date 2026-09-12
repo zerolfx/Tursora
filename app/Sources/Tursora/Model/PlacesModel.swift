@@ -23,8 +23,6 @@ final class PlacesModel {
     static let didChange = Notification.Name("PlacesModel.didChange")
     private func notify() { NotificationCenter.default.post(name: Self.didChange, object: self) }
 
-    private let defaultsKey = "favouriteBookmarks"
-
     init() {
         rebuild()
         NSWorkspace.shared.notificationCenter.addObserver(

@@ -1,16 +1,23 @@
 # Changelog
 
-Historical entries record development dates and their smoke-test counts where available. Current unreleased changes and their completed verification are tracked separately (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
+Historical entries record development dates and their smoke-test counts where available. Verification applies to the revision and scope recorded with each entry; integrating newer changes requires fresh checks (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
 
 ## Unreleased — persistent folder view settings
 
-- Verification: 854 full smoke checks passed three consecutive runs after the packaged-app layout fix, each with exit 0 and empty stderr; debug/release builds and strict codesign passed. Packaged-app observations and final screenshots are tracked in [the feature verification record](docs/research/computer-use-2026-09-12-directory-views.md).
+- Feature revision `eac9ffc` passed 854 full smoke checks three consecutive times after the packaged-app layout fix. After incorporating main revision `ae5e47a`, the integrated tree again passed 854 checks three consecutive times, each with exit 0 and empty stderr; debug/release builds and strict codesign passed. Revision-specific packaged-app observations, screenshots and the pending integrated UI recheck are tracked in [the feature verification record](docs/research/computer-use-2026-09-12-directory-views.md).
 - Keep the Name column visible when restored settings switch a narrow pane from grouped icons to a list, while preserving intentional horizontal scrolling.
 
 - Remember each folder's view mode, sorting and direction, separate list/icon zoom steps, grouping, hidden files and previews across navigation, new tabs/panes and application restarts.
 - Add Settings and View menu choices for remembering each folder or using one default, plus explicit commands to save the current settings as default and restore a folder. Existing same-folder panes remain independent during ordinary per-folder edits; unified edits and explicit default/policy/reset commands synchronize affected panes.
 - Store versioned, tolerant JSON in Application Support with immediate memory updates and coalesced atomic writes. Normalize local paths and symlinks; preserve unsupported files until an effective mutation. Keep ZIP logical locations, snapshot paths, filters, selections, scroll and history out of folder records.
-- Add isolated model/storage and browser smoke coverage. This feature's final build, three-run smoke count, packaged-app screenshots and signature results are tracked in [HANDOFF](docs/HANDOFF.md); the 739-check baseline below does not verify these changes.
+- Add isolated model/storage and browser smoke coverage. Revision-specific build, smoke, packaged-app and signature results are tracked in [HANDOFF](docs/HANDOFF.md); the historical 739-check ZIP baseline does not verify this feature or the merged tree.
+
+## Unreleased — cleanup and product page
+
+- Remove an unused PlacesModel constant and simplify the archive readable-URL helper's always-enabled option without changing application behavior.
+- Consolidate current verification status in HANDOFF and keep detailed evidence in dated research records.
+- Improve the product page's secondary-text contrast and prevent the header from clipping content after direct anchor navigation.
+- Add a Chinese product page for editable paths, tabs, split panes and read-only ZIP browsing, using actual application screenshots. A dependency-free Python builder produces portable static output and validates local references. Desktop and narrow-screen browser checks cover workflow selection, screenshot dialogs, direct fragments and the no-JavaScript fallback; the page is locally previewed and has not been deployed. See [the recorded scope](docs/research/computer-use-2026-09-12-inline-zip.md#整理阶段与产品页).
 
 ## 2026-09-12 baseline — settings, native services and optional workspaces
 
@@ -34,7 +41,7 @@ Historical entries record development dates and their smoke-test counts where av
 - Require documentation and actual application screenshots to evolve with implementation, while keeping automated verification and computer-use evidence distinct.
 - Preserve exact file selections through appearance and external refreshes, including same-named files in expanded folders; Escape cancels inline rename in both views.
 - Rebuild stale icon-grid layouts when grouping changes; use the scroll viewport when verifying Info section widths.
-- Verification: final debug and release builds passed. Current packaged-app computer-use checks and all 13 screenshot groups are complete within [the recorded scope](docs/research/computer-use-2026-09-12-inline-zip.md). After correcting archive path remapping, 739 smoke checks passed three consecutive runs, each with exit status 0 and empty stderr. The latest release build 5 was rebuilt and passed strict codesign verification. [Older evidence](docs/research/computer-use-2026-09-12.md) describes the previous standalone ZIP window.
+- Verification and its limits are recorded in [the dated computer-use log](docs/research/computer-use-2026-09-12-inline-zip.md); [earlier evidence](docs/research/computer-use-2026-09-12.md) covers the previous standalone ZIP window.
 
 ## 2026-09-12 — application icon and squashed baseline
 
