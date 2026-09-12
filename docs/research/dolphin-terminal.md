@@ -25,4 +25,13 @@ SPM 的 `SwiftTerm_SwiftTerm.bundle` 和 MIT 许可证随应用一起打包。�
 
 ## 验证范围
 
-`TerminalSmokeTests` 不启动用户登录 shell、不创建终端 UI。它验证路径作为独立参数传递、headless 模式不启动面板进程，并使用临时 HOME、禁用 ENV 配置的 `/bin/sh -f -i` 实际检查 PTY、`pwd` / `cd`、Ctrl-C 与子进程回收。真实设置开关、F4、显示/隐藏、键盘焦点及关闭会话还需要打包应用的 computer-use 检查。
+`TerminalSmokeTests` 不启动用户登录 shell、不创建终端 UI。它验证路径作为独立参数传递、headless 模式不启动面板进程，并使用临时 HOME、禁用 ENV 配置的 `/bin/sh -f -i` 实际检查 PTY、`pwd` / `cd`、Ctrl-C 与子进程回收。
+
+2026-09-12 打包应用的 computer-use 实测：
+
+- F4 打开终端后，zsh 正常渲染，`pwd` 显示正确目录；运行 `sleep 30` 可用 Ctrl-C 中断。
+- 保留尚未提交的 `printf terminal-input-kept`，通过浏览器导航到含空格的 `Sample Files` 目录后，输入内容没有变化，也没有自动注入 `cd`。
+- 点击 Restart in Current Folder 后，`pwd` 显示新目录；运行 `sleep 30` 时再点击 Restart 会显示确认，Cancel 有效。
+- F4 隐藏后重新打开，获得新会话。
+
+上述实测不涵盖真实远程连接或关闭所属浏览窗口后的会话回收；这些仍需单独验证，不能由 F4 的结果代替。

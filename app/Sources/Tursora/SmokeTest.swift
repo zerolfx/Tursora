@@ -945,24 +945,88 @@ enum SmokeTest {
         b.fileList.scrollView.reflectScrolledClipView(clip)
         check("getter never reports a bounce as negative", b.fileList.scrollOffset == 0)
         b.fileList.scrollOffset = -80
-        check("setting a negative offset lands at the top", clip.bounds.origin.y == 0, "\(clip.bounds.origin.y)")
+        check("setting a negative offset lands at the top", b.fileList.scrollOffset == 0, "\(clip.bounds.origin.y)")
         b.fileList.scrollOffset = 100_000
-        let maxY = max(0, (b.fileList.scrollView.documentView?.frame.height ?? 0) - clip.bounds.height)
+        var bottom = clip.bounds
+        bottom.origin.y = 100_000
+        let maxY = clip.constrainBoundsRect(bottom).origin.y
         check("setting a huge offset clamps to the end", clip.bounds.origin.y == maxY, "\(clip.bounds.origin.y) vs \(maxY)")
         b.fileList.scrollOffset = 0
-        // the same guarantee after a real navigation round trip with a poisoned history entry
-        b.history.recordViewState(selectedName: nil, scrollOffset: -120)
+        // The same top-relative position survives a real navigation round trip.
         b.goUp()
         after(0.4) {
             b.goBack()
             after(0.4) {
-                check("restored offset is clamped, first row at the top", b.fileList.scrollView.contentView.bounds.origin.y >= 0 && b.fileList.tableView.rect(ofRow: 0).minY == 0, "\(b.fileList.scrollView.contentView.bounds.origin.y)")
+                check("restored offset is clamped, first row at the top", b.fileList.scrollOffset == 0 && b.fileList.tableView.rect(ofRow: 0).minY == 0, "\(b.fileList.scrollView.contentView.bounds.origin.y)")
                 let grid = b.iconGrid
                 grid.scrollOffset = -50
                 check("icon grid clamps too", grid.scrollView.contentView.bounds.origin.y >= 0)
-                groupingFromFavorites(wc, tmp) { groups(wc, tmp) }
+                listInsetRestoration(wc, tmp) { groupingFromFavorites(wc, tmp) { groups(wc, tmp) } }
             }
         }
+    }
+
+    /// A real outline document with a controlled native inset reproduces the
+    /// macOS header coordinate system even on older CI hosts.
+    private static func listInsetRestoration(_ wc: MainWindowController, _ tmp: URL,
+                                             completion: @escaping () -> Void) {
+        let fixture = tmp.appendingPathComponent("list-scroll-insets")
+        try! FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: false)
+        for index in 0..<40 {
+            try! Data().write(to: fixture.appendingPathComponent(String(format: "row-%02d.txt", index)))
+        }
+        let model = DirectoryModel(provider: wc.provider)
+        let list = FileListViewController(model: model)
+        list.loadViewIfNeeded()
+        list.view.frame = NSRect(x: 0, y: 0, width: 320, height: 180)
+        model.load(fixture) {
+            list.reloadData()
+            list.view.layoutSubtreeIfNeeded()
+            let clip = list.scrollView.contentView
+            clip.automaticallyAdjustsContentInsets = false
+            clip.contentInsets = NSEdgeInsets(top: 34, left: 0, bottom: 0, right: 0)
+            list.scrollOffset = 0
+            check("list native header inset is the logical top", abs(clip.bounds.minY + 34) < 0.5 && list.scrollOffset == 0, "\(clip.bounds)")
+            list.scrollOffset = 120
+            let offset = list.scrollOffset
+            check("list reports a nonzero top-relative distance", abs(offset - 120) < 0.5, "\(offset)")
+            list.reloadData()
+            list.scrollOffset = offset
+            check("list restores nonzero distance through reload", abs(list.scrollOffset - 120) < 0.5, "\(list.scrollOffset)")
+            var horizontal = clip.bounds
+            horizontal.origin.x = 70
+            clip.scroll(to: clip.constrainBoundsRect(horizontal).origin)
+            let savedX = clip.bounds.minX
+            list.scrollOffset = 0
+            check("list vertical restoration preserves horizontal scroll", savedX > 0 && abs(clip.bounds.minX - savedX) < 0.5, "\(savedX) -> \(clip.bounds.minX)")
+            list.scrollOffset = 100_000
+            let oldBottom = list.scrollOffset
+            model.nameFilter = "row-00"
+            list.reloadData()
+            list.scrollOffset = oldBottom
+            check("shortened list clamps to its inset-aware top", list.scrollOffset == 0 && abs(clip.bounds.minY + 34) < 0.5, "\(clip.bounds)")
+            completion()
+        }
+    }
+
+    /// Compare rendered rows with the actual native header, not a duplicate of
+    /// the scroll-offset formula. AX row counts alone missed this regression.
+    private static func checkListHeaderGeometry(_ browser: BrowserViewController, _ stage: String) {
+        guard browser.viewMode == .details else { return }
+        let list = browser.fileList, table = list.tableView
+        list.view.layoutSubtreeIfNeeded()
+        let clip = list.scrollView.contentView
+        let rows = (0..<table.numberOfRows).map { table.rect(ofRow: $0) }
+        let header = table.headerView.map { $0.convert($0.bounds, to: table) } ?? .zero
+        let validRows = rows.enumerated().allSatisfy { index, rect in
+            rect.height > 0 && table.row(at: NSPoint(x: rect.midX, y: rect.midY)) == index
+                && (index == 0 || rect.minY >= rows[index - 1].maxY)
+        }
+        let first = rows.first ?? .zero
+        let firstVisible = first.height > 0 && !first.intersects(header)
+            && table.visibleRect.intersects(first)
+        check("\(stage): first list row stays below header and rows remain hittable", validRows && firstVisible,
+              "clip=\(clip.bounds) inset=\(clip.contentInsets) header=\(header) rows=\(rows)")
     }
 
     // MARK: 4h. Finder's Use Groups / Group By
@@ -1456,11 +1520,13 @@ enum SmokeTest {
                 awaitCondition("\(mode): More creates ZIP and registers undo", condition: {
                     fm.fileExists(atPath: zip.path) && undo.undoActionName == "Compress" && active.model.items.contains { $0.url.standardizedFileURL == zip.standardizedFileURL }
                 }) {
+                    checkListHeaderGeometry(active, "\(mode) compression")
                     check("\(mode): compression preserves source and inactive pane", (try? String(contentsOf: source)) == "archive UI contents" && wc.browser === active && inactive.currentURL == root && original !== active)
                     undo.undo()
                     awaitCondition("\(mode): undo compression removes only ZIP", condition: { !fm.fileExists(atPath: zip.path) && fm.fileExists(atPath: source.path) }) {
                         undo.redo()
                         awaitCondition("\(mode): redo compression restores ZIP", condition: { fm.fileExists(atPath: zip.path) && active.model.items.contains { $0.url.standardizedFileURL == zip.standardizedFileURL } }) {
+                            checkListHeaderGeometry(active, "\(mode) compression redo")
                             active.fileView.select(names: [zip.lastPathComponent])
                             let extract = menu.items.first { ($0.representedObject as? String) == MainMenu.FileAction.extract.rawValue }!
                             check("\(mode): ZIP enables extraction in both menus", wc.validateMenuItem(extract) && active.buildContextMenu(for: active.fileView.selectedItems).items.contains { $0.title == "Extract" })
@@ -1471,11 +1537,22 @@ enum SmokeTest {
                                 awaitCondition("\(mode): undo extraction preserves ZIP", condition: { !fm.fileExists(atPath: extracted.path) && fm.fileExists(atPath: zip.path) }) {
                                     undo.redo()
                                     awaitCondition("\(mode): redo extraction restores output", condition: { fm.fileExists(atPath: extracted.path) }) {
-                                        try! fm.removeItem(at: zip)
-                                        try! fm.removeItem(at: extracted)
-                                        undo.removeAllActions()
-                                        active.reload()
-                                        next()
+                                        let generation = active.model.generation
+                                        active.refreshPreservingSelection()
+                                        awaitCondition("\(mode): archive refresh completes", condition: { active.model.generation > generation }) {
+                                            checkListHeaderGeometry(active, "\(mode) extraction redo refresh")
+                                            active.setGroupKey(.none)
+                                            let plainGeneration = active.model.generation
+                                            active.refreshPreservingSelection()
+                                            awaitCondition("\(mode): ungrouped archive refresh completes", condition: { active.model.generation > plainGeneration }) {
+                                                checkListHeaderGeometry(active, "\(mode) ungrouped refresh")
+                                                try! fm.removeItem(at: zip)
+                                                try! fm.removeItem(at: extracted)
+                                                undo.removeAllActions()
+                                                active.reload()
+                                                next()
+                                            }
+                                        }
                                     }
                                 }
                             }

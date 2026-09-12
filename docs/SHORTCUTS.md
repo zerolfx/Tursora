@@ -95,7 +95,7 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | Arrows | Selection; inside the Quick Look panel ←→↑↓ are forwarded to the view so previews browse |
 | Type-select | List view only |
 | ⌘⌫ / ⌥⌘⌫ | Trash / delete immediately |
-| Esc while renaming | Grid: reverts the label. List: an empty, unchanged or `/`-containing name reverts |
+| Esc while renaming | Both views cancel the edit and restore the original filename, even after typing a different valid name |
 
 ## Address bar and completion (`BreadcrumbBar`, `CompletionPopup`)
 

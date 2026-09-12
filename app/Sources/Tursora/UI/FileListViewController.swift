@@ -246,16 +246,27 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         if let first = rows.first { tableView.scrollRowToVisible(first) }
     }
 
-    /// Clamped both ways: NSClipView.scroll(to:) does not constrain, and a
-    /// value captured mid rubber-band (negative) or from a longer listing
-    /// would otherwise leave blank space above or below the rows.
+    /// AppKit may place the real top at a negative y to accommodate its table
+    /// header. History stores distance from that top, not raw clip coordinates.
+    private var topScrollOrigin: CGFloat {
+        let clip = scrollView.contentView
+        var proposed = clip.bounds
+        proposed.origin.y = min(0, tableView.frame.minY)
+            - max(1, clip.bounds.height) - abs(clip.contentInsets.top)
+        return clip.constrainBoundsRect(proposed).origin.y
+    }
+
+    /// Native bounds constraints account for headers, insets and document size.
+    /// Clamping raw y to zero hides the first row after a refresh restores it.
     var scrollOffset: CGFloat {
-        get { max(0, scrollView.contentView.bounds.origin.y) }
+        get { max(0, scrollView.contentView.bounds.origin.y - topScrollOrigin) }
         set {
             scrollView.layoutSubtreeIfNeeded()
-            let maxY = max(0, (scrollView.documentView?.frame.height ?? 0) - scrollView.contentView.bounds.height)
-            scrollView.contentView.scroll(to: NSPoint(x: 0, y: min(max(newValue, 0), maxY)))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
+            let clip = scrollView.contentView
+            var proposed = clip.bounds
+            proposed.origin.y = topScrollOrigin + max(0, newValue)
+            clip.scroll(to: clip.constrainBoundsRect(proposed).origin)
+            scrollView.reflectScrolledClipView(clip)
         }
     }
 
