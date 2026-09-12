@@ -1,7 +1,8 @@
 import AppKit
+import Darwin
 
-/// The file operations behind M5. Trash and rename are synchronous (they are
-/// instant); copy/move run on a background queue and report back on main.
+/// Filesystem mutations. Trash and rename remain synchronous system operations;
+/// copy/move use controlled background tasks and report back on main.
 /// Conflicts are resolved by a handler the UI supplies, called on the main
 /// thread so it can show a sheet.
 enum FileOperations {
@@ -18,18 +19,31 @@ enum FileOperations {
     }
 
     struct Conflict {
+        struct Info {
+            let date: Date?
+            let size: Int64
+            let isDirectory: Bool
+        }
         let source: URL
         let destination: URL
         let kind: Kind
-        /// How many conflicts are still to come in this batch, this one included.
         let remaining: Int
-        var bothFolders: Bool {
-            let isDir = { (u: URL) in (try? u.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])).map { $0.isDirectory == true && $0.isPackage != true } ?? false }
-            return isDir(source) && isDir(destination)
+        let sourceInfo: Info
+        let destinationInfo: Info
+        var bothFolders: Bool { sourceInfo.isDirectory && destinationInfo.isDirectory }
+        init(source: URL, destination: URL, kind: Kind, remaining: Int) {
+            self.source = source; self.destination = destination; self.kind = kind; self.remaining = remaining
+            func info(_ url: URL) -> Info {
+                let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .contentModificationDateKey, .fileSizeKey])
+                return Info(date: values?.contentModificationDate, size: Int64(values?.fileSize ?? 0),
+                            isDirectory: values?.isDirectory == true && values?.isPackage != true && values?.isSymbolicLink != true)
+            }
+            sourceInfo = info(source); destinationInfo = info(destination)
         }
     }
 
     typealias ConflictHandler = (Conflict) -> ConflictDecision
+    typealias AsyncConflictHandler = (Conflict, @escaping (ConflictDecision) -> Void) -> Void
 
     struct Failure {
         let url: URL
@@ -42,6 +56,7 @@ enum FileOperations {
         var moved: [(from: URL, to: URL)] = []
         var failures: [Failure] = []
         var cancelled = false
+        var journal: TransferJournal?
     }
 
     // MARK: - Naming
@@ -55,7 +70,7 @@ enum FileOperations {
         while true {
             let name = ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
             let candidate = dir.appendingPathComponent(name)
-            if !FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            if !itemExists(candidate) { return candidate }
             n += 1
         }
     }
@@ -66,12 +81,12 @@ enum FileOperations {
         let ext = url.pathExtension
         let base = url.deletingPathExtension().lastPathComponent
         let first = dir.appendingPathComponent(ext.isEmpty ? "\(base) copy" : "\(base) copy.\(ext)")
-        if !FileManager.default.fileExists(atPath: first.path) { return first }
+        if !itemExists(first) { return first }
         var n = 2
         while true {
             let name = ext.isEmpty ? "\(base) copy \(n)" : "\(base) copy \(n).\(ext)"
             let candidate = dir.appendingPathComponent(name)
-            if !FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            if !itemExists(candidate) { return candidate }
             n += 1
         }
     }
@@ -113,103 +128,34 @@ enum FileOperations {
 
     // MARK: - Copy / move
 
-    /// Copies or moves `urls` into `directory`. Returns on the main thread.
-    /// Conflicts are asked once each on the main thread unless the handler
-    /// answered "apply to all"; folder-on-folder can merge recursively.
+    /// Starts a task with fixed URLs; the worker owns mutation until completion.
+    /// Existing synchronous conflict handlers remain available for model callers;
+    /// the application supplies asyncConflict to keep its controls responsive.
+    @discardableResult
     static func transfer(_ urls: [URL], to directory: URL, kind: Kind,
                          conflict: @escaping ConflictHandler,
                          progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
-                         completion: @escaping (TransferResult) -> Void) {
+                         task suppliedTask: TransferTask? = nil,
+                         options: TransferOptions = .init(),
+                         asyncConflict: AsyncConflictHandler? = nil,
+                         completion: @escaping (TransferResult) -> Void) -> TransferTask {
+        let task = suppliedTask ?? TransferTask(sources: urls, destination: directory, kind: kind)
+        let engine = TransferEngine(task: task, options: options, conflict: conflict, asyncConflict: asyncConflict, progress: progress)
         DispatchQueue.global(qos: .userInitiated).async {
-            var result = TransferResult()
-            var policy = BatchPolicy(handler: conflict)
-            // Count up front so the dialog can offer "apply to all" only when it matters.
-            policy.remaining = urls.filter { FileManager.default.fileExists(atPath: directory.appendingPathComponent($0.lastPathComponent).path) }.count
-            for (i, src) in urls.enumerated() {
-                let dst = directory.appendingPathComponent(src.lastPathComponent)
-                transferOne(src, to: dst, kind: kind, policy: &policy, result: &result)
-                if result.cancelled { break }
-                if let progress { DispatchQueue.main.async { progress(i + 1, urls.count) } }
-            }
+            let result = engine.run()
             DispatchQueue.main.async { completion(result) }
         }
+        return task
     }
 
-    /// The batch's memory: the handler, and a decision to reuse once the user
-    /// ticked "apply to all".
-    private struct BatchPolicy {
-        let handler: ConflictHandler
-        var remaining = 0
-        var applyAll: ConflictResolution?
+    /// Replay uses exclusive same-volume renames only, so NSUndoManager can
+    /// register its inverse while isUndoing/isRedoing is still true.
+    static func replay(_ journal: TransferJournal) throws -> TransferJournal { try journal.replay() }
 
-        mutating func decide(_ c: Conflict) -> ConflictResolution {
-            if let applyAll { return applyAll }
-            let decision = DispatchQueue.main.sync { handler(c) }
-            if decision.applyToAll { applyAll = decision.resolution }
-            return decision.resolution
-        }
-    }
-
-    private static func transferOne(_ src: URL, to dstIn: URL, kind: Kind,
-                                    policy: inout BatchPolicy, result: inout TransferResult) {
-        let fm = FileManager.default
-        var dst = dstIn
-        if dst.standardizedFileURL == src.standardizedFileURL {
-            // Copying onto itself: Finder makes a "copy"; moving is a no-op.
-            if kind == .copy { dst = duplicateURL(for: src) } else { return }
-        } else if fm.fileExists(atPath: dst.path) {
-            let conflict = Conflict(source: src, destination: dst, kind: kind, remaining: max(policy.remaining, 1))
-            policy.remaining = max(policy.remaining - 1, 0)
-            switch policy.decide(conflict) {
-            case .cancel: result.cancelled = true; return
-            case .skip: return
-            case .keepBoth: dst = uniqueURL(for: dst)
-            case .replace:
-                do { try fm.removeItem(at: dst) }
-                catch { result.failures.append(Failure(url: src, error: error)); return }
-            case .merge:
-                guard conflict.bothFolders else { dst = uniqueURL(for: dst); break }
-                merge(src, into: dst, kind: kind, policy: &policy, result: &result)
-                return
-            }
-        }
-        do {
-            switch kind {
-            case .copy: try fm.copyItem(at: src, to: dst); result.created.append(dst)
-            case .move: try fm.moveItem(at: src, to: dst); result.moved.append((src, dst))
-            }
-        } catch {
-            result.failures.append(Failure(url: src, error: error))
-        }
-    }
-
-    /// Finder's Merge: bring the source folder's children into the existing
-    /// destination folder, asking about (or auto-resolving) child conflicts
-    /// with the same batch policy. A move removes the emptied source folder.
-    private static func merge(_ src: URL, into dst: URL, kind: Kind,
-                              policy: inout BatchPolicy, result: inout TransferResult) {
-        let fm = FileManager.default
-        let children = (try? fm.contentsOfDirectory(at: src, includingPropertiesForKeys: nil, options: [])) ?? []
-        policy.remaining += children.filter { fm.fileExists(atPath: dst.appendingPathComponent($0.lastPathComponent).path) }.count
-        for child in children {
-            transferOne(child, to: dst.appendingPathComponent(child.lastPathComponent), kind: kind, policy: &policy, result: &result)
-            if result.cancelled { return }
-        }
-        if kind == .move, ((try? fm.contentsOfDirectory(atPath: src.path)) ?? []).isEmpty {
-            try? fm.removeItem(at: src)
-            result.moved.append((src, dst))
-        }
-    }
-
-    /// Duplicate in place ("… copy"). Synchronous; duplicates are usually small.
-    static func duplicate(_ urls: [URL]) -> ([URL], [Failure]) {
-        var created: [URL] = []; var failures: [Failure] = []
-        for src in urls {
-            let dst = duplicateURL(for: src)
-            do { try FileManager.default.copyItem(at: src, to: dst); created.append(dst) }
-            catch { failures.append(Failure(url: src, error: error)) }
-        }
-        return (created, failures)
+    /// fileExists follows links and misses a dangling symlink conflict.
+    static func itemExists(_ url: URL) -> Bool {
+        var info = stat()
+        return lstat(url.path, &info) == 0
     }
 
     // MARK: - Standard conflict dialog (Finder's, rebuilt — macOS has no public one)
@@ -221,6 +167,7 @@ enum FileOperations {
 
     /// One alert per conflict; "Apply to all" appears when more are coming.
     static func askConflict(in window: NSWindow?, _ c: Conflict) -> ConflictDecision {
+        if SmokeTest.isRequested { return ConflictDecision(resolution: .cancel) }
         let verb = c.kind == .move ? "moving" : "copying"
         let name = c.destination.lastPathComponent
         let existing = describe(c.destination), incoming = describe(c.source)

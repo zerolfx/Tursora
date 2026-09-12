@@ -651,6 +651,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: - NSWindowDelegate
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        let tasks = TransferTasksWindowController.shared
+        guard tasks.hasActiveTasks(ownedBy: sender) else { return true }
+        tasks.cancelTasks(ownedBy: sender) { [weak self] in self?.window?.close() }
+        return false
+    }
+
     func windowWillClose(_ notification: Notification) {
         removeEventMonitors()
         hideTerminal()

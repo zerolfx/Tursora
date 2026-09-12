@@ -1,5 +1,7 @@
 # Shortcuts, menus and gestures
 
+File Operations is available from the Window menu. Long transfers open its task window automatically; each row has Pause / Resume / Cancel and inline conflict choices. Closing this task window hides it. Closing the originating browser window cancels its active transfers and waits for cleanup; quitting does the same for all transfers. No new key binding is assigned.
+
 Everything the user can press or click, as implemented. Menu items use `nil` targets, so the responder chain picks the handler (see [ARCHITECTURE.md §4](ARCHITECTURE.md)). Where a binding deliberately follows Dolphin or Finder, it says so; the planned changes are in [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md).
 
 ## Menu bar (`MainMenu.swift`)
