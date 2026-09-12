@@ -18,7 +18,25 @@
 
 目录视图与文件操作任务组合（含审阅修复）已完成 `swift build`，1,063 项 smoke 连续三轮通过、stderr 为空；站点构建通过。旧 ZIP 测试改为追踪本次操作新增的窗口身份，避免其他测试窗口异步关闭导致总数判断不稳定，并覆盖同数换窗的反例。
 
-搜索组合检查尚在进行；最终连续三轮、打包签名、实机操作、PR HEAD 与主分支 CI 状态将在实际完成后填入。中间探测或失败不计入最终三轮。日志存放在 `/private/tmp/tursora-integration-verification/`，不提交构建产物。
+最终三功能组合（含中间符号链接修复）的验证：
+
+- Debug 构建成功，**1,253 项 smoke 连续三轮通过**，每轮 exit 0、stderr 为空，耗时 74.8 / 74.2 / 74.0 秒。日志在 `/private/tmp/tursora-integration-verification/final-verified/`。此前 1,249 项的三轮对应链接修复前，不计入最终结果。
+- `tools/make-app.sh` release 构建成功，`codesign --verify --deep --strict --verbose=2` 通过。已有编译器警告仍在，不称为无警告构建。
+- 站点构建通过，检查 36 个引用与 5 个 canonical assets。
+- PR #2 整合提交 `1464169` 的 [GitHub Build](https://github.com/zerolfx/Tursora/actions/runs/34685214129) 通过。最终 PR #3 和 main 的精确提交 CI 在发布时单独核对；本地结果不能代替远端检查。
+
+## 最终打包应用实测
+
+使用上述 release 包和 `/private/tmp/tursora-integration-verification/cua-demo` 一次性夹具；进程设置 `TURSORA_TRANSFER_TEST_DELAY_MS=100`，以观察真实大文件块传输，速率不是性能基准。
+
+- Sources 的 First / Second 各有同名 `needle.txt`，另有 128 MiB `needle-large.bin`。递归名称查询得到 3 个结果，列表和图标显示各自原始位置。
+- Sources 保存 List；搜索中切到 Icons，关闭搜索恢复 List。Destination 保存 Icons；Back 回 Sources 为 List，Forward 再进 Destination 为 Icons。
+- 从列表搜索结果 Duplicate 大文件，任务窗显示字节、速率和剩余时间。Pause 在 59.8 / 134.2 MB 确认，后续观察字节不变；Resume 后继续到 60.8 MB，Cancel 在 73.9 MB 结束，显示 0 completed。原文件 SHA-256 保持 `a626d17da2e502f5b4b8e3ebd23f0bf9daef6255688d8e0bb482b3ae3794a682`，没有半成品或暂存残留。
+- Duplicate 小文件后搜索得到 4 项，并精确选中 First 中的副本；撤销后恢复 3 项，两个同名原文件内容不变。
+- 保存命名条件 `Integration Needle`，Clear 后 Open 重跑得到 3 项。跨进程保存的专项实测见[独立搜索记录](search-verification.md)，本轮同进程重跑不称为重启验证。
+- 已查看搜索与暂停任务的实际布局；已有 feature 截图仍对应当前界面。结束后退出本轮应用、确认原文件完整与清理完成，恢复两个偏好域和目录视图库，释放共同锁。
+
+本轮没有新增真实 Spotlight 正文正命中、第二物理卷或服务器、原生拖放手势的实机证据。正文注入夹具与原生查询生命周期、跨卷故障注入及 drop controller 路径的自动化边界仍按原记录区分。
 
 ## 提交信息约定
 
