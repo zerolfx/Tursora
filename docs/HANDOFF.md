@@ -10,19 +10,12 @@
 - 最新提交在 `main`；发布包 `app/build/Tursora.app` 由 `app/tools/make-app.sh` 生成，ad-hoc 签名，未上架、未公证。
 - 仓库：https://github.com/zerolfx/Tursora（私有）。`upstream/` 是 git-ignored 的 KDE 源码 checkout，只有 Phase 0 审计和对照 Dolphin 语义时用到；缺了可以重新 clone（版本 pin 在 [audit/00-ground-truth.md](audit/00-ground-truth.md)）。
 
-## 验证状态——这一点最重要
+## 验证状态——统一入口
 
-之前的开发环境**没有屏幕访问权限**，所有验证靠应用内 smoke test（`TURSORA_SMOKE_TEST=1`，当时 367 项）。它覆盖模型、导航、标签、地址栏、文件操作、撤销、分栏、视图切换、FSEvents 刷新、过滤、分组、冲突对话框、Get Info 的全部数据路径。
-
-**2026-09-12 已做 computer use 基础检查**：地址栏跳转、标签独立目录、双窗格与切换、后退、列表 / 图标切换、活动窗格过滤、Kind 分组、Quick Look、简介窗口，均在实际打包应用中操作。发现并修复了简介内容挤在右侧、工具栏模式不同步、保存图标模式后新窗格仍挂载列表三个问题。Smoke test 启动改为等待首轮加载完成（15 秒超时），不再固定等一秒；此前图标阶段记录的 392 项已连续通过三轮；重启、新标签页的保存视图模式，以及修复后的工具栏与简介排版也已实机复查。
-
-**同 pane ZIP 改造前的验证记录**：设置、终端与旧独立 ZIP 窗口已完成当时的连续 smoke、release 包与签名检查，此前资源及 ZIP 打包往返检查也通过。解锁后已操作快捷键录制与冲突、扩展名与取消改名、终端交互及重启、旧 ZIP 窗口目录浏览及 TextEdit 打开临时副本、More / Share、压缩 / 解压与撤销重做、服务器协议校验；刷新后首行被表头遮住的问题也已修复并实机复测。详见[历史实机检查记录](research/computer-use-2026-09-12.md)。
-
-**本轮 CUA、截图与最终自动化检查已完成**：工具栏分栏、Favorites → Other Pane / New Tab、地址补全、活动 pane 过滤、两种视图与 Kind、Quick Look、Share、同 pane ZIP 导航 / 只读菜单 / TextEdit 打开临时副本 / 复制到另一 pane 与撤销、文件冲突 Keep Both / 撤销、终端 pwd / ls 均已操作。窄分栏名称列可读；服务器失焦触发连接的回归已修复，并实测 Tab / Cancel 不连接、Return 校验协议、编辑清错、Escape 关闭。全部 13 组 README 截图已保存检查，服务器图来自最终修正版。详见[本轮实机记录](research/computer-use-2026-09-12-inline-zip.md)。
-
-最终 debug 构建通过，含最新快照路径重映射修复的 release build 5 已重建并通过 strict codesign。**739 项 smoke 连续三轮通过**，均 exit 0、stderr 为空；日志与精确范围见[本轮实机记录](research/computer-use-2026-09-12-inline-zip.md)。开发中新增别名断言失败已解决，失败或旧版本运行均未计入最终三轮。测试前偏好已恢复：扩展名开、⌘F、终端关、ZIP 浏览开；演示 Favorite 已移除。归档边界见 [archive-browsing.md](research/archive-browsing.md)。
-
-真实服务器读写未验证；自动化终端专测使用隔离的 `/bin/sh` PTY，实机检查另外验证了用户配置的 zsh。GitHub Actions 提供自动 Build 和手动 Release；[功能提交的 Build 已成功](https://github.com/zerolfx/Tursora/actions/runs/34631655771)并上传产物。Release 尚未发布版本。
+- **已提交阶段 `fbb6762`**：739 项 smoke 连续三轮通过，均 exit 0、stderr 为空；最新路径重映射修复的 release build 5 已重建并通过 strict codesign。日志、CUA 操作范围、13 组截图和偏好恢复证据统一保留在[同 pane ZIP 实机记录](research/computer-use-2026-09-12-inline-zip.md)。
+- **当前整理阶段——应用与产品页已验证**：删除未使用的 PlacesModel 常量，简化始终为 true 的归档读取参数，不改变应用行为；本阶段重新完成 739 项 smoke 连续三轮，均 exit 0、stderr 为空，debug / release build 6 与 strict codesign 通过。新增真实标签页截图。中文产品页仅介绍地址栏、标签、分栏和 ZIP，已按 [site/README.md](../site/README.md) 完成静态构建、资源引用校验与桌面 / 窄屏浏览器 QA；功能切换、图片弹窗焦点恢复、锚点直达及无 JavaScript 回退均已检查。站点仅在本地预览，未部署。具体日志与阶段边界见[同日记录](research/computer-use-2026-09-12-inline-zip.md#整理阶段与产品页)。
+- **历史结果**：[早期实机记录](research/computer-use-2026-09-12.md)包含旧独立 ZIP 窗口及先前 UI 修复。历史测试和 D28 保留原貌，不作为当前实现的新增验证。
+- **外部验证边界**：真实服务器认证、挂载与读写未验证；GitHub [已提交阶段 fbb6762 的 Build 已成功](https://github.com/zerolfx/Tursora/actions/runs/34671658320)并上传产物，后续提交结果见 [Build 运行列表](https://github.com/zerolfx/Tursora/actions/workflows/build.yml)；手动 Release 尚未发布版本。产品页目前也未发布上线。
 
 **仍需专项视觉检查的东西**：
 

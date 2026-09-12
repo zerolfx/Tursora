@@ -175,4 +175,6 @@ The in-app smoke suite exercises real models and controllers in a macOS desktop 
 
 [Shortcuts](docs/SHORTCUTS.md) · [Specification](docs/SPEC.md) · [Architecture](docs/ARCHITECTURE.md) · [Development guide](docs/DEVELOPMENT.md) · [Changelog](CHANGELOG.md) · [Contributing rules](AGENTS.md)
 
+The [product page](site/README.md) presents address navigation, tabs, split panes and ZIP browsing with real application screenshots. It builds into a standalone static site for local preview or hosting.
+
 Tursora began with an audit of porting Dolphin and KIO to macOS. That research led to a native implementation, borrowing useful behavior rather than the entire stack. The two-pane tail-fin mark reflects those roots. [Read the original audit](docs/audit/PHASE-0-REPORT.md).
