@@ -10,7 +10,7 @@ enum SmokeTest {
     static var isRequested: Bool { ProcessInfo.processInfo.environment["TURSORA_SMOKE_TEST"] != nil }
 
     private static var savedPreferences: [String: Any] = [:]
-    private static let appPreferenceKeys = ["showFileExtensions", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
+    private static let appPreferenceKeys = ["viewMode", "zoom.details", "zoom.icons", "groupKey", "lastGroupKey", "showPreviews", "showFileExtensions", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
     static func restorePreferences() {
         for key in appPreferenceKeys { UserDefaults.standard.set(savedPreferences[key], forKey: key) }
         UserDefaults.standard.synchronize()
@@ -19,6 +19,8 @@ enum SmokeTest {
     static func run(_ wc: MainWindowController) {
         for key in appPreferenceKeys { savedPreferences[key] = UserDefaults.standard.object(forKey: key) }
         atexit {
+            try? DirectoryViewPropertiesStore.shared.flush()
+            try? FileManager.default.removeItem(at: DirectoryViewPropertiesStore.shared.fileURL.deletingLastPathComponent())
             SmokeTest.restorePreferences()
             ArchiveWorkspace.shared.shutdownAll()
         }
@@ -35,6 +37,7 @@ enum SmokeTest {
         // A cold directory listing can outlive the old one-second delay.
         // Generation records completion, including an empty result or an error.
         awaitInitialListing(wc.browser.model) {
+            DirectoryViewPropertiesSmokeTests.run {
             appIconAssets()
             ServerConnectionSmokeTests.run()
             SettingsSmokeTests.run()
@@ -53,6 +56,7 @@ enum SmokeTest {
                     }
                 }
             }
+        }
         }
     }
 
@@ -184,16 +188,19 @@ enum SmokeTest {
 
     private static func savedViewModes(_ provider: FileProvider) {
         print("== saved view modes ==")
-        let previous = ViewPreferences.viewMode
-        defer { ViewPreferences.viewMode = previous }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-saved-mode-" + UUID().uuidString).appendingPathComponent("views.json")
+        let store = DirectoryViewPropertiesStore(fileURL: file)
+        defer { try? store.flush(); try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         for mode: ViewMode in [.icons, .details] {
-            ViewPreferences.viewMode = mode
-            let pane = BrowserViewController(provider: provider, initialURL: provider.homeURL)
+            var properties = DirectoryViewProperties()
+            properties.viewMode = mode
+            store.setDefault(properties)
+            let pane = BrowserViewController(provider: provider, initialURL: provider.homeURL, viewPropertiesStore: store)
             _ = pane.view
             let expected: FileViewing = mode == .icons ? pane.iconGrid : pane.fileList
             check("new pane mounts saved \(mode) view", pane.viewMode == mode && pane.fileView === expected)
             check("saved \(mode) view is attached", expected.viewController.parent === pane && expected.viewController.view.superview != nil)
-            check("saved \(mode) zoom matches the view", pane.zoomIndex == ViewPreferences.zoomIndex(for: mode))
+            check("saved \(mode) zoom matches the view", pane.zoomIndex == properties.zoomIndex(for: mode))
         }
     }
 
@@ -762,11 +769,11 @@ enum SmokeTest {
                 check("focus went back to the list", wc.window?.firstResponder === b.fileList.tableView)
                 b.zoom(by: 2)
                 check("details zoom: 32pt icons, taller rows", b.iconSize == 32 && b.fileList.tableView.rowHeight == 40, "\(b.iconSize) / \(b.fileList.tableView.rowHeight)")
-                check("zoom remembered per mode", ViewPreferences.zoomIndex(for: .details) == 2 && ViewPreferences.zoomIndex(for: .icons) == ZoomLevel.defaultIndex(for: .icons))
+                check("zoom remembered per mode", b.currentViewProperties.detailsZoomIndex == 2 && b.currentViewProperties.iconsZoomIndex == ZoomLevel.defaultIndex(for: .icons))
                 b.zoomActualSize(nil)
                 check("details back to 16pt", b.iconSize == 16 && b.fileList.tableView.rowHeight == 24)
                 b.togglePreviews(nil)
-                check("previews toggle off", !b.showsPreviews && !ViewPreferences.showPreviews)
+                check("previews toggle off", !b.showsPreviews && !b.currentViewProperties.showPreviews)
                 b.togglePreviews(nil)
                 liveRefresh(wc, tmp)
             }
@@ -1122,7 +1129,7 @@ enum SmokeTest {
             check("Use Groups on → back to the last key", b.groupKey == .kind)
             b.setGroupKey(.none)
             b.setViewMode(.details)
-            check("persisted default", ViewPreferences.groupKey == .none && ViewPreferences.lastGroupKey == .kind)
+            check("persisted folder grouping", b.viewPropertiesStore.properties(forKey: b.viewPropertiesKey).groupKey == .none && b.currentViewProperties.lastGroupKey == .kind)
             try? fm.removeItem(at: dir)
             conflicts(wc, tmp)
             }
@@ -1137,6 +1144,7 @@ enum SmokeTest {
         let originalGroup = original.groupKey
         tabs.newTab(at: tmp)
         let inactive = wc.browser
+        awaitInitialListing(inactive.model) {
         inactive.setGroupKey(.name)
         tabs.toggleSplit()
         let active = wc.browser
@@ -1148,11 +1156,11 @@ enum SmokeTest {
         }
 
         func exercise(_ mode: ViewMode, then next: @escaping () -> Void) {
-            active.setViewMode(mode)
             sidebar.deselectAll(nil)
             wc.window?.makeFirstResponder(sidebar)
             sidebar.selectRowIndexes(IndexSet(integer: homeRow), byExtendingSelection: false)
             after(0.6) {
+                active.setViewMode(mode)
                 check("\(mode): Favorites navigates only the active pane", active.currentURL == wc.provider.homeURL && inactive.currentURL == tmp)
                 check("\(mode): Favorites retains keyboard focus", wc.window?.firstResponder === sidebar)
                 wc.applyFilter("Doc")
@@ -1197,6 +1205,7 @@ enum SmokeTest {
                 wc.window?.makeFirstResponder(original.focusView)
                 completion()
             }
+        }
         }
     }
 

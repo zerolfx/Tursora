@@ -72,7 +72,7 @@ Locations
 | 中键点击标签 | 关闭 |
 | 中键 / `⌘` 双击文件夹 | 在后台新标签打开 |
 
-- 每个标签独立持有：当前目录、导航历史、选中项、滚动位置、排序、过滤、分组、视图模式；分栏时两个 pane 各一套。
+- 每个标签独立持有当前目录、导航历史、选中项、滚动位置和过滤；分栏时两个 pane 各一套。模式、排序、缩放、分组、隐藏和预览按 §5 的目录策略保存并在进入目录时恢复。
 - 标签可拖拽重排；只有一个标签时标签栏自动隐藏。
 - **文件拖到标签上**（同 Dolphin）：悬停 800 ms 自动切到该标签；放到标签上 = 放进该标签的当前目录（同卷移动 / 跨卷或 `⌥` 复制）；放到标签栏空白处 = 每个文件夹开一个后台新标签。
 - 关闭再恢复标签：分栏状态与两个 pane 的历史一并恢复。
@@ -104,12 +104,23 @@ Locations
 - 切换：工具栏右侧 segmented、`⌘⌥1` 图标 / `⌘⌥2` 列表（`⌘1…9` 已归标签页）。
 - 缩放：`⌘`+滚轮、触控板捏合、`⌘+` / `⌘-` / `⌘0`、状态栏右侧滑块。
 - 预览开关 `⌘⇧P`；缩略图按 路径+尺寸+修改时间 缓存，只对可见项请求，无缩略图的类型记住不再重试。
-- 模式与每种模式的缩放档位按 pane 记，最近一次作为新 pane 的默认值并持久化；新标签、新分栏和重启后的首个 pane 必须挂载对应模式的实际视图。
+- 模式、排序字段与升降序、列表和图标各自的缩放档位、分组字段及上次启用字段、隐藏文件和预览开关按目录策略持久化。离开返回、新标签、新分栏以及重启后再次打开同目录均恢复；无记录目录使用独立保存的默认值。新 pane 必须挂载对应模式的实际视图。
 - 工具栏的视图按钮始终反映活动 pane；菜单或快捷键切换后立即同步，后台 pane 改变模式不影响当前工具栏。
 - 图标视图：多选 / 框选、方向键、`Return` 重命名（预选主名）、`空格` Quick Look、拖放（拖到文件夹图标上 = 放进去）、右键菜单与列表一致。
 - 排序：名称 / 修改日期 / 大小 / 种类，升降序；文件夹始终在前。
 - 列表名称列最小宽度为 180 pt，窄分栏仍为文件名保留空间，不让日期、大小和种类列将其挤到无法辨认。
 - Settings 的 Show all filename extensions 默认开启；关闭后，列表 / 图标中的文件和包名称隐藏最后一段扩展名，普通文件夹名不变。只改变标签显示；过滤、排序、路径与重命名仍使用完整真名。新旧窗口、各标签和分栏同步更新。
+
+### 每目录记忆与统一默认
+
+- 默认 **Remember Each Folder**（每目录记忆）；Settings 的 **Folder View Settings** 与 **View → Folder View Settings** 都能切到 **Use One View for All Folders**（统一默认）。切换统一策略使用已有默认值，不自动把当前 pane 提升为默认。切回每目录策略保留此前目录记录。
+- **Use Current Settings as Default** 主动保存当前目录的整套设置为默认；已有定制目录保留定制，无记录目录跟随新默认。**Restore This Folder to Default** 删除当前目录定制，立即使用默认，以后继续跟随默认；仅每目录策略下的普通目录可用。
+- 每目录策略的普通修改不实时改变另一已打开的同目录 pane；另一 pane 再次进入目录才读取最新记录。两个 pane 都主动修改时，最后一次修改的整套属性成为保存值。策略切换、默认修改和恢复默认会同步受影响的已打开普通目录 pane；统一策略下普通修改更新共同默认。
+- 过滤文字、选中项、滚动位置和历史不写入目录记录，也不传给新标签或另一 pane。恢复属性不反向保存、不重复导航；属性从内存库在列表加载前读取，异步列表和归档加载继续用导航代次阻止 A 的迟到结果覆盖 B。菜单、工具栏模式与分组状态、排序箭头和缩放滑块跟随恢复后的活动 pane。
+- 保存库位于 `~/Library/Application Support/Tursora/DirectoryViewProperties.json`，不向浏览目录写 `.directory`、`.DS_Store` 或 xattr，不要求该目录可写。v1 JSON 分开保存策略、默认值和目录记录；连续修改合并写入并原子替换，应用退出时等待待写数据完成。未支持版本或损坏文件回退到可用默认，读入和无修改的退出不覆盖原文件；之后实际修改才替换为当前格式。单个已知字段错误回退为工厂值，缩放越界夹到有效档位，坏目录记录单独跳过。保存失败不阻止当次操作；Settings 内联显示失败原因和 Retry Saving View Settings，重试成功后清除错误，无模态提示。
+- 普通本地 file URL 使用规范化并解析 symlink 的绝对路径键；忽略尾斜杠、query 和 fragment，不主动把大小写全部折叠。非本地主机的 file URL 与非 file URL 无目录键。导航时固定本次键，之后修改使用此键；symlink 改指新目标后，刷新 / Reload 识别键变化，清除旧目标的过滤、选择、滚动及待处理改名，再恢复新目标设置。枚举目录时解析 symlink，条目和历史仍保留请求路径的拼写。当前浏览器不会自动解析 Finder alias；只有调用者已给出目标目录时才共享目标记录。重命名或移动后按新路径查找，不追踪 inode；旧路径复用、卷复用同一挂载点可能继承旧记录，同卷换挂载点则不跟随。
+- ZIP 与搜索等逻辑页不持久化。ZIP 每次导航进入根或内部目录都采用当时默认，当次修改只影响该 pane；已打开逻辑页不响应普通目录策略 / 默认通知。不能将 ZIP 的逻辑地址或临时解压路径写入目录库，也不能从逻辑页将当前设置保存为默认。归档原有只读操作边界不变，搜索页仍未实现。
+- 本功能不恢复上次窗口、标签或历史，不递归向子目录应用设置，不提供 Finder 的完整 Show View Options 对话框。Dolphin 固定源码依据与存储取舍见[每目录视图研究](research/directory-view-properties.md)；最终自动与实机验证状态见 [HANDOFF](HANDOFF.md)。
 
 ## 6. 文件操作（语义对标 Finder）
 
@@ -141,7 +152,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 ## 9. 分组（1:1 对标 Finder 的 Use Groups / Group By）
 
-- 开关 **Use Groups** `⌃⌘0`；**Group By** 子菜单（View 菜单与工具栏 Group 按钮共用）：None `⌃⌘0` / Name `⌃⌘1` / Kind `⌃⌘2` / Application / Date Last Opened `⌃⌘3` / Date Added `⌃⌘4` / Date Modified `⌃⌘5` / Date Created `⌃⌘6` / Size `⌃⌘7`。关掉再打开回到上次的键（首次为 Kind）。按 pane 记，最近值作为默认持久化。
+- 开关 **Use Groups** `⌃⌘0`；**Group By** 子菜单（View 菜单与工具栏 Group 按钮共用）：None `⌃⌘0` / Name `⌃⌘1` / Kind `⌃⌘2` / Application / Date Last Opened `⌃⌘3` / Date Added `⌃⌘4` / Date Modified `⌃⌘5` / Date Created `⌃⌘6` / Size `⌃⌘7`。关掉再打开回到上次的键（首次为 Kind）；分组与上次字段一起按 §5 的目录策略保存。
 - 列表视图：组头是整行、吸顶的 group row，不可选中（含框选）、无展开三角、始终展开；组内按当前排序；组里的文件夹仍可就地展开。图标视图：每组一节，吸顶组头。
 - 分组规则（`Grouping.swift`，纯函数），标签取自 Finder 自己的字符串表（[research/finder-group-labels.md](research/finder-group-labels.md)）：Name 首字母，数字 / 符号归 `#` 排最后；Kind = Finder 的类别名（Applications / Documents / Folders / Images / Movies / Music / PDF Documents / Presentations / Spreadsheets / Text / Source code / HTML / AppleScript / Fonts / Contacts / Mail Messages / Webpages / Other Documents / Other——没有 Archives，压缩包归 Other），组按名称排序；Application = 默认打开程序名，文件夹归 Finder；日期 = Today / Yesterday / Previous 7 Days / Previous 30 Days / 今年内按月 / 更早按年，新的在前，**未来时间戳归 No Date**；Size = Folders 在前，其余按十进制数量级 "Under 1 KB" / "From 1 KB to 10 KB" / …，大的在前。
 - 仍是推断：Size 的桶边界；Kind 组的排序；Date Last Opened 用访问时间近似 Spotlight 的 last-used；"Earlier" 这个键的用途。
@@ -190,7 +201,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 ## 16. 设置与过滤快捷键
 
-- Tursora → Settings…（`⌘,`）打开应用级设置窗口，General / Keyboard / Experimental 三区；勾选立即生效并持久化。
+- Tursora → Settings…（`⌘,`）打开应用级设置窗口，含 General / Folder View Settings / Keyboard / Experimental；修改立即生效并持久化。Folder View Settings 选择每目录记忆或统一默认，保存当前默认和恢复当前目录的入口在 View 菜单，语义见 §5。
 - 名称过滤快捷键默认 `⌘F`。点击录制按钮后输入组合；要求 Command 或 Control，可加 Option / Shift，支持字母、数字和允许的标点。拒绝已有应用命令及常见系统组合；冲突内联提示，原绑定不变。Escape 取消录制，Reset 恢复 `⌘F`。
 - 过滤仍是当前目录名称过滤，没有递归搜索或全文索引。扩展名显示只影响界面标签，不改文件名或 Finder 的逐文件 Hide extension 标记。
 - Terminal panel 与 Browse ZIP archives 两个实验开关默认均关闭；启用终端开关只让入口可用，不自行启动 shell。

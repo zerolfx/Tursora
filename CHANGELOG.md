@@ -1,8 +1,18 @@
 # Changelog
 
-Historical entries record development dates and their smoke-test counts where available. The current unreleased changes are tracked separately until final integrated verification completes (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
+Historical entries record development dates and their smoke-test counts where available. Current unreleased changes and their completed verification are tracked separately (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
 
-## Unreleased — settings, native services and optional workspaces
+## Unreleased — persistent folder view settings
+
+- Verification: 854 full smoke checks passed three consecutive runs after the packaged-app layout fix, each with exit 0 and empty stderr; debug/release builds and strict codesign passed. Packaged-app observations and final screenshots are tracked in [the feature verification record](docs/research/computer-use-2026-09-12-directory-views.md).
+- Keep the Name column visible when restored settings switch a narrow pane from grouped icons to a list, while preserving intentional horizontal scrolling.
+
+- Remember each folder's view mode, sorting and direction, separate list/icon zoom steps, grouping, hidden files and previews across navigation, new tabs/panes and application restarts.
+- Add Settings and View menu choices for remembering each folder or using one default, plus explicit commands to save the current settings as default and restore a folder. Existing same-folder panes remain independent during ordinary per-folder edits; unified edits and explicit default/policy/reset commands synchronize affected panes.
+- Store versioned, tolerant JSON in Application Support with immediate memory updates and coalesced atomic writes. Normalize local paths and symlinks; preserve unsupported files until an effective mutation. Keep ZIP logical locations, snapshot paths, filters, selections, scroll and history out of folder records.
+- Add isolated model/storage and browser smoke coverage. This feature's final build, three-run smoke count, packaged-app screenshots and signature results are tracked in [HANDOFF](docs/HANDOFF.md); the 739-check baseline below does not verify these changes.
+
+## 2026-09-12 baseline — settings, native services and optional workspaces
 
 - Add a toolbar Split View toggle that follows the selected tab and active pane, plus sidebar Open in Other Pane using the existing split-navigation behavior. Sidebar commands retain the actual right-clicked place, fixing New Tab actions that lost their target after menu tracking.
 - Prevent a new pane's deferred initial load from replacing a location explicitly selected before that load runs; the initial navigation only proceeds while the navigation generation is zero.

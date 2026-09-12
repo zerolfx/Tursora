@@ -4,10 +4,12 @@
 
 ## 现状
 
+- **本分支新增每目录视图属性**：`codex/directory-view-properties` 基于 `fbb6762`，Application Support 中独立保存默认值和目录记录，支持两种视图缩放、排序、分组、隐藏与预览。View / Settings 提供每目录或统一默认策略、保存当前默认和目录恢复。普通同目录 pane 重新进入读取最近保存值，统一策略同步普通 pane。按规范化路径记忆，symlink 换目标在刷新时更新身份，ZIP 无持久化记录；不做会话恢复。**854 项 smoke 已连续三轮通过**，最终 release / strict codesign 通过；最终发布包已实机复查目录往返、分栏、策略 / 默认菜单和真实重启，截图见[本功能验证记录](research/computer-use-2026-09-12-directory-views.md)。
+
 - 2026-09-12：此前 42 个提交已 squash 成一个基线并 force-push，工作树内容保留。应用图标采用两块蓝色玻璃窗格形成抽象尾鳍的设计，内部图形宽度已收至画布约 67%，为系统圆角边缘留出间距，背景仍为单层满版。资源在 `app/Resources/`，打包时嵌入 `.icns`。
 
 - **Tursora**（原名 Otter File Manager，2026-09-11 改名）是 Swift + AppKit 原生 macOS 文件管理器，无 Xcode 工程，Command Line Tools 即可构建；终端使用 SPM 固定的 SwiftTerm 1.15.0。基础功能包括：地址栏（面包屑 + 兄弟目录菜单 + 行内补全）、标签页、Dolphin 式分栏、列表 / 图标视图与缩放预览、文件操作与撤销、拖放、Quick Look、过滤、Finder 的分组、Finder 的 Get Info / Inspector / Summary。现已加入 ZIP 压缩 / 解压、系统分享、NetFS 服务器连接与设置；终端面板、ZIP 只读浏览是默认关闭的实验功能。规格见 [SPEC.md](SPEC.md)。
-- 最新提交在 `main`；发布包 `app/build/Tursora.app` 由 `app/tools/make-app.sh` 生成，ad-hoc 签名，未上架、未公证。
+- 每目录视图属性在上述独立分支，尚未合并到 `main`；发布包 `app/build/Tursora.app` 由 `app/tools/make-app.sh` 生成，ad-hoc 签名，未上架、未公证。
 - 仓库：https://github.com/zerolfx/Tursora（私有）。`upstream/` 是 git-ignored 的 KDE 源码 checkout，只有 Phase 0 审计和对照 Dolphin 语义时用到；缺了可以重新 clone（版本 pin 在 [audit/00-ground-truth.md](audit/00-ground-truth.md)）。
 
 ## 验证状态——这一点最重要
@@ -18,9 +20,9 @@
 
 **同 pane ZIP 改造前的验证记录**：设置、终端与旧独立 ZIP 窗口已完成当时的连续 smoke、release 包与签名检查，此前资源及 ZIP 打包往返检查也通过。解锁后已操作快捷键录制与冲突、扩展名与取消改名、终端交互及重启、旧 ZIP 窗口目录浏览及 TextEdit 打开临时副本、More / Share、压缩 / 解压与撤销重做、服务器协议校验；刷新后首行被表头遮住的问题也已修复并实机复测。详见[历史实机检查记录](research/computer-use-2026-09-12.md)。
 
-**本轮 CUA、截图与最终自动化检查已完成**：工具栏分栏、Favorites → Other Pane / New Tab、地址补全、活动 pane 过滤、两种视图与 Kind、Quick Look、Share、同 pane ZIP 导航 / 只读菜单 / TextEdit 打开临时副本 / 复制到另一 pane 与撤销、文件冲突 Keep Both / 撤销、终端 pwd / ls 均已操作。窄分栏名称列可读；服务器失焦触发连接的回归已修复，并实测 Tab / Cancel 不连接、Return 校验协议、编辑清错、Escape 关闭。全部 13 组 README 截图已保存检查，服务器图来自最终修正版。详见[本轮实机记录](research/computer-use-2026-09-12-inline-zip.md)。
+**历史基线：同 pane ZIP 阶段的 CUA、截图与自动化检查**：工具栏分栏、Favorites → Other Pane / New Tab、地址补全、活动 pane 过滤、两种视图与 Kind、Quick Look、Share、同 pane ZIP 导航 / 只读菜单 / TextEdit 打开临时副本 / 复制到另一 pane 与撤销、文件冲突 Keep Both / 撤销、终端 pwd / ls 均已操作。窄分栏名称列可读；服务器失焦触发连接的回归已修复，并实测 Tab / Cancel 不连接、Return 校验协议、编辑清错、Escape 关闭。当时 13 组 README 截图已保存检查，服务器图来自该阶段修正版。详见[历史 ZIP 实机记录](research/computer-use-2026-09-12-inline-zip.md)。
 
-最终 debug 构建通过，含最新快照路径重映射修复的 release build 5 已重建并通过 strict codesign。**739 项 smoke 连续三轮通过**，均 exit 0、stderr 为空；日志与精确范围见[本轮实机记录](research/computer-use-2026-09-12-inline-zip.md)。开发中新增别名断言失败已解决，失败或旧版本运行均未计入最终三轮。测试前偏好已恢复：扩展名开、⌘F、终端关、ZIP 浏览开；演示 Favorite 已移除。归档边界见 [archive-browsing.md](research/archive-browsing.md)。
+该历史基线的 debug 构建通过，含快照路径重映射修复的 release build 5 已重建并通过 strict codesign。**当时 739 项 smoke 连续三轮通过**，均 exit 0、stderr 为空；日志与精确范围见[历史 ZIP 实机记录](research/computer-use-2026-09-12-inline-zip.md)。开发中新增别名断言失败已解决，失败或旧版本运行均未计入该阶段三轮。测试前偏好已恢复：扩展名开、⌘F、终端关、ZIP 浏览开；演示 Favorite 已移除。归档边界见 [archive-browsing.md](research/archive-browsing.md)。
 
 真实服务器读写未验证；自动化终端专测使用隔离的 `/bin/sh` PTY，实机检查另外验证了用户配置的 zsh。GitHub Actions 提供自动 Build 和手动 Release；[功能提交的 Build 已成功](https://github.com/zerolfx/Tursora/actions/runs/34631655771)并上传产物。Release 尚未发布版本。
 
@@ -41,7 +43,7 @@
 - 分组的 Size 桶边界与 Kind 组顺序仍是推断，"Earlier" 键未用。
 - Finder 的 Get Info 里 Stationery pad、ACL、改 owner / group、Apply to enclosed items 没做。
 - 快捷键与 Finder 有几处冲突（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌥⌘S），是有意的，见 [DECISIONS.md](DECISIONS.md) D9。
-- 已有基础设置：扩展名只改显示、过滤快捷键可录制；其他偏好策略、本地化、会话恢复未实现。
+- 已有基础设置：扩展名只改显示、过滤快捷键可录制，每目录 / 统一默认视图策略已实现；其他偏好策略、本地化、会话恢复未实现。
 - 实验性终端 F4 开关默认关闭；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认关闭，启用后 Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭实验开关后已有页仍只读，新打开 ZIP 恢复 Extract。
 - 归档与服务器新增功能边界：仅普通 ZIP；远程走系统 NetFS 挂载，不含自建 SFTP / 重连；真实服务器读写还未验证。`FileOperations.report` 和 Eject 错误路径已防止 smoke 模式弹模态框。
 

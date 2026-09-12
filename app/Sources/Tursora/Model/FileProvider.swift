@@ -14,11 +14,18 @@ final class LocalFileProvider: FileProvider {
     private let fm = FileManager.default
 
     func listDirectory(_ url: URL) throws -> [FileItem] {
-        try fm.contentsOfDirectory(
-            at: url,
+        // Foundation refuses to enumerate a symlink used as the directory
+        // root (ENOTDIR). Resolve for reading, but retain the requested URL
+        // spelling for item/history identity and later symlink-retarget checks.
+        let directory = url.resolvingSymlinksInPath()
+        return try fm.contentsOfDirectory(
+            at: directory,
             includingPropertiesForKeys: FileItem.resourceKeys,
             options: []
-        ).compactMap(FileItem.init(url:))
+        ).compactMap { child in
+            let itemURL = directory.path == url.path ? child : url.appendingPathComponent(child.lastPathComponent)
+            return FileItem(url: itemURL)
+        }
     }
 
     var homeURL: URL { fm.homeDirectoryForCurrentUser }
