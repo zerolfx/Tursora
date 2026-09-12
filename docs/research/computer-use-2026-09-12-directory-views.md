@@ -44,4 +44,6 @@ PR #1 的初始提交为 `eac9ffc`。主分支随后有产品页和维护整理�
 
 独立只读 review 确认归档读取 helper 的恒真参数清理和 PlacesModel 未使用常量删除不改变视图属性逻辑。同步修正产品页的标签说明，将持久化排序与临时历史 / 选择 / 过滤区分；站点静态构建通过，5 个资源、36 处引用检查完成。
 
-整合后的 debug、release 与 strict codesign 均通过，完整 smoke 再次 **854 项连续三轮通过**，均 exit 0、stderr 0 bytes。仍使用共享排他锁，结束后恢复偏好。日志为 `app/build/verification-directory-views/integrated-{1,2,3}.{out,err}`、`integrated-debug-build.log`、`integrated-release-build.log`、`integrated-codesign.log`。整合发布包的简短实机复查正在等待共享锁；前述三张截图对应已完成的功能阶段，不冒充后续复查。
+整合后的 debug、release 与 strict codesign 均通过，完整 smoke 再次 **854 项连续三轮通过**，均 exit 0、stderr 0 bytes。仍使用共享排他锁，结束后恢复偏好。日志为 `app/build/verification-directory-views/integrated-{1,2,3}.{out,err}`、`integrated-debug-build.log`、`integrated-release-build.log`、`integrated-codesign.log`。整合未改动应用界面代码，独立 review 也确认两处模型清理无行为变化，因此沿用前述功能阶段的实机操作与三张截图，未再次驱动整合包。额外实机排队已在取得共享锁之前取消，没有启动该次应用或改动用户偏好。
+
+整合提交 `d309d87` 的 [GitHub Build 34683581745](https://github.com/zerolfx/Tursora/actions/runs/34683581745) 已成功。下载该运行的 `Tursora-macOS-arm64-4ec50ec818cf7d81f8272dea6ae1d003d5767fbe` 产物（PR 合并测试引用），`shasum -a 256 -c SHA256SUMS.txt` 与解包后的 strict codesign 均通过；仅检查产物，未安装、运行或发布。CI 日志与下载文件保留在忽略的 `app/build/verification-directory-views/` 下。

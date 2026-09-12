@@ -4,7 +4,7 @@ Historical entries record development dates and their smoke-test counts where av
 
 ## Unreleased — persistent folder view settings
 
-- Feature revision `eac9ffc` passed 854 full smoke checks three consecutive times after the packaged-app layout fix. After incorporating main revision `ae5e47a`, the integrated tree again passed 854 checks three consecutive times, each with exit 0 and empty stderr; debug/release builds and strict codesign passed. Revision-specific packaged-app observations, screenshots and the pending integrated UI recheck are tracked in [the feature verification record](docs/research/computer-use-2026-09-12-directory-views.md).
+- Feature revision `eac9ffc` passed 854 full smoke checks three consecutive times after the packaged-app layout fix. After incorporating main revision `ae5e47a`, the integrated tree again passed 854 checks three consecutive times, each with exit 0 and empty stderr; debug/release builds and strict codesign passed. Integrated revision `d309d87` also passed GitHub Build, and its downloaded artifact passed checksum and strict signature verification. Packaged-app observations apply to the unchanged feature UI; revision-specific evidence is tracked in [the feature verification record](docs/research/computer-use-2026-09-12-directory-views.md).
 - Keep the Name column visible when restored settings switch a narrow pane from grouped icons to a list, while preserving intentional horizontal scrolling.
 
 - Remember each folder's view mode, sorting and direction, separate list/icon zoom steps, grouping, hidden files and previews across navigation, new tabs/panes and application restarts.
