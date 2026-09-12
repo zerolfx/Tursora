@@ -13,10 +13,9 @@ ROOT = SITE.parent
 DIST = SITE / "dist"
 ASSETS = {
     "AppIcon.png": ROOT / "app/Resources/AppIcon.png",
-    "path-navigation.jpg": ROOT / "docs/images/features/path-navigation.jpg",
-    "tabs.jpg": ROOT / "docs/images/features/tabs.jpg",
-    "split-panes.jpg": ROOT / "docs/images/features/split-panes.jpg",
-    "zip-browsing.jpg": ROOT / "docs/images/features/zip-browsing.jpg",
+    "path-navigation.png": ROOT / "docs/images/features/path-navigation.png",
+    "split-panes.png": ROOT / "docs/images/features/split-panes.png",
+    "zip-browsing.png": ROOT / "docs/images/features/zip-browsing.png",
 }
 
 
@@ -47,8 +46,8 @@ def validate():
     page = Page()
     page.feed((DIST / "index.html").read_text(encoding="utf-8"))
     errors = page.errors
-    if page.feature_count != 4:
-        errors.append(f"Expected four workflow panels, found {page.feature_count}")
+    if page.feature_count != 3:
+        errors.append(f"Expected three workflow panels, found {page.feature_count}")
     css = (DIST / "styles.css").read_text(encoding="utf-8")
     references = page.references + [("style", ref.strip("\"' ")) for ref in re.findall(r"url\(([^)]+)\)", css)]
     for tag, reference in references:

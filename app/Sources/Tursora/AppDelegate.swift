@@ -3,11 +3,27 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var preferencesObserver: NSObjectProtocol?
-    private var windowControllers: [MainWindowController] = []
-    let provider: FileProvider = LocalFileProvider()
-    let places = PlacesModel()
+    private(set) var windowControllers: [MainWindowController] = []
+    let provider: FileProvider
+    let places: PlacesModel
+    private let dockDirectories: DockMenuDirectories
+
+    init(provider: FileProvider = LocalFileProvider(), places: PlacesModel = PlacesModel(),
+         dockDirectories: DockMenuDirectories? = nil) {
+        self.provider = provider
+        self.places = places
+        self.dockDirectories = dockDirectories ?? .system(home: provider.homeURL)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // A process-local visual QA override leaves the user's system
+        // appearance and the normally launched application unchanged.
+        switch ProcessInfo.processInfo.environment["TURSORA_UI_TEST_APPEARANCE"] {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: break
+        }
         NSApp.mainMenu = MainMenu.build()
         preferencesObserver = NotificationCenter.default.addObserver(forName: .tursoraPreferencesChanged, object: nil, queue: .main) { _ in
             if let menu = NSApp.mainMenu { MainMenu.applyPreferences(to: menu) }
@@ -51,6 +67,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { newWindow(self) }
         return true
+    }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        DockMenu.make(target: self, directories: dockDirectories)
+    }
+
+    // Dock actions can arrive with a nil sender, so each destination has a
+    // distinct selector instead of depending on an NSMenuItem payload.
+    @objc func newWindowFromDock(_ sender: Any?) { openDockWindow(.newWindow) }
+    @objc func openDownloadsFromDock(_ sender: Any?) { openDockWindow(.downloads) }
+    @objc func openApplicationsFromDock(_ sender: Any?) { openDockWindow(.applications) }
+
+    private func openDockWindow(_ command: DockMenuCommand) {
+        guard let url = command.destination(in: dockDirectories) else { return }
+        newWindow(at: url)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Finder-style: dropping a folder on the Dock icon browses it.

@@ -10,7 +10,9 @@ enum SmokeTest {
     static var isRequested: Bool { ProcessInfo.processInfo.environment["TURSORA_SMOKE_TEST"] != nil }
 
     private static var savedPreferences: [String: Any] = [:]
+    private static let infoSectionKeys = ["general", "moreInfo", "name", "comments", "openWith", "preview", "sharing", "smoke-layout"]
     private static let appPreferenceKeys = ["viewMode", "zoom.details", "zoom.icons", "groupKey", "lastGroupKey", "showPreviews", "showFileExtensions", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
+        + infoSectionKeys.flatMap { ["InfoSection.\($0)", InfoSection.explicitPreferenceKey(for: $0)] }
     static func restorePreferences() {
         for key in appPreferenceKeys { UserDefaults.standard.set(savedPreferences[key], forKey: key) }
         UserDefaults.standard.synchronize()
@@ -21,6 +23,10 @@ enum SmokeTest {
         // Objective-C exception before the asynchronous suite can report it.
         setvbuf(stdout, nil, _IOLBF, 0)
         for key in appPreferenceKeys { savedPreferences[key] = UserDefaults.standard.object(forKey: key) }
+        for key in infoSectionKeys {
+            UserDefaults.standard.removeObject(forKey: "InfoSection.\(key)")
+            UserDefaults.standard.removeObject(forKey: InfoSection.explicitPreferenceKey(for: key))
+        }
         atexit {
             try? DirectoryViewPropertiesStore.shared.flush()
             try? FileManager.default.removeItem(at: DirectoryViewPropertiesStore.shared.fileURL.deletingLastPathComponent())
@@ -40,15 +46,21 @@ enum SmokeTest {
         // A cold directory listing can outlive the old one-second delay.
         // Generation records completion, including an empty result or an error.
         awaitInitialListing(wc.browser.model) {
+            DockMenuSmokeTests.run {
             DirectoryViewPropertiesSmokeTests.run {
             appIconAssets()
             ServerConnectionSmokeTests.run()
             SettingsSmokeTests.run()
+            TabAppearanceSmokeTests.run()
+            InfoDisclosureSmokeTests.run()
+            AppearanceSmokeTests.run(browser: wc.browser) {
+            TextThumbnailSmokeTests.run {
             TransferSmokeTests.run(wc) { ArchiveSmokeTests.run {
                 ArchiveWorkspaceSmokeTests.run {
                     ArchiveBrowserSmokeTests.run {
                         SplitToolbarSmokeTests.run {
                             TerminalSmokeTests.run {
+                                SearchEntrySmokeTests.run {
                                 SearchSmokeTests.run {
                                     IntegratedSearchSmokeTests.run {
                                     PanePathsSmokeTests.run {
@@ -62,11 +74,15 @@ enum SmokeTest {
                                     }
                                     }
                                 }
+                                }
                             }
                         }
                     }
                 }
             } }
+            }
+            }
+        }
         }
         }
     }
@@ -152,7 +168,7 @@ enum SmokeTest {
     private static func infoSectionLayout() {
         print("== Info section layout ==")
         let key = "smoke-layout"
-        let preferenceKey = "InfoSection.\(key)"
+        let preferenceKey = InfoSection.explicitPreferenceKey(for: key)
         let remembered = UserDefaults.standard.object(forKey: preferenceKey)
         defer { UserDefaults.standard.set(remembered, forKey: preferenceKey) }
         let content = NSView()
@@ -523,8 +539,8 @@ enum SmokeTest {
         let bg = b.buildContextMenu(for: []).items.map(\.title)
         check("background menu has New Folder / Sort By", bg.contains("New Folder") && bg.contains("Sort By"), "\(bg)")
         let onFolder = b.buildContextMenu(for: [folder]).items.map(\.title)
-        check("folder menu has Open in New Tab / Reveal / Copy Path / Favourites",
-              onFolder.contains("Open in New Tab") && onFolder.contains("Reveal in Finder")
+        check("folder menu stays in Tursora with Open in New Tab / Copy Path / Favourites",
+              onFolder.contains("Open in New Tab") && !onFolder.contains("Reveal in Finder")
               && onFolder.contains("Copy Path") && onFolder.contains { $0.hasSuffix("Favourites") }, "\(onFolder)")
         if let file = b.model.items.first(where: { !$0.isNavigable }) {
             let onFile = b.buildContextMenu(for: [file])
@@ -657,7 +673,7 @@ enum SmokeTest {
                 check("openInOtherPane navigates the other pane", left.currentURL?.lastPathComponent == "sub", "\(left.currentURL?.lastPathComponent ?? "nil")")
                 check("…and activates it", t.current === left)
                 check("address bar follows the active pane", t.addressBar.segmentTitles.last == "sub", "\(t.addressBar.segmentTitles)")
-                check("split tab title shows both paths and inactive side", t.tabBar.titles[t.currentIndex] == "sub | (\(wc.provider.displayName(for: tmp)))", "\(t.tabBar.titles)")
+                check("split tab title shows both paths without focus punctuation", t.tabBar.titles[t.currentIndex] == "sub | \(wc.provider.displayName(for: tmp))", "\(t.tabBar.titles)")
                 check("window title follows the active pane", wc.window?.title == "sub")
                 // copy to other pane: active = left (sub), other = right (tmp); copy sub/note copy.txt? use tmp/note.txt from right→ do it from right
                 t.focusOtherPane()                       // right (tmp) active
@@ -1312,7 +1328,7 @@ enum SmokeTest {
             let itemMenu = b.buildContextMenu(for: b.model.items.filter { $0.name == "info.txt" })
             check("item menu offers Get Info", itemMenu.item(withTitle: "Get Info") != nil)
             b.fileList.select(name: "info.txt")
-            UserDefaults.standard.set(false, forKey: "InfoSection.comments")     // remembered as collapsed
+            UserDefaults.standard.set(false, forKey: InfoSection.explicitPreferenceKey(for: "comments"))
             b.getInfo(nil)
             after(0.4) { infoWindow(wc, tmp, file, dir) }
         }
@@ -1341,7 +1357,7 @@ enum SmokeTest {
         check("sections show a chevron", info.section("general")?.hasChevron == true)
         info.section("comments")?.toggle()
         check("toggling expands it", info.section("comments")?.isExpanded == true && info.section("comments")?.content.isHidden == false)
-        UserDefaults.standard.removeObject(forKey: "InfoSection.comments")
+        UserDefaults.standard.removeObject(forKey: InfoSection.explicitPreferenceKey(for: "comments"))
         check("the Info window never becomes main", NSApp.mainWindow !== info.window,
               "active=\(NSApp.isActive) main=\(NSApp.mainWindow?.title ?? "nil") key=\(NSApp.keyWindow?.title ?? "nil")")
         after(0.6) {
@@ -1370,6 +1386,7 @@ enum SmokeTest {
                 after(0.5) {
                     check("undo rename", fm.fileExists(atPath: file.path) && info.window?.title == "info.txt Info", info.window?.title ?? "nil")
                     // A change in the folder while a name is being typed must neither commit nor drop the edit.
+                    info.section("name")?.isExpanded = true
                     info.beginEditingName()
                     info.typeName("half")
                     check("name field is being edited", info.isEditing)

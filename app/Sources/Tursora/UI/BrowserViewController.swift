@@ -11,6 +11,11 @@ protocol BrowserHost: AnyObject {
     func transferToOtherPane(_ urls: [URL], move: Bool)
     func selectionDidChange(in pane: BrowserViewController)
     func viewModeDidChange(in pane: BrowserViewController)
+    func focusSearch(in pane: BrowserViewController)
+}
+
+extension BrowserHost {
+    func focusSearch(in pane: BrowserViewController) {}
 }
 
 /// One browsing pane: its own path navigator, directory model, history, and
@@ -81,7 +86,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         guard let session = ArchiveWorkspace.shared.session(for: url) else { return false }
         return url.resolvingSymlinksInPath().standardizedFileURL != session.archiveURL.resolvingSymlinksInPath().standardizedFileURL
     }
-    private let activeIndicator = NSView()
+    private let activeIndicator = AdaptiveLayerView()
+    var activeIndicatorForTesting: AdaptiveLayerView { activeIndicator }
     private var indicatorHeight: NSLayoutConstraint?
     private var lastError: Error?
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
@@ -257,7 +263,6 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         view = v
         statusBar.translatesAutoresizingMaskIntoConstraints = false
         activeIndicator.translatesAutoresizingMaskIntoConstraints = false
-        activeIndicator.wantsLayer = true
         viewHost.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(activeIndicator)
         addressBar.translatesAutoresizingMaskIntoConstraints = false
@@ -438,7 +443,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func setActiveIndicator(_ active: Bool?) {
         _ = view
         indicatorHeight?.constant = active == nil ? 0 : 3
-        activeIndicator.layer?.backgroundColor = (active == true ? NSColor.controlAccentColor : NSColor.clear).cgColor
+        activeIndicator.semanticBackgroundColor = active == true ? .controlAccentColor : .clear
     }
 
     func prepareSearchDisplay() {
@@ -1140,7 +1145,6 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         add("Cut", #selector(ctxCut(_:)), symbol: "scissors")
         add("Copy", #selector(ctxCopy(_:)), symbol: "document.on.document|doc.on.doc")
         menu.addItem(.separator())
-        add("Reveal in Finder", #selector(ctxRevealInFinder(_:)))
         add(items.count == 1 ? "Copy Path" : "Copy Paths", #selector(ctxCopyPath(_:)), symbol: "document.on.document|doc.on.doc")
         if let single, single.isNavigable, let host {
             menu.addItem(.separator())
@@ -1232,10 +1236,6 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc func moveToOtherPane(_ s: Any?) { if canModifySelectedItems { host?.transferToOtherPane(selectedURLs, move: true) } }
     @objc private func ctxOpenInNewWindow(_ s: Any?) {
         if let f = contextTargets(for: s).first(where: \.isNavigable) { host?.openInNewWindow(f.url) }
-    }
-    @objc private func ctxRevealInFinder(_ s: Any?) {
-        guard !isBrowsingArchive else { return }
-        NSWorkspace.shared.activateFileViewerSelecting(contextTargets(for: s).map(\.url))
     }
     @objc private func ctxCopyPath(_ s: Any?) {
         let pb = NSPasteboard.general

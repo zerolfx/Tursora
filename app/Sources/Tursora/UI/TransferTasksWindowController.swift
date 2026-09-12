@@ -272,7 +272,7 @@ final class TransferTasksWindowController: NSWindowController, NSWindowDelegate 
 }
 
 /// A single task's controls. No filesystem reads or mutations occur in this view.
-final class TransferTaskRowView: NSView {
+final class TransferTaskRowView: AdaptiveLayerView {
     let task: TransferTask
     let titleLabel = NSTextField(labelWithString: "")
     let stateLabel = NSTextField(labelWithString: "")
@@ -304,10 +304,9 @@ final class TransferTaskRowView: NSView {
         self.destinationDescription = destinationDescription
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
         layer?.cornerRadius = 9
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.cgColor
+        semanticBorderColor = .separatorColor
         setAccessibilityIdentifier("transferTask-\(task.id.uuidString)")
         buildContent()
         update(task.snapshot)

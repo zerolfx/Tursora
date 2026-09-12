@@ -1,9 +1,9 @@
-// Without JavaScript, all four workflows remain readable and images are links.
+// Without JavaScript, all three workflows remain readable and images are links.
 (() => {
   const tablist = document.querySelector("[data-tabs]");
   const tabs = [...document.querySelectorAll("[data-tab]")];
   const panels = tabs.map(tab => document.querySelector(tab.getAttribute("href")));
-  if (tablist && tabs.length === 4 && panels.every(Boolean)) {
+  if (tablist && tabs.length === 3 && panels.every(Boolean)) {
     tablist.setAttribute("role", "tablist");
     tabs.forEach((tab, index) => {
       tab.id = `workflow-tab-${index}`;

@@ -22,6 +22,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var splitToolbarItem: NSToolbarItem?
     private var shareItem: NSSharingServicePickerToolbarItem?
     private var searchItem: NSSearchToolbarItem?
+    private var isSynchronizingSearchField = false
+    private weak var composingSearchPane: BrowserViewController?
     var searchField: NSSearchField? { searchItem?.searchField }
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
@@ -35,7 +37,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         static let up = NSToolbarItem.Identifier("tursora.up")
         static let viewMode = NSToolbarItem.Identifier("tursora.viewMode")
         static let split = NSToolbarItem.Identifier("tursora.split")
-        static let recursiveSearch = NSToolbarItem.Identifier("tursora.recursiveSearch")
         static let search = NSToolbarItem.Identifier("tursora.search")
         static let share = NSToolbarItem.Identifier("tursora.share")
         static let more = NSToolbarItem.Identifier("tursora.more")
@@ -167,16 +168,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     /// Apply text from the toolbar to the current pane.
-    func applyFilter(_ text: String) {
-        browser.nameFilter = text
-        if searchField?.stringValue != text { searchField?.stringValue = text }
+    func applyFilter(_ text: String, scheduleSearch: Bool = true) {
+        browser.applySearchFieldText(text, scheduleSearch: scheduleSearch)
+        setSearchFieldValue(text)
         syncFilterUI()
     }
 
     /// Esc / the field's cancel button: back to the plain listing.
     func cancelFilter() {
-        browser.nameFilter = ""
-        searchField?.stringValue = ""
+        composingSearchPane = nil
+        setSearchFieldValue("")
+        if browser.searchPanel.isShowingOptions { browser.closeSearch() }
+        else {
+            browser.nameFilter = ""
+            browser.updateFilterSearchHint()
+        }
         endSearchInteractionIfNeeded()           // lets a collapsed toolbar fold the field away again
         syncFilterUI()
         window?.makeFirstResponder(browser.focusView)
@@ -207,6 +213,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         syncFilterUI()
     }
 
+    func focusSearch(in pane: BrowserViewController) {
+        guard pane === browser else { return }
+        syncFilterUI()
+        focusFilter(nil)
+    }
+
     private func endSearchInteractionIfNeeded() {
         guard searchInteractionActive else { return }
         searchItem?.endSearchInteraction()
@@ -215,28 +227,77 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// The field belongs to the window, the filter to the pane: keep them in step.
     private func syncFilterUI() {
-        // The field shows the *current pane's* filter. While the user types,
-        // every keystroke already reached the pane, so the two agree and
-        // nothing is clobbered; after a pane switch they differ and the field
-        // must follow — whether or not it has focus.
-        if let f = searchField, f.stringValue != browser.nameFilter {
-            f.stringValue = browser.nameFilter
-        }
+        // The ordinary filter and recursive draft are separate pane state;
+        // switching panes must update chrome even while its editor has focus.
+        guard let field = searchField else { return }
+        let wasSynchronizing = isSynchronizingSearchField
+        isSynchronizingSearchField = true
+        defer { isSynchronizingSearchField = wasSynchronizing }
+        let recursive = browser.searchPanel.isShowingOptions
+        if !recursive { browser.updateFilterSearchHint() }
+        let text = browser.searchFieldText
+        setSearchFieldValue(text)
+        field.placeholderString = recursive ? "Search by Name" : "Filter by Name"
+        field.toolTip = recursive
+            ? "Search names containing this text in the selected folder and its subfolders. Return searches now; Escape returns to the folder."
+            : "Filter this folder by name. Supports * and ? wildcards. Search Options includes subfolders and more conditions."
+        searchItem?.label = recursive ? "Search" : "Filter"
+    }
+
+    private func setSearchFieldValue(_ text: String) {
+        guard let field = searchField else { return }
+        let wasSynchronizing = isSynchronizingSearchField
+        isSynchronizingSearchField = true
+        defer { isSynchronizingSearchField = wasSynchronizing }
+        if field.stringValue != text { field.stringValue = text }
+        if let editor = field.currentEditor(), editor.string != text { editor.string = text }
     }
 
     var isSearchFieldFocusedForTesting: Bool { isSearchFieldFocused }
 
     // NSSearchFieldDelegate
-    func searchFieldDidStartSearching(_ sender: NSSearchField) { syncFilterUI() }
+    func searchFieldDidStartSearching(_ sender: NSSearchField) {
+        // AppKit can deliver this before textDidChange. Adopt the first edit
+        // before syncing chrome, otherwise the previous empty filter erases it.
+        controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: sender))
+    }
     /// Fires for ⓧ and Esc (the field is empty by then) but also when focus
     /// merely leaves the field. Finder keeps the search in the latter case;
     /// so do we — only an emptied field means "stop filtering".
     func searchFieldDidEndSearching(_ sender: NSSearchField) {
-        if sender.stringValue.isEmpty { cancelFilter() } else { syncFilterUI() }
+        guard !isSynchronizingSearchField else { return }
+        // An empty name is valid for content/type-only searches. Blurring that
+        // empty draft must keep options open; the native cancel cell, however,
+        // clears a previously non-empty name before sending this callback.
+        if sender.stringValue.isEmpty && (!browser.searchPanel.isShowingOptions || !browser.searchFieldText.isEmpty) { cancelFilter() }
+        else { syncFilterUI() }
     }
     func controlTextDidChange(_ obj: Notification) {
+        guard !isSynchronizingSearchField else { return }
         guard let f = obj.object as? NSSearchField, f === searchField else { return }
-        applyFilter(f.stringValue)
+        let composing = (f.currentEditor() as? NSTextView)?.hasMarkedText() == true
+        let pane = browser
+        // Committing a candidate can remove marked text without changing its
+        // characters. The draft already contains that text, but has no timer.
+        let commitsUnchangedName = !composing && composingSearchPane === pane
+            && pane.searchPanel.isShowingOptions && pane.searchFieldText == f.stringValue
+        composingSearchPane = composing ? pane : nil
+        applyFilter(f.stringValue, scheduleSearch: !composing)
+        if commitsUnchangedName { pane.searchPanel.scheduleSearch() }
+    }
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard control === searchField else { return false }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            composingSearchPane = nil
+            if browser.searchPanel.isShowingOptions { browser.searchPanel.search(nil) }
+            window?.makeFirstResponder(browser.focusView)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            cancelFilter()
+            return true
+        }
+        return false
     }
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let f = obj.object as? NSSearchField, f === searchField else { return }
@@ -461,7 +522,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case ToolbarID.forward: return browser.canGoForward
         case ToolbarID.up:      return browser.canGoUp
         case ToolbarID.share:   return !sharingItems.isEmpty
-        case ToolbarID.recursiveSearch: return browser.currentURL != nil && !browser.isBrowsingArchive && !browser.isPreparingArchive
         default: return true
         }
     }
@@ -525,7 +585,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: - NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.sidebar, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.split, ToolbarID.viewMode, ToolbarID.group, ToolbarID.share, ToolbarID.more, ToolbarID.recursiveSearch, ToolbarID.search]
+        [ToolbarID.sidebar, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.split, ToolbarID.viewMode, ToolbarID.group, ToolbarID.share, ToolbarID.more, ToolbarID.search]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -592,14 +652,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.image = NSImage(systemSymbolName: "square.grid.3x1.below.line.grid.1x2", accessibilityDescription: "Group")
             item.showsIndicator = true
             item.menu = MainMenu.groupByMenuItem().submenu ?? NSMenu()
-            return item
-        case ToolbarID.recursiveSearch:
-            let item = NSToolbarItem(itemIdentifier: id)
-            item.label = "Search"
-            item.toolTip = "Search names, contents, types and dates (⇧⌘F). ZIP contents are not searched."
-            item.image = NSImage(systemSymbolName: "doc.text.magnifyingglass", accessibilityDescription: "Search")
-            item.target = self
-            item.action = #selector(showSearch(_:))
             return item
         case ToolbarID.search:
             let item = NSSearchToolbarItem(itemIdentifier: id)
@@ -679,6 +731,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func windowWillClose(_ notification: Notification) {
+        tabs.pages.flatMap(\.panes).forEach { $0.searchPanel.cancelPendingSearch() }
         removeEventMonitors()
         hideTerminal()
         if let preferencesObserver { NotificationCenter.default.removeObserver(preferencesObserver) }

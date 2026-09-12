@@ -45,11 +45,11 @@ struct TabSnapshot {
 }
 
 extension TabPage {
-    /// Dolphin keeps physical left/right order and brackets the inactive side.
-    static func title(left: String, right: String?, activeIndex: Int, custom: String?) -> String {
+    /// Keep physical left/right order without adding focus markers to names.
+    static func title(left: String, right: String?, activeIndex _: Int, custom: String?) -> String {
         if let custom, !custom.isEmpty { return custom }
         guard let right else { return left }
-        return activeIndex == 0 ? "\(left) | (\(right))" : "(\(left)) | \(right)"
+        return "\(left) | \(right)"
     }
 
     private func paneTitle(_ pane: BrowserViewController) -> String {

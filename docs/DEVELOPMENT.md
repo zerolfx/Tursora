@@ -127,7 +127,7 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 
 `.github/workflows/build.yml` builds a release application on `macos-26` (Apple Silicon) for main pushes, pull requests, or manual runs. It verifies the ad-hoc signature, plist, and icon, then archives the bundle with `ditto` so executable permissions survive. Each artifact includes a ZIP and SHA-256 checksum, retained for 14 days.
 
-`.github/workflows/release.yml` has only `workflow_dispatch`. Run it on `main` with a version such as `0.1.0` or `0.2.0-beta.1` and the prerelease switch when appropriate. It rejects existing tags and unsafe/invalid version strings, packages the exact dispatch SHA, then creates the version tag and GitHub Release with generated notes. The bundle's short version uses the numeric portion; the filename and release retain the prerelease suffix. No automatic release is triggered by a push or tag.
+`.github/workflows/release.yml` has only `workflow_dispatch`. Run it on `main` with a version such as `0.1.0` or `0.2.0-beta.1` and the prerelease switch when appropriate. It rejects existing tags, unsafe/invalid version strings and missing or empty dated changelog sections, packages the exact dispatch SHA, then creates the version tag and GitHub Release using that changelog section. The bundle's short version uses the numeric portion; the filename and release retain the prerelease suffix. No automatic release is triggered by a push or tag. Follow [RELEASING.md](RELEASING.md); add subsequent changes under Unreleased until the next release.
 
 The workflows validate packaging; run the AppKit smoke suite three times in a desktop session before committing. Hosted workflow execution is only verified once these files are pushed and a run completes. Current releases are ad-hoc signed, not Developer ID signed or notarized.
 
@@ -167,7 +167,7 @@ python3 site/build.py
 python3 -m http.server 8080 --directory site/dist
 ```
 
-Open `http://localhost:8080` and stop the server with Control-C. The builder uses only the standard library, recreates `site/dist/`, and refuses a symlink at that location. Generated output is ignored by Git. It copies the required icon and four canonical screenshots without editing their pixels, then validates local references, fragments, IDs, alt attributes and the four workflow panels. Static validation does not replace browser review or verify live GitHub downloads.
+Open `http://localhost:8080` and stop the server with Control-C. The builder uses only the standard library, recreates `site/dist/`, and refuses a symlink at that location. Generated output is ignored by Git. It copies the required icon and three canonical screenshots without editing their pixels, then validates local references, fragments, IDs, alt attributes and the three workflow panels. Static validation does not replace browser review or verify live GitHub downloads.
 
 Use [site/README.md](../site/README.md) for the exact asset list and desktop/mobile, keyboard, dialog, reduced-motion and no-JavaScript review sequence. Record observed results in dated research and maintain current status in [HANDOFF](HANDOFF.md). Previewing or building the page does not deploy it; hosting and publication are separate actions.
 
@@ -184,3 +184,13 @@ Context menus snapshot full FileItems when built, retaining them through menu cl
 Search retains the originating currentURL and viewPropertiesKey for returning to the folder, so a non-nil key alone does not permit view persistence. `canPersistViewProperties` also rejects `isSearching` and `model.isSearchResults`; use it for ordinary saves, store observers, default/reset commands and menu validation. Search initially inherits the pane’s current view and subsequent changes stay transient. Reload/refresh must handle search before directory-key retarget checks, and leaving search restores the folder’s current saved properties.
 
 When checking that Open or Split creates no window, snapshot window object identities immediately around that operation and inspect additions plus the original pane/window identity. A process-wide window count can change as earlier suites release closed windows; equal counts can also hide a replacement window. The ZIP browser suite covers both cases without a fixed delay.
+
+### Adaptive custom surfaces
+
+Retain semantic NSColors, not once-resolved CGColors. `AdaptiveLayerView` resolves background and border in `updateLayer()` under its own `effectiveAppearance`; the tab strip resolves its draw palette per appearance and refreshes on window focus changes. Borderless completion panels explicitly follow their parent appearance while attached. Tab appearance smoke checks include both standard and high-contrast Light/Dark colors, actual bitmap background rendering, title refresh, scrolled mouse drag paths and overflow menu lifetime; appearance surface checks exercise existing popups, task cards and pane indicators.
+
+For packaged visual QA without changing the user's global appearance, launch an owned test instance with `TURSORA_UI_TEST_APPEARANCE=light` or `dark`. This process-local override is not a saved preference; ordinary launches follow the system. Keep the same bundle identifier, use a separate owned bundle path, and only stop the test process. Do not restore an old full preference snapshot over changes the user made while testing; restore only settings owned by the verification workflow.
+
+### Search-field delegate ordering
+
+`NSSearchField.searchFieldDidStartSearching` may precede `controlTextDidChange`; adopt the new field value before syncing chrome or the old empty filter can erase the first edit. The end-search callback also occurs on blur, so an empty name is not a reliable cancel signal for content/type-only queries. Keep the native cancel-cell wiring (AppKit resets its internal target/action); distinguish a cleared non-empty draft from blur of an already empty draft, and handle Escape separately. Guard programmatic field/editor synchronization from delegate feedback. Ignore marked IME text for query scheduling, deduplicate unchanged name notifications, and give delayed searches a generation guard in addition to `DispatchWorkItem.cancel()`.

@@ -23,117 +23,132 @@ Tursora is an early project, and it does not yet cover everything Finder can do.
 
 ## Features
 
-### Two folders, one workspace
+Click a screenshot to view it at full size.
 
-Put your source on the left and its destination on the right. Each pane has its own visible, editable path. Each tab can switch between one and two panes; its title shows both folders with the inactive side in parentheses. Copy or move a selection directly to the other side, and reopen a closed tab with its split layout intact.
-
-**Try it:** click the toolbar’s Split View button or press `⇧⌘D` to split the view. `⌥Tab` switches panes, and `⇧⌘C` copies to the other pane. Tabs retain their own history, selection, scroll position and filters during the session; each folder's view settings are restored when you open it.
-
-Right-click a tab to open a new tab, detach it into another window, give it a custom name, or close it, other tabs, or tabs to its left or right. Clear a custom name to return to the folder titles. The tab strip stays visible even with one tab. Detach reopens both locations and any searches in a fresh window; navigation history, filters, selections, file operations and undo history stay with the original window.
-
-![Split panes and tabs: source files on the left, delivery folder on the right](docs/images/features/split-panes.jpg)
-
-### A path you can click—or type
-
-Click either pane's breadcrumb, choose a subfolder from its menu, or press `⌘L` to edit the active pane's full path with completion. Navigating one side leaves the other side's path and search unchanged. Switching panes or tabs dismisses an unfinished path edit without submitting it. Favorites keep frequent destinations nearby; Back and Forward include history menus.
-
-![Editable address bar with folder completion](docs/images/features/path-navigation.jpg)
-
-### Open a favorite where you need it
-
-Right-click a Favorite to open it in a new tab or the other pane. If the current tab has one pane, **Open in Other Pane** creates a split while keeping your original folder in place.
-
-![A Favorite’s context menu with Open in New Tab and Open in Other Pane](docs/images/features/favorites.png)
-
-### Find a name without leaving the folder
-
-Press `⌘F` and type part of a filename or a pattern such as `*.png`. Results update immediately in the active pane, while the other pane stays as it was. Escape clears the filter; its shortcut can be changed in Settings.
-
-**This is current-folder name filtering.** Use the separate Search command for recursive results.
-
-![The active pane filtered by filename while the destination remains visible](docs/images/features/name-filter.jpg)
-
-### Search across folders, then save the search
-
-Press `⇧⌘F` or click Search. Search this folder and its subfolders, or your Home folder, combining filename, content, type and modification-date conditions. Save a named search and open it again after restarting. Each pane owns its query, cancellation and results.
-
-Filename search works in ordinary unindexed folders. Content search uses Spotlight and depends on its index and supported document formats; the interface explains that limit. Results show their original location and support Quick Look, file commands and Reveal in Enclosing Folder. ZIP contents are excluded.
-
-![Recursive search results with original locations](docs/images/features/search.jpg)
-
-### A view that fits your files
-
-Expand folders in a details list, or browse thumbnails in an icon grid. Group by kind, name, size or dates, sort within the view, and zoom using the slider, a pinch or `⌘`-scroll. Switch between Icons and List with `⌥⌘1` and `⌥⌘2`.
-
-Folders remember their view mode, sorting, list and icon sizes, groups, hidden files and previews—even when you open them in another tab or restart Tursora. **View → Folder View Settings** lets you choose **Remember Each Folder** or **Use One View for All Folders**, save the current settings as your default, and restore a folder to that default. The policy is also available in Settings.
-
-Two already-open panes keep their own folder views during ordinary per-folder edits; revisit the folder to pick up the latest saved settings. Folder memory uses Tursora's own library, so it works with read-only folders without adding files to them. Renamed or moved folders use their new path's settings. Every entry into a ZIP folder starts from your default view, and changes there stay temporary. Search inherits the pane’s current view; changes in results stay temporary and the folder’s saved view returns when you close Search. Tursora does not restore tabs after quitting.
-
-![Folder-specific icon grouping and list settings restored after restarting the app](docs/images/features/folder-views.jpg)
-
-### Preview first, open when you need to
-
-Press Space for Quick Look. `⌘I` opens Get Info, while `⌥⌘I` opens an Inspector that follows the selection. File information includes metadata, previews, comments, default applications and basic permissions.
-
-![Quick Look showing a selected file without leaving the workspace](docs/images/features/quick-look.jpg)
-
-### Everyday operations, with a way back
-
-Copy, cut, paste, rename, duplicate, drag files between folders, or move them to the system Trash. Undo and redo cover supported file operations. When names collide, choose Keep Both, Skip, Replace or Merge where applicable, including a choice for the remaining batch.
-
-Copies, moves and duplicates have independent tasks in **Window → File Operations**. Pause or cancel in the middle of a large file, resume later, and see transferred bytes, speed and remaining time. Conflicts stay inside their task, so you can keep using the other tasks and panes. Replace preserves the previous destination until the incoming item is complete. Preparing, atomic moves and metadata finishing display their actual phase; they do not claim a byte-based ETA. Undo recovery contents use disk space while the window's history retains them.
-
-![Independent file operations, with one paused and another transferring](docs/images/features/file-operation-tasks.jpg)
-
-![A real filename conflict with choices for handling the move](docs/images/features/file-operations.jpg)
-
-### Compress a selection. Extract beside the original.
-
-Create a ZIP from one file or several, or extract a ZIP into its containing folder. Numbered output names avoid overwriting existing files, and both actions support undo. By default, opening a ZIP extracts it; the [ZIP browsing experiment](#browse-zips-like-folders) changes that behavior.
-
-**Supported today:** ordinary ZIP archives. Password-protected ZIPs and other archive formats are not supported.
-
-![The More menu exposing archive actions for a selected ZIP](docs/images/features/compress-extract.png)
-
-### Local folders and system-mounted servers
-
-`⌘K` opens Connect to Server for SMB, NFS, WebDAV and legacy AFP. macOS handles authentication and mounting. Connected volumes appear under Locations and can be browsed with the same panes and file operations; Eject disconnects them.
-
-The screenshot shows the connection interface, not a verified server session. **Real-server interoperability still needs testing.** Tursora has no custom SFTP/FTP backend, server discovery or automatic reconnection.
-
-![Connect to Server with an example SMB address](docs/images/features/connect-server.jpg)
-
-### macOS actions and sharing
-
-The toolbar's More menu collects common actions for the current selection. Share opens the system sharing picker, so available services come from macOS and the selected files.
-
-![The macOS sharing picker for a selected demonstration file](docs/images/features/share.jpg)
-
-### A few useful preferences
-
-Choose per-folder views or one shared default, show or hide filename extensions, record a shortcut for name filtering, or opt into experiments. Shortcut recording checks conflicts. Hiding extensions changes their display; renaming still exposes the full filename.
-
-![Settings with folder view policy, extension display, shortcut recording and both experiments disabled](docs/images/features/settings.jpg)
+<table>
+  <thead>
+    <tr><th align="left" width="42%">Feature</th><th align="left" width="58%">Screenshot</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <strong>Two folders, one workspace</strong>
+        <p>Keep a source and destination side by side, each with its own editable path, history and selection. Copy or move files directly to the other pane.</p>
+        <p>Click Split View or press <code>⇧⌘D</code>. <code>⌥Tab</code> switches panes; <code>⇧⌘C</code> copies to the other side.</p>
+      </td>
+      <td><a href="docs/images/features/split-panes.png"><img src="docs/images/features/split-panes.png" width="600" alt="Split panes with independent paths: source files on the left, delivery folder on the right"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>A path you can click—or type</strong>
+        <p>Use either pane's breadcrumbs and folder menus, or press <code>⌘L</code> to type a path with completion. Back and Forward include history menus.</p>
+        <p>Navigation stays in its pane. Switching panes or tabs dismisses an unfinished path edit without submitting it.</p>
+      </td>
+      <td><a href="docs/images/features/path-navigation.png"><img src="docs/images/features/path-navigation.png" width="600" alt="Editable address bar with folder completion"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Open a favorite where you need it</strong>
+        <p>Right-click a Favorite to open it in a new tab or the other pane. <strong>Open in Other Pane</strong> creates a split when needed, keeping the original folder in place.</p>
+      </td>
+      <td><a href="docs/images/features/favorites.png"><img src="docs/images/features/favorites.png" width="600" alt="The Favorites sidebar beside a split workspace in light appearance"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Find a name without leaving the folder</strong>
+        <p>Press <code>⌘F</code> and type part of a filename or a pattern such as <code>*.png</code>. The active folder filters immediately; other panes stay unchanged. Escape clears the filter, and its shortcut is configurable.</p>
+        <p><strong>Typing first filters the current folder.</strong> Search Options appears after you type and expands recursive search conditions.</p>
+      </td>
+      <td><a href="docs/images/features/name-filter.png"><img src="docs/images/features/name-filter.png" width="600" alt="The active pane filtered by filename while the destination remains visible"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Search across folders, then save the search</strong>
+        <p>Choose Search Options or press <code>⇧⌘F</code>. Keep editing the same toolbar field to search subfolders or Home by filename, content, type and modification date. Search runs after a typing pause or on Return. Save named searches for later; each pane keeps its own query, cancellation and results.</p>
+        <p>Name search works in unindexed folders. Content search depends on Spotlight's index and supported formats. Results retain their original locations and support file commands, Quick Look and Reveal in Enclosing Folder. ZIP contents are excluded.</p>
+      </td>
+      <td><a href="docs/images/features/search.png"><img src="docs/images/features/search.png" width="600" alt="Recursive search results with original locations"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>A view that fits your files</strong>
+        <p>Browse expandable lists or thumbnail grids; group, sort and zoom with the slider, a pinch or <code>⌘</code>-scroll. <code>⌥⌘1</code> and <code>⌥⌘2</code> switch views. Folders remember their view, sorting, zoom, groups, hidden files and previews across restarts.</p>
+        <p><strong>View → Folder View Settings</strong> chooses per-folder memory or one shared view, saves defaults and resets a folder. Memory uses Tursora's own path-based library, including for read-only folders. Existing panes pick up per-folder changes when revisited; renamed or moved folders use the new path's settings. ZIP views start from defaults and stay temporary. Search inherits the pane's view, keeps changes temporary, and restores the folder's saved view on closing.</p>
+      </td>
+      <td><a href="docs/images/features/folder-views.png"><img src="docs/images/features/folder-views.png" width="600" alt="Folder-specific icon grouping and list settings restored after restarting the app"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Everyday operations, with a way back</strong>
+        <p>Copy, cut, paste, rename, duplicate, drag or move files to Trash, with undo and redo for supported operations. Conflicts offer Keep Both, Skip, Replace or Merge where applicable, including batch choices.</p>
+        <p><strong>Window → File Operations</strong> shows independent copy, move and duplicate tasks with pause, resume, cancel, transferred bytes, speed and remaining time. Each task handles its own conflicts; Replace preserves the old destination until the new copy completes. Preparation, atomic moves and finishing show their phase without a byte-based ETA. Undo recovery uses disk space while retained in the window's history.</p>
+      </td>
+      <td>
+        <a href="docs/images/features/file-operation-tasks.png"><img src="docs/images/features/file-operation-tasks.png" width="600" alt="Independent file operations, with one paused and another transferring"></a>
+        <br>
+        <a href="docs/images/features/file-operations.png"><img src="docs/images/features/file-operations.png" width="600" alt="A real filename conflict with choices for handling the move"></a>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Compress a selection. Extract beside the original.</strong>
+        <p>Create a ZIP from selected files, or extract one beside the original. Numbered names avoid overwrites; both actions support undo. Opening a ZIP extracts it by default, unless <a href="#browse-zips-like-folders">ZIP browsing</a> is enabled.</p>
+        <p>Supports ordinary ZIP archives. Password-protected ZIPs and other archive formats are not supported.</p>
+      </td>
+      <td><a href="docs/images/features/compress-extract.png"><img src="docs/images/features/compress-extract.png" width="600" alt="The More menu exposing archive actions for a selected ZIP"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Local folders and system-mounted servers</strong>
+        <p><code>⌘K</code> opens Connect to Server for SMB, NFS, WebDAV and legacy AFP. macOS handles authentication and mounting; volumes appear under Locations and disconnect with Eject.</p>
+        <p>The screenshot shows the connection interface. <strong>Real-server interoperability still needs testing.</strong> There is no custom SFTP/FTP backend, server discovery or automatic reconnection.</p>
+      </td>
+      <td><a href="docs/images/features/connect-server.png"><img src="docs/images/features/connect-server.png" width="600" alt="Connect to Server with an example SMB address"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>macOS actions and sharing</strong>
+        <p>The toolbar's More menu collects actions for the current selection. Share opens the system sharing picker, with services provided by macOS for the selected files.</p>
+      </td>
+      <td><a href="docs/images/features/share.png"><img src="docs/images/features/share.png" width="600" alt="The macOS sharing picker for a selected demonstration file"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>A few useful preferences</strong>
+        <p>Choose per-folder views or a shared default, show or hide extensions, record a filtering shortcut, and enable experiments. Shortcut recording checks conflicts. Hidden extensions affect display only; renaming always shows the full filename.</p>
+      </td>
+      <td><a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="Settings with folder view policy, extension display, shortcut recording and both experiments disabled"></a></td>
+    </tr>
+  </tbody>
+</table>
 
 ## Experiments
 
 Both experiments are **off by default**. Enable them in **Tursora → Settings…** (`⌘,`).
 
-### A terminal in your workspace
-
-Press `F4` to reveal an interactive terminal below your files, powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm). It starts in the active folder—or beside the original ZIP when browsing an archive.
-
-Navigating elsewhere updates the target of **Restart in Current Folder**; it does not inject commands into a running shell. Restarting, hiding the panel, closing the window or disabling the experiment ends its shell session.
-
-![The integrated terminal running in the same directory as the file pane](docs/images/features/terminal.jpg)
-
-### Browse ZIPs like folders
-
-Open a ZIP **in the current pane**, then navigate its folders using the same address bar, Back, Forward and Up controls. Keep using tabs, split panes, list or icon views, sorting, grouping and filtering. Preview members, open them in their default app, share them, or copy and drag them into a regular folder.
-
-**Archive contents are read-only.** Opened files are temporary copies retained until Tursora quits; external edits do not update the ZIP. Use Save As to keep those edits. Nested ZIP files open in the default application. Turn the experiment off to restore extraction for newly opened ZIPs; existing archive pages remain read-only. Explicit Extract is still available when selecting the ZIP in its containing folder.
-
-![A ZIP folder opened in the current pane with its normal breadcrumb and read-only status](docs/images/features/zip-browsing.jpg)
+<table>
+  <thead>
+    <tr><th align="left" width="42%">Feature</th><th align="left" width="58%">Screenshot</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <strong>A terminal in your workspace</strong>
+        <p>Press <code>F4</code> for an interactive <a href="https://github.com/migueldeicaza/SwiftTerm">SwiftTerm</a> terminal beneath the files. It starts in the active folder, or beside the original ZIP when browsing an archive.</p>
+        <p>Navigation updates the target for <strong>Restart in Current Folder</strong> without injecting shell commands. Restarting, hiding the panel, closing the window or disabling the experiment ends its shell session.</p>
+      </td>
+      <td><a href="docs/images/features/terminal.png"><img src="docs/images/features/terminal.png" width="600" alt="The integrated terminal running in the same directory as the file pane"></a></td>
+    </tr>
+    <tr>
+      <td>
+        <a id="browse-zips-like-folders"></a><strong>Browse ZIPs like folders</strong>
+        <p>Open a ZIP in the current pane and navigate with the address bar, Back, Forward and Up. Use split panes, list or icon views, sorting, grouping and filtering. Preview, open, share, copy or drag members into regular folders.</p>
+        <p><strong>Archives are read-only.</strong> Opened files are temporary copies kept until quit; edits do not update the ZIP, so use Save As to keep them. Nested ZIPs open in the default app. Disabling the experiment restores extraction for new opens; existing archive pages stay read-only. Explicit Extract remains available on the original ZIP.</p>
+      </td>
+      <td><a href="docs/images/features/zip-browsing.png"><img src="docs/images/features/zip-browsing.png" width="600" alt="A ZIP folder opened in the current pane with its normal breadcrumb and read-only status"></a></td>
+    </tr>
+  </tbody>
+</table>
 
 ## What Finder still does that Tursora doesn't
 
@@ -157,8 +172,8 @@ Tursora currently has an English interface and does not restore tabs after quitt
 
 Requires **macOS 14 or later**. Downloadable builds currently target **Apple Silicon** and are **ad-hoc signed, not notarized**.
 
+- **Versioned releases:** download the application ZIP from [Releases](https://github.com/zerolfx/Tursora/releases), unzip it and move `Tursora.app` to Applications. Each release includes `SHA256SUMS.txt`; changes are recorded in the [changelog](CHANGELOG.md).
 - **Development builds:** open a successful [Build workflow run](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) and download its artifact ZIP. Unpack that artifact, then unpack the application ZIP inside it. Artifacts are kept for 14 days.
-- **Versioned releases:** available from [Releases](https://github.com/zerolfx/Tursora/releases) when a maintainer publishes one. Unzip the download and move `Tursora.app` to Applications.
 
 ### Build locally
 
@@ -193,6 +208,6 @@ The in-app smoke suite exercises real models and controllers in a macOS desktop 
 
 [Shortcuts](docs/SHORTCUTS.md) · [Specification](docs/SPEC.md) · [Architecture](docs/ARCHITECTURE.md) · [Development guide](docs/DEVELOPMENT.md) · [Changelog](CHANGELOG.md) · [Contributing rules](AGENTS.md)
 
-The [product page](site/README.md) presents address navigation, tabs, split panes and ZIP browsing with real application screenshots. It builds into a standalone static site for local preview or hosting.
+The [product page](site/README.md) presents address navigation, split panes and ZIP browsing with real application screenshots. It builds into a standalone static site for local preview or hosting. Release preparation and changelog maintenance are documented in [Releasing](docs/RELEASING.md).
 
 Tursora began with an audit of porting Dolphin and KIO to macOS. That research led to a native implementation, borrowing useful behavior rather than the entire stack. The two-pane tail-fin mark reflects those roots. [Read the original audit](docs/audit/PHASE-0-REPORT.md).

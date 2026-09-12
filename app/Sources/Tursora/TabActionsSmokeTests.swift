@@ -29,8 +29,9 @@ enum TabActionsSmokeTests {
 
     private static func pureTitles() {
         check("single pane title", TabPage.title(left: "Left", right: nil, activeIndex: 0, custom: nil) == "Left")
-        check("left-active split title keeps physical order", TabPage.title(left: "Left", right: "Right", activeIndex: 0, custom: nil) == "Left | (Right)")
-        check("right-active split title keeps physical order", TabPage.title(left: "Left", right: "Right", activeIndex: 1, custom: nil) == "(Left) | Right")
+        check("left-active split title has a separator without focus parentheses", TabPage.title(left: "Left", right: "Right", activeIndex: 0, custom: nil) == "Left | Right")
+        check("right-active split title keeps the same names and physical order", TabPage.title(left: "Left", right: "Right", activeIndex: 1, custom: nil) == "Left | Right")
+        check("literal folder-name parentheses remain intact", TabPage.title(left: "Plan (final)", right: "Archive (old)", activeIndex: 0, custom: nil) == "Plan (final) | Archive (old)")
         check("custom title overrides both panes", TabPage.title(left: "Left", right: "Right", activeIndex: 1, custom: "Work") == "Work")
         check("empty custom title returns automatic title", TabPage.title(left: "Left", right: nil, activeIndex: 0, custom: "") == "Left")
     }
@@ -49,10 +50,11 @@ enum TabActionsSmokeTests {
         await listed(right, at: folders[1])
         left.setViewMode(mode); right.setViewMode(mode)
         left.nameFilter = "*.txt"; right.setGroupKey(.kind)
-        check("\(mode): split title includes both locations", tabs.tabBar.titles[0] == "(Left) | Right", "\(tabs.tabBar.titles)")
+        check("\(mode): split title includes both locations without focus markers", tabs.tabBar.titles[0] == "Left | Right", "\(tabs.tabBar.titles)")
         check("\(mode): split tooltip retains both full paths", tabs.tabBar.toolTips[0].contains(folders[0].path) && tabs.tabBar.toolTips[0].contains(folders[1].path))
         first.activate(left)
-        check("\(mode): focus changes only parentheses", tabs.tabBar.titles[0] == "Left | (Right)")
+        check("\(mode): switching focus preserves the split title", tabs.tabBar.titles[0] == "Left | Right")
+        check("\(mode): tooltip retains physical order and the focused side", tabs.tabBar.toolTips[0] == "Left (active): \(folders[0].path)\nRight: \(folders[1].path)")
         first.activate(right)
         let secondPane = tabs.newTab(at: folders[2])
         await listed(secondPane, at: folders[2])
@@ -108,10 +110,10 @@ enum TabActionsSmokeTests {
 
         tabs.renameTabTitleProvider = { _, reply in reply("\n  ") }
         dispatch(.rename, in: menu)
-        check("\(mode): blank rename restores automatic split title", first.customTitle == nil && first.tabTitle == "(Left) | Right")
+        check("\(mode): blank rename restores automatic split title", first.customTitle == nil && first.tabTitle == "Left | Right")
         first.activate(left)
         let firstIndex = tabs.pages.firstIndex { $0 === first }!
-        check("\(mode): background pane activation refreshes its title without changing current tab", tabs.tabBar.titles[firstIndex] == "Left | (Right)" && tabs.currentPage === second)
+        check("\(mode): background pane activation preserves its title and the current tab", tabs.tabBar.titles[firstIndex] == "Left | Right" && tabs.currentPage === second)
         first.activate(right)
         dispatch(.closeOthers, in: menu)
         check("\(mode): Close Other Tabs keeps clicked split and activates it", tabs.count == 1 && tabs.currentPage === first && first.panes[0] === left && first.panes[1] === right)

@@ -55,6 +55,11 @@ jobs:
             echo "Tag v$VERSION already exists; releases are never overwritten." >&2
             exit 1
           fi
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+            -s app/tools -p 'test_release_notes.py'
+          python3 app/tools/release-notes.py "$VERSION" \
+            --changelog CHANGELOG.md --output "$RUNNER_TEMP/tursora-release-notes.md" \
+            --repository "$GH_REPO" --ref "$GITHUB_SHA"
       - name: Build and verify application bundle
         working-directory: app
         env:
@@ -90,5 +95,5 @@ jobs:
           gh release create "v$VERSION" app/dist/* \
             --verify-tag \
             --title "Tursora $VERSION" \
-            --generate-notes \
+            --notes-file "$RUNNER_TEMP/tursora-release-notes.md" \
             "${flags[@]}"

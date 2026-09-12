@@ -24,15 +24,15 @@
 
 重启后逐目录视图：
 
-![重启后分别恢复图标分组和列表视图](../images/features/folder-views.jpg)
+![重启后分别恢复图标分组和列表视图](../images/features/folder-views.png)
 
 统一策略下两侧 Name 列保持可见：
 
-![统一列表视图的窄分栏布局](../images/features/folder-views-unified.jpg)
+![统一列表视图的窄分栏布局](../images/features/folder-views-unified.png)
 
 目录视图设置入口：
 
-![包含目录视图策略的设置窗口](../images/features/settings.jpg)
+![包含目录视图策略的设置窗口](../images/features/settings.png)
 
 ## 已知边界
 

@@ -116,6 +116,7 @@ final class TabsController: NSViewController {
         page.panes.forEach { $0.addressBar.endEditing(returnFocus: false) }
         detach(page)
         closedTabs.append(page)
+        page.panes.forEach { $0.searchPanel.cancelPendingSearch() }
         if closedTabs.count > maxClosedTabs { closedTabs.removeFirst() }
         // Closing a background page must not change the current page. When
         // closing the current one, prefer its right neighbour, then its left.
@@ -139,6 +140,11 @@ final class TabsController: NSViewController {
         pages.append(page)
         if isViewLoaded { attach(page) }
         selectTab(at: pages.count - 1)
+        for pane in page.panes where pane.searchPanel.isShowingOptions {
+            if pane.searchPanel.currentRequest != pane.searchSession.request {
+                pane.searchPanel.scheduleSearch()
+            }
+        }
         return true
     }
 

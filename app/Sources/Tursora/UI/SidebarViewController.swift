@@ -173,7 +173,6 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         add("Open", #selector(ctxOpen(_:)))
         add("Open in New Tab", #selector(ctxOpenInNewTab(_:)))
         add("Open in Other Pane", #selector(ctxOpenInOtherPane(_:)))
-        add("Reveal in Finder", #selector(ctxReveal(_:)))
         if place.isRemovable {
             menu.addItem(.separator())
             add("Remove from Favourites", #selector(ctxRemove(_:)))
@@ -193,11 +192,6 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     }
     @objc private func ctxOpenInOtherPane(_ sender: NSMenuItem) {
         if let place = sender.representedObject as? PlacesModel.Place { onOpenInOtherPane?(place.url) }
-    }
-    @objc private func ctxReveal(_ sender: NSMenuItem) {
-        if let place = sender.representedObject as? PlacesModel.Place {
-            NSWorkspace.shared.activateFileViewerSelecting([place.url])
-        }
     }
     @objc private func ctxRemove(_ sender: NSMenuItem) {
         guard let place = sender.representedObject as? PlacesModel.Place, place.isRemovable else { return }

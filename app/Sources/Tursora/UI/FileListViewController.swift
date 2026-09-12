@@ -50,6 +50,10 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
 
     private(set) var iconSize: CGFloat = 16
     private(set) var showPreviews = true
+    var thumbnailLoader: ThumbnailProvider.Loader = { item, size, scale, completion in
+        ThumbnailProvider.shared.thumbnail(for: item, size: size, scale: scale, completion: completion)
+    }
+    private var thumbnailGeneration = UUID()
 
     /// Items marked by ⌘X are drawn faded until pasted or the pasteboard changes.
     var cutURLs: Set<URL> = [] {
@@ -157,6 +161,12 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         tableView.onRenameRequest = { [weak self] row in self?.beginRename(row: row) }
         tableView.onBecomeFirstResponder = { [weak self] in self?.onFocus?() }
         tableView.onZoom = { [weak self] step in self?.onZoomGesture?(step) }
+        tableView.onBackingScaleChanged = { [weak self] in
+            guard let self, self.showPreviews, self.iconSize >= ZoomLevel.previewThreshold else { return }
+            let selection = self.selectedItems.map(\.url)
+            self.reloadData()
+            self.select(urls: selection)
+        }
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -177,6 +187,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     /// Reload, keeping folders that were expanded expanded. When the change is
     /// a fresh listing (not just a re-sort) their contents are re-listed too.
     func reloadData() {
+        thumbnailGeneration = UUID()
         cancelResultRename()
         tableView.tableColumn(withIdentifier: Column.location.id)?.isHidden = !model.isSearchResults
         let locationIndex = tableView.column(withIdentifier: Column.location.id)
@@ -527,11 +538,15 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         switch column {
         case .name:
             cell.imageView?.image = item.icon(size: iconSize)
-            cell.objectValue = item.url.path
+            let requestID = UUID()
+            cell.objectValue = requestID
             if item.canAccess, showPreviews, iconSize >= ZoomLevel.previewThreshold, ThumbnailProvider.canPreview(item) {
                 let scale = outlineView.window?.backingScaleFactor ?? 2
-                if let cached = ThumbnailProvider.shared.thumbnail(for: item, size: iconSize, scale: scale, completion: { [weak cell] image in
-                    guard let image, let cell, (cell.objectValue as? String) == item.url.path else { return }
+                let generation = thumbnailGeneration
+                if let cached = thumbnailLoader(item, iconSize, scale, { [weak self, weak cell] image in
+                    guard let self, self.showPreviews, self.thumbnailGeneration == generation,
+                          (self.tableView.window?.backingScaleFactor ?? 2) == scale,
+                          let image, let cell, (cell.objectValue as? UUID) == requestID else { return }
                     cell.imageView?.image = image
                 }) {
                     cell.imageView?.image = cached
@@ -583,6 +598,24 @@ final class FileOutlineView: NSOutlineView {
     var onRenameRequest: ((Int) -> Void)?
     var onBecomeFirstResponder: (() -> Void)?
     var onZoom: ((Int) -> Void)?
+    var onBackingScaleChanged: (() -> Void)?
+    private var previewBackingScale: CGFloat = 2
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updatePreviewBackingScale()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updatePreviewBackingScale()
+    }
+
+    private func updatePreviewBackingScale() {
+        guard let scale = window?.backingScaleFactor, scale != previewBackingScale else { return }
+        previewBackingScale = scale
+        onBackingScaleChanged?()
+    }
 
     private var pendingRename: DispatchWorkItem?
     private var wheelAccumulator: CGFloat = 0

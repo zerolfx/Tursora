@@ -2,9 +2,29 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
+## 0.1.0 发布准备：外观、搜索、Dock 与文档
+
+标签栏主要参考本机 Safari：连续中性底条、居中标题、柔和胶囊形选中面和悬停关闭，固定新增按钮，过多时滚动 / 文字溢出菜单。亮暗随系统，既有补全面板、活动 pane 线与任务边框随外观刷新。分栏标题改为 `Left | Right`，不再添加活动侧括号；所有 Reveal in Finder 入口移除，搜索结果仍在 Tursora 内定位。README / 产品页不再把通用标签页作为独立卖点，产品页改为路径、双窗格与 ZIP 三种工作流。
+
+文本图标由整页缩小改为实际开头片段，7–10 pt 等宽字、3:4 浅色纸面，两种主题使用相同文档内容。读取、编码与排版有界；列表 / 图标共用缓存，缩放、关预览、复用与屏幕倍率变化不能被旧请求覆盖。Get Info 默认仅展开 General / Preview，其他分区折叠；新主动选择与旧自动保存值分开，旧 `true` 的迁移取舍见记录。
+
+搜索按用户确认保留“先筛当前目录”：一个工具栏输入框，有输入后提供 Search Options，再展开正文 / 范围 / 类型 / 日期和保存条件。移除重复工具栏 Search 按钮与表单名称框；递归查询按 pane 防抖 500 ms，Return 立即执行，空条件不自动扫描。中文组合输入、空名称失焦、原生清空按钮、关闭重开草稿和同目录导航提示已加入回归；[Dolphin 对照与实现](research/search-input-reference.md)。正文仍查询 macOS Spotlight 已有索引，不读每个文件兜底。
+
+README 特性改为说明 / 截图两列表格，含 11 项功能和 2 项默认关闭的实验；按用户要求不单独宣传通用标签页或预览。22 张功能证据图统一 PNG，脚本只处理窗口外白底和窄边缘，内部与原生 JPEG 解码像素逐字节核对。配准的亮色图复用同尺寸暗色图的 alpha；歧义边缘拒绝后重拍。README 本地亮暗预览和网站桌面 / 窄屏 / 弹窗已检查，线上 GitHub 渲染未实测；[截图管线与阶段](research/screenshot-transparency.md)。
+
+Dock 右键增加 New Window / Downloads / Applications，均打开独立窗口并保持已有 pane 与标签；[菜单证据](research/dock-menu.md)。发布前审查修复中文候选词确认后文字未变时漏掉自动名称查询的问题，真实 marked text / unmark 路径在两种视图中回归。
+
+加入 Dock 和 IME 修复后的最终源码 **2,107 项 smoke 连续三轮通过**，三次均 exit 0、stderr 为空；发布说明工具另有 33 项标准库测试通过。日志为 `/private/tmp/tursora-tabs-appearance-verification/final-release-smoke-{1,2,3}.{out,err}`。
+
+最终 `0.1.0` release 构建、strict codesign、plist、arm64 架构和包内 ICNS 核对通过，独立副本的窗口与目录导航已目视检查。Dock 的系统界面无法通过当前工具读取，因此真实 Dock 右键点击和前台激活未实测；菜单与动作通过自动化验证，详见 [Dock 记录](research/dock-menu.md)。
+
+截图阶段的组合 2,024 项也曾连续三轮通过；该阶段 release 构建、签名、plist 和包内图标核对通过，实测系统暗色及进程浅色、560→1200 宽度、标签与分栏、路径补全、64→96 pt 文本图标、Info 初始折叠和统一搜索流程。证据：[标签与外观](research/tabs-and-appearance.md)、[文本图标](research/text-thumbnails.md)、[Info 折叠](research/info-disclosures.md)。
+
+GitHub 尚无已发布版本，本轮准备首个 `0.1.0`。CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开发流水移至 [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)。发布工作流从对应版本节提取说明并检查完整性，具体维护流程见 [RELEASING.md](RELEASING.md)。最终发布与下载校验完成后更新本段。
+
 ## 本轮分栏路径与标签操作
 
-每个 pane 上方显示独立地址栏；路径与补全只导航所属 pane，切换时收起未提交的路径编辑。标签栏始终可见，分栏标题固定左右顺序并用括号标记非活动侧，支持自定义名和 Dolphin 的七项标签右键动作。Detach 按逻辑位置在新窗口重新打开，保留活动侧、自定义名和搜索请求；历史、过滤、选区、任务及撤销栈留在原窗口上下文。
+每个 pane 上方显示独立地址栏；路径与补全只导航所属 pane，切换时收起未提交的路径编辑。标签栏始终可见，分栏标题固定左右顺序（原括号标记已由上方新阶段取代），支持自定义名和 Dolphin 的七项标签右键动作。Detach 按逻辑位置在新窗口重新打开，保留活动侧、自定义名和搜索请求；历史、过滤、选区、任务及撤销栈留在原窗口上下文。
 
 最终源码 **1,500 项 smoke 连续三轮通过**，三次均 exit 0、stderr 为空；release 构建、strict codesign、Info.plist lint 和包内 ICNS 一致性检查通过。打包应用实测覆盖独立路径 / 相对导航与 Back、活动侧标题、后台标签右键目标与边界、Rename / 清空、新标签、Detach、未提交编辑取消、路径补全和 560→1200 宽窗口重排。分栏、路径与标签三张实际截图已更新；菜单展开期间截图工具不可用，七项菜单由辅助功能树与真实点击验证，标签截图为菜单关闭状态。日志、范围及 Dolphin 差异见[分栏地址栏与标签操作](research/pane-paths-and-tab-actions.md)。下面 1,253 项及各历史阶段结果仍仅代表各自阶段。
 
@@ -44,7 +64,7 @@
 - Get Info 的文本文件简介排版已检查并修复宽度；长文件名、卷、多选汇总的视觉边界与 Inspector 浮动跟随手感仍需专项检查。
 - 菜单栏和右键菜单里 SF Symbol 图标在 macOS 26 上的显示。
 - 图标视图在超大档位（256 / 512）下的布局。
-- 本次检查使用深色模式；浅色模式尚未专项检查。
+- 亮暗标签、分栏、搜索与文本图标已在本轮检查；尚未逐一覆盖全部弹窗、分享服务和真实多显示器切换。
 
 用户反馈过、已修的问题都进了 smoke test；修 bug 时先写能复现的 check。
 

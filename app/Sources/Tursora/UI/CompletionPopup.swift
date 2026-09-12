@@ -12,6 +12,8 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
     private let table = ClickTableView()
     private let scroll = NSScrollView()
     private weak var parent: NSWindow?
+    private var parentAppearanceObservation: NSKeyValueObservation?
+    private let content = AdaptiveLayerView()
     private let rowHeight: CGFloat = 22
     private let maxRows = 8
 
@@ -49,11 +51,9 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = true
 
-        let content = NSView()
-        content.wantsLayer = true
         content.layer?.cornerRadius = 8
-        content.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        content.layer?.borderColor = NSColor.separatorColor.cgColor
+        content.semanticBackgroundColor = .windowBackgroundColor
+        content.semanticBorderColor = .separatorColor
         content.layer?.borderWidth = 1
         panel.contentView = content
 
@@ -106,6 +106,11 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
             parent?.removeChildWindow(panel)
             window.addChildWindow(panel, ordered: .above)
             parent = window
+            // Child windows do not inherit an explicit parent-window override.
+            // Observe while shown so an already-open popup follows hot changes.
+            parentAppearanceObservation = window.observe(\.effectiveAppearance, options: [.initial, .new]) { [weak self] window, _ in
+                self?.panel.appearance = window.effectiveAppearance
+            }
         }
         panel.orderFront(nil)
     }
@@ -117,11 +122,13 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
         return (panel.frame.height, scroll.contentView.bounds.height, table.frame.height, first)
     }
 
+    var appearanceSurfaceForTesting: AdaptiveLayerView { content }
+
     func hide() {
-        guard panel.isVisible else { return }
         parent?.removeChildWindow(panel)
         panel.orderOut(nil)
         parent = nil
+        parentAppearanceObservation = nil
     }
 
     /// ↑/↓ — wraps around; from no selection, ↓ picks the first and ↑ the last.

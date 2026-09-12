@@ -25,4 +25,4 @@ Tursora 使用 `CFBundleIconFile` 指向打包的 `AppIcon.icns`。Apple 的 [Ic
 - 最终 release 构建成功，strict codesign、Info.plist lint 与嵌入 ICNS 一致性检查通过。ICNS SHA-256：`4a3b178240c5c5559ddb59793ab1e27a8c5ab5f0775ace3aa380bfaef621b7b4`。
 - 实机：在已打包应用中打开其 `app/build` 目录，以图标视图显示 `Tursora.app`，实际系统图标读取路径呈现透明外沿和顺滑圆角，无旧方形边框。该观察验证当前发布包图标，不等同于验证其他已安装副本或 Dock 的历史缓存。测试应用已退出，偏好与目录视图库已恢复，共享验证锁已释放。
 
-![打包应用实际加载的圆角透明图标](../images/features/app-icon-edges.jpg)
+![打包应用实际加载的圆角透明图标](../images/features/app-icon-edges.png)

@@ -43,6 +43,10 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
 
     private(set) var iconSize: CGFloat = 64
     private(set) var showPreviews = true
+    var thumbnailLoader: ThumbnailProvider.Loader = { item, size, scale, completion in
+        ThumbnailProvider.shared.thumbnail(for: item, size: size, scale: scale, completion: completion)
+    }
+    private var thumbnailGeneration = UUID()
     private static let itemID = NSUserInterfaceItemIdentifier("file")
     private static let headerID = NSUserInterfaceItemIdentifier("groupHeader")
 
@@ -82,6 +86,10 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
             self?.refreshSelectionEmphasis()
         }
         collectionView.onResignFirstResponder = { [weak self] in self?.refreshSelectionEmphasis() }
+        collectionView.onBackingScaleChanged = { [weak self] in
+            guard let self, self.showPreviews, self.iconSize >= ZoomLevel.previewThreshold else { return }
+            self.reloadData()
+        }
 
         scrollView.documentView = collectionView
         scrollView.hasVerticalScroller = true
@@ -128,6 +136,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     // MARK: - FileViewing
 
     func reloadData() {
+        thumbnailGeneration = UUID()
         let selected = selectedItems.map(\.url)
         if model.isSearchResults, let target = renameTarget {
             renameTarget = nil
@@ -284,11 +293,15 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         cell.onMiddleClick = { [weak self] in self?.onOpenInNewTab?(item) }
         if item.canAccess, showPreviews, iconSize >= ZoomLevel.previewThreshold, ThumbnailProvider.canPreview(item) {
             let scale = collectionView.window?.backingScaleFactor ?? 2
-            if let cached = ThumbnailProvider.shared.thumbnail(for: item, size: iconSize, scale: scale, completion: { [weak cell] image in
-                guard let image, let cell, (cell.representedObject as? FileNode) === node else { return }
-                cell.setThumbnail(image)
+            let generation = thumbnailGeneration
+            let requestID = cell.thumbnailRequestID
+            if let cached = thumbnailLoader(item, iconSize, scale, { [weak self, weak cell] image in
+                guard let self, self.showPreviews, self.thumbnailGeneration == generation,
+                      (self.collectionView.window?.backingScaleFactor ?? 2) == scale,
+                      let image, let cell, (cell.representedObject as? FileNode) === node else { return }
+                cell.setThumbnail(image, for: requestID)
             }) {
-                cell.setThumbnail(cached)
+                cell.setThumbnail(cached, for: requestID)
             }
         }
         return cell
@@ -396,9 +409,27 @@ final class FileCollectionView: NSCollectionView {
     var onZoom: ((Int) -> Void)?
     var onBecomeFirstResponder: (() -> Void)?
     var onResignFirstResponder: (() -> Void)?
+    var onBackingScaleChanged: (() -> Void)?
+    private var previewBackingScale: CGFloat = 2
     private(set) var clickedIndexPath: IndexPath?
     private var wheelAccumulator: CGFloat = 0
     private var magnifyAccumulator: CGFloat = 0
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updatePreviewBackingScale()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updatePreviewBackingScale()
+    }
+
+    private func updatePreviewBackingScale() {
+        guard let scale = window?.backingScaleFactor, scale != previewBackingScale else { return }
+        previewBackingScale = scale
+        onBackingScaleChanged?()
+    }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -463,6 +494,7 @@ final class FileCollectionItem: NSCollectionViewItem {
     var onDoubleClick: (() -> Void)?
     var onMiddleClick: (() -> Void)?
     private var iconSize: CGFloat = 64
+    private(set) var thumbnailRequestID = UUID()
     private var faded = false
 
     private final class ItemView: NSView {
@@ -521,6 +553,7 @@ final class FileCollectionItem: NSCollectionViewItem {
     override var highlightState: NSCollectionViewItem.HighlightState { didSet { refreshAppearance() } }
 
     func configure(item: FileItem, iconSize: CGFloat, faded: Bool, showsLocation: Bool = false) {
+        thumbnailRequestID = UUID()
         self.iconSize = iconSize
         self.faded = faded
         iconView.image = item.icon(size: iconSize)
@@ -533,8 +566,11 @@ final class FileCollectionItem: NSCollectionViewItem {
         refreshAppearance()
     }
 
-    func setThumbnail(_ image: NSImage) {
+    @discardableResult
+    func setThumbnail(_ image: NSImage, for requestID: UUID) -> Bool {
+        guard thumbnailRequestID == requestID else { return false }
         iconView.image = image
+        return true
     }
 
     private func layoutSubviews() {

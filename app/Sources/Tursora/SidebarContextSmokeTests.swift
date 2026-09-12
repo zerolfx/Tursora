@@ -47,8 +47,9 @@ enum SidebarContextSmokeTests {
             check("sidebar context: right-clicking a favourite produces a menu", false)
             return
         }
-        let expected = ["Open", "Open in New Tab", "Open in Other Pane", "Reveal in Finder"]
-        check("sidebar context: favourites offer all three opening destinations", Array(secondMenu.items.prefix(4).map(\.title)) == expected)
+        let expected = ["Open", "Open in New Tab", "Open in Other Pane"]
+        check("sidebar context: favourites offer all three opening destinations", Array(secondMenu.items.prefix(3).map(\.title)) == expected)
+        check("sidebar context: favourites keep navigation inside Tursora", !secondMenu.items.contains { $0.title == "Reveal in Finder" })
         check("sidebar context: ordinary favourites have no Eject command", !secondMenu.items.contains { $0.title.hasPrefix("Eject") })
         check("sidebar context: building a menu does not navigate or select its target", opened.isEmpty && outline.selectedRow == firstRow)
 

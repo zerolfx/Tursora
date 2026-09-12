@@ -11,7 +11,7 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
-| **Get Info**（⌘I）/ Show Inspector（⌥⌘I）/ Get Summary Info（⌃⌘I） | ✅ 已做 | — | 见 PLAN 2.10。未做：Stationery pad、ACL、改 owner/group（要提权，无公开 API → 单独算 L）、Apply to enclosed items |
+| **Get Info**（⌘I）/ Show Inspector（⌥⌘I）/ Get Summary Info（⌃⌘I） | ✅ 已做 | — | 默认 General / Preview 展开、其余折叠，记住显式选择；[证据](../research/info-disclosures.md)。未做：Stationery pad、ACL、改 owner/group（要提权，无公开 API → 单独算 L）、Apply to enclosed items |
 | **Rename（多选 = 批量重命名对话框）** | 单选 ✅ 批量 ❌ | M | 替换文本 / 添加文本 / 格式三种模式；连锁改名（a→b 而 b 也在批里）要两遍临时名 |
 | **New Folder with Selection**（⌃⌘N） | ❌ | S | createDirectory + 现有 transfer；撤销要合成一个组 |
 | **Compress** / Compress with password | 普通 ZIP ✅；密码 ❌ | 密码 M | 压缩 / 解压支持重名保留、撤销重做；可选当前 pane 只读 ZIP 浏览默认关闭（浏览交互参考 Windows） |
@@ -52,6 +52,8 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 | Enter Full Screen | ✅ 系统 | — | |
 
 ## Go 菜单
+
+Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗口；系统标准项仍由 macOS 管理。以下 Go 菜单缺项不因 Dock 快捷入口而视为已补齐，见 [Dock 记录](../research/dock-menu.md)。
 
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
@@ -99,3 +101,9 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 - [x] 每目录视图记忆、统一默认、保存当前默认与恢复目录默认；列表 / 图标均保存，完整 Finder 视图选项对话框仍未实现。自动与实机验证见本功能 [HANDOFF](../HANDOFF.md)。
 - [x] 默认关闭的终端面板与当前 pane ZIP 只读浏览实验；归档支持复制 / 拖出、Quick Look 与分享，不支持写回。
 - Tags、Import from iPhone 为明确不做的产品边界。
+
+## 2026-09-12 标签栏与外观
+
+- [x] 标签中性选中层级、居中标题、悬停关闭、固定新增按钮。
+- [x] 多标签横向滚动与全部标签文字菜单；不替代上表待做的缩略图总览。
+- [x] 系统亮 / 暗外观与现有 layer 表面动态更新；[本轮验证状态](../research/tabs-and-appearance.md)。

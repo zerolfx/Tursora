@@ -9,7 +9,7 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
     let datePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     let saveNameField = NSTextField(string: "")
     let savedPopup = NSPopUpButton(frame: .zero, pullsDown: false)
-    let searchButton = NSButton(title: "Search", target: nil, action: nil)
+    let optionsButton = NSButton(title: "Search Options…", target: nil, action: nil)
     let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
     let clearButton = NSButton(title: "Clear", target: nil, action: nil)
     let closeButton = NSButton(title: "Close", target: nil, action: nil)
@@ -21,21 +21,29 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
     let beforeCheckbox = NSButton(checkboxWithTitle: "Before", target: nil, action: nil)
     let afterPicker = NSDatePicker()
     let beforePicker = NSDatePicker()
-    let statusLabel = NSTextField(wrappingLabelWithString: "Enter conditions, then search this folder and its subfolders.")
+    let statusLabel = NSTextField(wrappingLabelWithString: "Search this folder and its subfolders.")
     let scopeLabel = NSTextField(labelWithString: "")
 
     var onSearch: ((SearchRequest) -> Void)?
     var onCancel: (() -> Void)?
     var onClear: (() -> Void)?
     var onClose: (() -> Void)?
+    var onShowOptions: (() -> Void)?
+    var onFocusName: (() -> Void)?
     private(set) var isRunning = false
+    private(set) var isShowingOptions = false
     private(set) var rootURL = FileManager.default.homeDirectoryForCurrentUser
     private let store: SavedSearchStore
     private let progress = NSProgressIndicator()
     private let customDateRows = NSStackView()
     private let savedRows = NSStackView()
+    private let compactRows = NSStackView()
+    private let optionRows = NSStackView()
+    private var pendingSearch: DispatchWorkItem?
+    private var pendingSearchGeneration = 0
     private var savedIDs: [UUID] = []
     private var storeObserver: NSObjectProtocol?
+    private static let indexedTextExplanation = "Searches text indexed by macOS; only supported files. Unindexed or excluded files may be missing."
 
     private enum DateChoice: Int, CaseIterable {
         case any, today, lastSevenDays, lastThirtyDays, custom
@@ -70,8 +78,17 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         background.state = .followsWindowActiveState
         view = background
 
-        let heading = NSTextField(labelWithString: "Search")
-        heading.font = .systemFont(ofSize: 13, weight: .semibold)
+        let currentFolder = NSTextField(labelWithString: "Current Folder")
+        currentFolder.font = .systemFont(ofSize: 11)
+        currentFolder.textColor = .secondaryLabelColor
+        currentFolder.lineBreakMode = .byTruncatingTail
+        currentFolder.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        wire(optionsButton, #selector(showOptions(_:)))
+        optionsButton.toolTip = "Search subfolders or add search conditions"
+        compactRows.orientation = .horizontal
+        compactRows.alignment = .centerY
+        compactRows.spacing = 5
+        for item in [currentFolder, NSView(), optionsButton] { compactRows.addArrangedSubview(item) }
         progress.style = .spinning
         progress.controlSize = .small
         progress.isDisplayedWhenStopped = false
@@ -80,11 +97,14 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         wire(savedDisclosure, #selector(toggleSavedSearches(_:)))
         savedDisclosure.setButtonType(.pushOnPushOff)
         savedDisclosure.toolTip = "Save, open, or delete saved search conditions"
-        let header = row([heading, progress, NSView(), savedDisclosure, closeButton])
+        let header = row([progress, NSView(), savedDisclosure, closeButton])
 
         configureField(nameField, placeholder: "Name contains", label: "Search File Name")
-        configureField(contentField, placeholder: "Text contains (Spotlight)", label: "Search File Contents")
-        contentField.toolTip = "Search indexed text. Available formats and locations depend on Spotlight."
+        // The toolbar owns the visible query field. Keep this storage control
+        // detached so it cannot become a second editor or accessibility input.
+        nameField.isHidden = true
+        configureField(contentField, placeholder: "Text contains", label: "Search File Contents")
+        contentField.toolTip = Self.indexedTextExplanation
         configureField(saveNameField, placeholder: "Name this saved search", label: "Saved Search Name")
 
         scopePopup.addItems(withTitles: ["This Folder + Subfolders", "Home Folder + Subfolders"])
@@ -99,6 +119,8 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
 
         kindPopup.addItems(withTitles: SearchKind.allCases.map { $0 == .any ? "Any Type" : $0.title })
         kindPopup.setAccessibilityLabel("Search File Type")
+        kindPopup.target = self
+        kindPopup.action = #selector(conditionsChanged(_:))
         datePopup.addItems(withTitles: DateChoice.allCases.map(\.title))
         datePopup.setAccessibilityLabel("Search Modification Date")
         datePopup.target = self
@@ -118,6 +140,8 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
             picker.dateValue = Calendar.current.startOfDay(for: Date())
             picker.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             picker.setAccessibilityLabel(checkbox === afterCheckbox ? "Modified Since" : "Modified Before")
+            picker.target = self
+            picker.action = #selector(conditionsChanged(_:))
             let dateRow = row([checkbox, picker])
             customDateRows.addArrangedSubview(dateRow)
             dateRow.widthAnchor.constraint(equalTo: customDateRows.widthAnchor).isActive = true
@@ -126,7 +150,6 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         beforePicker.toolTip = "Exclude files modified at or after this date and time"
         customDateRows.isHidden = true
 
-        wire(searchButton, #selector(search(_:)))
         wire(cancelButton, #selector(cancel(_:)))
         wire(clearButton, #selector(clear(_:)))
         wire(saveButton, #selector(save(_:)))
@@ -137,7 +160,7 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         saveButton.toolTip = "Save the conditions and folder shown above"
         openSavedButton.toolTip = "Restore and run the selected saved search"
         deleteSavedButton.toolTip = "Delete only the saved conditions; files are unchanged"
-        let actions = row([searchButton, cancelButton, clearButton, NSView()])
+        let actions = row([cancelButton, clearButton, NSView()])
         let saveRow = row([saveNameField, saveButton])
         savedPopup.setAccessibilityLabel("Saved Searches")
         savedPopup.menu?.delegate = self
@@ -158,10 +181,17 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         statusLabel.setAccessibilityIdentifier("searchStatus")
         statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let rows: [NSView] = [header, labeled("Name", nameField), labeled("Content", contentField),
+        let rows: [NSView] = [header, labeled("Content", contentField),
                               labeled("In", scopePopup), scopeLabel, conditions, customDateRows,
                               actions, savedRows, statusLabel]
-        let stack = NSStackView(views: rows)
+        optionRows.orientation = .vertical
+        optionRows.alignment = .leading
+        optionRows.spacing = 5
+        for item in rows {
+            optionRows.addArrangedSubview(item)
+            item.widthAnchor.constraint(equalTo: optionRows.widthAnchor).isActive = true
+        }
+        let stack = NSStackView(views: [compactRows, optionRows])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 5
@@ -178,13 +208,14 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
             bottom,
         ])
-        for item in rows { item.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        for item in [compactRows, optionRows] { item.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         for popup in [scopePopup, kindPopup, datePopup, savedPopup] {
             popup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             popup.setContentHuggingPriority(.defaultLow, for: .horizontal)
         }
         updateScopeLabel()
         refreshSavedSearches()
+        updatePresentation()
     }
 
     private func row(_ views: [NSView]) -> NSStackView {
@@ -226,13 +257,14 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
 
     func present(request: SearchRequest) {
         _ = view
+        cancelPendingSearch()
         let previous = currentRequest
         let keepsDateChoice = previous.modifiedAfter == request.modifiedAfter
             && previous.modifiedBefore == request.modifiedBefore
         let existingDateChoice = DateChoice(rawValue: datePopup.indexOfSelectedItem) ?? .any
         rootURL = request.rootURL
         nameField.stringValue = request.name
-        contentField.stringValue = request.content
+        if contentField.stringValue != request.content { contentField.stringValue = request.content }
         scopePopup.selectItem(at: request.scope == .home ? 1 : 0)
         kindPopup.selectItem(at: SearchKind.allCases.firstIndex(of: request.kind) ?? 0)
         let hasDates = request.modifiedAfter != nil || request.modifiedBefore != nil
@@ -242,7 +274,7 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         beforeCheckbox.state = request.modifiedBefore == nil ? .off : .on
         if let date = request.modifiedAfter { afterPicker.dateValue = date }
         if let date = request.modifiedBefore { beforePicker.dateValue = date }
-        dateChanged(nil)
+        updateDateControls()
         updateScopeLabel()
     }
 
@@ -271,15 +303,57 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
     }
 
     func focusName() {
+        onFocusName?()
+    }
+
+    func setShowsOptions(_ shown: Bool) {
         _ = view
-        view.window?.makeFirstResponder(nameField)
+        isShowingOptions = shown
+        if !shown { cancelPendingSearch() }
+        updatePresentation()
+    }
+
+    private func updatePresentation() {
+        compactRows.isHidden = isShowingOptions
+        optionRows.isHidden = !isShowingOptions
+    }
+
+    @objc private func showOptions(_ sender: Any?) { onShowOptions?() }
+
+    func setNameQuery(_ text: String, scheduleSearch: Bool = true) {
+        guard nameField.stringValue != text else {
+            if !scheduleSearch { cancelPendingSearch() }
+            return
+        }
+        nameField.stringValue = text
+        if scheduleSearch { self.scheduleSearch() } else { cancelPendingSearch() }
+    }
+
+    func cancelPendingSearch() {
+        pendingSearchGeneration += 1
+        pendingSearch?.cancel()
+        pendingSearch = nil
+        cancelButton.isEnabled = isRunning
+    }
+
+    func scheduleSearch() {
+        cancelPendingSearch()
+        guard isShowingOptions else { return }
+        guard !clearIfEmpty(currentRequest) else { return }
+        let generation = pendingSearchGeneration
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isShowingOptions, self.pendingSearchGeneration == generation else { return }
+            self.search(nil)
+        }
+        pendingSearch = work
+        cancelButton.isEnabled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(500), execute: work)
     }
 
     func update(status: String, resultCount: Int, isRunning: Bool, isError: Bool = false) {
         _ = view
         self.isRunning = isRunning
-        cancelButton.isEnabled = isRunning
-        searchButton.toolTip = isRunning ? "Replace the running query with these conditions" : "Run this search"
+        cancelButton.isEnabled = isRunning || pendingSearch != nil
         if isRunning { progress.startAnimation(nil) } else { progress.stopAnimation(nil) }
         let count = "\(resultCount) \(resultCount == 1 ? "result" : "results")"
         let fullStatus = status.isEmpty ? count : "\(count) · \(status)"
@@ -288,31 +362,34 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
             // exceeds the compact status area's three lines.
             let detail = status.replacingOccurrences(of: SearchRequest.contentLimitMessage, with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            statusLabel.stringValue = "\(count) · Spotlight: indexed, supported files only.\n\(detail)"
+            statusLabel.stringValue = "\(count) · \(Self.indexedTextExplanation)\n\(detail)"
         } else { statusLabel.stringValue = fullStatus }
-        statusLabel.toolTip = fullStatus
+        statusLabel.toolTip = statusLabel.stringValue
         statusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
     }
 
     @objc func search(_ sender: Any?) {
+        cancelPendingSearch()
         let request = currentRequest
+        guard !clearIfEmpty(request) else { return }
         guard validDates(request) else { return }
         onSearch?(request)
     }
 
-    @objc func cancel(_ sender: Any?) { onCancel?() }
+    @objc func cancel(_ sender: Any?) { cancelPendingSearch(); onCancel?() }
 
     @objc func clear(_ sender: Any?) {
+        cancelPendingSearch()
         let scope = scopePopup.indexOfSelectedItem
         if let onClear { onClear() } else { onCancel?() }
         present(request: SearchRequest(rootURL: rootURL, scope: scope == 1 ? .home : .currentFolder))
-        statusLabel.stringValue = "Conditions cleared. Enter conditions or search all items in this scope."
+        statusLabel.stringValue = "Conditions cleared. Enter a filename or add search conditions."
         statusLabel.toolTip = statusLabel.stringValue
         statusLabel.textColor = .secondaryLabelColor
         focusName()
     }
 
-    @objc func close(_ sender: Any?) { onClose?() }
+    @objc func close(_ sender: Any?) { cancelPendingSearch(); onClose?() }
 
     @objc func toggleSavedSearches(_ sender: Any?) {
         savedRows.isHidden = savedDisclosure.state != .on
@@ -338,7 +415,7 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         guard let item = selectedSavedSearch else { refreshSavedSearches(); return }
         present(request: item.request)
         saveNameField.stringValue = item.name
-        onSearch?(item.request)
+        search(sender)
     }
 
     @objc func deleteSaved(_ sender: Any?) {
@@ -403,7 +480,16 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         return lines.joined(separator: "\n")
     }
 
-    @objc private func scopeChanged(_ sender: Any?) { updateScopeLabel() }
+    @objc private func scopeChanged(_ sender: Any?) {
+        updateScopeLabel()
+        conditionsChanged(sender)
+    }
+
+    @objc private func conditionsChanged(_ sender: Any?) {
+        if let event = NSApp.currentEvent, event.type == .keyDown, [36, 76].contains(event.keyCode) {
+            search(sender)
+        } else { scheduleSearch() }
+    }
 
     private func updateScopeLabel() {
         let url = scopePopup.indexOfSelectedItem == 1 ? FileManager.default.homeDirectoryForCurrentUser : rootURL
@@ -412,13 +498,20 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
     }
 
     @objc private func dateChanged(_ sender: Any?) {
+        updateDateControls()
+        conditionsChanged(sender)
+    }
+
+    private func updateDateControls() {
         customDateRows.isHidden = datePopup.indexOfSelectedItem != DateChoice.custom.rawValue
-        dateBoundChanged(nil)
+        afterPicker.isEnabled = afterCheckbox.state == .on
+        beforePicker.isEnabled = beforeCheckbox.state == .on
     }
 
     @objc private func dateBoundChanged(_ sender: Any?) {
         afterPicker.isEnabled = afterCheckbox.state == .on
         beforePicker.isEnabled = beforeCheckbox.state == .on
+        conditionsChanged(sender)
     }
 
     private func validDates(_ request: SearchRequest) -> Bool {
@@ -426,6 +519,16 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
             showMessage("The Before date must be later than the Since date.", isError: true)
             return false
         }
+        return true
+    }
+
+    /// Clearing the toolbar must not turn an empty query into a recursive
+    /// enumeration of the entire selected scope.
+    private func clearIfEmpty(_ request: SearchRequest) -> Bool {
+        guard request.trimmedName.isEmpty, request.trimmedContent.isEmpty, request.kind == .any,
+              request.modifiedAfter == nil, request.modifiedBefore == nil else { return false }
+        if let onClear { onClear() } else { onCancel?() }
+        showMessage("Enter a filename or add search conditions.")
         return true
     }
 
@@ -438,7 +541,7 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
             if control === saveNameField { saveButton.performClick(nil) }
-            else { searchButton.performClick(nil) }
+            else { search(nil) }
             return true
         }
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
@@ -448,7 +551,17 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         return false
     }
 
+    func controlTextDidChange(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField, field === contentField || field === nameField else { return }
+        if let editor = field.currentEditor() as? NSTextView, editor.hasMarkedText() {
+            cancelPendingSearch()
+            return
+        }
+        scheduleSearch()
+    }
+
     deinit {
+        pendingSearch?.cancel()
         if let storeObserver { NotificationCenter.default.removeObserver(storeObserver) }
     }
 }

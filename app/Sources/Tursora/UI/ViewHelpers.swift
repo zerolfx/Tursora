@@ -1,5 +1,38 @@
 import AppKit
 
+/// CALayer stores resolved CGColors, so retaining semantic NSColors here lets
+/// an existing surface follow its view's appearance when Light/Dark changes.
+class AdaptiveLayerView: NSView {
+    var semanticBackgroundColor: NSColor? { didSet { needsDisplay = true } }
+    var semanticBorderColor: NSColor? { didSet { needsDisplay = true } }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = semanticBackgroundColor?.cgColor
+            layer?.borderColor = semanticBorderColor?.cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        needsDisplay = true
+    }
+}
+
 extension NSView {
     /// Pin a subview to all four edges of the receiver.
     func pinToEdges(_ subview: NSView, insets: NSEdgeInsets = NSEdgeInsets()) {

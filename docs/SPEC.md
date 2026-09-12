@@ -12,7 +12,7 @@
 
 应用图标：两块蓝色玻璃窗格组成抽象尾鳍，浅色背景裁成单个圆角底板，四周与外角透明，不增加描边、外阴影或第二层底板。前景保持原比例与位置；1024 px 导出在四周各留 80 px，圆角半径 192 px，这是本应用的几何选择。应用包提供 16–1024 px 的 macOS 图标尺寸，`.icns` 自带透明轮廓，不依赖系统补做圆角。依据与验证状态见[图标边缘记录](research/app-icon-edges.md)。
 
-**纯本地。** 不含 SFTP / SMB / WebDAV，不含 KIO、不含任何 KDE 依赖。文件后端走 `protocol FileProvider`，v1 只有 `LocalFileProvider`。
+**本地文件系统接口。** 文件后端走 `protocol FileProvider`，当前只有 `LocalFileProvider`，也能浏览 macOS 已挂载的卷。Connect to Server 通过系统 NetFS 挂载 SMB / NFS / WebDAV 等服务，详见 §15；没有自建 SFTP 后端、KIO 或 KDE 依赖。
 
 | 重点 | 为什么值得做 |
 |---|---|
@@ -20,9 +20,11 @@
 | **标签页** | Finder 有，但没有"恢复关闭的标签""每标签独立历史"这些 |
 | **快捷导航** | 侧边栏 + 后退/前进/上级 + 历史下拉 + 前往文件夹 |
 
-明确不在 v1：紧凑视图、批量重命名、Finder 标签读写、版本控制集成、服务菜单、终端面板、远程协议。
+当前未实现：紧凑视图、批量重命名、Finder 标签读写、版本控制集成与服务菜单。终端面板和只读 ZIP 浏览已作为默认关闭的实验提供；远程连接仅使用系统挂载。
 
 ## 1. 窗口、侧边栏与快捷导航（对标 Dolphin 的 Places + Finder 的侧栏）
+
+**Dock 右键菜单**：提供 New Window、Downloads 和 Applications。三者都新开窗口并激活应用，分别进入 Home、当前用户下载目录和系统应用目录，不改现有标签、分栏、过滤或搜索。标准窗口列表、Options、Hide / Quit 等由 macOS 提供；菜单选择及文案证据见 [Dock 记录](research/dock-menu.md)。
 
 **侧边栏**（`NSOutlineView`，source list 风格）：
 
@@ -75,8 +77,9 @@ Locations
 | 中键 / `⌘` 双击文件夹 | 在后台新标签打开 |
 
 - 每个标签独立持有当前目录、导航历史、选中项、滚动位置和过滤；分栏时两个 pane 各一套。模式、排序、缩放、分组、隐藏和预览按 §5 的目录策略保存并在进入目录时恢复。
+- 标签栏使用中性底条、柔和选中面和居中标题，悬停显示关闭按钮且文字不位移；右侧固定新增入口。多标签保留可读宽度，溢出后横向滚动并提供全部标签文字菜单，选择后自动显示目标页。应用跟随系统亮 / 暗外观，运行中切换也刷新标签、补全面板、活动 pane 线和任务卡片边框；[设计依据与验证](research/tabs-and-appearance.md)。
 - 标签可拖拽重排；标签栏始终显示，单页也可见分栏标题并使用右键菜单。这是 Tursora 的默认选择；Dolphin 提供是否自动隐藏的设置。
-- 单 pane 标签显示目录名；搜索显示 `Search: <名称条件>`，没有名称条件则显示 `Search Results`。分栏按物理左右顺序同时显示两边，非活动侧加括号：`Left | (Right)` 或 `(Left) | Right`。自定义标签名覆盖自动标题，清空后恢复；完整路径在 tooltip 中保留，ZIP 显示逻辑路径。
+- 单 pane 标签显示目录名；搜索显示 `Search: <名称条件>`，没有名称条件则显示 `Search Results`。分栏按物理左右顺序同时显示两边，统一使用竖线分隔：`Left | Right`，切换活动侧不改标题标点；活动 pane 由内容区提示线标识。自定义标签名覆盖自动标题，清空后恢复；完整路径在 tooltip 中保留，ZIP 显示逻辑路径。
 - **文件拖到标签上**（同 Dolphin）：悬停 800 ms 自动切到该标签；放到标签上 = 放进该标签的当前目录（同卷移动 / 跨卷或 `⌥` 复制）；放到标签栏空白处 = 每个文件夹开一个后台新标签。
 - 关闭再恢复标签：分栏状态、两个 pane 的历史和自定义名称一并恢复。关闭后台标签或批量关闭时保留仍存在的活动页；活动页被关闭才选择相邻页。
 - 新 pane 等父控制器接好回调后才执行初始导航；若这期间已经明确选择另一位置，迟到的初始导航不能将其覆盖。
@@ -96,7 +99,7 @@ Locations
 | 交互 | 行为 |
 |---|---|
 | 工具栏 Split View / `⌘⇧D` | 未分栏：在右侧打开第二个 pane（同一目录）并激活；已分栏：关闭**活动** pane（菜单项与按钮 tooltip 写明 Close Left / Right Pane） |
-| 点任意 pane（含其地址栏） | 激活它；顶部 3 pt 强调色线标识活动 pane；两侧地址栏各自保留路径，窗口标题、标签活动侧标记、侧边栏高亮和工具栏过滤框跟随活动 pane |
+| 点任意 pane（含其地址栏） | 激活它；顶部 3 pt 强调色线标识活动 pane；两侧地址栏各自保留路径，窗口标题、侧边栏高亮和工具栏过滤框跟随活动 pane |
 | `⌥⇥` | 焦点切到另一 pane |
 | 右键文件夹 → 在新 pane 中打开 | 未分栏则拆分并显示该文件夹；已分栏则另一 pane 导航过去并激活 |
 | `⌘⇧C` / `⌘⇧M`、右键 | 复制 / 移动到另一 pane |
@@ -110,11 +113,12 @@ Locations
 |---|---|---|
 | 实现 | `NSOutlineView`，文件夹可就地展开（▸） | `NSCollectionView` 网格，仅顶层 |
 | 缩放档位 | 16 / 22 / 32 / 48 / 64（行高随之 24→72） | 32 → 512 共 12 档 |
-| 预览 | 图标 ≥ 32 时用 Quick Look 缩略图替代类型图标 | 同左（默认 64 起就有预览） |
+| 预览 | 图标 ≥ 32 时用内容缩略图替代类型图标 | 同左（默认 64 起就有预览） |
 
 - 切换：工具栏右侧 segmented、`⌘⌥1` 图标 / `⌘⌥2` 列表（`⌘1…9` 已归标签页）。
 - 缩放：`⌘`+滚轮、触控板捏合、`⌘+` / `⌘-` / `⌘0`、状态栏右侧滑块。
-- 预览开关 `⌘⇧P`；缩略图按 路径+尺寸+修改时间 缓存，只对可见项请求，无缩略图的类型记住不再重试。
+- 预览开关 `⌘⇧P`；缩略图按路径、点尺寸、屏幕倍率、修改时间和文件大小缓存，只对可见项请求，无缩略图的类型记住不再重试。缩放、重载、复用单元或关闭预览后，迟到的旧请求不能覆盖当前图标。
+- 纯文本、源码、Markdown、JSON / XML 等显示文件开头的真实文字片段，采用 3:4 浅色纸面与 7–10 pt 等宽字；放大时增加可见内容，避免把整页文字缩到不可辨认。后台最多读取 64 KiB、排版 8,192 字符，支持 UTF-8 与带 BOM 的 UTF-16；不支持的格式 / 编码沿用 Quick Look，没有可用预览时回退类型图标。列表与图标视图使用同一路径；纸张作为文档内容在亮 / 暗主题均保持浅色，不做语法高亮。32 pt 仍以辨识文本类型为主，阅读更多内容可放大或使用 Quick Look；[对照与实现](research/text-thumbnails.md)。
 - 模式、排序字段与升降序、列表和图标各自的缩放档位、分组字段及上次启用字段、隐藏文件和预览开关按目录策略持久化。离开返回、新标签、新分栏以及重启后再次打开同目录均恢复；无记录目录使用独立保存的默认值。新 pane 必须挂载对应模式的实际视图。
 - 工具栏的视图按钮始终反映活动 pane；菜单或快捷键切换后立即同步，后台 pane 改变模式不影响当前工具栏。
 - 图标视图：多选 / 框选、方向键、`Return` 重命名（预选主名）、`空格` Quick Look、拖放（拖到文件夹图标上 = 放进去）、右键菜单与列表一致。
@@ -164,7 +168,7 @@ macOS 没有公开的 Finder 冲突对话框 API，自建但行为照 Finder：�
 
 ## 8. 过滤（Finder 的形态，Dolphin 的语义）
 
-UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 `Filter by Name`，窗口窄时收成放大镜图标），默认 `⌘F` 聚焦（可在 Settings 自定义）；输入不会额外展开范围栏，匹配数量在底部状态栏显示。当前只过滤本目录，不递归搜索子目录或文件内容；与 Dolphin 的独立搜索功能区分，见 [对照记录](research/dolphin-filter-search.md)。Esc / ⓧ 清空并退出，焦点回列表；单纯点到别处**不会**取消过滤（同 Finder）。收窄成图标后同一过滤快捷键展开，若未输入而焦点离开则自动缩回。
+UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 `Filter by Name`，窗口窄时收成放大镜图标），默认 `⌘F` 聚焦（可在 Settings 自定义）。输入先过滤当前目录，匹配数量在底部状态栏显示；普通目录有输入后，在 pane 顶部显示 `Current Folder` 与 **Search Options…** 入口。打开选项才进入含子目录的搜索并展开详细条件，同一个工具栏输入框改为编辑名称搜索词；不再有独立工具栏 Search 按钮或第二个名称框。ZIP 保留本地过滤，不显示递归选项。Esc / ⓧ 清空并退出，焦点回列表；单纯点到别处**不会**取消非空输入。收窄成图标后同一过滤快捷键展开，若未输入而焦点离开则自动缩回。交互对照与设计边界见[搜索输入记录](research/search-input-reference.md)。
 过滤语义照 Dolphin：不区分大小写子串，`*` / `?` 通配符，作用于当前 pane（含已展开的子目录）；按 pane 记，搜索框显示活动 pane 的过滤词；切换目录清空。
 
 从 Favorites 导航后，即使焦点仍在侧栏，工具栏和 View 菜单的 Group By / Use Groups 仍作用于活动 pane。
@@ -180,6 +184,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 - **Get Info** `⌘I`：每个选中项一个窗口（超过 10 项时只给一个汇总窗口）；没有选中时是当前文件夹本身。同一项再按 `⌘I` 只把已有窗口带到前面；Get Info 与汇总窗口以标准化后的 URL 比较已有目标，避免路径表示差异产生重复窗口。**Show Inspector** `⌥⌘I`：单个浮动面板，跟随主窗口活动 pane 的选择（多选时显示汇总）。**Get Summary Info** `⌃⌘I`："Multiple Item Info"，Kind 写成 "2 documents, 1 folder"，Size 是总和。三个是同一菜单行的 ⌥ / ⌃ 备选项。
 - 分区和标签取自 Finder 的 `InfoWindow*.nib`（[research/finder-menu-icons.md](research/finder-menu-icons.md)）：页眉（64 pt 图标、名字、大小、Modified）、**General:**（Kind / Size / Where / Created / Modified / Original（符号链接与别名）/ Version + Copyright（应用）/ Capacity + Available + Used + Format（卷）、Locked）、**More Info:**（Spotlight：Dimensions / Duration / Codecs / Authors / Page count / Where from / Last opened…）、**Name & Extension:**（可编辑，Return 或失焦提交，可撤销；Hide extension）、**Comments:**（Finder 的 `com.apple.metadata:kMDItemFinderComment` xattr，失焦、关窗或退出时保存）、**Open with:**（默认程序在前，其余按名，Other…；Change All… 先确认再改整个类型）、**Preview:**（`QLPreviewView`）、**Sharing & Permissions:**（owner / group / everyone 三行，Read & Write / Read only / Write only (Drop Box) / No Access，改的是 POSIX 位；文件夹的 x 位跟随读写，文件的 x 位不动；非本人所有的项只读）。每个分区可折叠，折叠状态按分区记住。
+- 初始只展开 **General** 与 **Preview**，其余分区折叠，对齐本机 Finder 已观察状态。之后按分区记住主动展开 / 折叠，Info、Inspector、Summary 共用同名偏好；打开窗口不把默认值写成用户选择。旧版自动保存的 `true` 采用新基线，旧 `false` 保留，新的明确选择始终优先；[证据及兼容取舍](research/info-disclosures.md)。
 - Size 的写法照 Finder：文件 "6,148 bytes (8 KB on disk)"，文件夹 "8 KB on disk (6,148 bytes) for 2 items"，0 是 "Zero bytes"；文件夹在后台递归统计，中途刷新。Where 是 "Macintosh HD ▸ Users ▸ me"。日期是 long date + short time。
 - 项目被删除时窗口自动关闭（Inspector 则换到当前选择）；项目被改名（本应用内：改名广播带 from/to；外部：按 inode 在父目录里找）时窗口跟着改标题，浏览 pane 的选择也跟着新名字。父目录有变化时整窗重建，但**正在输入名字或注释时不重建**，等编辑结束再补。每个分区记住自己对应的 URL，Inspector 换目标后迟到的 sheet / 点击不会作用到新目标上。Info 窗口能成为 key 但**永不成为 main**，所以 Inspector 和 Go 菜单继续跟着浏览窗口。
 - v1 不做：Stationery pad、ACL、改 owner/group（需要提权）、Apply to enclosed items。
@@ -246,10 +251,10 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 ## 19. 搜索（Dolphin 语义，macOS 后端）
 
-- 工具栏 Search / View → Search… / `⇧⌘F` 打开当前 pane 的搜索表单；原 Filter 与可自定义 `⌘F` 保留。新快捷键列入冲突检查。
-- 范围是 Current Folder（含子目录）或 Home（含子目录）；显示具体根路径。名称、正文、类型、修改时间条件按 AND 组合，名称为不区分大小写的文字包含。日期支持预设与自定义起止界限；起点包含、终点排除，保存时预设转为固定日期，重开显示实际界限。Clear 清空条件、结果和请求，保留范围，不启动广泛遍历；再次 Search 才执行，清空后的 Reload 不会恢复旧请求。
+- 当前目录过滤后出现的 **Search Options…** / View → Search… / `⇧⌘F` 展开当前 pane 的递归搜索条件，沿用工具栏名称输入。选项包含正文、范围、类型、修改日期与保存条件；无需再次点击执行 Search。名称 / 正文停止输入 500 ms 自动执行，Return 立即执行；类型 / 日期 / 范围改变也自动执行。输入法未提交组合文字时不启动查询。名称搜索是文字包含，原过滤的 `*` / `?` 只在当前目录过滤模式解释为通配符。
+- 范围是 Current Folder（含子目录）或 Home（含子目录）；显示具体根路径。名称、正文、类型、修改时间条件按 AND 组合，名称为不区分大小写的文字包含。日期支持预设与自定义起止界限；起点包含、终点排除，保存时预设转为固定日期，重开显示实际界限。Clear 清空条件、结果和请求，保留范围，不启动广泛遍历；重新输入或选取有效条件才执行，清空后的 Reload 不会恢复旧请求。所有条件均为空时不自动扫描整棵目录。
 - 没有正文条件时在后台递归枚举，未索引目录仍可按名称、类型、日期查询；不递归包、ZIP、符号链接。正文通过 Spotlight，受系统索引、权限与格式支持限制；状态文字解释限制，零结果不宣称已完整扫描正文。
-- 查询按 pane 保存，Search 可替换查询并清空旧名称过滤；Reload / 文件操作完成、撤销与目录变化刷新优先重新执行当前搜索，保留结果过滤和仍能命中的真实 URL 选区，不因来源目录键检查退出搜索。Cancel 保留已有部分结果并标记取消；旧查询迟到结果不覆盖新查询。切标签 / 激活另一 pane 不串状态；导航退出搜索，Back 在搜索中返回原目录，Close Search 返回原目录。
+- 查询和待执行输入按 pane 保存，执行新查询会清空旧名称过滤；Reload / 文件操作完成、撤销与目录变化刷新优先重新执行当前搜索，保留仍能命中的真实 URL 选区，不因来源目录键检查退出搜索。Cancel 同时取消待执行输入和当前查询，保留已有部分结果并标记取消；旧查询迟到结果不覆盖新查询。切标签 / 激活另一 pane 不串状态，延迟查询仍属于原 pane 且不抢焦点；导航、关 pane / 标签 / 窗口会取消待执行输入。Back、Close Search、工具栏 Esc / ⓧ 返回原目录并清空输入。
 - 搜索结果不作为目录或 ZIP 逻辑地址。列表 Location 列、图标位置标签和完整路径 tooltip 展示来源；切模式、过滤、分组、选择与后续文件命令按真实 URL 工作。Open / Quick Look / Copy / Get Info / Rename / Duplicate / Trash / 跨 pane 传输可用；Reveal in Enclosing Folder 在本 pane 打开父目录并选中精确项。无默认写入目标，所以结果背景不支持 Paste / New Folder / Compress / Extract；拖到明确的目录结果仍使用该目录。
 - Save 输入名称后保存当前条件与范围；Saved Searches 菜单、Open、Delete 可发现。删除仅删除保存条件；重启后仍可再次执行。应用保存格式不与 Finder Smart Folder 互通。
 - ZIP 内搜索禁用，不遍历临时解压副本；普通目录可搜到 ZIP 文件本身。Reload 重新执行当前请求。权限、启动失败、取消和空结果均用非模态状态说明。实现依据和边界见 [搜索研究](research/search.md)。

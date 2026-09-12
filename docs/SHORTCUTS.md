@@ -2,7 +2,11 @@
 
 File Operations is available from the Window menu. Long transfers open its task window automatically; each row has Pause / Resume / Cancel and inline conflict choices. Closing this task window hides it. Closing the originating browser window cancels its active transfers and waits for cleanup; quitting does the same for all transfers. No new key binding is assigned.
 
-Everything the user can press or click, as implemented. Menu items use `nil` targets, so the responder chain picks the handler (see [ARCHITECTURE.md §4](ARCHITECTURE.md)). Where a binding deliberately follows Dolphin or Finder, it says so; the planned changes are in [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md).
+Everything the user can press or click, as implemented. Main menu items use `nil` targets so the responder chain picks the handler; Dock items explicitly target the application delegate (see [ARCHITECTURE.md §4](ARCHITECTURE.md)). Where a binding deliberately follows Dolphin or Finder, it says so; the planned changes are in [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md).
+
+## Dock menu
+
+Right-click the running app's Dock icon for **New Window**, **Downloads** or **Applications**. Each opens a fresh window at its fixed destination and activates the app. Existing panes, tabs and searches stay in place. Standard window and application items are supplied by macOS. No new shortcut is assigned.
 
 ## Menu bar (`MainMenu.swift`)
 
@@ -51,7 +55,7 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Actual Size | ⌘0 | — | 64 pt icons / 16 pt rows |
 | Show Previews | ⇧⌘P | — | Thumbnails from 32 pt up (Finder's ⇧⌘P is the preview pane) |
 | Filter | ⌘F by default; configurable | `magnifyingglass` | Focuses the toolbar name-filter field; checkmark while filtering |
-| Search… | ⇧⌘F | `doc.text.magnifyingglass` | Opens the active pane's recursive search form; unavailable inside ZIP locations |
+| Search… | ⇧⌘F | `doc.text.magnifyingglass` | Expands recursive search options beside the existing toolbar query; unavailable inside ZIP locations |
 | Show Hidden Files | ⇧⌘. | — | Saved by the selected folder-view policy; transient in ZIP and search pages |
 | Reload | ⌘R | `arrow.clockwise` | (Finder: Show Original) |
 | Use Groups | ⌃⌘0 | `square.grid.3x1.below.line.grid.1x2` | Off → back to the last key (Kind first) |
@@ -85,10 +89,10 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | Where | Items |
 |---|---|
 | Background (no item) | New Folder · Get Info · Paste (enabled only with file URLs on the pasteboard) · — · Reload · Show Hidden Files ✓ · Sort By ▸ · — · Add/Remove from Favourites (current folder) |
-| A file | Open · Open With ▸ (default app first, "(default)", separator, up to 20 apps with icons; "No Applications" when none) · [split: Copy/Move to Other Pane] · — · Quick Look · Get Info · Rename · Duplicate · Move to Trash · — · Cut · Copy · — · Reveal in Finder · Copy Path |
+| A file | Open · Open With ▸ (default app first, "(default)", separator, up to 20 apps with icons; "No Applications" when none) · [split: Copy/Move to Other Pane] · — · Quick Look · Get Info · Rename · Duplicate · Move to Trash · — · Cut · Copy · — · Copy Path |
 | A folder | Open · Open in New Tab (or "Open in N New Tabs") · Open in New Window · Open in Other/New Pane · then the file block · — · Add/Remove from Favourites |
 | Several items | As above minus Open With and Rename; "Copy Paths" |
-| Sidebar (`SidebarViewController`) | Open · Open in New Tab · Open in Other Pane · Reveal in Finder · [removable: Remove from Favourites · Reset Favourites] · [volume: Eject "name"]; empty when no row was clicked |
+| Sidebar (`SidebarViewController`) | Open · Open in New Tab · Open in Other Pane · [removable: Remove from Favourites · Reset Favourites] · [volume: Eject "name"]; empty when no row was clicked |
 | Tab | New Tab · Detach Tab · — · Rename Tab · — · Close Other Tabs · Close Tabs to the Left · Close Tabs to the Right · Close Tab; middle-click closes |
 
 ## Keyboard in the file views (`FileOutlineView` / `FileCollectionView`)
@@ -132,7 +136,7 @@ Each pane has its own visible address bar above its search and file content. Cli
 | ⌥⇥ | Focus the other pane |
 | Click anywhere in a pane (incl. its status bar) | Activates it; a 3 pt accent bar marks the active pane. Panes stay ≥ 160 pt and never collapse |
 
-Closing a background tab preserves the current tab; closing the current tab prefers its right neighbor and falls back to the left. The strip stays visible with one tab; the `+` button's tooltip is "New Tab (⌘T)"; a tab's close button shows when selected or hovered. Split titles show both sides in physical order, with the inactive side in parentheses (`Left | (Right)` or `(Left) | Right`). A custom name overrides the title; tooltips retain full logical paths.
+Closing a background tab preserves the current tab; closing the current tab prefers its right neighbor and falls back to the left. The strip stays visible with one tab; the `+` button's tooltip is "New Tab (⌘T)"; a tab's close button shows on hover. Split titles show both sides in physical order as `Left | Right`, unchanged when pane focus moves. A custom name overrides the title; tooltips retain full logical paths.
 
 Right-clicking a tab opens the following Dolphin-inspired actions without first switching tabs. Each command captures the clicked page, so reordering tabs cannot change its target. The `+` button and `⌘T` use the same New Tab behavior for the current page, including rerunning a search. Opening an explicit folder in a new tab opens that folder. No additional shortcuts are assigned.
 
@@ -175,7 +179,7 @@ Detach starts fresh navigation histories, selections, filters and scroll positio
 
 ## Filter (`MainWindowController`)
 
-The configured filter shortcut (⌘F by default) focuses the toolbar field, expanding it via `beginSearchInteraction` when folded to an icon. Typing filters names live; the status bar shows "N of M items" and no scope row is added. Esc or ⓧ clears the filter and returns focus to the file view; leaving the field keeps a non-empty filter. It is per pane and clears on directory change. Filtering uses complete filenames even when extensions are hidden; it does not recursively search folders or file contents.
+The configured filter shortcut (⌘F by default) focuses the toolbar field, expanding it via `beginSearchInteraction` when folded to an icon. Typing filters names live; the status bar shows "N of M items". Non-empty input reveals a pane-local Search Options entry for recursive conditions. Esc or ⓧ clears the filter and returns focus to the file view; leaving the field keeps a non-empty filter. It is per pane and clears on directory change. Filtering uses complete filenames even when extensions are hidden; it does not recursively search folders or file contents.
 
 ## Settings and experimental features
 
@@ -197,10 +201,10 @@ With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in t
 - Share: the system sharing picker for selected files, using validated temporary copies inside a ZIP; disabled without a readable selection.
 - Toggle Sidebar: fixed leading button; Show/Hide Sidebar (`⌃⌘S`) performs the same action.
 - Split View: toggle alongside the view controls; selected when the current tab has two panes. Its tooltip and overflow menu read Close Left/Right Pane while split, following the active pane; it uses the same action as ⇧⌘D. Sidebar Open in Other Pane creates a split when needed, otherwise navigates and activates the opposite pane.
-- Filter by Name: current-folder substring/wildcard filtering, without an additional scope row.
+- Filter by Name: current-folder substring/wildcard filtering; non-empty input reveals Search Options.
 - Compress: File / More / selection context menu. Name includes the single filename or selection count.
 - Extract: File / More / ZIP context menu in ordinary directories; normal ZIP Open also extracts while experimental browsing is off. Compress and Extract support Undo / Redo.
 
 ## Search
 
-`⇧⌘F` (View → Search… or toolbar Search) opens the active pane’s recursive search form. Filter keeps its independently configurable shortcut, default `⌘F`. Search / Cancel / Clear / Close Search controls are pane-local. Inline Save / Saved Searches / Open / Delete manage the app-wide list of saved conditions; opening one runs it only in the active pane. Search is unavailable inside ZIP locations. While results are active, Folder View Settings cannot save the result view as a default or reset the originating folder; Close Search restores that folder’s current saved view.
+`⇧⌘F` (View → Search…) or Search Options after filtering expands the active pane’s recursive conditions while retaining the same toolbar query field. Filter keeps its independently configurable shortcut, default `⌘F`. Queries run after a 500 ms typing pause or immediately on Return; Cancel / Clear / Close Search controls are pane-local. Completely empty conditions do not scan the tree. Escape or the toolbar cancel button returns to the folder. Inline Save / Saved Searches / Open / Delete manage the app-wide list of saved conditions; opening one runs it only in the active pane. Search is unavailable inside ZIP locations. While results are active, Folder View Settings cannot save the result view as a default or reset the originating folder; Close Search restores that folder’s current saved view.

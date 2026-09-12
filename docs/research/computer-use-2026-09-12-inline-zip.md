@@ -6,24 +6,24 @@
 
 | 检查 | 实际观察 | 已保存截图 |
 |---|---|---|
-| 工具栏分栏 | 分栏按钮可操作，当前界面显示并排 pane | [split-panes.jpg](../images/features/split-panes.jpg) |
+| 工具栏分栏 | 分栏按钮可操作，当前界面显示并排 pane | [split-panes.png](../images/features/split-panes.png) |
 | Favorites 的另一 pane | 右键 Open in Other Pane 创建分栏，原 pane 保留原目录 | [favorites.png](../images/features/favorites.png) |
 | Favorites 的新标签 | Open in New Tab 创建第三个标签，进入右键地点 | 同上；菜单截图本身不证明后续导航 |
-| 窄分栏名称列 | 名称列最小宽度改为 180 pt 后，窄 pane 的文件名可读；对应 smoke 检查已纳入最终连续三轮通过 | [split-panes.jpg](../images/features/split-panes.jpg) |
-| 地址补全 | 输入路径时真实弹窗显示 Design / DesignArchive 候选 | [path-navigation.jpg](../images/features/path-navigation.jpg) |
-| 名称过滤 | `*.png` 只过滤活动 pane，另一 pane 内容保留 | [name-filter.jpg](../images/features/name-filter.jpg) |
-| 列表 / 图标与分组 | 两种视图和 Kind 分组已操作并观察 | [views-and-groups.jpg](../images/features/views-and-groups.jpg) |
-| Quick Look | 文本文件可显示预览内容 | [quick-look.jpg](../images/features/quick-look.jpg) |
-| 系统分享 | Share picker 实际出现；没有执行发送 | [share.jpg](../images/features/share.jpg) |
-| 设置示例状态 | 截图中两个实验开关均关闭；这不是本轮结束时用户的原始 ZIP 偏好 | [settings.jpg](../images/features/settings.jpg) |
-| ZIP 进入与导航 | ⌘↓ 在当前 pane 进入 ZIP 根，保留原始根结构；双击 Documents 进入内部目录。Up 回根并选中 Documents，再 Up 退出 ZIP 并选中原 ZIP；Back / Forward 无路径错误 | [zip-browsing.jpg](../images/features/zip-browsing.jpg) |
+| 窄分栏名称列 | 名称列最小宽度改为 180 pt 后，窄 pane 的文件名可读；对应 smoke 检查已纳入最终连续三轮通过 | [split-panes.png](../images/features/split-panes.png) |
+| 地址补全 | 输入路径时真实弹窗显示 Design / DesignArchive 候选 | [path-navigation.png](../images/features/path-navigation.png) |
+| 名称过滤 | `*.png` 只过滤活动 pane，另一 pane 内容保留 | [name-filter.png](../images/features/name-filter.png) |
+| 列表 / 图标与分组 | 两种视图和 Kind 分组已操作并观察 | [views-and-groups.png](../images/features/views-and-groups.png) |
+| Quick Look | 文本文件可显示预览内容 | [quick-look.png](../images/features/quick-look.png) |
+| 系统分享 | Share picker 实际出现；没有执行发送 | [share.png](../images/features/share.png) |
+| 设置示例状态 | 截图中两个实验开关均关闭；这不是本轮结束时用户的原始 ZIP 偏好 | [settings.png](../images/features/settings.png) |
+| ZIP 进入与导航 | ⌘↓ 在当前 pane 进入 ZIP 根，保留原始根结构；双击 Documents 进入内部目录。Up 回根并选中 Documents，再 Up 退出 ZIP 并选中原 ZIP；Back / Forward 无路径错误 | [zip-browsing.png](../images/features/zip-browsing.png) |
 | ZIP 只读菜单 | More 中 New Folder、Get Info、Rename、Duplicate、Compress、Extract、Paste、Trash 均禁用 | 同上 |
 | ZIP 文件打开 | Open 将 ReleaseNotes 文本交给 TextEdit，显示演示内容及私有临时快照 URL | 临时路径只在外部编辑器中出现，不作为 pane 的导航路径 |
 | ZIP 复制与撤销 | ⇧⌘C 将 167 字节的文件复制到普通 Delivery pane，⌘Z 移除复制产物 | 操作结果已核对；截图不代替字节结果 |
-| 文件冲突 | Keep Both 创建 153 字节的 README 编号副本，原有 63 字节文件保留；⌘Z 移除副本 | [file-operations.jpg](../images/features/file-operations.jpg) |
+| 文件冲突 | Keep Both 创建 153 字节的 README 编号副本，原有 63 字节文件保留；⌘Z 移除副本 | [file-operations.png](../images/features/file-operations.png) |
 | Compress / Extract 展示 | 相关界面截图已保存并检查；早期版本的完整压缩 / 解压往返操作保留在旧记录 | [compress-extract.png](../images/features/compress-extract.png) |
-| 终端 | F4 打开 zsh，pwd / ls 显示同一演示项目；结束后关闭终端并恢复实验关闭 | [terminal.jpg](../images/features/terminal.jpg) |
-| 修复后的服务器表单 | 有效 SMB 地址按 Tab 不启动连接；Cancel 关闭，重新打开仍可编辑且无 spinner；ftp 地址按 Return 显示协议错误，改为有效地址清除错误；Escape 关闭 | [connect-server.jpg](../images/features/connect-server.jpg)，已替换为最终修正版 |
+| 终端 | F4 打开 zsh，pwd / ls 显示同一演示项目；结束后关闭终端并恢复实验关闭 | [terminal.png](../images/features/terminal.png) |
+| 修复后的服务器表单 | 有效 SMB 地址按 Tab 不启动连接；Cancel 关闭，重新打开仍可编辑且无 spinner；ftp 地址按 Return 显示协议错误，改为有效地址清除错误；Escape 关闭 | [connect-server.png](../images/features/connect-server.png)，已替换为最终修正版 |
 
 ## 本轮发现与处理状态
 
@@ -54,7 +54,7 @@ README 全部 13 组截图均已保存并逐一检查，包括压缩 / 解压、
 
 整理后的 debug 和 release build 6 构建成功，strict codesign 通过。**739 项 smoke 重新连续三轮通过**，均 exit 0、stderr 为空；日志为 `/tmp/tursora-tidy-smoke-1.log`、`/tmp/tursora-tidy-smoke-2.log`、`/tmp/tursora-tidy-smoke-3.log`。这些是整理阶段的新运行，不与第一阶段的三份日志混用。
 
-补充保存并检查了 [tabs.jpg](../images/features/tabs.jpg)，尺寸为 1241 × 590，显示真实应用的三个标签与展开的 Documents。此图用于产品页的标签功能；整理后的应用界面保持原有行为，不表示重做了前半轮每一项 CUA。
+补充保存并检查了 [tabs.png](../images/features/tabs.png)，尺寸为 1241 × 590，显示真实应用的三个标签与展开的 Documents。此图用于产品页的标签功能；整理后的应用界面保持原有行为，不表示重做了前半轮每一项 CUA。
 
 中文产品页限定为地址栏、标签、分栏、只读 ZIP 四项功能，使用真实应用截图。`python3 site/build.py` 已成功生成 `site/dist/`，包含 5 个必需原始资源（图标与四张截图），通过 36 个引用检查；构建仅使用 Python 3.9+ 标准库。网站验证与应用 smoke 分开完成；站点目前仅本地预览，没有部署上线。
 

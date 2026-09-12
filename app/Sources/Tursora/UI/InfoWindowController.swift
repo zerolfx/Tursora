@@ -95,6 +95,7 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     private let scrollView = NSScrollView()
     private let stack = NSStackView()
+    private let disclosureDefaults: UserDefaults
     private var sections: [InfoSection] = []
     private var valueFields: [String: NSTextField] = [:]
     private let headerIcon = NSImageView()
@@ -129,9 +130,10 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var watcher: DirectoryWatcher?
     private var rebuildWork: DispatchWorkItem?
 
-    init(mode: Mode, urls: [URL]) {
+    init(mode: Mode, urls: [URL], disclosureDefaults: UserDefaults = .standard) {
         self.mode = mode
         self.urls = urls
+        self.disclosureDefaults = disclosureDefaults
         let rect = NSRect(x: 0, y: 0, width: Self.width, height: 520)
         let window: NSWindow
         if mode == .inspector {
@@ -267,7 +269,7 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     private func addSection(_ key: String, _ title: String, _ content: NSView) {
-        let s = InfoSection(key: key, title: title, content: content)
+        let s = InfoSection(key: key, title: title, content: content, defaults: disclosureDefaults)
         s.onToggle = { [weak self] in self?.fitWindow(animate: true) }
         sections.append(s)
         stack.addArrangedSubview(s)
@@ -922,34 +924,54 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     func section(_ key: String) -> InfoSection? { sections.first { $0.key == key } }
 }
 
-/// One collapsible "Title:" block. Expansion is remembered per section, as
-/// Finder does with FXInfoPanesExpanded.
+/// One collapsible "Title:" block. Explicit choices are shared across Info,
+/// Summary and Inspector; constructing a section does not create a preference.
 final class InfoSection: NSStackView {
     let key: String
     let content: NSView
     private let chevron = NSImageView()
+    private let defaults: UserDefaults
     var onToggle: (() -> Void)?
 
-    private static func remembered(_ key: String) -> Bool {
-        UserDefaults.standard.object(forKey: "InfoSection.\(key)") as? Bool ?? true
+    static func explicitPreferenceKey(for key: String) -> String {
+        "InfoSection.ExplicitExpanded.v2.\(key)"
+    }
+
+    /// The observed Finder baseline on the owner's Mac, not a claim about
+    /// factory defaults. Evidence and the legacy migration are recorded in
+    /// docs/research/info-disclosures.md.
+    static func defaultExpanded(for key: String) -> Bool {
+        key == "general" || key == "preview"
+    }
+
+    static func initialExpansion(for key: String, defaults: UserDefaults = .standard) -> Bool {
+        if let explicit = defaults.object(forKey: explicitPreferenceKey(for: key)) as? Bool { return explicit }
+        // Older versions wrote true merely by constructing every section. A
+        // stored false reflects a collapse, while true is ambiguous and adopts
+        // the new baseline until the user makes a new explicit choice.
+        if defaults.object(forKey: "InfoSection.\(key)") as? Bool == false { return false }
+        return defaultExpanded(for: key)
     }
 
     var isExpanded: Bool = true {
-        didSet { applyExpansion() }
+        didSet {
+            applyExpansion()
+            defaults.set(isExpanded, forKey: Self.explicitPreferenceKey(for: key))
+        }
     }
 
     /// Also called from init: property observers do not run there.
     private func applyExpansion() {
         content.isHidden = !isExpanded
         chevron.image = NSImage(systemSymbolName: isExpanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)
-        UserDefaults.standard.set(isExpanded, forKey: "InfoSection.\(key)")
     }
 
     var hasChevron: Bool { chevron.image != nil }
 
-    init(key: String, title: String, content: NSView) {
+    init(key: String, title: String, content: NSView, defaults: UserDefaults = .standard) {
         self.key = key
         self.content = content
+        self.defaults = defaults
         super.init(frame: .zero)
         orientation = .vertical
         alignment = .leading
@@ -975,7 +997,7 @@ final class InfoSection: NSStackView {
                 row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -edgeInsets.right),
             ])
         }
-        isExpanded = Self.remembered(key)
+        isExpanded = Self.initialExpansion(for: key, defaults: defaults)
         applyExpansion()
     }
     required init?(coder: NSCoder) { fatalError() }

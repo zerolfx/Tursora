@@ -39,6 +39,6 @@
 
 三轮烟测后，对包含菜单目标与父子选择修复的最终 release 包再次检查：搜索右键菜单没有 Compress，点击 Design 结果的 Reveal 后到达真实 Design 目录并选中准确文件；分栏独立查询、保存条件和正文单条件完成均再次操作。
 
-已从确认过的本 worktree PID `80602`、主窗口 ID `7467` 用 `screencapture -x -o -t jpg -l7467` 保存并查看 [search.jpg](../images/features/search.jpg)（3840 × 1920）。截图展示左侧三个同名结果及保存条件，右侧独立图标查询。最终运行 stderr 为空；只停止自身 PID，恢复运行前偏好后释放共享锁。
+已从确认过的本 worktree PID `80602`、主窗口 ID `7467` 用 `screencapture -x -o -t jpg -l7467` 保存并查看 [search.png](../images/features/search.png)（3840 × 1920）。截图展示左侧三个同名结果及保存条件，右侧独立图标查询。最终运行 stderr 为空；只停止自身 PID，恢复运行前偏好后释放共享锁。
 
 同步上游产品页时更正了仍称正文 / 跨目录搜索未实现的说明，`python3 site/build.py` 通过（5 个规范资源，36 处引用）。本轮只改变该页的功能边界文字，没有部署页面。

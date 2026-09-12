@@ -56,7 +56,7 @@
 - 图标视图 Duplicate 同样出现任务，在 44.3 MB / 134.2 MB 处暂停后按 ⌘Q；应用正常退出（exit 0），暂停线程被取消，未留下副本。
 - 退出后逐个比较演示前的 SHA-256：三个源文件、原有目标 `Readme.txt` 均未变；恢复后完成的 Copy 与原文件一致；取消的 Copy、退出取消的 Duplicate、撤销的 Keep Both 输出均不存在。结果保存在 `app/build/transfer-verification/demo-after-checks.json`。
 
-实际 JPEG 截图：[`file-operation-tasks.jpg`](../images/features/file-operation-tasks.jpg) 为一项暂停、一项传输；[`file-operations.jpg`](../images/features/file-operations.jpg) 为位于历史记录前方的内联冲突。已检查实际图片格式与可读性，未拼接或模拟界面。清除历史后即时截图未显示卡片，未用作完成证据；保留清除前已目视确认的原始截图，随后实际 Keep Both 按钮操作成功。
+实际 JPEG 截图：[`file-operation-tasks.png`](../images/features/file-operation-tasks.png) 为一项暂停、一项传输；[`file-operations.png`](../images/features/file-operations.png) 为位于历史记录前方的内联冲突。已检查实际图片格式与可读性，未拼接或模拟界面。清除历史后即时截图未显示卡片，未用作完成证据；保留清除前已目视确认的原始截图，随后实际 Keep Both 按钮操作成功。
 
 实机边界：本轮拖放手势尝试仅改变选择、未触发传输，因此不记录为成功的原生拖放证据；随后验证的是 Move to Other Pane 命令。两种视图接受拖放后的实际控制器回调有自动化覆盖；原生拖放手势、真实跨卷 / 服务器、浅色模式和极端长路径布局仍需专项实测。
 

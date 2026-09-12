@@ -1,10 +1,12 @@
 import AppKit
 import QuickLookThumbnailing
 
-/// Quick Look thumbnails ("previews" in Dolphin's terms): what a file looks
-/// like, not what type it is. Generated lazily for whatever the views show,
-/// cached by path + size + modification stamp, requests coalesced.
+/// Content previews: readable text excerpts and platform Quick Look images.
+/// Generated lazily and cached by path, point size, display scale and file
+/// modification stamp, with concurrent requests for the same image coalesced.
 final class ThumbnailProvider {
+
+    typealias Loader = (FileItem, CGFloat, CGFloat, @escaping (NSImage?) -> Void) -> NSImage?
 
     static let shared = ThumbnailProvider()
 
@@ -19,8 +21,8 @@ final class ThumbnailProvider {
         !item.isNavigable && !item.isPackage && item.readableContentURL != nil
     }
 
-    private func key(_ item: FileItem, _ size: CGFloat) -> String {
-        "\(item.contentURL.path)|\(Int(size))|\(item.modificationDate?.timeIntervalSince1970 ?? 0)|\(item.size)"
+    static func cacheKey(for item: FileItem, size: CGFloat, scale: CGFloat) -> String {
+        "\(item.contentURL.path)|\(size)|\(scale)|\(item.modificationDate?.timeIntervalSince1970 ?? 0)|\(item.size)"
     }
 
     /// Returns a cached thumbnail at once, otherwise nil and calls back later on
@@ -29,29 +31,43 @@ final class ThumbnailProvider {
     func thumbnail(for item: FileItem, size: CGFloat, scale: CGFloat,
                    completion: @escaping (NSImage?) -> Void) -> NSImage? {
         guard Self.canPreview(item), let contentURL = item.readableContentURL else { return nil }
-        let k = key(item, size)
+        let k = Self.cacheKey(for: item, size: size, scale: scale)
         if let hit = cache.object(forKey: k as NSString) { return hit }
         if unsupported.contains(k) { return nil }
         if pending[k] != nil { pending[k]!.append(completion); return nil }
         pending[k] = [completion]
 
-        let request = QLThumbnailGenerator.Request(fileAt: contentURL, size: CGSize(width: size, height: size),
-                                                   scale: scale, representationTypes: .thumbnail)
-        request.iconMode = false
-        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] rep, _ in
-            let image = rep?.nsImage
-            if let image {
-                // Points, fitted inside the requested square, aspect preserved.
-                let s = image.size
-                let f = min(size / max(s.width, 1), size / max(s.height, 1))
-                image.size = NSSize(width: s.width * f, height: s.height * f)
-            }
+        let deliver: (NSImage?) -> Void = { [weak self] image in
             DispatchQueue.main.async {
                 guard let self else { return }
                 let image = item.readableContentURL == contentURL ? image : nil
                 if let image { self.cache.setObject(image, forKey: k as NSString) } else { self.unsupported.insert(k) }
                 let callbacks = self.pending.removeValue(forKey: k) ?? []
                 callbacks.forEach { $0(image) }
+            }
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            if TextThumbnailRenderer.supports(item),
+               let safeURL = item.readableContentURL, safeURL == contentURL,
+               let snippet = TextThumbnailRenderer.readSnippet(from: safeURL),
+               let image = TextThumbnailRenderer.render(text: snippet.text, size: size, scale: scale) {
+                deliver(image)
+                return
+            }
+            // Rich documents, images and unsupported text encodings retain
+            // the platform thumbnail provider and its existing fallback.
+            guard item.readableContentURL == contentURL else { deliver(nil); return }
+            let request = QLThumbnailGenerator.Request(fileAt: contentURL, size: CGSize(width: size, height: size),
+                                                       scale: scale, representationTypes: .thumbnail)
+            request.iconMode = false
+            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { rep, _ in
+                let image = rep?.nsImage
+                if let image {
+                    let dimensions = image.size
+                    let factor = min(size / max(dimensions.width, 1), size / max(dimensions.height, 1))
+                    image.size = NSSize(width: dimensions.width * factor, height: dimensions.height * factor)
+                }
+                deliver(image)
             }
         }
         return nil
