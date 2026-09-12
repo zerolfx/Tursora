@@ -178,3 +178,7 @@ With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in t
 - Filter by Name: current-folder substring/wildcard filtering, without an additional scope row.
 - Compress: File / More / selection context menu. Name includes the single filename or selection count.
 - Extract: File / More / ZIP context menu in ordinary directories; normal ZIP Open also extracts while experimental browsing is off. Compress and Extract support Undo / Redo.
+
+## Search
+
+`⇧⌘F` (View → Search… or toolbar Search) opens the active pane’s recursive search form. Filter keeps its independently configurable shortcut, default `⌘F`. Search / Cancel / Clear / Close Search controls are pane-local. Inline Save / Saved Searches / Open / Delete manage the app-wide list of saved conditions; opening one runs it only in the active pane. Search is unavailable inside ZIP locations.

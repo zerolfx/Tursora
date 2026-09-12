@@ -2,6 +2,12 @@
 
 Historical entries record development dates and their smoke-test counts where available. The current unreleased changes are tracked separately until final integrated verification completes (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
 
+## Unreleased — search
+
+- Add pane-local recursive search with filename, Spotlight content, type and modification-date conditions, cancellation, generation guards, and persisted named searches. Keep the existing configurable name filter separate; Search uses ⇧⌘F.
+- Show real result locations in both views, reveal exact results in their parent folder, and preserve full-URL selection through view switches and file mutations. Search results have no implicit write destination; ZIP contents are excluded.
+- Verify 891 smoke checks in three consecutive runs after native predicate, menu-target and overlapping-selection fixes. Actual packaged-app observations and Spotlight indexing limits are recorded in [the feature record](docs/research/search-verification.md).
+
 ## Unreleased — cleanup and product page
 
 - Remove an unused PlacesModel constant and simplify the archive readable-URL helper's always-enabled option without changing application behavior.

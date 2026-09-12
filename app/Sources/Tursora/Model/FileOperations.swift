@@ -78,6 +78,40 @@ enum FileOperations {
 
     // MARK: - Instant operations
 
+    /// Recursive results and expanded lists can select both a folder and its
+    /// descendants. Mutate each selected tree once, preserving source identity
+    /// and input order. This is lexical: never resolve a selected symlink into
+    /// its target or confuse adjacent names such as "Notes" and "Notes old".
+    static func topLevelSources(_ urls: [URL], excludingAncestorURLs: Set<URL> = []) -> [URL] {
+        let paths = urls.map { $0.standardizedFileURL.path }
+        let excludedPaths = Set(excludingAncestorURLs.map { $0.standardizedFileURL.path })
+        let selectedPaths = Set(paths).subtracting(excludedPaths)
+        var emitted = Set<String>()
+        return zip(urls, paths).compactMap { url, path in
+            guard emitted.insert(path).inserted else { return nil }
+            var parent = (path as NSString).deletingLastPathComponent
+            while parent != path, !parent.isEmpty {
+                if selectedPaths.contains(parent) { return nil }
+                let next = (parent as NSString).deletingLastPathComponent
+                if next == parent { break }
+                parent = next
+            }
+            return url
+        }
+    }
+
+    /// Only an actual directory covers its selected descendants. A selected
+    /// link and an explicit link/child URL remain separate sources: copying or
+    /// trashing the link itself never includes the target's child. FileManager
+    /// attributes inspect the source link without resolving its identity.
+    private static func mutationSources(_ urls: [URL]) -> [URL] {
+        let nonDirectories = Set(urls.filter {
+            let attributes = try? FileManager.default.attributesOfItem(atPath: $0.path)
+            return attributes?[.type] as? FileAttributeType != .typeDirectory
+        })
+        return topLevelSources(urls, excludingAncestorURLs: nonDirectories)
+    }
+
     /// Rename via the name resource, which — unlike moveItem — handles a
     /// case-only rename on case-insensitive APFS ("Foo" → "foo").
     @discardableResult
@@ -92,7 +126,7 @@ enum FileOperations {
     /// Finder-visible trash with Put Back. Returns (original, trashed) pairs.
     static func trash(_ urls: [URL]) throws -> [(original: URL, trashed: URL)] {
         var out: [(URL, URL)] = []
-        for url in urls {
+        for url in mutationSources(urls) {
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             if let r = result as URL? { out.append((url, r)) }
@@ -101,7 +135,7 @@ enum FileOperations {
     }
 
     static func delete(_ urls: [URL]) throws {
-        for url in urls { try FileManager.default.removeItem(at: url) }
+        for url in mutationSources(urls) { try FileManager.default.removeItem(at: url) }
     }
 
     static func sameVolume(_ a: URL, _ b: URL) -> Bool {
@@ -121,15 +155,16 @@ enum FileOperations {
                          progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
                          completion: @escaping (TransferResult) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
+            let sources = mutationSources(urls)
             var result = TransferResult()
             var policy = BatchPolicy(handler: conflict)
             // Count up front so the dialog can offer "apply to all" only when it matters.
-            policy.remaining = urls.filter { FileManager.default.fileExists(atPath: directory.appendingPathComponent($0.lastPathComponent).path) }.count
-            for (i, src) in urls.enumerated() {
+            policy.remaining = sources.filter { FileManager.default.fileExists(atPath: directory.appendingPathComponent($0.lastPathComponent).path) }.count
+            for (i, src) in sources.enumerated() {
                 let dst = directory.appendingPathComponent(src.lastPathComponent)
                 transferOne(src, to: dst, kind: kind, policy: &policy, result: &result)
                 if result.cancelled { break }
-                if let progress { DispatchQueue.main.async { progress(i + 1, urls.count) } }
+                if let progress { DispatchQueue.main.async { progress(i + 1, sources.count) } }
             }
             DispatchQueue.main.async { completion(result) }
         }
@@ -204,7 +239,7 @@ enum FileOperations {
     /// Duplicate in place ("… copy"). Synchronous; duplicates are usually small.
     static func duplicate(_ urls: [URL]) -> ([URL], [Failure]) {
         var created: [URL] = []; var failures: [Failure] = []
-        for src in urls {
+        for src in mutationSources(urls) {
             let dst = duplicateURL(for: src)
             do { try FileManager.default.copyItem(at: src, to: dst); created.append(dst) }
             catch { failures.append(Failure(url: src, error: error)) }

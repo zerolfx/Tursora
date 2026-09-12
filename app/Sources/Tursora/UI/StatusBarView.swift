@@ -69,8 +69,8 @@ final class StatusBarView: NSView {
 
     var statusText: String { label.stringValue }
 
-    func update(itemCount: Int, totalCount: Int? = nil, selectedCount: Int, directory: URL?, archiveStatus: String? = nil) {
-        isShowingArchiveStatus = archiveStatus != nil
+    func update(itemCount: Int, totalCount: Int? = nil, selectedCount: Int, directory: URL?, archiveStatus: String? = nil, searchStatus: String? = nil) {
+        isShowingArchiveStatus = archiveStatus != nil || searchStatus != nil
         label.lineBreakMode = isShowingArchiveStatus ? .byTruncatingTail : .byTruncatingMiddle
         needsLayout = true
         var parts: [String] = []
@@ -85,10 +85,11 @@ final class StatusBarView: NSView {
                 .volumeAvailableCapacityForImportantUsage {
             parts.append("\(ByteCountFormatter.string(fromByteCount: cap, countStyle: .file)) available")
         }
-        if let archiveStatus { parts.insert(archiveStatus, at: 0) }
+        if let context = archiveStatus ?? searchStatus { parts.insert(context, at: 0) }
         label.stringValue = parts.joined(separator: " — ")
         label.toolTip = archiveStatus == nil ? nil
             : "Read-only ZIP. Opened files are temporary copies kept until Tursora quits. Edits do not update the ZIP; use Save As to keep them."
+        if searchStatus != nil { label.toolTip = "Search results use their original file locations. Reveal in Enclosing Folder opens a result's parent." }
         toolTip = label.toolTip
     }
 

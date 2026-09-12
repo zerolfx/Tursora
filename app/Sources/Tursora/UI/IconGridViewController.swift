@@ -122,10 +122,22 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         return nil
     }
 
+    private var shownItems: [IndexPath: FileItem] = [:]
+    private var renameTarget: (field: NSTextField, item: FileItem)?
+
     // MARK: - FileViewing
 
     func reloadData() {
         let selected = selectedItems.map(\.url)
+        if model.isSearchResults, let target = renameTarget {
+            renameTarget = nil
+            _ = target.field.abortEditing()
+            target.field.isEditable = false
+        }
+        shownItems = [:]
+        for (section, group) in model.groups.enumerated() {
+            for (index, node) in group.nodes.enumerated() { shownItems[IndexPath(item: index, section: section)] = node.item }
+        }
         collectionView.reloadData()
         let signature = [model.isGrouped ? 1 : 0] + model.groups.map { $0.nodes.count }
         if layoutSignature != signature {
@@ -145,7 +157,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     }
 
     var selectedItems: [FileItem] {
-        collectionView.selectionIndexPaths.sorted().compactMap { node(at: $0)?.item }
+        collectionView.selectionIndexPaths.sorted().compactMap { shownItems[$0] }
     }
 
     var clickedItems: [FileItem] {
@@ -195,6 +207,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         collectionView.selectionIndexPaths = [ip]
         collectionView.scrollToItems(at: [ip], scrollPosition: .nearestHorizontalEdge)
         guard let cell = collectionView.item(at: ip) as? FileCollectionItem else { return }
+        renameTarget = (cell.label, item)
         cell.label.stringValue = item.name
         cell.beginEditingName(delegate: self, baseNameOnly: !item.isNavigable)
     }
@@ -228,7 +241,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         let preferred = max(iconSize + 28, 96)
         let width = available > 0 ? min(preferred, max(1, available - 24)) : preferred
         let drawnIconSize = min(iconSize, max(1, width - 16))
-        let labelHeight: CGFloat = iconSize < 48 ? 30 : 34
+        let labelHeight: CGFloat = (iconSize < 48 ? 30 : 34) + (model.isSearchResults ? 30 : 0)
         let size = NSSize(width: width, height: drawnIconSize + 8 + labelHeight)
         if layout.itemSize != size { layout.itemSize = size }
         let header = model.isGrouped ? NSSize(width: max(1, available), height: GroupHeaderView.height) : .zero
@@ -266,7 +279,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         guard let node = node(at: indexPath) else { return cell }
         let item = node.item
         cell.representedObject = node
-        cell.configure(item: item, iconSize: iconSize, faded: cutURLs.contains(item.url))
+        cell.configure(item: item, iconSize: iconSize, faded: cutURLs.contains(item.url), showsLocation: model.isSearchResults)
         cell.onDoubleClick = { [weak self] in self?.onOpen?(item) }
         cell.onMiddleClick = { [weak self] in self?.onOpenInNewTab?(item) }
         if item.canAccess, showPreviews, iconSize >= ZoomLevel.previewThreshold, ThumbnailProvider.canPreview(item) {
@@ -351,26 +364,22 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let field = obj.object as? NSTextField else { return }
         field.isEditable = false
-        guard let cell = collectionView.indexPathsForVisibleItems()
-                .compactMap({ collectionView.item(at: $0) as? FileCollectionItem })
-                .first(where: { $0.label === field }),
-              let node = cell.representedObject as? FileNode else { return }
+        guard let target = renameTarget, target.field === field else { return }
+        renameTarget = nil
+        let item = target.item
         let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isReadOnly || node.item.isArchiveEntry || !node.item.canAccess || newName.isEmpty || newName == node.item.name || newName.contains("/") {
-            field.stringValue = node.item.displayName
-            cell.refreshAppearance()
+        if isReadOnly || item.isArchiveEntry || !item.canAccess || newName.isEmpty || newName == item.name || newName.contains("/") {
+            field.stringValue = item.displayName
             return
         }
-        onRenameCommitted?(node.item, newName)
+        onRenameCommitted?(item, newName)
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            if let field = control as? NSTextField,
-               let cell = collectionView.indexPathsForVisibleItems().compactMap({ collectionView.item(at: $0) as? FileCollectionItem }).first(where: { $0.label === field }),
-               let node = cell.representedObject as? FileNode {
-                textView.string = node.item.name
-                field.stringValue = node.item.name
+            if let field = control as? NSTextField, let target = renameTarget, target.field === field {
+                textView.string = target.item.name
+                field.stringValue = target.item.name
             }
             view.window?.makeFirstResponder(collectionView)
             return true
@@ -450,6 +459,7 @@ final class FileCollectionItem: NSCollectionViewItem {
 
     let iconView = NSImageView()
     let label = NSTextField(wrappingLabelWithString: "")
+    let locationLabel = NSTextField(wrappingLabelWithString: "")
     var onDoubleClick: (() -> Void)?
     var onMiddleClick: (() -> Void)?
     private var iconSize: CGFloat = 64
@@ -498,19 +508,27 @@ final class FileCollectionItem: NSCollectionViewItem {
         label.focusRingType = .none
         v.addSubview(iconView)
         v.addSubview(label)
+        locationLabel.alignment = .center
+        locationLabel.font = .systemFont(ofSize: 10)
+        locationLabel.textColor = .secondaryLabelColor
+        locationLabel.maximumNumberOfLines = 2
+        locationLabel.lineBreakMode = .byTruncatingMiddle
+        v.addSubview(locationLabel)
         view = v
     }
 
     override var isSelected: Bool { didSet { refreshAppearance() } }
     override var highlightState: NSCollectionViewItem.HighlightState { didSet { refreshAppearance() } }
 
-    func configure(item: FileItem, iconSize: CGFloat, faded: Bool) {
+    func configure(item: FileItem, iconSize: CGFloat, faded: Bool, showsLocation: Bool = false) {
         self.iconSize = iconSize
         self.faded = faded
         iconView.image = item.icon(size: iconSize)
         label.stringValue = item.displayName
         label.font = .systemFont(ofSize: iconSize < 48 ? 11 : 12)
-        view.toolTip = item.name
+        locationLabel.isHidden = !showsLocation
+        locationLabel.stringValue = (item.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath
+        view.toolTip = showsLocation ? item.url.path : item.name
         layoutSubviews()
         refreshAppearance()
     }
@@ -528,6 +546,7 @@ final class FileCollectionItem: NSCollectionViewItem {
         let labelHeight = iconSize < 48 ? 30 : 34
         let labelFrame = NSRect(x: 4, y: iconFrame.maxY + 4, width: w - 8, height: CGFloat(labelHeight))
         label.frame = labelFrame
+        locationLabel.frame = NSRect(x: 4, y: labelFrame.maxY, width: w - 8, height: 28)
         v.iconFrame = iconFrame
         v.labelFrame = label.frame.insetBy(dx: max(0, (w - 8 - textWidth()) / 2), dy: 0)
     }

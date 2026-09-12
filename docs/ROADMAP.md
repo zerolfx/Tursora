@@ -16,11 +16,11 @@ Deselect All、Move Items Here（⌥⌘V）、Copy as Pathname 快捷键对齐�
 
 ## 大件（L）
 
-Column 视图、Gallery 视图、Show View Options（每目录视图属性）、更完整的偏好设置（确认策略、视图默认值等）、图标自由摆放、废纸篓视图（需要 Full Disk Access）、Quick Actions、中文本地化、Spotlight 搜索（`NSMetadataQuery`）、Folders 面板（目录树）、服务器历史 / 发现 / 重连、终端多会话与会话恢复。
+Column 视图、Gallery 视图、Show View Options（每目录视图属性）、更完整的偏好设置（确认策略、视图默认值等）、图标自由摆放、废纸篓视图（需要 Full Disk Access）、Quick Actions、中文本地化、Folders 面板（目录树）、服务器历史 / 发现 / 重连、终端多会话与会话恢复。
 
 ## 不做 / 等公开 API
 
-Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私有存储）、Smart Folders（依赖搜索且结果不确定）、FinderSync 角标（只有 iCloud 公开）、桌面、选择模式。
+Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私有存储）、Finder `.savedSearch` 互通（已有应用内保存搜索）、FinderSync 角标（只有 iCloud 公开）、桌面、选择模式。
 
 ## 新功能的后续验证
 
@@ -40,3 +40,10 @@ Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私
 - 浏览 pane 在**外部**改名后选择会丢（Info 窗口能按 inode 跟上，pane 还不能）。
 - 文件夹大小在 Info 窗口里不随内容变化实时更新（避免 FSEvents 风暴）。
 - 分组的 Size 桶边界、Kind 组顺序仍是推断。
+
+## 搜索后续边界
+
+- 已实现独立递归名称搜索、Spotlight 正文、类型 / 日期 AND 条件及持久化保存搜索。见 [研究与验证](research/search.md)。
+- 后续再评估 Finder `.savedSearch` 互通、更多范围和实时结果增量；ZIP 内搜索、评分 / 标签不在本轮。未索引正文仍依赖用户的系统索引设置，应用不自建全文索引。
+
+- 后续评估显式同时选择符号链接与 `link/child` 时，移动 / 删除的源顺序：链接先移走会使后代路径失效。搜索不遍历链接，因此本轮搜索结果不会产生这种组合；普通展开视图或剪贴板仍可能出现。
