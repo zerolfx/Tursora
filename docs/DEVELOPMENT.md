@@ -92,7 +92,7 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 | Undo merges several operations into one | `NSUndoManager` had an open automatic event group | `asUndoGroup` closes stale groups, then opens one per operation |
 | Rename starts after a drag ends | Mouse-up after a drag session is indistinguishable by timing; `pressedMouseButtons` is unreliable with a mouse | Pointer travel > 3 pt cancels; drag session begin/end cancels |
 | Group rows selectable by keyboard/rubber band | Programmatic `selectRowIndexes` bypasses `shouldSelectItem` | Also implement `selectionIndexesForProposedSelection` |
-| Blank space above the rows after navigating | A negative bounce offset was restored via unconstrained `scroll(to:)` | Clamp `scrollOffset` to `[0, max]` |
+| Blank space after navigation, or the first row hidden under its header after refresh | Raw clip coordinates can include bounce and a legitimate negative header inset; clamping raw y to zero hides the first row | Save a nonnegative offset relative to the native constrained top; restore through `NSClipView.constrainBoundsRect` |
 | First tab showed an empty folder | The tab's view was attached hidden and never shown | `applyVisibility()` after inserting; the smoke test checks frame sizes |
 | Search field never folds back | `beginSearchInteraction` called when already expanded; focus loss cancelled the filter | Only call it when collapsed; `endSearchInteraction` on empty blur; only an emptied field cancels |
 | Inspector renamed the wrong file | A field ending editing after `urls` had changed committed to the new item | Fields remember the URL they were built for (`nameFieldURL`, `commentsURL`, …) |

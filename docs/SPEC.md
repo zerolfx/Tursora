@@ -155,6 +155,8 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 每个 pane 用 FSEvents 监视当前目录（含就地展开的子目录），外部改动（Finder、终端、别的 pane / 窗口）在 ~0.5 s 内自动刷新，刷新**保留选中与滚动位置**（改名的项跟到新名字）。应用内文件操作完成后额外广播"目录已变化"（可带改名的 from/to），同 app 内其他 pane 与 Info 窗口立即刷新，不等 FSEvents。FSEvents 回报真实路径（`/private/var/…`），比对前两边都要解析符号链接。
 
+列表的滚动位置按内容的可见顶部保存，考虑系统列标题占用的空间；在顶部刷新、压缩 / 解压或撤销重做后，首行仍完整可见且可点击。列表缩短时将旧滚动位置限制在有效范围内。
+
 ## 12. 菜单与图标（对标 Finder）
 
 菜单栏和右键菜单的条目带 SF Symbol，符号名取自 Finder 自己的 `MenuBar.nib`（New Folder = `folder.badge.plus`，Get Info = `info.circle`……，见 [research/finder-menu-icons.md](research/finder-menu-icons.md)）；nib 里没写明的少数几项用通用符号。菜单在代码里构建，无 nib。全部快捷键见 [SHORTCUTS.md](SHORTCUTS.md)。

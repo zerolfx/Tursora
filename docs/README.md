@@ -12,6 +12,7 @@
 | you are matching Finder and need the evidence | [research/finder-group-labels.md](research/finder-group-labels.md), [research/finder-menu-icons.md](research/finder-menu-icons.md) | 中文 |
 | you are changing settings, shortcuts or experimental panels | [research/settings-and-shortcuts.md](research/settings-and-shortcuts.md), [research/dolphin-terminal.md](research/dolphin-terminal.md), [SPEC.md §16–18](SPEC.md#16-设置与过滤快捷键) | 中文 |
 | you are checking native archive and server behavior | [research/finder-archives.md](research/finder-archives.md), [research/finder-server-connections.md](research/finder-server-connections.md) | 中文 |
+| you need the latest packaged-app visual checks | [research/computer-use-2026-09-12.md](research/computer-use-2026-09-12.md) — settings, terminal, archives and toolbar checks | 中文 |
 | you want to know why Dolphin was not ported | [audit/PHASE-0-REPORT.md](audit/PHASE-0-REPORT.md) and the rest of [audit/](audit/) (2026-08, historical) | English |
 
 Repo root: [../README.md](../README.md) (overview), [../AGENTS.md](../AGENTS.md) (rules for coding agents), [../CHANGELOG.md](../CHANGELOG.md).

@@ -4,6 +4,7 @@ Historical entries record development dates and their smoke-test counts where av
 
 ## Unreleased — settings, native services and optional workspaces
 
+- Fix the first list row becoming hidden under the column header after refresh or archive undo/redo; restore scroll positions relative to AppKit's native content top and preserve horizontal scrolling.
 - Add a native Settings window (⌘,), immediate filename-extension display preferences, and a configurable name-filter shortcut with conflict checks and reset.
 - Add two experiments, both disabled by default: a window-bottom SwiftTerm 1.15.0 PTY terminal (F4), and a separate read-only ZIP browser. Navigation updates only the terminal's manual restart destination; hiding/restarting ends its session. ZIP files open as temporary copies without archive writeback.
 - Add ZIP Compress / Extract with undo/redo, safe unique output names and isolated processing; normal ZIP Open still extracts when browsing is disabled.
@@ -14,7 +15,7 @@ Historical entries record development dates and their smoke-test counts where av
 - Expand the README and add a build-artifact workflow plus a separate manual Release workflow.
 - Preserve exact file selections through appearance and external refreshes, including same-named files in expanded folders; Escape cancels inline rename in both views.
 - Rebuild stale icon-grid layouts when grouping changes; use the scroll viewport when verifying Info section widths.
-- Verification: 605 checks passed three consecutive full runs; release bundle, signature, resources and ZIP round-trip checks passed. Additional computer-use checks for Settings, Terminal and ZIP browsing await an unlocked Mac.
+- Verification: 618 checks passed three consecutive full runs, including 13 new scroll/layout checks; the release bundle and signature passed, with resource and ZIP round-trip checks also verified previously. Packaged-app computer-use checks now cover Settings, Terminal, ZIP browsing with TextEdit, archives, sharing, toolbar layout and server-address validation; see `docs/research/computer-use-2026-09-12.md` for evidence and remaining limits.
 
 ## 2026-09-12 — application icon and squashed baseline
 
