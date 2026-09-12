@@ -43,7 +43,7 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 | **as Columns**（⌘3） | ❌ | L | 第三个 `FileViewing` 实现（NSBrowser 或自绘），末列预览、←→ 进出、拖放、改名、右键都要有；⌘3 与标签页 ⌘1–9 冲突 |
 | as Gallery（⌘4） | ❌ | L | 大 QLPreviewView + 底部缩略条；QLPreviewView 要单例复用，有焦点和自动播放的怪癖 |
 | **Show Preview**（⇧⌘P 右侧预览栏） | ❌ | M | 复用 Get Info 的 FileInfo + QLPreviewView；我们的 ⇧⌘P 现在是"显示缩略图"，要先挪 |
-| **Show View Options**（⌘J，每文件夹视图设置） | ❌ | L | 现在视图状态是"每 pane + 全局默认"，每目录持久化要自己的存储（不能写 .DS_Store） |
+| **Show View Options**（⌘J，每文件夹视图设置） | 每目录持久化 ✅；Finder 式完整对话框 ❌ | 对话框 M | 现有模式 / 排序 / 两种缩放 / 分组 / 隐藏 / 预览按目录保存；View 与 Settings 有策略、默认和重置入口。应用私有路径库，不写 `.DS_Store`；没有 ⌘J、列布局或自由摆放设置 |
 | Clean Up / Snap to Grid / 图标自由摆放 | ❌ | L | 图标视图从流式网格改成自由布局 + 每文件夹坐标持久化；NSCollectionView 内部拖动现在被当成文件投放拒绝 |
 | Toolbar（⌥⌘T）/ Path Bar（⌥⌘P）/ Status Bar（⌘/）/ Tab Bar（⇧⌘T）开关 | 只有 Sidebar | M | 本身简单；⇧⌘T 与我们的"恢复关闭的标签"冲突 |
 | **Customize Toolbar…** | ❌ | M | `allowsUserCustomization = true` + 更多 allowed items；delegate 现在对调色板的副本也存引用，要改 |
@@ -72,12 +72,12 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
 | **Spring-loaded folders** | ❌ | M | `NSSpringLoadingDestination`，列表、图标、侧栏、面包屑四处；NSOutlineView 自带的悬停展开不能重复触发 |
-| **Finder 设置窗口** | ✅ 基础设置 | 扩展项 M–L | 扩展名显示、过滤快捷键、默认关闭的终端 / ZIP 浏览实验；废纸篓策略、Keep folders on top 等未实现 |
+| **Finder 设置窗口** | ✅ 基础设置与目录视图策略 | 扩展项 M–L | 扩展名显示、过滤快捷键、每目录记忆 / 统一默认、默认关闭的终端 / ZIP 浏览实验；废纸篓策略、Keep folders on top 等未实现 |
 | 显示/隐藏文件扩展名 + 改扩展名警告 | 显示开关 ✅；警告 ❌ | 警告 M | 全局只改列表 / 图标标签，普通文件夹名不变；重命名、排序、过滤保留真名；不是 Finder 逐文件 flag 策略的完整复制 |
 | Quick Actions（Rotate / Markup / Create PDF） | ❌ | L | Finder 的注册表是私有的，Markup 无公开 API；只能自己实现 Rotate/Create PDF |
 | 右键 ▸ Services 菜单 | ❌ | S | `NSApp.servicesMenu`；一个 NSMenu 只能有一个父菜单，上下文菜单要复制 |
 | 废纸篓视图（Put Back、清空） | ❌ | L | 本机已验证 `ls ~/.Trash` 被拒：需要 Full Disk Access，无系统弹窗，用户得手动授权 |
-| Finder 别名双击解析 | 跟随符号链接 | S | `URL(resolvingAliasFileAt:options: .withoutMounting)`，只在打开时解析 |
+| Finder 别名双击解析 | symlink 跟随 ✅；Finder alias 自动解析 ❌ | S | 每目录视图库不新增 alias 解析；以后可用 `URL(resolvingAliasFileAt:options: .withoutMounting)` 在打开时解析目标 |
 | FinderSync 角标（云同步状态） | ❌ | XL | 只有 iCloud 的 ubiquity 键是公开的；Dropbox 等的角标无公开 API |
 | 中文本地化 | ❌ | L | 代码里建的菜单/字符串全部抽出；SPM 资源包在 .app 与裸二进制两种启动方式下都要找得到 |
 | 快捷键与 Finder 对齐（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌘O、⌘I） | ⌘I ✅ | M | 菜单在运行中重建；同键多项的备选项要保持相邻 |
@@ -86,7 +86,7 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 
 1. S：Deselect All、Move Items Here、Copy as Pathname 对齐、New Folder with Selection、Show Package Contents、Always Open With、Print、Slideshow、Eject All、Go 菜单快捷键、Cycle Through Windows、Services 菜单、别名解析
 2. M：批量重命名、Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、Spring-loaded、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、快捷键对齐
-3. L：Column 视图、Gallery 视图、Show View Options（每目录视图属性）、完整偏好策略、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、服务器发现 / 历史 / 重连
+3. L：Column 视图、Gallery 视图、完整偏好策略、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、服务器发现 / 历史 / 重连；Show View Options 完整对话框另列 M（每目录持久化已实现）
 4. XL / 不建议：Customize Folder、Smart Folders、FinderSync 角标
 
 ## 2026-09-12 更新
@@ -96,5 +96,6 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 - [x] 复制 / 移动 / Duplicate 独立进度任务，支持大文件传输中暂停 / 继续 / 取消、安全 Replace 和成功项撤销；验证范围及不可暂停系统调用边界见[专项记录](../research/file-operation-tasks.md)。
 - [x] Connect to Server（⌘K）与系统挂载网络卷的浏览 / Eject；真实服务端互操作尚未实测。
 - [x] 基础设置窗口、扩展名显示开关、自定义名称过滤快捷键。
+- [x] 每目录视图记忆、统一默认、保存当前默认与恢复目录默认；列表 / 图标均保存，完整 Finder 视图选项对话框仍未实现。自动与实机验证见本功能 [HANDOFF](../HANDOFF.md)。
 - [x] 默认关闭的终端面板与当前 pane ZIP 只读浏览实验；归档支持复制 / 拖出、Quick Look 与分享，不支持写回。
 - Tags、Import from iPhone 为明确不做的产品边界。

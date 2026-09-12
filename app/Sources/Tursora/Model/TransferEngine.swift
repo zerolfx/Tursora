@@ -182,6 +182,15 @@ private struct TransferTreeFingerprint: Equatable {
     }
 }
 
+struct TransferReplayError: LocalizedError {
+    let underlyingError: Error
+    let recoveryDirectories: [URL]
+    var errorDescription: String? {
+        "The transfer could not be undone or redone: \(underlyingError.localizedDescription) " +
+        "Recovery data is retained at: " + recoveryDirectories.map(\.path).joined(separator: ", ")
+    }
+}
+
 final class TransferJournal {
     fileprivate let storage: TransferStorage
     fileprivate let steps: [TransferRename]
@@ -195,15 +204,23 @@ final class TransferJournal {
     }
     func replay() throws -> TransferJournal {
         TransferEngine.commitLock.lock(); defer { TransferEngine.commitLock.unlock() }
-        // Cross-volume moves keep two replicas for atomic undo. If either was
-        // edited, refuse rather than restoring stale bytes over those edits.
-        for (root, expected) in zip(strictRoots, fingerprints) {
-            guard let expected, try TransferTreeFingerprint(root) == expected else { throw TransferError.sourceChanged(root) }
+        do {
+            // Cross-volume moves keep two replicas for atomic undo. If either was
+            // edited, refuse rather than restoring stale bytes over those edits.
+            for (root, expected) in zip(strictRoots, fingerprints) {
+                guard let expected, try TransferTreeFingerprint(root) == expected else { throw TransferError.sourceChanged(root) }
+            }
+            try TransferEngine.performTransaction(steps, storage: storage)
+            var relocatedRoots = strictRoots
+            for step in steps { relocatedRoots = relocatedRoots.map(step.relocated) }
+            return TransferJournal(storage: storage, steps: steps.reversed().map(\.reversed), strictRoots: relocatedRoots)
+        } catch {
+            // NSUndoManager consumes a failed action too. Preserve its backups
+            // independently of the journal's lifetime and expose their locations
+            // before the last reference can disappear from the undo stack.
+            storage.preserveForRecovery = true
+            throw TransferReplayError(underlyingError: error, recoveryDirectories: storage.roots)
         }
-        try TransferEngine.performTransaction(steps, storage: storage)
-        var relocatedRoots = strictRoots
-        for step in steps { relocatedRoots = relocatedRoots.map(step.relocated) }
-        return TransferJournal(storage: storage, steps: steps.reversed().map(\.reversed), strictRoots: relocatedRoots)
     }
 }
 
@@ -245,7 +262,7 @@ final class TransferEngine {
         for source in task.sources {
             do {
                 try boundary(.preparing, source)
-                let amount = try scan(source)
+                let amount = try scan(source, recursively: !canMoveAtomically(source, to: task.destination))
                 total += streamContribution(source, size: amount)
             } catch TransferError.cancelled { result.cancelled = true; break }
             catch { result.failures.append(.init(url: source, error: error)); scanFailed.insert(source.path) }
@@ -271,7 +288,14 @@ final class TransferEngine {
 
     private func streamContribution(_ source: URL, size: Int64) -> Int64 {
         let destination = options.duplicateInPlace ? source.deletingLastPathComponent() : task.destination
-        return task.kind == .copy || options.forceCrossVolumeMove || !FileOperations.sameVolume(source, destination) ? size : 0
+        return canMoveAtomically(source, to: destination) ? 0 : size
+    }
+
+    private func canMoveAtomically(_ source: URL, to directory: URL) -> Bool {
+        guard task.kind == .move, !options.forceCrossVolumeMove,
+              let sourceIdentity = try? TransferIdentity.read(source),
+              let destinationIdentity = try? TransferIdentity.directory(directory) else { return false }
+        return sourceIdentity.device == destinationIdentity.device
     }
 
     private func boundary(_ stage: TransferCheckpoint, _ source: URL) throws {
@@ -291,11 +315,17 @@ final class TransferEngine {
         directoryPins[url.path] = actual
     }
 
-    private func scan(_ url: URL) throws -> Int64 {
+    private func scan(_ url: URL, recursively: Bool = true) throws -> Int64 {
         task.setPhase(.preparing, item: url, detail: "Calculating transfer size…")
         try boundary(.preparing, url)
         let identity = try TransferIdentity.read(url)
         fingerprints[url.path] = identity
+        // A same-volume rename preserves every descendant without reading it.
+        // FIFOs, sockets and unreadable directories are valid move operands.
+        if !recursively {
+            sizes[url.path] = 0
+            return 0
+        }
         var amount: Int64 = 0
         switch identity.type {
         case S_IFDIR:
@@ -328,6 +358,11 @@ final class TransferEngine {
             try task.checkpoint()
             try pinDirectory(source.deletingLastPathComponent())
             try pinDirectory(destination.deletingLastPathComponent())
+            // Atomic moves are scanned only at their root. Merge enumerates
+            // children on demand and each child gets its own fixed identity.
+            if fingerprints[source.path] == nil {
+                _ = try scan(source, recursively: !canMoveAtomically(source, to: destination.deletingLastPathComponent()))
+            }
             task.setPhase(.running, item: source, detail: "Preparing item…")
             if source.standardizedFileURL == destination.standardizedFileURL {
                 if task.kind == .move { return }
@@ -398,7 +433,7 @@ final class TransferEngine {
         try pinDirectory(source.deletingLastPathComponent())
         try pinDirectory(parent)
         let parentIdentity = try TransferIdentity.directory(parent)
-        let atomicMove = task.kind == .move && !options.forceCrossVolumeMove && FileOperations.sameVolume(source, parent)
+        let atomicMove = canMoveAtomically(source, to: parent)
         let staged = try storage.location(beside: destination)
         if !atomicMove {
             try boundary(.beforeCopy, source)
@@ -408,7 +443,7 @@ final class TransferEngine {
         defer { if FileOperations.itemExists(staged) && !storage.preserveForRecovery { try? TransferStorage.removeOwnedItem(staged) } }
         try boundary(.beforePublish, source)
         if task.kind == .move { try boundary(.beforeSourceRemoval, source) }
-        try validateSource(source, recursively: true)
+        try validateSource(source, recursively: !atomicMove)
         let stagedIdentity = atomicMove ? try TransferIdentity.read(source) : try TransferIdentity.read(staged)
         var changes: [TransferRename] = []
         var retiredSource: URL?
@@ -433,7 +468,7 @@ final class TransferEngine {
             }
             // Recheck after acquiring the publication lock: another task or an
             // external editor may have changed source data while we waited.
-            try validateSource(source, recursively: true, controllable: false)
+            try validateSource(source, recursively: !atomicMove, controllable: false)
             if task.isCancellationRequested { throw TransferError.cancelled }
             prepareStrictRelocation(changes)
             try Self.performTransaction(changes, storage: storage)

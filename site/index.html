@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f8fc">
+  <meta name="description" content="Tursora，一款原生 macOS 文件管理器。熟悉的 Finder 操作，加上可编辑路径、独立标签页、双窗格与可选的 ZIP 浏览。">
+  <title>Tursora — 文件各就各位，思路不用来回</title>
+  <link rel="icon" type="image/png" href="assets/AppIcon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="main.js" defer></script>
+</head>
+<body id="top">
+  <a class="skip-link" href="#main">跳到正文</a>
+  <header class="site-header">
+    <nav class="nav wrap" aria-label="主导航">
+      <a class="brand" href="#top" aria-label="Tursora 首页">
+        <img src="assets/AppIcon.png" width="34" height="34" alt="">
+        <span>Tursora</span>
+      </a>
+      <div class="nav-links">
+        <a href="#workflows">使用体验</a>
+        <a href="#download">获取 Tursora</a>
+        <a class="nav-source" href="https://github.com/zerolfx/Tursora">GitHub <span aria-hidden="true">↗</span></a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-intro">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="small-line" aria-hidden="true"></span> 原生 macOS 文件管理器</p>
+          <h1 id="hero-title">文件各就各位，<br><span>思路不用来回。</span></h1>
+          <p class="hero-description">保留 Finder 的熟悉手感，借来 Dolphin 的双窗格，<br class="desktop-break">再添上可选的 Explorer 式 ZIP 浏览。<br class="desktop-break">让找文件、切目录、整理交付，接得更顺。</p>
+          <div class="hero-actions">
+            <a class="button primary" href="#download">获取 Tursora <span aria-hidden="true">↓</span></a>
+            <a class="text-link" href="#workflows">看看怎么用 <span aria-hidden="true">↘</span></a>
+          </div>
+          <p class="compatibility">macOS 14+ <span aria-hidden="true">·</span> Apple Silicon 开发构建</p>
+        </div>
+        <div class="hero-mark" aria-hidden="true">
+          <img src="assets/AppIcon.png" width="188" height="188" alt="">
+          <span>两个窗格，一起向前。</span>
+        </div>
+      </div>
+      <figure class="hero-figure">
+        <a class="screenshot-link hero-screenshot" href="assets/split-panes.jpg" data-viewer data-title="双窗格：源文件和目标目录并排显示" aria-label="查看双窗格完整截图">
+          <img src="assets/split-panes.jpg" width="1241" height="590" alt="Tursora 的真实双窗格界面：左侧选中待交付的文件，右侧显示目标目录。" fetchpriority="high">
+          <span class="image-expand" aria-hidden="true">查看大图 <span>↗</span></span>
+        </a>
+        <figcaption><span class="caption-label">一个窗口，两个去处。</span> 源文件在左，目标目录在右。整理时，少一次往返。</figcaption>
+      </figure>
+      <div class="native-note"><span>Swift + AppKit</span><i aria-hidden="true"></i><p>从窗口、快捷键到系统分享，沿用 Mac 的使用习惯。</p></div>
+    </section>
+
+    <section class="workflows wrap" id="workflows" aria-labelledby="workflows-title">
+      <div class="section-heading">
+        <p class="eyebrow">从一个路径，到整段工作</p>
+        <h2 id="workflows-title">让常做的事，<br class="mobile-break">更顺手一点。</h2>
+        <p>四种方式，放在同一个工作空间里。</p>
+      </div>
+      <div class="feature-tabs" data-tabs aria-label="选择一种文件管理方式">
+        <a href="#feature-path" data-tab><span class="tab-number">01</span> 路径导航 <span class="tab-symbol" aria-hidden="true">↗</span></a>
+        <a href="#feature-tabs" data-tab><span class="tab-number">02</span> 标签页 <span class="tab-symbol" aria-hidden="true">＋</span></a>
+        <a href="#feature-panes" data-tab><span class="tab-number">03</span> 双窗格 <span class="tab-symbol" aria-hidden="true">↔</span></a>
+        <a href="#feature-zip" data-tab><span class="tab-number">04</span> ZIP 浏览 <span class="tab-symbol" aria-hidden="true">↓</span></a>
+      </div>
+      <div class="feature-panels">
+        <article class="feature-panel" id="feature-path" data-panel>
+          <div class="feature-copy">
+            <p class="feature-index">01 / 路径导航</p>
+            <h3>知道路径，<br>就直接过去。</h3>
+            <p>点击面包屑逐级浏览，也可以把完整路径直接输进去。目录补全跟着输入出现，不必一层层翻找。</p>
+            <p class="feature-detail">常去的位置留在侧栏；走过的目录，交给前进与后退。</p>
+            <div class="shortcut"><kbd>⌘ L</kbd><span>编辑当前路径</span></div>
+          </div>
+          <figure>
+            <a class="screenshot-link" href="assets/path-navigation.jpg" data-viewer data-title="路径导航：编辑完整路径并选择目录补全" aria-label="查看路径导航完整截图">
+              <img src="assets/path-navigation.jpg" width="1241" height="590" alt="地址栏正在编辑完整路径，下方展示匹配的文件夹补全。" loading="lazy">
+              <span class="image-expand" aria-hidden="true">查看大图 <span>↗</span></span>
+            </a>
+            <figcaption>点击浏览和键盘输入，在同一条地址栏里切换。</figcaption>
+          </figure>
+        </article>
+        <article class="feature-panel" id="feature-tabs" data-panel>
+          <div class="feature-copy">
+            <p class="feature-index">02 / 标签页</p>
+            <h3>手头的几件事，<br>各留一个位置。</h3>
+            <p>项目、素材、下载目录，一页放一个。每个标签保留自己的浏览历史、选择和过滤状态；视图与排序可以按目录记忆，也可以使用统一默认。</p>
+            <p class="feature-detail">关早了也能重新打开，连双窗格布局一起找回来。当前会话内保留，退出后不恢复。</p>
+            <div class="shortcut"><kbd>⌘ T</kbd><span>新建标签页</span></div>
+            <div class="shortcut"><kbd>⇧ ⌘ T</kbd><span>重新打开关闭的标签页</span></div>
+          </div>
+          <figure>
+            <a class="screenshot-link" href="assets/tabs.jpg" data-viewer data-title="标签页：在不同目录之间切换" aria-label="查看标签页完整截图">
+              <img src="assets/tabs.jpg" width="1241" height="590" alt="Tursora 的标签栏保留多个工作目录，可以在它们之间切换。" loading="lazy">
+              <span class="image-expand" aria-hidden="true">查看大图 <span>↗</span></span>
+            </a>
+            <figcaption>目录各自独立，切换时接着刚才的进度。</figcaption>
+          </figure>
+        </article>
+        <article class="feature-panel" id="feature-panes" data-panel>
+          <div class="feature-copy">
+            <p class="feature-index">03 / 双窗格</p>
+            <h3>从这里，<br>到那里。</h3>
+            <p>把来源和去处并排放好，选择文件后直接复制到另一侧。每个标签都能独立展开双窗格。</p>
+            <p class="feature-detail">两边分别浏览、分别过滤。你始终知道当前正在操作哪一侧。</p>
+            <div class="shortcut"><kbd>⇧ ⌘ D</kbd><span>展开或收起双窗格</span></div>
+            <div class="shortcut"><kbd>⇧ ⌘ C</kbd><span>复制到另一窗格</span></div>
+          </div>
+          <figure>
+            <a class="screenshot-link" href="assets/split-panes.jpg" data-viewer data-title="双窗格：把文件复制到另一侧" aria-label="查看双窗格完整截图">
+              <img src="assets/split-panes.jpg" width="1241" height="590" alt="双窗格同时显示两个目录，左侧文件已选中，右侧是交付位置。" loading="lazy">
+              <span class="image-expand" aria-hidden="true">查看大图 <span>↗</span></span>
+            </a>
+            <figcaption>查看来源、确认去处，不用反复切换窗口。</figcaption>
+          </figure>
+        </article>
+        <article class="feature-panel" id="feature-zip" data-panel>
+          <div class="feature-copy">
+            <p class="feature-index">04 / ZIP 浏览 <span class="experiment-tag">可选实验</span></p>
+            <h3>包里的文件，<br>也在眼前。</h3>
+            <p>启用后，ZIP 会在当前窗格展开。沿用地址栏、标签页和分栏，预览文件，或把需要的内容复制出来。</p>
+            <p class="feature-detail">归档内容只读。打开的是临时副本，编辑不会写回 ZIP；副本保留到 Tursora 退出。</p>
+            <div class="shortcut"><kbd>⌘ ,</kbd><span>在设置中启用 ZIP 浏览</span></div>
+            <a class="inline-link" href="#experiments">了解实验功能的边界 <span aria-hidden="true">↗</span></a>
+          </div>
+          <figure>
+            <a class="screenshot-link" href="assets/zip-browsing.jpg" data-viewer data-title="ZIP 浏览：在同一窗格中读取归档内容" aria-label="查看 ZIP 浏览完整截图">
+              <img src="assets/zip-browsing.jpg" width="1241" height="590" alt="ZIP 内容在 Tursora 原有窗格中显示，地址栏保留归档路径，状态栏标记只读。" loading="lazy">
+              <span class="image-expand" aria-hidden="true">查看大图 <span>↗</span></span>
+            </a>
+            <figcaption>默认关闭；未启用时，打开 ZIP 仍会解压到原文件旁。</figcaption>
+          </figure>
+        </article>
+      </div>
+      <p class="gallery-note">画面来自实际运行的 Tursora，当前应用界面为英文。<span class="keyboard-hint">聚焦选项后，可用 ← → 切换。</span></p>
+    </section>
+
+    <section class="familiar wrap" aria-labelledby="familiar-title">
+      <div class="familiar-intro">
+        <p class="eyebrow">熟悉感，留在细节里</p>
+        <h2 id="familiar-title">还是你习惯的<br>那个 Mac。</h2>
+        <p>新加的工作方式，也和日常操作接得上。</p>
+      </div>
+      <dl class="familiar-list">
+        <div><dt><span aria-hidden="true">↗</span> 先预览，再打开</dt><dd>空格调出 Quick Look；分享交给 macOS 的系统分享面板。</dd></div>
+        <div><dt><span aria-hidden="true">↶</span> 整理，也留有退路</dt><dd>复制、移动、改名、移到废纸篓。常用文件操作和 ZIP 压缩、解压都支持撤销。</dd></div>
+        <div><dt><span aria-hidden="true">≡</span> 换个角度看文件</dt><dd>列表与图标视图，分组与排序，再用名称过滤收拢眼前的内容。</dd></div>
+      </dl>
+    </section>
+
+    <section class="experiments wrap" id="experiments" aria-labelledby="experiments-title">
+      <div class="experiments-heading">
+        <p class="eyebrow">需要时，再打开</p>
+        <h2 id="experiments-title">两项实验，由你选择。</h2>
+        <p>终端面板和 ZIP 浏览均默认关闭，在 <span lang="en">Tursora → Settings…</span> 中启用。</p>
+      </div>
+      <div class="experiment-notes">
+        <div><h3>在文件旁边，接着用终端 <span>F4</span></h3><p>启用后，按 F4 展开集成终端。切换目录只更新手动重启的目标，不向运行中的 Shell 注入命令；隐藏面板会结束会话。</p></div>
+        <div><h3>把 ZIP 当作只读目录浏览</h3><p>仅支持普通 ZIP。打开的临时副本会在应用退出时清理；需要保留编辑，请在外部应用中“另存为”。不支持密码 ZIP 或直接写回归档。</p></div>
+      </div>
+    </section>
+
+    <section class="download wrap" id="download" aria-labelledby="download-title">
+      <div class="download-copy">
+        <img class="download-icon" src="assets/AppIcon.png" width="64" height="64" alt="" loading="lazy">
+        <p class="eyebrow">给下一次文件整理</p>
+        <h2 id="download-title">从一个目录，<br>开始试试。</h2>
+        <p>Tursora 仍在成长中。欢迎体验开发构建，<br class="desktop-break">也欢迎看看它是如何做出来的。</p>
+        <div class="download-actions">
+          <a class="button primary" href="https://github.com/zerolfx/Tursora/actions/workflows/build.yml">获取开发构建 <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="https://github.com/zerolfx/Tursora">查看源代码 <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+      <div class="download-info">
+        <p class="download-label">下载之前</p>
+        <dl class="requirements">
+          <div><dt>系统</dt><dd>macOS 14 或更新版本</dd></div>
+          <div><dt>开发构建</dt><dd>Apple Silicon</dd></div>
+          <div><dt>签名</dt><dd>ad-hoc 签名，尚未公证</dd></div>
+        </dl>
+        <ol class="download-steps">
+          <li>在 GitHub Actions 中打开一次成功的 Build 运行。</li>
+          <li>下载 Artifacts 里的构建产物，解开产物 ZIP，再解开其中的应用 ZIP。</li>
+          <li>将 <span lang="en">Tursora.app</span> 移到“应用程序”。下载产物可能需要登录 GitHub。</li>
+        </ol>
+        <a class="inline-link" href="https://github.com/zerolfx/Tursora#build-locally">也可以在本机构建 <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+    <aside class="scope-note wrap" aria-label="当前功能边界">
+      <p>它还不是 Finder 的完整替代品。列视图、内容搜索、跨目录搜索等尚未实现；文件标签和“从 iPhone 导入”不在设计范围内。<a href="https://github.com/zerolfx/Tursora#what-finder-still-does-that-tursora-doesnt">查看完整差异与当前状态 <span aria-hidden="true">↗</span></a></p>
+    </aside>
+  </main>
+
+  <footer class="site-footer wrap">
+    <a class="brand" href="#top"><img src="assets/AppIcon.png" width="27" height="27" alt=""><span>Tursora</span></a>
+    <p>为 macOS 而做。</p>
+    <div><a href="https://github.com/zerolfx/Tursora">GitHub</a><a href="https://github.com/zerolfx/Tursora/blob/main/README.md">项目说明</a></div>
+  </footer>
+
+  <dialog class="image-dialog" id="image-dialog" aria-labelledby="image-dialog-title">
+    <div class="dialog-heading"><p id="image-dialog-title">界面截图</p><button type="button" data-close-viewer aria-label="关闭截图">关闭 <span aria-hidden="true">×</span></button></div>
+    <img id="dialog-image" alt="">
+  </dialog>
+</body>
+</html>

@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Info windows save a comment still being typed when they close; ⌘Q
     /// closes nothing by itself, so do it here.
     func applicationWillTerminate(_ notification: Notification) {
+        do { try DirectoryViewPropertiesStore.shared.flush() }
+        catch { NSLog("Could not save folder view settings: %@", error.localizedDescription) }
         InfoWindowController.closeAll()
         windowControllers.forEach {
             $0.hideTerminal()

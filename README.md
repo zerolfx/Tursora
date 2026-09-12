@@ -17,7 +17,7 @@
 
 Tursora is a native macOS file manager built around a simple goal: **keep what feels familiar in Finder, then add the file-management ideas that make Dolphin and Windows File Explorer useful.**
 
-That means Quick Look, macOS sharing, familiar file operations and a native AppKit interface—with Dolphin-inspired split panes, editable paths and instant filtering. Optional experiments add an integrated terminal and Explorer-style ZIP navigation in the same pane.
+That means Quick Look, macOS sharing, familiar file operations and a native AppKit interface—with Dolphin-inspired split panes, editable paths, instant filtering and folder-specific view settings. Optional experiments add an integrated terminal and Explorer-style ZIP navigation in the same pane.
 
 Tursora is an early project, and it does not yet cover everything Finder can do. The [differences below](#what-finder-still-does-that-tursora-doesnt) are part of the picture.
 
@@ -27,7 +27,7 @@ Tursora is an early project, and it does not yet cover everything Finder can do.
 
 Put your source on the left and its destination on the right. Each tab has its own folders and can switch between one and two panes. Copy or move a selection directly to the other side, and reopen a closed tab with its split layout intact.
 
-**Try it:** click the toolbar’s Split View button or press `⇧⌘D` to split the view. `⌥Tab` switches panes, and `⇧⌘C` copies to the other pane. Tabs retain their own history, selection, scroll position, sorting, grouping and filters during the session.
+**Try it:** click the toolbar’s Split View button or press `⇧⌘D` to split the view. `⌥Tab` switches panes, and `⇧⌘C` copies to the other pane. Tabs retain their own history, selection, scroll position and filters during the session; each folder's view settings are restored when you open it.
 
 ![Split panes and tabs: source files on the left, delivery folder on the right](docs/images/features/split-panes.jpg)
 
@@ -55,7 +55,11 @@ Press `⌘F` and type part of a filename or a pattern such as `*.png`. Results u
 
 Expand folders in a details list, or browse thumbnails in an icon grid. Group by kind, name, size or dates, sort within the view, and zoom using the slider, a pinch or `⌘`-scroll. Switch between Icons and List with `⌥⌘1` and `⌥⌘2`.
 
-![Grouped file browsing in the native list and icon views](docs/images/features/views-and-groups.jpg)
+Folders remember their view mode, sorting, list and icon sizes, groups, hidden files and previews—even when you open them in another tab or restart Tursora. **View → Folder View Settings** lets you choose **Remember Each Folder** or **Use One View for All Folders**, save the current settings as your default, and restore a folder to that default. The policy is also available in Settings.
+
+Two already-open panes keep their own folder views during ordinary per-folder edits; revisit the folder to pick up the latest saved settings. Folder memory uses Tursora's own library, so it works with read-only folders without adding files to them. Renamed or moved folders use their new path's settings. Every entry into a ZIP folder starts from your default view, and changes there stay temporary. Tursora does not restore tabs after quitting.
+
+![Folder-specific icon grouping and list settings restored after restarting the app](docs/images/features/folder-views.jpg)
 
 ### Preview first, open when you need to
 
@@ -97,9 +101,9 @@ The toolbar's More menu collects common actions for the current selection. Share
 
 ### A few useful preferences
 
-Show or hide filename extensions, record a shortcut for name filtering, or opt into experiments. Shortcut recording checks conflicts. Hiding extensions changes their display; renaming still exposes the full filename.
+Choose per-folder views or one shared default, show or hide filename extensions, record a shortcut for name filtering, or opt into experiments. Shortcut recording checks conflicts. Hiding extensions changes their display; renaming still exposes the full filename.
 
-![Settings with extension display, shortcut recording and both experiments disabled](docs/images/features/settings.jpg)
+![Settings with folder view policy, extension display, shortcut recording and both experiments disabled](docs/images/features/settings.jpg)
 
 ## Experiments
 
@@ -131,7 +135,7 @@ These are current gaps, not promises of complete Finder parity:
 | Search | Recursive and content search, advanced conditions, Smart Folders |
 | Organization | Batch rename, New Folder with Selection, Make Alias / Show Original, Show Package Contents |
 | Trash | Browsing Trash, Put Back, emptying Trash; moving files to Trash and undoing that move are supported |
-| Customization | Per-folder persistent view options and toolbar customization |
+| Customization | Finder's full View Options dialog, column-layout memory and toolbar customization |
 | System integration | Quick Actions, Services and FinderSync cloud status badges |
 | File information | Full ACL editing, owner/group changes and recursive permission application |
 
@@ -178,5 +182,7 @@ done
 The in-app smoke suite exercises real models and controllers in a macOS desktop session. Run it three times before committing, then inspect the packaged application. GitHub Actions validates packaging; it does not replace those UI checks.
 
 [Shortcuts](docs/SHORTCUTS.md) · [Specification](docs/SPEC.md) · [Architecture](docs/ARCHITECTURE.md) · [Development guide](docs/DEVELOPMENT.md) · [Changelog](CHANGELOG.md) · [Contributing rules](AGENTS.md)
+
+The [product page](site/README.md) presents address navigation, tabs, split panes and ZIP browsing with real application screenshots. It builds into a standalone static site for local preview or hosting.
 
 Tursora began with an audit of porting Dolphin and KIO to macOS. That research led to a native implementation, borrowing useful behavior rather than the entire stack. The two-pane tail-fin mark reflects those roots. [Read the original audit](docs/audit/PHASE-0-REPORT.md).

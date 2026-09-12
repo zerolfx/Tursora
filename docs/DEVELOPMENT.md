@@ -108,6 +108,7 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 | Headless run hangs | A modal alert with no screen | `report(...)` prints in smoke mode |
 | Info sections crowd the right edge; inline preview is too narrow | Stack alignment was used as a width/fill constraint | Use leading alignment and explicit leading/trailing anchors for every outer row and section header/content; test actual frames and resizing |
 | A new pane claims Icons but shows a list | The saved mode was read, but `fileView` still held the list; calling `setViewMode` with the same mode returned early | Choose the initial `fileView` from the saved mode before `loadView` mounts it |
+| A narrow pane loses its Name column when remembered properties switch Icons to List | Mounting the list before applying the final group key expands obsolete groups and can scroll horizontally | Apply the final arrangement before mounting, then restore the pane's captured list horizontal offset after layout; test both zero and intentional nonzero offsets |
 | Toolbar still selects List after the Icons shortcut | Pane view changes did not notify the window | Notify `BrowserHost` after mounting the view; only the active pane updates toolbar validation |
 
 ## Release checklist
@@ -151,3 +152,16 @@ Update documentation in the same change as the behavior it describes:
 - `HANDOFF.md` and research records distinguish implemented behavior, automated checks, actual computer-use verification and remaining gaps. Replace pending verification only after performing it.
 - Refresh the root README and its feature screenshots when the visible workflow changes. Screenshots must come from the packaged application with demonstration files, never personal documents or invented UI. Each advertised feature group must retain its own relevant screenshot. See [image maintenance](images/README.md).
 - Add a changelog entry with the resulting behavior. Historical research should remain historical; link to new evidence instead of rewriting old observations as current results.
+
+## Build and preview the product page
+
+The static page is independent of the Swift app. From the repository root, using Python 3.9 or later:
+
+```sh
+python3 site/build.py
+python3 -m http.server 8080 --directory site/dist
+```
+
+Open `http://localhost:8080` and stop the server with Control-C. The builder uses only the standard library, recreates `site/dist/`, and refuses a symlink at that location. Generated output is ignored by Git. It copies the required icon and four canonical screenshots without editing their pixels, then validates local references, fragments, IDs, alt attributes and the four workflow panels. Static validation does not replace browser review or verify live GitHub downloads.
+
+Use [site/README.md](../site/README.md) for the exact asset list and desktop/mobile, keyboard, dialog, reduced-motion and no-JavaScript review sequence. Record observed results in dated research and maintain current status in [HANDOFF](HANDOFF.md). Previewing or building the page does not deploy it; hosting and publication are separate actions.

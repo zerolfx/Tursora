@@ -55,9 +55,11 @@ enum TransferSmokeTests {
                 try await conflictsAndJournal(in: fixture)
                 try await boundaryCancellation(in: fixture)
                 try await crossVolumeMoves(in: fixture)
+                try await opaqueAtomicMoves(in: fixture)
                 try await replayGuardBoundaries(in: fixture)
                 try await changedIdentityBoundaries(in: fixture)
                 try await browserPaths(in: fixture, provider: existingWindow.provider)
+                try await failedBrowserUndoRetainsRecovery(in: fixture, provider: existingWindow.provider)
                 completion()
             } catch {
                 check("transfer smoke fixtures and async operations succeed", false, "\(error as NSError), userInfo=\((error as NSError).userInfo)")
@@ -486,6 +488,59 @@ enum TransferSmokeTests {
         check("atomic move publishes source without pretending to stream it", atomicResult.moved.count == 1 && atomic.task.snapshot.completedBytes == 0 && !exists(atomicFile) && (try? Data(contentsOf: atomicDestination.appendingPathComponent("atomic.bin"))) == bytes)
     }
 
+    @MainActor private static func opaqueAtomicMoves(in fixture: URL) async throws {
+        let fm = FileManager.default
+        let (source, destination) = try folders("atomic-opaque-tree", in: fixture)
+        let folder = source.appendingPathComponent("Opaque")
+        let output = destination.appendingPathComponent("Opaque")
+        let hidden = folder.appendingPathComponent("Unreadable")
+        let movedHidden = output.appendingPathComponent("Unreadable")
+        try fm.createDirectory(at: hidden, withIntermediateDirectories: true)
+        try Data("unreadable child contents".utf8).write(to: hidden.appendingPathComponent("payload.txt"))
+        let fifo = folder.appendingPathComponent("channel")
+        guard mkfifo(fifo.path, 0o600) == 0, chmod(hidden.path, 0) == 0 else { throw POSIXError(.EIO) }
+        defer {
+            _ = chmod(hidden.path, 0o700)
+            _ = chmod(movedHidden.path, 0o700)
+        }
+        func isFIFO(_ url: URL) -> Bool {
+            var info = stat()
+            return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFIFO
+        }
+        var scanned: [String] = []
+        var options = TransferOptions()
+        options.checkpoint = { point, url, _ in if point == .preparing { scanned.append(url.path) } }
+        let running = start([folder], to: destination, kind: .move, options: options)
+        let result = await finished(running)
+        check("atomic move does not enumerate unreadable descendants or reject a FIFO", result.failures.isEmpty && result.moved.count == 1 && !exists(folder) && isFIFO(output.appendingPathComponent("channel")))
+        check("atomic directory move scans only its root and reports zero transferred bytes", scanned.allSatisfy { $0 == folder.path } && running.task.snapshot.totalBytes == 0 && running.task.snapshot.completedBytes == 0)
+        if let journal = result.journal {
+            let redo = try FileOperations.replay(journal)
+            check("opaque atomic move Undo restores its FIFO and unreadable directory", exists(folder) && !exists(output) && isFIFO(fifo) && ((try? fm.attributesOfItem(atPath: hidden.path)[.posixPermissions]) as? NSNumber)?.intValue == 0)
+            _ = try FileOperations.replay(redo)
+            check("opaque atomic move Redo preserves its original descendants", !exists(folder) && isFIFO(output.appendingPathComponent("channel")) && ((try? fm.attributesOfItem(atPath: movedHidden.path)[.posixPermissions]) as? NSNumber)?.intValue == 0)
+            guard chmod(movedHidden.path, 0o700) == 0 else { throw POSIXError(.EIO) }
+            check("opaque directory contents survive Move Undo and Redo", (try? String(contentsOf: movedHidden.appendingPathComponent("payload.txt"))) == "unreadable child contents")
+        } else { check("opaque atomic move supplies an undo journal", false) }
+
+        // Merge needs only the folder being merged to be enumerable. Its child
+        // directories still move atomically without inspecting their contents.
+        let mergeSource = source.appendingPathComponent("Merge")
+        let mergeDestination = destination.appendingPathComponent("Merge")
+        let nested = mergeSource.appendingPathComponent("Nested")
+        try fm.createDirectory(at: nested, withIntermediateDirectories: true)
+        try fm.createDirectory(at: mergeDestination, withIntermediateDirectories: false)
+        guard mkfifo(nested.appendingPathComponent("channel").path, 0o600) == 0 else { throw POSIXError(.EIO) }
+        let merged = await finished(start([mergeSource], to: destination, kind: .move, conflict: { _ in .init(resolution: .merge) }))
+        check("atomic Merge moves a child directory containing a FIFO", merged.failures.isEmpty && !exists(mergeSource) && isFIFO(mergeDestination.appendingPathComponent("Nested/channel")))
+        if let journal = merged.journal {
+            let redo = try FileOperations.replay(journal)
+            check("opaque Merge Undo restores the original nested directory", isFIFO(nested.appendingPathComponent("channel")) && !exists(mergeDestination.appendingPathComponent("Nested")))
+            _ = try FileOperations.replay(redo)
+            check("opaque Merge Redo moves its nested directory again", !exists(mergeSource) && isFIFO(mergeDestination.appendingPathComponent("Nested/channel")))
+        } else { check("opaque Merge supplies an undo journal", false) }
+    }
+
     @MainActor private static func changedIdentityBoundaries(in fixture: URL) async throws {
         let fm = FileManager.default
         for replaceSource in [true, false] {
@@ -550,6 +605,8 @@ enum TransferSmokeTests {
 
     @MainActor private static func replayGuardBoundaries(in fixture: URL) async throws {
         let fm = FileManager.default
+        var recoveryDirectories: [URL] = []
+        defer { recoveryDirectories.forEach { try? fm.removeItem(at: $0) } }
         let (source, destination) = try folders("cross-volume-edited-undo", in: fixture)
         let file = source.appendingPathComponent("edited.txt"), output = destination.appendingPathComponent("edited.txt")
         try Data("original before move".utf8).write(to: file)
@@ -567,7 +624,7 @@ enum TransferSmokeTests {
         try writer.close()
         var refusedUndo = false
         do { _ = try FileOperations.replay(journal) }
-        catch { refusedUndo = true }
+        catch { refusedUndo = true; recoveryDirectories += (error as? TransferReplayError)?.recoveryDirectories ?? [] }
         check("cross-volume Undo refuses a destination edited in place after completion", refusedUndo)
         check("refused cross-volume Undo preserves the edit and cannot restore stale source bytes", !exists(file) && (try? String(contentsOf: output)) == "edited after the completed move")
 
@@ -594,7 +651,7 @@ enum TransferSmokeTests {
         }
         var refusedBatchUndo = false
         do { _ = try FileOperations.replay(batchJournal) }
-        catch { refusedBatchUndo = true }
+        catch { refusedBatchUndo = true; recoveryDirectories += (error as? TransferReplayError)?.recoveryDirectories ?? [] }
         check("cross-volume Undo captures each item's identity at publication rather than batch completion", refusedBatchUndo)
         check("in-batch destination edit survives refused Undo without restoring either stale source", !exists(first) && !exists(second) && (try? String(contentsOf: firstOutput)) == "edited while second item was pending" && (try? String(contentsOf: secondOutput)) == "original second item")
 
@@ -617,7 +674,7 @@ enum TransferSmokeTests {
         try Data("new unrelated source child".utf8).write(to: added)
         var refusedRedo = false
         do { _ = try FileOperations.replay(redo) }
-        catch { refusedRedo = true }
+        catch { refusedRedo = true; recoveryDirectories += (error as? TransferReplayError)?.recoveryDirectories ?? [] }
         check("move-merge Redo refuses to retire a source folder containing a new child", refusedRedo)
         check("refused move-merge Redo preserves new source content and rolls back prior child moves", (try? String(contentsOf: incoming)) == "incoming child" && (try? String(contentsOf: added)) == "new unrelated source child")
         check("refused move-merge Redo restores the target conflict and unrelated destination sibling", (try? String(contentsOf: existing)) == "original target child" && (try? String(contentsOf: target.appendingPathComponent("keep.txt"))) == "unrelated target child" && !exists(target.appendingPathComponent("added-after-undo.txt")))
@@ -707,6 +764,8 @@ enum TransferSmokeTests {
             newTab.copy(nil)
             newTab.navigate(to: elsewhere)
             await listed(newTab, at: elsewhere)
+            newTab.setViewMode(mode)
+            check("\(mode): Paste and Drop use the requested concrete file view after navigation", newTab.viewMode == mode && (mode == .icons ? newTab.fileView === newTab.iconGrid : newTab.fileView === newTab.fileList))
             newTab.transferOptions = slowOptions()
             newTab.paste(nil)
             guard let pasteTask = newTab.lastTransferTask,
@@ -751,6 +810,50 @@ enum TransferSmokeTests {
             check("\(mode): window-close cancellation cleans Duplicate and releases ownership", duplicateTask.snapshot.state == .cancelled && !exists(source.appendingPathComponent("large copy.bin")) && exists(file) && !TransferTasksWindowController.shared.hasActiveTasks(ownedBy: wc.window!))
         }
         try await conflictControls(in: fixture, provider: provider)
+    }
+
+    @MainActor private static func failedBrowserUndoRetainsRecovery(in fixture: URL, provider: FileProvider) async throws {
+        let fm = FileManager.default
+        let (source, destination) = try folders("browser-failed-undo-recovery", in: fixture)
+        let file = source.appendingPathComponent("replace.txt")
+        let output = destination.appendingPathComponent("replace.txt")
+        let displaced = destination.appendingPathComponent("displaced.txt")
+        try Data("incoming replacement".utf8).write(to: file)
+        try Data("unique original target".utf8).write(to: output)
+        let wc = MainWindowController(provider: provider, places: PlacesModel(), initialURL: destination)
+        var recoveryDirectories: [URL] = []
+        defer {
+            wc.window?.undoManager?.removeAllActions()
+            wc.close()
+            recoveryDirectories.forEach { try? fm.removeItem(at: $0) }
+        }
+        await listed(wc.browser, at: destination)
+        var reportedError: TransferReplayError?
+        wc.browser.transferReplayErrorReporter = { reportedError = $0 as? TransferReplayError }
+        wc.browser.dropFiles([file], to: destination, op: .copy)
+        guard let task = wc.browser.lastTransferTask,
+              let row = TransferTasksWindowController.shared.row(for: task.id),
+              let undo = wc.window?.undoManager else {
+            check("failed Undo fixture starts a real controller transfer", false); return
+        }
+        await waitUntil("replacement conflict is available") { row.hasPendingConflict }
+        row.conflictButtons[.replace]?.performClick(nil)
+        await waitUntil("replacement registers its window undo") { task.snapshot.isTerminal && undo.canUndo }
+        check("failed Undo fixture replaces and retains the old target", task.snapshot.state == .completed && (try? String(contentsOf: output)) == "incoming replacement")
+
+        // Simulate an external rename and a different file appearing at the same
+        // path. The real UndoManager consumes its action when replay refuses it.
+        try fm.moveItem(at: output, to: displaced)
+        try Data("unrelated external file".utf8).write(to: output)
+        undo.undo()
+        undo.removeAllActions()
+        TransferTasksWindowController.shared.clearFinished(nil)
+        await Task.yield()
+        recoveryDirectories = reportedError?.recoveryDirectories ?? []
+        check("failed controller Undo reports recoverable storage after consuming its action", !undo.canUndo && !undo.canRedo && !recoveryDirectories.isEmpty && recoveryDirectories.allSatisfy { reportedError?.localizedDescription.contains($0.path) == true })
+        let backups = try recoveryDirectories.flatMap { try fm.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil) }
+        check("failed controller Undo preserves the original backup after journal release", backups.contains { (try? String(contentsOf: $0)) == "unique original target" })
+        check("failed controller Undo preserves both external and displaced replacement files", (try? String(contentsOf: output)) == "unrelated external file" && (try? String(contentsOf: displaced)) == "incoming replacement" && (try? String(contentsOf: file)) == "incoming replacement")
     }
 
     @MainActor private static func conflictControls(in fixture: URL, provider: FileProvider) async throws {
