@@ -2,6 +2,8 @@
 
 `features/` contains actual packaged-app screenshots, one for each feature group in the root README. Keep each image focused on the control or result described immediately above it. Do not use mockups as evidence of implemented features.
 
+The product page reuses this collection. Its additional `tabs.jpg` shows three independent tabs and an expanded directory tree. Update the canonical images here; the site build copies the required files into its output.
+
 ## Refresh workflow
 
 1. Build the current app and finish the smoke suite before driving the UI. Do not run computer-use checks concurrently with smoke tests.

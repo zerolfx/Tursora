@@ -37,3 +37,11 @@
 ## 已知边界
 
 按规范化路径记忆；移动 / 改名不跟随 inode，换挂载点不跟随卷 UUID。Finder alias bookmark 不在本功能解析；symlink 按解析目标共享属性。ZIP 页与其他明确标记的虚拟页只采用默认和当次临时变更，不能把解压路径写入库。没有新增会话恢复、递归应用、列宽 / 列顺序记忆。真实远程卷身份场景没有实机验证。
+
+## 与最新主分支整合
+
+PR #1 的初始提交为 `eac9ffc`。主分支随后有产品页和维护整理提交 `ae5e47a`；初始 PR 因文档冲突无法启动 CI，因此将该主分支提交合入本功能分支，保留双方文档和历史证据。未合并搜索或操作进度功能，也未修改远端 main。
+
+独立只读 review 确认归档读取 helper 的恒真参数清理和 PlacesModel 未使用常量删除不改变视图属性逻辑。同步修正产品页的标签说明，将持久化排序与临时历史 / 选择 / 过滤区分；站点静态构建通过，5 个资源、36 处引用检查完成。
+
+整合后的 debug、release 与 strict codesign 均通过，完整 smoke 再次 **854 项连续三轮通过**，均 exit 0、stderr 0 bytes。仍使用共享排他锁，结束后恢复偏好。日志为 `app/build/verification-directory-views/integrated-{1,2,3}.{out,err}`、`integrated-debug-build.log`、`integrated-release-build.log`、`integrated-codesign.log`。整合发布包的简短实机复查正在等待共享锁；前述三张截图对应已完成的功能阶段，不冒充后续复查。

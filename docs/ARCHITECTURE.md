@@ -189,3 +189,16 @@ Order starts with `run` → initial-listing wait → directory-view properties s
 `ArchiveWorkspace` retains read-only snapshots until application shutdown, including after tabs or windows close. External applications can keep using opened copies, but no operation writes their edits back into the source ZIP. The logical path is an application location, not a new on-disk directory or registered URL protocol. Full extraction requires temporary disk space; changing the source ZIP does not automatically refresh its snapshot. See [archive browsing research](research/archive-browsing.md) for current verification boundaries.
 
 `ServerConnection` implements `ServerMounting` through NetFS async mount/cancel. `ServerConnectionController` owns address validation and inline state; the system owns authentication. Success returns local file URLs. `PlacesModel` observes workspace mount notifications and classifies network volumes. `ServerConnectionSmokeTests` uses a mock mount service and never contacts a server.
+
+## Product page
+
+`site/` is a separate Chinese static page for editable paths, tabs, split panes and read-only ZIP browsing. It does not participate in the Swift executable or application packaging.
+
+| File | Responsibility |
+|---|---|
+| `site/index.html` | Product copy, four workflow panels, semantic links and screenshot references. All four workflows remain accessible without JavaScript. |
+| `site/styles.css` | Responsive layout, focus states and reduced-motion presentation. |
+| `site/main.js` | Progressive enhancement for the workflow selector and screenshot dialog, including keyboard controls and focus restoration. |
+| `site/build.py` | Python 3.9+ standard-library build, canonical asset copying and static validation; recreates only `site/dist/` and rejects a symlink at that output path. |
+
+The icon comes from `app/Resources/AppIcon.png`; four screenshots come from `docs/images/features/`. The split screenshot serves both the hero and its feature panel. Build output contains HTML, CSS, JavaScript and one copy of each asset, with relative references for subpath hosting. No Node packages, remote fonts, tracking, embedded external libraries or build-time network requests are required. External links point to GitHub; the builder does not validate live access or artifact availability. Build and browser-review instructions are in [site/README.md](../site/README.md); current verification is recorded in [HANDOFF](HANDOFF.md).

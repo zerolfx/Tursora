@@ -47,3 +47,27 @@ README 全部 13 组截图均已保存并逐一检查，包括压缩 / 解压、
 已恢复本次测试前的用户偏好：显示扩展名 = 开、过滤快捷键 = ⌘F、终端实验 = 关、ZIP 浏览实验 = 开。ZIP 开启是用户原有选择，不改变该功能新安装默认关闭的规格。演示 Favorite 已移除并核对。
 
 真实服务器认证、挂载、读写、掉线和 Eject 未验证。终端关闭所属浏览窗口时的进程回收、ZIP 拖出手势及 ZIP 内 Quick Look / Share 的专项 CUA、浅色模式和全部屏幕尺寸仍未在本轮逐项覆盖；对应模型 / 集成检查不能替代这些视觉或服务端验证。历史终端中断、Restart 与关闭实验的操作见[此前记录](computer-use-2026-09-12.md)。
+
+## 整理阶段与产品页
+
+第一阶段已提交并推送为 `fbb6762`，对应 [GitHub Build](https://github.com/zerolfx/Tursora/actions/runs/34671658320) 成功。后续整理只删除 PlacesModel 未使用常量，并去掉归档读取助手始终为 true 的参数 / 转发重载，不改变应用行为。
+
+整理后的 debug 和 release build 6 构建成功，strict codesign 通过。**739 项 smoke 重新连续三轮通过**，均 exit 0、stderr 为空；日志为 `/tmp/tursora-tidy-smoke-1.log`、`/tmp/tursora-tidy-smoke-2.log`、`/tmp/tursora-tidy-smoke-3.log`。这些是整理阶段的新运行，不与第一阶段的三份日志混用。
+
+补充保存并检查了 [tabs.jpg](../images/features/tabs.jpg)，尺寸为 1241 × 590，显示真实应用的三个标签与展开的 Documents。此图用于产品页的标签功能；整理后的应用界面保持原有行为，不表示重做了前半轮每一项 CUA。
+
+中文产品页限定为地址栏、标签、分栏、只读 ZIP 四项功能，使用真实应用截图。`python3 site/build.py` 已成功生成 `site/dist/`，包含 5 个必需原始资源（图标与四张截图），通过 36 个引用检查；构建仅使用 Python 3.9+ 标准库。网站验证与应用 smoke 分开完成；站点目前仅本地预览，没有部署上线。
+
+### 产品页浏览器检查
+
+| 检查 | 实际结果 |
+|---|---|
+| 桌面布局 | 在 1280 × 720 实际查看页面，辅助文字对比度已提高，锚点直达造成的页头裁切已修复 |
+| 窄屏布局 | 390 × 844 与 320 × 740 均无横向溢出 |
+| 四项功能切换 | 点击、方向键与 End 可切换对应 tab / panel |
+| 截图弹窗 | ZIP 大图可打开，Escape 关闭并将焦点恢复到触发图片链接 |
+| 普通页面锚点 | 直接进入 `#feature-zip` 后，仅 ZIP tab 选中且仅对应 panel 显示 |
+| 图片与控制台 | 没有图片加载错误，console warn / error 为空；未打开 dialog 中没有 src 的占位 img 不算加载失败 |
+| 无 JavaScript | 在 dist 中临时移除 HTML 的 script 标签验证，四个 panel 均可见且 ZIP 锚点可用；随后重新 build，临时 QA 页面已删除 |
+
+未声称完成 reduced-motion 的专项检查；本轮本地浏览器结果不代表已部署、真实移动设备测试或 GitHub 下载链接的在线可用性。

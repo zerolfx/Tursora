@@ -32,7 +32,7 @@ final class ArchiveWorkspace {
 
         // A nested ZIP can itself live in an already prepared snapshot.
         let source: URL
-        do { source = try readableURL(for: logical, allowUnpreparedArchiveRoot: true) }
+        do { source = try readableURL(for: logical) }
         catch { finish(logical, result: .failure(error)); return }
         ArchiveBrowsingSession.prepare(archive: source, logicalArchiveURL: logical) { [self] result in
             finish(logical, result: result)
@@ -118,10 +118,6 @@ final class ArchiveWorkspace {
     }
 
     func readableURL(for location: URL) throws -> URL {
-        try readableURL(for: location, allowUnpreparedArchiveRoot: true)
-    }
-
-    private func readableURL(for location: URL, allowUnpreparedArchiveRoot: Bool) throws -> URL {
         lock.lock()
         let ended = closed
         lock.unlock()
@@ -134,7 +130,7 @@ final class ArchiveWorkspace {
             return safe
         }
         if let archive = archiveURL(containing: location),
-           !allowUnpreparedArchiveRoot || archive.standardizedFileURL != location.standardizedFileURL {
+           archive.standardizedFileURL != location.standardizedFileURL {
             throw ArchiveBrowsingSession.SessionError.unavailableItem
         }
         return location.standardizedFileURL
