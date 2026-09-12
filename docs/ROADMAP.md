@@ -30,7 +30,8 @@ Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私
 - 每目录视图属性使用应用私有路径库；原独立分支同步 `ae5e47a` 后的三轮 smoke、打包签名与实机证据见 [HANDOFF](HANDOFF.md)，三功能组合不能复用该检查数。后续项包括递归应用子目录、列布局与逻辑页专用属性；如需目录改名 / 移动后跟随或跨挂载点恢复，应独立评估卷身份与 bookmark，不将本次路径键行为暗改为 inode 跟随。会话恢复仍是独立功能。
 
 - 在有用户提供的服务器时验证 SMB / NFS / WebDAV / legacy AFP 的认证、读写和掉线；当前只验证系统挂载接口与无网络状态流转。
-- 每目录视图整合提交 `d309d87` 的 [GitHub Build](https://github.com/zerolfx/Tursora/actions/runs/34683581745) 已通过，下载产物的校验和与严格签名也已核验；后续提交按对应 CI 结果判断。手动 Release 发布 / 安装尚未验证，本地打包不能替代对应提交的实际 Actions 运行。
+- [0.1.0](https://github.com/zerolfx/Tursora/releases/tag/v0.1.0) 已发布，对应提交的 Build / Release 成功，重新下载的 ZIP 校验和、签名、版本、架构与资源核对通过，见 [HANDOFF](HANDOFF.md)。下载产物在其他机器上的首次安装 / 启动仍待验证；本地同源打包实测不替代该检查。
+- GitHub Actions 本轮成功，但 checkout / upload-artifact 的 v4 版本出现 Node 20 运行时弃用提示；后续单独升级 action 并验证构建与发布流程。
 - 实验性终端补充不同 shell、全屏程序、字体/主题与布局检查；目前没有自动目录同步，手动 Restart 会结束当前会话。
 - 已完成检查按对应版本统一见 [HANDOFF](HANDOFF.md) 与[历史 ZIP 实机记录](research/computer-use-2026-09-12-inline-zip.md)；历史结果不替代本次合并后的检查。ZIP 拖出手势、归档内 Quick Look / Share 和关闭开关后既有页的专项 CUA 仍可补充。
 - ZIP 浏览仍使用完整暂存，进一步评估大归档的空间与响应；密码归档、其他格式、原 ZIP 外部改变后的自动重载和归档写回未实现。

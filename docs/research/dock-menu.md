@@ -35,6 +35,6 @@ plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resou
 
 `DockMenuSmokeTests.swift` 接入完整 smoke 链，使用临时目录和注入的 provider / 标准目录配置，覆盖目的地、目录不可用、菜单顺序 / 分隔 / 显式动作，以及无窗口时的空 sender 分发。真实窗口路径检查还覆盖两种文件视图下已有分栏、后台标签、过滤、分组与选区保持，测试仅关闭自己创建的窗口。
 
-最终源码（含 Dock 与后续 IME 修复）的完整 smoke **连续三轮通过，每轮 2,107 项**，均 exit 0、stderr 为空。`0.1.0` 发布包构建、strict codesign、plist、arm64 架构与包内 ICNS 一致性均通过；独立副本的窗口及目录导航已目视检查。
+最终源码（含 Dock 与后续 IME 修复）的完整 smoke **连续三轮通过，每轮 2,123 项**，均 exit 0、stderr 为空。计数已按三份最终日志的 `ok` 行复核，修正原记录少计 16 项的问题；源码未变。`0.1.0` 发布包构建、strict codesign、plist、arm64 架构与包内 ICNS 一致性均通过；独立副本的窗口及目录导航已目视检查。
 
 **实机边界：**界面工具通过 bundle ID、Dock.app 路径及先聚焦 Dock 三种方式均无法读取系统 Dock，因此没有完成真实 Dock 右键点击或由 Dock 激活应用的观察。菜单内容、空 sender 分发、新窗口目录和既有 pane 状态保持由上述自动化覆盖，不能改写为 Dock 实机验证通过。此前 2,024 项三轮与界面截图属于加入 Dock 前的阶段。

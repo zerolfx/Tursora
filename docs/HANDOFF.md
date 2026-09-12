@@ -2,7 +2,7 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
-## 0.1.0 发布准备：外观、搜索、Dock 与文档
+## 0.1.0 已发布：外观、搜索、Dock 与文档
 
 标签栏主要参考本机 Safari：连续中性底条、居中标题、柔和胶囊形选中面和悬停关闭，固定新增按钮，过多时滚动 / 文字溢出菜单。亮暗随系统，既有补全面板、活动 pane 线与任务边框随外观刷新。分栏标题改为 `Left | Right`，不再添加活动侧括号；所有 Reveal in Finder 入口移除，搜索结果仍在 Tursora 内定位。README / 产品页不再把通用标签页作为独立卖点，产品页改为路径、双窗格与 ZIP 三种工作流。
 
@@ -14,13 +14,15 @@ README 特性改为说明 / 截图两列表格，含 11 项功能和 2 项默认
 
 Dock 右键增加 New Window / Downloads / Applications，均打开独立窗口并保持已有 pane 与标签；[菜单证据](research/dock-menu.md)。发布前审查修复中文候选词确认后文字未变时漏掉自动名称查询的问题，真实 marked text / unmark 路径在两种视图中回归。
 
-加入 Dock 和 IME 修复后的最终源码 **2,107 项 smoke 连续三轮通过**，三次均 exit 0、stderr 为空；发布说明工具另有 33 项标准库测试通过。日志为 `/private/tmp/tursora-tabs-appearance-verification/final-release-smoke-{1,2,3}.{out,err}`。
+加入 Dock 和 IME 修复后的最终源码 **2,123 项 smoke 连续三轮通过**，三次均 exit 0、stderr 为空；发布说明工具另有 33 项标准库测试通过。日志为 `/private/tmp/tursora-tabs-appearance-verification/final-release-smoke-{1,2,3}.{out,err}`。发布后逐行复核修正了原提交说明少计 16 项的记录；最终源码 75 个文件的哈希与测试快照一致，已发布标签保持不变。
 
 最终 `0.1.0` release 构建、strict codesign、plist、arm64 架构和包内 ICNS 核对通过，独立副本的窗口与目录导航已目视检查。Dock 的系统界面无法通过当前工具读取，因此真实 Dock 右键点击和前台激活未实测；菜单与动作通过自动化验证，详见 [Dock 记录](research/dock-menu.md)。
 
 截图阶段的组合 2,024 项也曾连续三轮通过；该阶段 release 构建、签名、plist 和包内图标核对通过，实测系统暗色及进程浅色、560→1200 宽度、标签与分栏、路径补全、64→96 pt 文本图标、Info 初始折叠和统一搜索流程。证据：[标签与外观](research/tabs-and-appearance.md)、[文本图标](research/text-thumbnails.md)、[Info 折叠](research/info-disclosures.md)。
 
-GitHub 尚无已发布版本，本轮准备首个 `0.1.0`。CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开发流水移至 [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)。发布工作流从对应版本节提取说明并检查完整性，具体维护流程见 [RELEASING.md](RELEASING.md)。最终发布与下载校验完成后更新本段。
+首个 [Tursora 0.1.0](https://github.com/zerolfx/Tursora/releases/tag/v0.1.0) 已发布，tag 指向 `b0c1c20d705b0c047742b940e36372ecb35b1a9d`。[Build](https://github.com/zerolfx/Tursora/actions/runs/34696089665) 与 [Release](https://github.com/zerolfx/Tursora/actions/runs/34696116417) 均成功。已重新下载 ZIP / SHA256SUMS 并核对：版本 0.1.0、build 1、arm64、strict codesign、SwiftTerm 资源与包内 ICNS 一致性通过；ZIP 的 SHA-256 为 `7619e8ee33ade5283bbddf0eef306892bc806811801bdd36abdb4d8682b06124`。仓库仍为私有，站点未部署。
+
+CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开发流水移至 [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)。发布工作流从对应版本节提取说明并检查完整性，具体维护流程见 [RELEASING.md](RELEASING.md)。本轮只退出用于最终检查的独立副本，保留用户原有应用及已使用的演示窗口；未用旧偏好快照覆盖用户后续改动。本地预览服务器已停止，共享验证锁已释放。
 
 ## 本轮分栏路径与标签操作
 
@@ -56,7 +58,7 @@ GitHub 尚无已发布版本，本轮准备首个 `0.1.0`。CHANGELOG 已改为�
 - **已提交阶段 `fbb6762`**：739 项 smoke 连续三轮通过，均 exit 0、stderr 为空；最新路径重映射修复的 release build 5 已重建并通过 strict codesign。日志、CUA 操作范围、13 组截图和偏好恢复证据统一保留在[同 pane ZIP 实机记录](research/computer-use-2026-09-12-inline-zip.md)。
 - **产品页阶段 `ae5e47a`——应用与产品页已验证**：删除未使用的 PlacesModel 常量，简化始终为 true 的归档读取参数，不改变应用行为；该阶段重新完成 739 项 smoke 连续三轮，均 exit 0、stderr 为空，debug / release build 6 与 strict codesign 通过。新增真实标签页截图。中文产品页仅介绍地址栏、标签、分栏和 ZIP，已按 [site/README.md](../site/README.md) 完成静态构建、资源引用校验与桌面 / 窄屏浏览器 QA；功能切换、图片弹窗焦点恢复、锚点直达及无 JavaScript 回退均已检查。站点仅在本地预览，未部署。具体日志与阶段边界见[同日记录](research/computer-use-2026-09-12-inline-zip.md#整理阶段与产品页)。
 - **历史结果**：[早期实机记录](research/computer-use-2026-09-12.md)包含旧独立 ZIP 窗口及先前 UI 修复。历史测试和 D28 保留原貌，不作为当前实现的新增验证。
-- **外部验证边界**：真实服务器认证、挂载与读写未验证；GitHub [已提交阶段 fbb6762 的 Build 已成功](https://github.com/zerolfx/Tursora/actions/runs/34671658320)并上传产物，后续提交结果见 [Build 运行列表](https://github.com/zerolfx/Tursora/actions/workflows/build.yml)；手动 Release 尚未发布版本。产品页目前也未发布上线。
+- **外部验证边界**：真实服务器认证、挂载与读写未验证；0.1.0 已发布并完成产物校验，见本页顶部；历史 [fbb6762 Build](https://github.com/zerolfx/Tursora/actions/runs/34671658320) 及后续 [Build 运行列表](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) 保留各阶段记录。产品页目前未发布上线。
 
 **仍需专项视觉检查的东西**：
 

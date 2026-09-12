@@ -6,7 +6,7 @@
 
 1. Finish the implementation and documentation together. Review the diff, run the full application smoke suite three consecutive times, and verify the packaged app. Do not run computer-use checks while smoke is running.
 2. Choose an unused semantic version without `v`. Move the Unreleased entries into a dated heading such as `## [0.2.0] - 2026-10-01`; retain an empty Unreleased heading for future work. Update the compare and release links at the bottom of the changelog.
-3. Check the release-note extractor and its tests with `python3 -m unittest discover -s app/tools -p 'test_release_notes.py'`. The Release workflow rejects a missing, duplicate or empty version section before creating a tag.
+3. Check the release-note extractor and its tests with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s app/tools -p 'test_release_notes.py'`. The Release workflow rejects a missing, duplicate or empty version section before creating a tag. It also supplies the repository and exact commit to make repository-relative links usable from GitHub Release pages.
 4. Update README download guidance and current handoff information. Commit with the required author identity and the final smoke-test count. Push only with the maintainer's authorization.
 5. Confirm remote `main` is exactly the reviewed commit. Dispatch the **Release** workflow on `main`, supplying the version and prerelease flag. A version suffix requires the prerelease flag.
 
