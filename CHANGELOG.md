@@ -4,6 +4,7 @@ Historical entries record development dates and their smoke-test counts where av
 
 ## Unreleased — settings, native services and optional workspaces
 
+- Inset the two glass panes within the app icon so their tips have more room inside macOS's rounded mask, preserving the single full-bleed background.
 - Fix the first list row becoming hidden under the column header after refresh or archive undo/redo; restore scroll positions relative to AppKit's native content top and preserve horizontal scrolling.
 - Add a native Settings window (⌘,), immediate filename-extension display preferences, and a configurable name-filter shortcut with conflict checks and reset.
 - Add two experiments, both disabled by default: a window-bottom SwiftTerm 1.15.0 PTY terminal (F4), and a separate read-only ZIP browser. Navigation updates only the terminal's manual restart destination; hiding/restarting ends its session. ZIP files open as temporary copies without archive writeback.
