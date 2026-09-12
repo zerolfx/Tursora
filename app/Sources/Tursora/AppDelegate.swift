@@ -23,11 +23,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { try DirectoryViewPropertiesStore.shared.flush() }
         catch { NSLog("Could not save folder view settings: %@", error.localizedDescription) }
         InfoWindowController.closeAll()
-        windowControllers.forEach { $0.hideTerminal() }
+        windowControllers.forEach {
+            $0.hideTerminal()
+            // Release transfer journals while the process is still alive so
+            // private recovery storage is reclaimed on an ordinary quit.
+            $0.window?.undoManager?.removeAllActions()
+        }
         ArchiveWorkspace.shared.shutdownAll()
     }
 
     @objc func showSettings(_ sender: Any?) { SettingsWindowController.show() }
+
+    @objc func showFileOperations(_ sender: Any?) { TransferTasksWindowController.shared.show() }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard TransferTasksWindowController.shared.hasActiveTasks else { return .terminateNow }
+        TransferTasksWindowController.shared.cancelAll {
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
 
     /// A file manager stays alive with no windows open, like Finder does.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

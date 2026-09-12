@@ -536,6 +536,20 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     private var selectedURLs: [URL] { fileView.selectedItems.map(\.url) }
     private var undo: UndoManager? { view.window?.undoManager }
+    /// Optional process-local pacing for packaged-app verification. It never
+    /// changes the data path, totals or persisted preferences.
+    var transferOptions: TransferOptions = {
+        var options = TransferOptions()
+        if let raw = ProcessInfo.processInfo.environment["TURSORA_TRANSFER_TEST_DELAY_MS"],
+           let milliseconds = Double(raw), milliseconds.isFinite, milliseconds > 0 {
+            options.chunkDelay = min(milliseconds, 1000) / 1000
+        }
+        return options
+    }()
+    private(set) var lastTransferTask: TransferTask?
+    /// Allows isolated controller tests to inspect the same recovery error shown
+    /// by the application without opening a modal error sheet.
+    var transferReplayErrorReporter: ((Error) -> Void)?
 
     /// Errors go to stdout in smoke-test mode — a modal sheet would hang a
     /// headless run (and hide the message from the log).
@@ -582,21 +596,21 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let pb = NSPasteboard.general
         guard let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
               !urls.isEmpty else { return }
+        let pasteboardGeneration = pb.changeCount
         let isCut = Self.cutState?.changeCount == pb.changeCount
         transfer(urls, to: dest, kind: isCut ? .move : .copy) { [weak self] in
-            if isCut { Self.cutState = nil; pb.clearContents(); self?.fileList.cutURLs = []; if self?.viewMode == .icons { self?.iconGrid.cutURLs = [] } }
+            // A later Copy/Cut belongs to a different operation.
+            if isCut && pb.changeCount == pasteboardGeneration {
+                Self.cutState = nil; pb.clearContents(); self?.fileList.cutURLs = []
+                if self?.viewMode == .icons { self?.iconGrid.cutURLs = [] }
+            }
         }
     }
 
     @objc func duplicate(_ sender: Any?) {
         guard canModifyCurrentLocation else { return }
-        let urls = selectedURLs
-        guard !urls.isEmpty else { return }
-        let (created, failures) = FileOperations.duplicate(urls)
-        registerUndoTrash(created, actionName: "Duplicate")
-        reloadSelecting(created.map(\.lastPathComponent))
-        DirectoryChanges.post(DirectoryChanges.affected(sources: urls))
-        FileOperations.report(failures, in: view.window)
+        guard let destination = currentURL else { return }
+        transfer(selectedURLs, to: destination, kind: .copy, actionName: "Duplicate", duplicateInPlace: true)
     }
 
     @objc func moveToTrash(_ sender: Any?) { trash(selectedURLs) }
@@ -735,6 +749,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     private func transfer(_ urls: [URL], to destination: URL, kind: FileOperations.Kind,
+                          actionName: String? = nil, duplicateInPlace: Bool = false,
                           then: (() -> Void)? = nil) {
         guard !ArchiveWorkspace.shared.containsArchiveLocation(destination), !urls.isEmpty else { return }
         if kind == .move && urls.contains(where: isArchiveContent) { return }
@@ -742,25 +757,54 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         guard !urls.isEmpty else { return }
         statusBar.beginBusy()
         let window = view.window
+        let capturedUndo = window?.undoManager
+        let name = actionName ?? (kind == .copy ? "Copy" : "Move")
+        var options = transferOptions
+        options.duplicateInPlace = duplicateInPlace
+        let task = TransferTask(sources: urls, destination: destination, kind: kind)
+        lastTransferTask = task
+        let tasks = TransferTasksWindowController.shared
+        tasks.track(task, ownerWindow: window,
+                    title: duplicateInPlace ? "Duplicate \(urls.count) item\(urls.count == 1 ? "" : "s")" : nil,
+                    destinationDescription: duplicateInPlace ? "Beside each original" : nil)
         FileOperations.transfer(urls, to: destination, kind: kind,
-            conflict: { conflict in FileOperations.askConflict(in: window, conflict) }
-        ) { [weak self] result in
-            guard let self else { return }
+            conflict: { _ in .init(resolution: .cancel) }, task: task, options: options,
+            asyncConflict: { conflict, reply in tasks.resolveConflict(for: task, conflict: conflict, reply: reply) }
+        ) { [self] result in
+            // Retain this pane and its original undo manager through completion,
+            // even if the originating tab was closed or another pane is active.
             self.statusBar.endBusy()
-            switch kind {
-            case .copy: self.registerUndoTrash(result.created, actionName: "Copy")
-            case .move: self.registerUndoMove(result.moved, actionName: "Move")
+            if let journal = result.journal, let capturedUndo {
+                self.registerTransferUndo(journal, undo: capturedUndo, actionName: name)
             }
-            let names = (result.created + result.moved.map(\.to)).map(\.lastPathComponent)
+            let created = result.created + result.moved.map(\.to)
             if destination.standardizedFileURL == self.currentURL?.standardizedFileURL {
-                self.reloadSelecting(names)
+                self.model.reload { [weak self] in self?.fileView.select(urls: created) }
             } else {
                 self.reload()
             }
             then?()
             // The source folder is usually another pane, tab or window: tell it.
-            DirectoryChanges.post(DirectoryChanges.affected(sources: urls, destination: destination))
-            FileOperations.report(result.failures, in: window)
+            DirectoryChanges.post(DirectoryChanges.affected(sources: urls, destination: destination)
+                                  + (result.journal?.affectedDirectories ?? []))
+            if SmokeTest.isRequested { FileOperations.report(result.failures, in: window) }
+        }
+    }
+
+    private func registerTransferUndo(_ journal: TransferJournal, undo: UndoManager, actionName: String) {
+        asUndoGroup(undo, actionName: actionName) {
+            undo.registerUndo(withTarget: self) { [weak undo] me in
+                guard let undo else { return }
+                do {
+                    let inverse = try FileOperations.replay(journal)
+                    me.registerTransferUndo(inverse, undo: undo, actionName: actionName)
+                    me.reload()
+                    DirectoryChanges.post(journal.affectedDirectories)
+                } catch {
+                    if let reporter = me.transferReplayErrorReporter { reporter(error) }
+                    else { me.report(error, context: "undo \(actionName.lowercased())") }
+                }
+            }
         }
     }
 

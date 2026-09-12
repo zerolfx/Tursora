@@ -217,6 +217,8 @@ enum MainMenu {
         add(menu, "Show Previous Tab", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
         add(menu, "Show Next Tab", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
         menu.addItem(.separator())
+        add(menu, "File Operations", #selector(AppDelegate.showFileOperations(_:)))
+        menu.addItem(.separator())
         add(menu, "Bring All to Front", #selector(NSApplication.arrangeInFront(_:)))
         NSApp.windowsMenu = menu
         return item

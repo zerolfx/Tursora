@@ -41,7 +41,7 @@ enum SmokeTest {
             appIconAssets()
             ServerConnectionSmokeTests.run()
             SettingsSmokeTests.run()
-            ArchiveSmokeTests.run {
+            TransferSmokeTests.run(wc) { ArchiveSmokeTests.run {
                 ArchiveWorkspaceSmokeTests.run {
                     ArchiveBrowserSmokeTests.run {
                         SplitToolbarSmokeTests.run {
@@ -55,7 +55,7 @@ enum SmokeTest {
                         }
                     }
                 }
-            }
+            } }
         }
         }
     }

@@ -2,6 +2,13 @@
 
 Historical entries record development dates and their smoke-test counts where available. Verification applies to the revision and scope recorded with each entry; integrating newer changes requires fresh checks (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
 
+## Unreleased — controllable file operations
+
+- Preserve opaque descendants during same-volume moves and keep recovery backups after a refused Undo/Redo even when its history entry is released.
+
+- Add independent copy/move/Duplicate tasks with block-level pause/resume/cancel, truthful byte totals/rate/ETA and a File Operations window. Route clipboard, drag/drop, other-pane and ZIP copy-out through the same engine; keep conflict choices asynchronous per task.
+- Publish completed transfers from private staging, preserve replaced targets and cross-volume sources on failure/cancellation, and replay only successful mutations for undo/redo. Bind tasks to their original context, cancel/wait on browser-window close or quit, and preserve later clipboard changes.
+
 ## Unreleased — persistent folder view settings
 
 - Feature revision `eac9ffc` passed 854 full smoke checks three consecutive times after the packaged-app layout fix. After incorporating main revision `ae5e47a`, the integrated tree again passed 854 checks three consecutive times, each with exit 0 and empty stderr; debug/release builds and strict codesign passed. Integrated revision `d309d87` also passed GitHub Build, and its downloaded artifact passed checksum and strict signature verification. Packaged-app observations apply to the unchanged feature UI; revision-specific evidence is tracked in [the feature verification record](docs/research/computer-use-2026-09-12-directory-views.md).

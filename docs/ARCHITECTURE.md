@@ -20,6 +20,7 @@ NSApplication
          │           └─ Quick Look data source / delegate
          └─ TerminalPanelController?    SwiftTerm LocalProcessTerminalView + owned PTY
 InfoWindowController ×open              registry + Inspector
+TransferTasksWindowController.shared     retained transfer tasks, per-task controls and nonmodal conflicts
 SettingsWindowController                shared window over AppPreferences.Store
 ServerConnectionController              shared address window + NetFS request
 ArchiveWorkspace.shared                retained ZIP snapshots; logical locations in ordinary panes
@@ -46,7 +47,9 @@ ArchiveWorkspace.shared                retained ZIP snapshots; logical locations
 | `DirectoryWatcher.swift` | FSEvents wrapper (file events, 0.25 s latency, dispatched on main). Also defines `Notification.Name.tursoraDirectoriesChanged` and `enum DirectoryChanges` with `post(_:renamed:)` and `affected(sources:destination:)`. |
 | `Grouping.swift` | `GroupKey` (nine keys including None; Tags excluded by design), `GroupNode` (title + nodes + sort order), and the pure `Grouping.split(_:by:now:)` with `nameBucket`, `kindBucket`, `applicationBucket`, `dateBucket`, `sizeBucket`. No UI, no I/O beyond `NSWorkspace.urlForApplication`. |
 | `NavigationHistory.swift` | Linear `entries` + `index`; `push` (dedupes the current URL, truncates forward, trims to 100), `goBack`, `goForward`, `go(to:)`, `recordViewState(selectedName:scrollOffset:)`, `backEntries`/`forwardEntries` for the long-press menus. Knows nothing about views. |
-| `FileOperations.swift` | All mutation: `uniqueURL`, `duplicateURL`, `rename` (via the name resource, so case-only renames work on APFS), `trash` (returns original/trashed pairs), `delete`, `sameVolume`, `duplicate`, and `transfer(_:to:kind:conflict:progress:completion:)` with `BatchPolicy` (apply-to-all) and recursive `merge`. UI-facing helpers: `askConflict(in:_:)` (Finder's conflict dialog rebuilt: Keep Both / Merge / Skip / Stop / Replace + "Apply to all") and `report(_:in:)`. |
+| `FileOperations.swift` | Filesystem mutation facade: naming, rename/trash/delete, asynchronous `transfer` returning a controllable `TransferTask`, and reversible transfer-journal replay. Cached conflict metadata and legacy conflict/report helpers. |
+| `TransferTask.swift` | Fixed source/destination context, synchronized snapshots and pause/cancel acknowledgements, lifecycle states, deterministic transfer test seams. |
+| `TransferEngine.swift` | Worker-only traversal and bounded data writes, metadata copying, exclusive staged publication, per-task conflict policy, source retirement, and reversible rename journals with retained same-volume recovery storage. |
 | `FileInfo.swift` | Every fact behind Get Info, computed headlessly: `whereString`, `dateString`, `Size` + `computeSize(of:countingChildren:update:)` → cancellable `SizeCalculation`, `sizeString`/`headerSizeString`, `isLocked`/`setLocked`, `hasHiddenExtension`/`setHiddenExtension`, `comment`/`setComment` (xattr `com.apple.metadata:kMDItemFinderComment`), `moreInfo` (Spotlight), `bundleInfo`, `volumeInfo`, `original`, `applications(toOpen:)`, `Permissions`/`Privilege`/`Who`, `privilege`, `mode(_:setting:for:isFolder:)`, `setMode`, `accessSummary`, `fileID`/`sibling(of:withFileID:)`, `kind`, `summaryKind`. Reads flags through `FileManager.attributesOfItem`, not URL resource values (D15). |
 | `PlacesModel.swift` | Sidebar data: `Section`/`Place`, rebuilt from `builtIns()` + user paths in one persisted order list, plus mounted volumes. `favouriteIndex(of:)`, `isFavourite`, `addFavourite(_:at:)`, `removeFavourite`, `moveFavourite(from:to:)`, `resetFavourites`, `isEjectable`. Posts `PlacesModel.didChange`; observes `NSWorkspace` mount/unmount/rename. |
 | `PathCompleter.swift` | Path resolution and directory completion, including prepared logical ZIP locations. `resolveNavigationLocation(_:cwd:home:workspace:)` additionally accepts a pending ZIP directory candidate; the browser must prepare and validate it before navigation. `resolveDirectory` remains strict for prepared children; completion skips packages and uses safe archive entries. |
@@ -80,6 +83,7 @@ ArchiveWorkspace.shared                retained ZIP snapshots; logical locations
 | `LongPressMenuButton.swift` | Click fires the action; long-press (0.35 s) or right-click pops `menuProvider()`. |
 | `ViewHelpers.swift` | `NSView.pinToEdges(_:insets:)`, `NSTableCellView.make(identifier:withIcon:alignment:iconSize:)`. |
 | `SettingsWindowController.swift` | Native settings controls and `ShortcutRecorderButton`; captures shortcuts before menu dispatch, rejects conflicts inline, persists via the store, and observes external changes. Folder View Settings selects the shared directory-view policy, observes store changes, and presents an inline failure with Retry Saving View Settings when persistence fails. |
+| `TransferTasksWindowController.swift` | App-owned transfer registry, throttled per-task rows and asynchronous conflict controls; retains originating windows through terminal cleanup and provides cancellation completion for window close/quit. |
 | `TerminalPanelController.swift` | Pinned SwiftTerm AppKit terminal and PTY lifecycle, safe argv-based launch configuration, restart target, explicit shutdown/reaping; no navigation-to-shell command injection. |
 | `ServerConnectionController.swift` | Address input and inline errors, mount progress/cancellation, success callback to the initiating browser. |
 | `MainMenu.swift` | Builds the whole menu bar in code with `nil` targets so the responder chain resolves them; `groupByMenuItem()` is shared with the toolbar Group item; `MenuIcons.image` resolves `"a|b"` SF Symbol fallbacks. |
@@ -101,11 +105,11 @@ A new pane defers initial navigation until its owner has installed callbacks. Th
 
 **(b) Move by drag, with undo.**
 1. `FileListViewController.acceptDrop` (or the grid / sidebar / tab bar) computes `dropOperation(for:into:sourceMask:)` and calls `onDropFiles`.
-2. → `BrowserViewController.dropFiles(_:to:op:)` → private `transfer(...)`: `statusBar.beginBusy()`, `FileOperations.transfer` with `conflict: { FileOperations.askConflict(in: window, $0) }`.
-3. Completion on main: `endBusy()`, `registerUndoMove(result.moved, actionName: "Move")` (or `registerUndoTrash` for copies) inside `asUndoGroup`.
-4. `reloadSelecting(names)` if the destination is this pane, else `reload()`.
+2. → `BrowserViewController.dropFiles(_:to:op:)` → private `transfer(...)`: captures the originating undo manager, registers a task, and calls `FileOperations.transfer` with an asynchronous task-row conflict handler.
+3. Completion on main: `endBusy()`, register the successful `TransferJournal` on the captured undo manager inside `asUndoGroup`. Journal replay immediately registers its inverse for redo.
+4. Reload and select exact created URLs if the destination is this pane, else `reload()`.
 5. `DirectoryChanges.post(DirectoryChanges.affected(sources:destination:))` → every other pane and Info window observing `.tursoraDirectoriesChanged` refreshes.
-6. `FileOperations.report(result.failures, in: window)`.
+6. The task row displays exact failures and a completed/cancelled/partial/failed state; smoke also prints the errors.
 
 **(c) Outside change.** FSEvents → `DirectoryWatcher` handler on main → `BrowserViewController.fileSystemChanged(paths)` → `isDisplaying(path)` (symlinks resolved on both sides; matches `displayedDirectories` = current URL + `fileList.expandedFolderURLs`) → `scheduleRefresh(after: 0.15)` (debounced) → `refreshPreservingSelection()`: compare the currently resolved key with the captured navigation key; if retargeted, reenter through `load`. Otherwise capture selected URLs (mapped through `pendingRenames`) and `scrollOffset`, `model.reload`, reselect URLs and restore the offset. Explicit `reload()` performs the same key check. The in-app path is identical from `scheduleRefresh` on, entered via `directoriesChanged(_:)`.
 
@@ -156,7 +160,7 @@ Plus AppKit's `NSWorkspace.didMount/didUnmount/didRenameVolume` (PlacesModel) an
 | `InfoSection` (UserDefaults) | `InfoSection.<key>` per section |
 | Window | frame autosave name `TursoraMainWindow`; toolbar identifier `TursoraMainToolbar` |
 | Filesystem | Finder comments in the `com.apple.metadata:kMDItemFinderComment` xattr; default apps via `NSWorkspace.setDefaultApplication` |
-| Environment | `TURSORA_SMOKE_TEST`, `TURSORA_DND_DEBUG` |
+| Environment | `TURSORA_SMOKE_TEST`, `TURSORA_DND_DEBUG`, optional process-local `TURSORA_TRANSFER_TEST_DELAY_MS` for paced packaged-app checks |
 
 The debug binary (no bundle) and `Tursora.app` (bundle id `com.tursora.Tursora`) use different UserDefaults domains.
 
@@ -166,11 +170,21 @@ The JSON decoder repairs invalid/missing presentation fields independently, clam
 
 ## 5. Threading
 
-Off the main thread: the **root directory listing** (`DirectoryModel.load` on `.global(qos: .userInitiated)`, result delivered to main and dropped if `loadToken` moved on); **copy/move** (`FileOperations.transfer`; the conflict handler hops back with `DispatchQueue.main.sync` so it can run a modal alert; `progress` and `completion` on main); **size calculation** (`FileInfo.computeSize`, throttled `update` on main every ~0.25 s plus a final call, cancellable); **thumbnails** (`QLThumbnailGenerator`, cache write and coalesced callbacks on main). On the main thread: subfolder listings (`loadChildren`), `trash`/`rename`/`delete`/`duplicate`, all `FileInfo` flag/comment/permission writes, and the FSEvents callback. Bursts are coalesced by `scheduleRefresh` (0.15 s) and `InfoWindowController.scheduleRebuild` (0.15 s).
+Off the main thread: the **root directory listing** (`DirectoryModel.load` on `.global(qos: .userInitiated)`, result delivered to main and dropped if `loadToken` moved on); **copy/move/duplicate** (`FileOperations.transfer` owns an independent worker; asynchronous conflict requests go to main while the worker waits cancellably; completion is on main); **size calculation** (`FileInfo.computeSize`, throttled `update` on main every ~0.25 s plus a final call, cancellable); **thumbnails** (`QLThumbnailGenerator`, cache write and coalesced callbacks on main). On the main thread: subfolder listings (`loadChildren`), `trash`/`rename`/`delete`, all `FileInfo` flag/comment/permission writes, and the FSEvents callback. Bursts are coalesced by `scheduleRefresh` (0.15 s) and `InfoWindowController.scheduleRebuild` (0.15 s).
 
 Archive work runs off-main and delivers completion on main; ZIP preparation is coalesced by `ArchiveWorkspace`, with a browser navigation-generation guard against stale navigation; ordinary directory load tokens still discard stale listings. NetFS async completion is scheduled on main. SwiftTerm manages PTY I/O; explicit terminal shutdown signals only the owned session and reaps its child off-main. No existing shell receives automatic `cd` input.
 
 Directory view storage serializes mutations and coalesced writes on its utility queue. Store notifications are posted after releasing that queue so observers can query it without recursive synchronization; AppKit observers deliver on main. Pane restoration and toolbar updates remain on main.
+
+### Transfer tasks
+
+`BrowserViewController` captures source URLs, destination, originating window/undo manager, and pane before starting a transfer. Paste, drag/drop (including the other pane, sidebar and tab routes), Duplicate and ZIP copy-out reach the same engine. Duplicate uses each selected source's own parent even when an expanded-list selection spans folders. Clipboard completion only clears the generation it consumed.
+
+`TransferTasksWindowController` owns active tasks and originating windows, and polls synchronized snapshots at 10 Hz on main. Each row presents byte totals, active-time rate/ETA, phase, exact failures, and independent pause/resume/cancel controls. Conflict choices are asynchronous and scoped to the task, so waiting cannot block other tasks. The Window menu reopens hidden controls. Closing a browser window cancels its tasks and delays close until cleanup; closing a tab does not orphan the task. App termination uses `terminateLater` until all transfer workers stop.
+
+The engine scans with unknown totals first, copies file data in bounded blocks, applies native metadata, then exclusively publishes a complete item. Same-volume moves capture only their root identity, use atomic renames without enumerating opaque descendants, and contribute no fabricated byte transfer. Native metadata/fsync and the short commit transaction are explicit finishing phases without an ETA. Cross-volume source retirement occurs only with complete destination publication, in the same rollback-capable commit. Journal replay uses retained same-volume names, preserving replaced destinations and merged children while registering its inverse synchronously with `NSUndoManager`. Recovery storage normally remains while undo/redo history retains its journal. A failed replay retains its recovery directories independently of UndoManager history and reports their paths for manual recovery; it consumes disk space and is not an automatic session-recovery feature.
+
+`TransferSmokeTests` runs before existing archive/UI checks, testing deterministic block pause/cancel/faults, metadata/symlinks, conflict policies, concurrent tasks, cross-volume boundaries and actual list/icon UI routing, captured context, undo/redo and lifecycle. Validation evidence lives in `docs/research/file-operation-tasks.md`.
 
 ## 6. The smoke test
 

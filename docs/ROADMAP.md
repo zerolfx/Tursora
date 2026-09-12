@@ -12,7 +12,7 @@ Deselect All、Move Items Here（⌥⌘V）、Copy as Pathname 快捷键对齐�
 
 ## 之后（M）
 
-批量重命名、Make Alias / Show Original、Recent Folders、右侧预览栏（复用 Get Info 的 FileInfo）、Customize Toolbar、Toolbar / Path Bar / Status Bar / Tab Bar 开关、Show All Tabs、Move Tab to New Window / Merge、spring-loaded folders、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、快捷键与 Finder 对齐（可做成开关）、会话恢复、最近关闭的标签列表、附加信息列、文件夹项目数 / 递归大小列、操作进度与取消。
+批量重命名、Make Alias / Show Original、Recent Folders、右侧预览栏（复用 Get Info 的 FileInfo）、Customize Toolbar、Toolbar / Path Bar / Status Bar / Tab Bar 开关、Show All Tabs、Move Tab to New Window / Merge、spring-loaded folders、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、快捷键与 Finder 对齐（可做成开关）、会话恢复、最近关闭的标签列表、附加信息列、文件夹项目数 / 递归大小列。
 
 ## 大件（L）
 
@@ -24,6 +24,7 @@ Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私
 
 ## 新功能的后续验证
 
+- 复制 / 移动 / Duplicate 的逐任务进度、暂停 / 继续 / 取消已实现；专项自动化与实机记录见[文件操作任务](research/file-operation-tasks.md)。跨卷故障分支可注入验证，真实独立卷和真实服务器专项实测应分别记录；ZIP 压缩 / 解压工具取消、崩溃后任务恢复、废纸篓 / 删除任务化仍未实现。
 - 每目录视图属性使用应用私有路径库；合入最新 main 后已重新完成三轮 smoke 与打包签名，实机复查和外部 CI 状态按阶段见 [HANDOFF](HANDOFF.md)。后续项包括递归应用子目录、列布局与逻辑页专用属性；如需目录改名 / 移动后跟随或跨挂载点恢复，应独立评估卷身份与 bookmark，不将本次路径键行为暗改为 inode 跟随。会话恢复仍是独立功能。
 
 - 在有用户提供的服务器时验证 SMB / NFS / WebDAV / legacy AFP 的认证、读写和掉线；当前只验证系统挂载接口与无网络状态流转。

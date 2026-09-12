@@ -67,6 +67,8 @@ Section order today: navigation → insideFolder → backHome → tabs → addre
 
 `TURSORA_DND_DEBUG=1` prints drag-and-drop decisions.
 
+`TURSORA_TRANSFER_TEST_DELAY_MS=20` adds process-local pacing between real transfer blocks for packaged-app interaction checks. It keeps the production data/metadata/publication path and does not persist a preference. Record when using it; normal transfers have no injected delay. `TransferSmokeTests` separately uses injected block sizes, faults and lifecycle gates. Parallel worktrees must hold an exclusive `fcntl.flock` on `/private/tmp/tursora-shared-verification.lock` across smoke or packaged-app checks, save/restore preferences, and only manage their own application PID.
+
 ## Conventions
 
 - **Finder evidence rule.** Anything that claims to match Finder — a label, a group name, a menu icon, a dialog's wording — is taken from Finder's own resources (`strings` on its nibs, `plutil` on its `.strings` tables), not from memory. Record the extraction under [research/](research/) and mark what is still inferred. See D12.

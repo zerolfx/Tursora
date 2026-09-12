@@ -2,8 +2,14 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
+## 本轮 PR 整合
+
+三个功能 PR 的独立验证已完成；当前在独立 worktree 处理合并及组合回归，尚未合入 main。整合验证和审阅修复统一见 [PR 整合记录](research/pr-integration-2026-09-12.md)，以下各功能的历史检查数不代表组合结果。
+
 ## 现状
 
+- 本功能分支增加文件操作任务：复制 / 移动 / Duplicate、剪贴板、拖放与 ZIP 复制出共用可暂停 / 继续 / 取消的传输引擎；Window → File Operations 管理多任务和内联冲突。安全暂存、Replace 恢复、跨卷移动与 Merge 的成功项撤销、目录身份竞态及退出清理的实现与专项验证统一记录在[文件操作任务](research/file-operation-tasks.md)。该段记录原独立功能阶段。
+- 文件操作任务最终验证：**928 项 smoke 连续三轮通过**，均 exit 0、stderr 为空；最终 release 构建与 strict codesign 通过。打包应用已实测列表 / 图标复制、逐任务暂停 / 继续 / 取消、同卷移动冲突、撤销 / 重做、暂停 Duplicate 后退出清理，更新两张实际截图；原文件及完整副本 SHA-256 检查通过。原生拖放手势和真实独立卷尚未完成实机验证，精确范围见上述记录。自己的应用已退出，偏好已恢复，共享验证锁已释放。
 - **本分支新增每目录视图属性**：`codex/directory-view-properties` 基于 `fbb6762`，Application Support 中独立保存默认值和目录记录，支持两种视图缩放、排序、分组、隐藏与预览。View / Settings 提供每目录或统一默认策略、保存当前默认和目录恢复。普通同目录 pane 重新进入读取最近保存值，统一策略同步普通 pane。按规范化路径记忆，symlink 换目标在刷新时更新身份，ZIP 无持久化记录；不做会话恢复。**854 项 smoke 已连续三轮通过**，最终 release / strict codesign 通过；最终发布包已实机复查目录往返、分栏、策略 / 默认菜单和真实重启，截图见[本功能验证记录](research/computer-use-2026-09-12-directory-views.md)。
 
 - 2026-09-12：此前 42 个提交已 squash 成一个基线并 force-push，工作树内容保留。应用图标采用两块蓝色玻璃窗格形成抽象尾鳍的设计，内部图形宽度已收至画布约 67%，为系统圆角边缘留出间距，背景仍为单层满版。资源在 `app/Resources/`，打包时嵌入 `.icns`。

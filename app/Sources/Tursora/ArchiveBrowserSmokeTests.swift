@@ -39,9 +39,10 @@ enum ArchiveBrowserSmokeTests {
                 let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(), initialURL: fixture, viewPropertiesStore: viewStore)
                 window = wc
                 let browser = wc.browser
+                let originalWindow = wc.window!
                 wc.window?.setContentSize(NSSize(width: 1000, height: 650))
                 await listed(browser, at: fixture)
-                let windowCount = NSApp.windows.count
+                windowIdentityChecks()
                 var opened: [URL] = []
                 browser.archiveFileOpener = { opened.append($0); return true }
                 AppPreferences.experimentalZIPBrowsingEnabled = true
@@ -58,9 +59,16 @@ enum ArchiveBrowserSmokeTests {
                     browser.nameFilter = "*.zip"
                     browser.fileView.select(urls: [archive])
                     check("\(mode): select source ZIP before Open", browser.fileView.selectedItems.count == 1)
+                    let windowsBeforeOpen = NSApp.windows
                     browser.openSelection()
                     await listed(browser, at: archive)
-                    check("\(mode): Open reuses the current browser and window", wc.browser === browser && wc.tabs.count == 1 && NSApp.windows.count == windowCount)
+                    let windowsAfterOpen = NSApp.windows
+                    check("\(mode): Open reuses the current browser and window",
+                          wc.browser === browser && wc.tabs.count == 1 && wc.window === originalWindow
+                          && browser.view.window === originalWindow
+                          && addedWindows(before: windowsBeforeOpen, after: windowsAfterOpen).isEmpty,
+                          "sameBrowser=\(wc.browser === browser), tabs=\(wc.tabs.count), sameWindow=\(wc.window === originalWindow), paneWindow=\(browser.view.window === originalWindow); "
+                          + windowChanges(before: windowsBeforeOpen, after: windowsAfterOpen))
                     check("\(mode): archive root retains original structure and presentation", Set(browser.model.items.map(\.name)) == ["Docs", "welcome.txt"] && browser.viewMode == mode && browser.groupKey == .kind && !browser.isFiltering)
                     check("\(mode): archive URLs never expose snapshot paths", browser.currentURL == archive && browser.model.items.allSatisfy { $0.url.path.hasPrefix(archive.path + "/") && $0.url != $0.contentURL })
                     check("\(mode): chrome identifies the archive and read-only state", wc.tabs.addressBar.url == archive && wc.tabs.addressBar.segmentTitles.last == archive.lastPathComponent && wc.window?.representedURL == archive && browser.statusBar.statusText.contains("ZIP · Read-only"))
@@ -142,10 +150,17 @@ enum ArchiveBrowserSmokeTests {
                 let tab = wc.tabs.newTab(at: archiveInner)
                 await listed(tab, at: archiveInner)
                 check("new tab preserves the logical archive folder", tab !== browser && tab.isBrowsingArchive && wc.tabs.addressBar.segmentTitles.last == "Inner Folder")
+                let windowsBeforeSplit = NSApp.windows
                 wc.tabs.toggleSplit()
                 let split = wc.browser
                 await listed(split, at: archiveInner)
-                check("splitting an archive clones its location without a new window", split !== tab && wc.tabs.isSplit && split.isBrowsingArchive && NSApp.windows.count == windowCount)
+                let windowsAfterSplit = NSApp.windows
+                check("splitting an archive clones its location without a new window",
+                      split !== tab && wc.tabs.isSplit && split.isBrowsingArchive && wc.window === originalWindow
+                      && split.view.window === originalWindow
+                      && addedWindows(before: windowsBeforeSplit, after: windowsAfterSplit).isEmpty,
+                      "newPane=\(split !== tab), split=\(wc.tabs.isSplit), archive=\(split.isBrowsingArchive), sameWindow=\(wc.window === originalWindow), paneWindow=\(split.view.window === originalWindow); "
+                      + windowChanges(before: windowsBeforeSplit, after: windowsAfterSplit))
                 split.navigate(to: fixture)
                 await listed(split, at: fixture)
                 let archived = wc.tabs.currentPage.inactive!
@@ -212,6 +227,34 @@ enum ArchiveBrowserSmokeTests {
                 DispatchQueue.main.async(execute: completion)
             } catch { check("same-pane ZIP setup and operations", false, error.localizedDescription) }
         }
+    }
+
+    /// Earlier suites can release closed AppKit windows while ZIP preparation
+    /// yields. Their disappearance is harmless; any newly created window is not.
+    /// Retaining each before-snapshot also prevents object-identifier reuse.
+    @MainActor private static func addedWindows(before: [NSWindow], after: [NSWindow]) -> [NSWindow] {
+        after.filter { window in !before.contains { $0 === window } }
+    }
+
+    @MainActor private static func windowChanges(before: [NSWindow], after: [NSWindow]) -> String {
+        func describe(_ windows: [NSWindow]) -> String {
+            windows.map { window in
+                "\(ObjectIdentifier(window)) \(type(of: window)) title=\(window.title.debugDescription) controller=\(window.windowController.map { String(describing: type(of: $0)) } ?? "nil")"
+            }.joined(separator: "; ")
+        }
+        return "windows before=\(before.count) after=\(after.count), added=[\(describe(addedWindows(before: before, after: after)))], removed=[\(describe(addedWindows(before: after, after: before)))]"
+    }
+
+    @MainActor private static func windowIdentityChecks() {
+        let earlier = NSWindow(contentRect: .zero, styleMask: [], backing: .buffered, defer: true)
+        let replacement = NSWindow(contentRect: .zero, styleMask: [], backing: .buffered, defer: true)
+        earlier.isReleasedWhenClosed = false
+        replacement.isReleasedWhenClosed = false
+        defer { earlier.close(); replacement.close() }
+        check("window tracking permits an earlier suite's window to disappear",
+              addedWindows(before: [earlier], after: []).isEmpty)
+        check("window tracking catches a new window even when total count stays equal",
+              addedWindows(before: [earlier], after: [replacement]).first === replacement)
     }
 
     @MainActor private static func listed(_ browser: BrowserViewController, at url: URL) async {
