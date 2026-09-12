@@ -26,7 +26,7 @@ cd app && .build/debug/Tursora             # run it (no bundle: plain process, o
 cd app && tools/make-app.sh                # release build → app/build/Tursora.app (ad-hoc signed)
 ```
 
-`app/Resources/AppIcon.png` is the 1024px RGBA icon master; `AppIcon.icns` is the checked-in macOS icon family. Run `app/tools/make-icon.sh` from the repository root after changing the master (uses system `sips` and `iconutil`). The smoke test checks PNG dimensions/alpha and the ICNS representations.
+`app/Resources/AppIcon.png` is the opaque 1024px PNG icon master; `AppIcon.icns` is the checked-in macOS icon family. Run `app/tools/make-icon.sh` from the repository root after changing the master (uses system `sips` and `iconutil`). The smoke test checks PNG dimensions, opaque corners and the ICNS representations.
 
 `make-app.sh [debug|release]` assembles the bundle: `Info.plist` (bundle id `com.tursora.Tursora`, TCC usage strings, version from `git rev-list --count`), the executable, `AppIcon.icns` registered through `CFBundleIconFile`, and an ad-hoc `codesign`. Override with `TURSORA_BUNDLE_ID`, `TURSORA_VERSION`, `TURSORA_BUILD`.
 
