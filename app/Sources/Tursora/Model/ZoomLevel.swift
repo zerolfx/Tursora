@@ -5,7 +5,7 @@ enum ViewMode: String {
 }
 
 /// Dolphin-style zoom steps. Each view mode has its own ladder of icon sizes;
-/// the current step per mode is remembered as the default for new panes.
+/// each directory property record keeps a separate step for both modes.
 enum ZoomLevel {
     static let iconSizes: [CGFloat] = [32, 48, 64, 80, 96, 128, 160, 192, 256, 320, 384, 512]
     static let detailsSizes: [CGFloat] = [16, 22, 32, 48, 64]
@@ -25,7 +25,7 @@ enum ZoomLevel {
     static let previewThreshold: CGFloat = 32
 }
 
-/// Remembered defaults for new panes.
+/// Legacy defaults imported when the application directory-view library is absent.
 enum ViewPreferences {
     private static let defaults = UserDefaults.standard
 

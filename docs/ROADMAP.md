@@ -1,7 +1,7 @@
 # Roadmap
 
 v1（纯本地）的功能已经齐了：地址栏、标签页、分栏、两种视图与缩放预览、文件操作与撤销、过滤、分组、Get Info。
-新增功能已扩展到 ZIP 压缩 / 解压、系统分享、系统服务器挂载与设置；终端面板和当前 pane 的 ZIP 只读浏览为默认关闭的实验功能。接下来按"用户最常碰到、成本最低"排。难度尺度（S ≤ 半天 / M 1–2 天 / L 3–5 天 / XL > 1 周）与每项的依据见两份差距清单：
+新增功能已扩展到 ZIP 压缩 / 解压、系统分享、系统服务器挂载与设置，以及每目录视图记忆 / 统一默认；终端面板和当前 pane 的 ZIP 只读浏览为默认关闭的实验功能。接下来按"用户最常碰到、成本最低"排。难度尺度（S ≤ 半天 / M 1–2 天 / L 3–5 天 / XL > 1 周）与每项的依据见两份差距清单：
 
 - [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) — 对照 Finder 菜单 nib 逐项
 - [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md) — 对照 Dolphin 注册的 action / 面板 / 设置
@@ -16,7 +16,7 @@ Deselect All、Move Items Here（⌥⌘V）、Copy as Pathname 快捷键对齐�
 
 ## 大件（L）
 
-Column 视图、Gallery 视图、Show View Options（每目录视图属性）、更完整的偏好设置（确认策略、视图默认值等）、图标自由摆放、废纸篓视图（需要 Full Disk Access）、Quick Actions、中文本地化、Spotlight 搜索（`NSMetadataQuery`）、Folders 面板（目录树）、服务器历史 / 发现 / 重连、终端多会话与会话恢复。
+Column 视图、Gallery 视图、更完整的偏好设置（确认策略等）、图标自由摆放、废纸篓视图（需要 Full Disk Access）、Quick Actions、中文本地化、Spotlight 搜索（`NSMetadataQuery`）、Folders 面板（目录树）、服务器历史 / 发现 / 重连、终端多会话与会话恢复。每目录视图属性的核心持久化已实现；完整 Show View Options 对话框、列布局持久化和递归应用仍待做。
 
 ## 不做 / 等公开 API
 
@@ -24,10 +24,12 @@ Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私
 
 ## 新功能的后续验证
 
+- 每目录视图属性使用应用私有路径库；本功能最终三轮 smoke、打包签名与实机证据见 [HANDOFF](HANDOFF.md)。后续项包括递归应用子目录、列布局与逻辑页专用属性；如需目录改名 / 移动后跟随或跨挂载点恢复，应独立评估卷身份与 bookmark，不将本次路径键行为暗改为 inode 跟随。会话恢复仍是独立功能。
+
 - 在有用户提供的服务器时验证 SMB / NFS / WebDAV / legacy AFP 的认证、读写和掉线；当前只验证系统挂载接口与无网络状态流转。
 - 既有功能提交的 GitHub Build 已成功；本轮推送后仍需检查新提交的托管构建与下载产物，手动 Release 发布 / 安装尚未验证。本地打包不能替代对应提交的实际 Actions 运行。
 - 实验性终端补充不同 shell、全屏程序、字体/主题与布局检查；目前没有自动目录同步，手动 Restart 会结束当前会话。
-- 本轮 CUA 已完成工具栏 / Favorites 分栏与新标签、补全、过滤、两种视图、Quick Look / Share、同 pane ZIP 导航与只读菜单、外部打开临时副本、跨 pane 复制及撤销、Keep Both 与撤销、终端基础命令、服务器表单修复复测；13 组截图已核对。快照路径重映射问题已修复，最终 739 项 smoke 连续三轮通过；release build 5 重建与 strict codesign 通过。ZIP 拖出手势、归档内 Quick Look / Share 和关闭开关后既有页的专项 CUA 仍可补充，见[本轮记录](research/computer-use-2026-09-12-inline-zip.md)。
+- 历史 ZIP 基线的 CUA 已完成工具栏 / Favorites 分栏与新标签、补全、过滤、两种视图、Quick Look / Share、同 pane ZIP 导航与只读菜单、外部打开临时副本、跨 pane 复制及撤销、Keep Both 与撤销、终端基础命令、服务器表单修复复测；当时 13 组截图已核对。快照路径重映射问题已修复，该阶段 739 项 smoke 连续三轮通过；release build 5 重建与 strict codesign 通过。ZIP 拖出手势、归档内 Quick Look / Share 和关闭开关后既有页的专项 CUA 仍可补充，见[历史 ZIP 记录](research/computer-use-2026-09-12-inline-zip.md)。
 - ZIP 浏览仍使用完整暂存，进一步评估大归档的空间与响应；密码归档、其他格式、原 ZIP 外部改变后的自动重载和归档写回未实现。
 
 ## 已知的小差距

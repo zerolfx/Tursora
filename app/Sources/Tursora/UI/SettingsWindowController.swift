@@ -15,16 +15,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     let zipCheckbox = NSButton(checkboxWithTitle: "Browse ZIP archives", target: nil, action: nil)
     let shortcutRecorder = ShortcutRecorderButton()
     let shortcutMessage = NSTextField(wrappingLabelWithString: "")
+    let folderViewSaveMessage = NSTextField(wrappingLabelWithString: "")
+    let retryFolderViewSave = NSButton(title: "Retry Saving View Settings", target: nil, action: nil)
+    let folderViewPolicy = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let viewPropertiesStore: DirectoryViewPropertiesStore
+    private var viewPropertiesObserver: NSObjectProtocol?
     private let preferences: AppPreferences.Store
     private var observer: NSObjectProtocol?
 
-    init(preferences: AppPreferences.Store = AppPreferences.shared) {
+    init(preferences: AppPreferences.Store = AppPreferences.shared,
+         viewPropertiesStore: DirectoryViewPropertiesStore = .shared) {
+        self.viewPropertiesStore = viewPropertiesStore
         self.preferences = preferences
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 460),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 665),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Settings"
         window.isReleasedWhenClosed = false
         super.init(window: window)
+        viewPropertiesObserver = NotificationCenter.default.addObserver(forName: DirectoryViewPropertiesStore.didChange, object: viewPropertiesStore, queue: .main) { [weak self] _ in
+            self?.refreshControls()
+        }
         window.delegate = self
         window.center()
         buildContent()
@@ -54,6 +64,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             let box = NSBox(); box.boxType = .separator
             return box
         }
+        folderViewSaveMessage.font = .systemFont(ofSize: 12)
+        retryFolderViewSave.bezelStyle = .rounded
+        retryFolderViewSave.target = self
+        retryFolderViewSave.action = #selector(retrySavingFolderViews(_:))
+        folderViewPolicy.addItems(withTitles: ["Remember Each Folder", "Use One View for All Folders"])
+        folderViewPolicy.target = self
+        folderViewPolicy.action = #selector(changeFolderViewPolicy(_:))
+        folderViewPolicy.setAccessibilityLabel("Folder View Settings")
         extensionsCheckbox.target = self
         extensionsCheckbox.action = #selector(toggleExtensions(_:))
         terminalCheckbox.target = self
@@ -86,6 +104,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let rows: [NSView] = [
             heading("General"), extensionsCheckbox,
             detail("Applies to file labels. Files keep their original names."), separator(),
+            heading("Folder View Settings"), folderViewPolicy,
+            detail("Remember view mode, sorting, icon sizes, groups, hidden files and previews. Use View → Folder View Settings to save a default or reset a folder. In Remember Each Folder mode, open panes keep their own view until you revisit the folder."),
+            folderViewSaveMessage, retryFolderViewSave, separator(),
             heading("Keyboard"), shortcutRow,
             detail("Click the shortcut, then press a new combination with Command or Control. Filters names in the current folder."),
             shortcutMessage, separator(), heading("Experimental"),
@@ -111,10 +132,29 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func refreshControls() {
+        if let error = viewPropertiesStore.lastWriteError {
+            folderViewSaveMessage.stringValue = "View settings could not be saved. Changes are available for this session. " + error.localizedDescription
+            folderViewSaveMessage.textColor = .systemRed
+            retryFolderViewSave.isHidden = false
+        } else {
+            folderViewSaveMessage.stringValue = "Settings are stored by Tursora; no files are added to your folders."
+            folderViewSaveMessage.textColor = .secondaryLabelColor
+            retryFolderViewSave.isHidden = true
+        }
+        folderViewPolicy.selectItem(at: viewPropertiesStore.policy == .perDirectory ? 0 : 1)
         extensionsCheckbox.state = preferences.showFileExtensions ? .on : .off
         terminalCheckbox.state = preferences.experimentalTerminalEnabled ? .on : .off
         zipCheckbox.state = preferences.experimentalZIPBrowsingEnabled ? .on : .off
         shortcutRecorder.shortcut = preferences.filterShortcut
+    }
+
+    @objc func retrySavingFolderViews(_ sender: Any?) {
+        try? viewPropertiesStore.flush()
+        refreshControls()
+    }
+
+    @objc func changeFolderViewPolicy(_ sender: NSPopUpButton) {
+        viewPropertiesStore.setPolicy(sender.indexOfSelectedItem == 0 ? .perDirectory : .unified)
     }
 
     @objc func toggleExtensions(_ sender: NSButton) { preferences.showFileExtensions = sender.state == .on }
@@ -131,6 +171,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) { shortcutRecorder.stopRecording() }
     deinit {
         if let observer { preferences.notificationCenter.removeObserver(observer) }
+        if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
     }
 }
 

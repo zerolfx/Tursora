@@ -35,9 +35,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     let statusBar = StatusBarView()
     weak var host: BrowserHost?
 
-    private(set) var viewMode: ViewMode = ViewPreferences.viewMode
-    private(set) var zoomIndex: Int = ViewPreferences.zoomIndex(for: ViewPreferences.viewMode)
-    private(set) var showsPreviews: Bool = ViewPreferences.showPreviews
+    private(set) var viewMode: ViewMode = .details
+    private(set) var zoomIndex: Int = 0
+    private(set) var showsPreviews: Bool = true
+    let viewPropertiesStore: DirectoryViewPropertiesStore
+    var rememberedViewProperties = DirectoryViewProperties()
+    var isApplyingViewProperties = false
+    var lastAppliedViewProperties: DirectoryViewProperties?
+    var viewPropertiesObserver: NSObjectProtocol?
+    private(set) var viewPropertiesKey: String?
     var groupKey: GroupKey { model.groupKey }
     var usesGroups: Bool { model.groupKey != .none }
 
@@ -76,13 +82,22 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private var watcher: DirectoryWatcher?
     private var refreshDebounce: DispatchWorkItem?
 
-    init(provider: FileProvider, initialURL: URL) {
+    init(provider: FileProvider, initialURL: URL,
+         viewPropertiesStore: DirectoryViewPropertiesStore = .shared) {
+        self.viewPropertiesStore = viewPropertiesStore
+        let initialProperties = viewPropertiesStore.properties(forKey: Self.persistenceKey(for: initialURL))
+        self.rememberedViewProperties = initialProperties
+        self.viewMode = initialProperties.viewMode
+        self.zoomIndex = initialProperties.zoomIndex(for: initialProperties.viewMode)
+        self.showsPreviews = initialProperties.showPreviews
         let routedProvider = ArchiveFileProvider(base: provider)
         self.provider = routedProvider
         self.model = DirectoryModel(provider: routedProvider)
         self.fileList = FileListViewController(model: model)
         self.fileView = fileList
-        model.groupKey = ViewPreferences.groupKey
+        model.groupKey = initialProperties.groupKey
+        model.showHidden = initialProperties.showHidden
+        model.setSort(key: initialProperties.sortKey, ascending: initialProperties.ascending)
         super.init(nibName: nil, bundle: nil)
         wire(fileList)
         // Match the persisted mode before loadView mounts a child. Calling
@@ -98,12 +113,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             self.fileView.reloadData()
             self.errorLabel.isHidden = self.lastError == nil
             self.updateStatus()
+            self.persistViewProperties()
         }
         model.onError = { [weak self] error in
             guard let self else { return }
             self.lastError = error
             self.errorLabel.stringValue = "Cannot open this folder.\n\(error.localizedDescription)"
         }
+        observeViewProperties()
         // Deferred so the owner can wire onLocationChanged first.
         DispatchQueue.main.async { [weak self] in
             guard let self, self.navigationGeneration == 0 else { return }
@@ -111,7 +128,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
     }
     required init?(coder: NSCoder) { fatalError() }
-    deinit { NotificationCenter.default.removeObserver(self) }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
+    }
 
     // MARK: - Keeping the listing current
 
@@ -162,6 +182,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// A reload that keeps what the user has selected and where they scrolled —
     /// for changes that happened *around* them, not ones they asked for.
     func refreshPreservingSelection() {
+        if let currentURL, Self.persistenceKey(for: currentURL) != viewPropertiesKey {
+            load(currentURL)
+            return
+        }
         let renames = pendingRenames
         pendingRenames = [:]
         let urls = fileView.selectedItems.map { renames[$0.url.standardizedFileURL] ?? $0.url }
@@ -269,8 +293,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         fileView.viewController.view.removeFromSuperview()
         fileView.viewController.removeFromParent()
         viewMode = mode
-        zoomIndex = ViewPreferences.zoomIndex(for: mode)
-        ViewPreferences.viewMode = mode
+        zoomIndex = rememberedViewProperties.zoomIndex(for: mode)
         fileView = mode == .icons ? iconGrid : fileList
         fileView.isReadOnly = isBrowsingArchive || isPreparingArchive
         if isViewLoaded { mount(fileView) }
@@ -280,6 +303,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         syncZoomSlider()
         if hadFocus { view.window?.makeFirstResponder(fileView.focusView) }
         host?.viewModeDidChange(in: self)
+        persistViewProperties()
     }
 
     var iconSize: CGFloat { ZoomLevel.sizes(for: viewMode)[zoomIndex] }
@@ -288,17 +312,18 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let clamped = ZoomLevel.clamp(index, for: viewMode)
         guard clamped != zoomIndex else { return }
         zoomIndex = clamped
-        ViewPreferences.setZoomIndex(clamped, for: viewMode)
+        rememberedViewProperties.setZoomIndex(clamped, for: viewMode)
         fileView.setIconSize(iconSize, showPreviews: showsPreviews)
         syncZoomSlider()
+        persistViewProperties()
     }
 
     func zoom(by step: Int) { setZoomIndex(zoomIndex + step) }
 
     func setShowsPreviews(_ on: Bool) {
         showsPreviews = on
-        ViewPreferences.showPreviews = on
         fileView.setIconSize(iconSize, showPreviews: on)
+        persistViewProperties()
     }
 
     private func syncZoomSlider() {
@@ -308,14 +333,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     // MARK: - Groups (Finder's View ▸ Use Groups / Group By)
 
     func setGroupKey(_ key: GroupKey) {
+        if key != .none { rememberedViewProperties.lastGroupKey = key }
         model.groupKey = key
-        ViewPreferences.groupKey = key
-        if key != .none { ViewPreferences.lastGroupKey = key }
+        persistViewProperties()
     }
 
     /// ⌃⌘0: off → back to the last key used (Kind at first); on → off.
     @objc func toggleGroups(_ sender: Any?) {
-        setGroupKey(usesGroups ? .none : ViewPreferences.lastGroupKey)
+        setGroupKey(usesGroups ? .none : rememberedViewProperties.lastGroupKey)
     }
 
     @objc func groupBy(_ sender: NSMenuItem) {
@@ -468,6 +493,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc private func historyMenuItem(_ sender: NSMenuItem) { goToHistory(slot: sender.tag) }
 
     func reload() {
+        if let currentURL, Self.persistenceKey(for: currentURL) != viewPropertiesKey {
+            load(currentURL)
+            return
+        }
         saveViewState()
         model.reload { [weak self] in self?.restoreViewState() }
     }
@@ -1084,8 +1113,18 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private func load(_ url: URL) {
         navigationGeneration += 1
         isPreparingArchive = false
-        let changingDirectory = currentURL?.standardizedFileURL != url.standardizedFileURL
+        let destinationKey = Self.persistenceKey(for: url)
+        let sameLocation = currentURL?.standardizedFileURL == url.standardizedFileURL
+        let retargeted = sameLocation && viewPropertiesKey != destinationKey
+        let changingDirectory = !sameLocation || retargeted
+        if retargeted {
+            history.recordViewState(selectedName: nil, scrollOffset: 0)
+            pendingSelection = nil
+        }
+        if changingDirectory { pendingRenames = [:] }
         currentURL = url
+        viewPropertiesKey = destinationKey
+        restoreViewProperties()
         fileList.isReadOnly = isBrowsingArchive
         if viewMode == .icons { iconGrid.isReadOnly = isBrowsingArchive }
         lastError = nil

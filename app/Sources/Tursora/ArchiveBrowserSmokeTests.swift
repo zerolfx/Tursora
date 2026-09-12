@@ -11,6 +11,7 @@ enum ArchiveBrowserSmokeTests {
             let oldMode = ViewPreferences.viewMode
             let oldGroup = ViewPreferences.groupKey
             let oldLastGroup = ViewPreferences.lastGroupKey
+            let viewStore = DirectoryViewPropertiesStore(fileURL: fixture.appendingPathComponent("views/state.json"))
             var window: MainWindowController?
             defer {
                 window?.close()
@@ -19,6 +20,7 @@ enum ArchiveBrowserSmokeTests {
                 ViewPreferences.viewMode = oldMode
                 ViewPreferences.groupKey = oldGroup
                 ViewPreferences.lastGroupKey = oldLastGroup
+                try? viewStore.flush()
                 try? fm.removeItem(at: fixture)
             }
             do {
@@ -34,7 +36,7 @@ enum ArchiveBrowserSmokeTests {
                 try fm.createSymbolicLink(atPath: docs.appendingPathComponent("outside-link").path, withDestinationPath: welcome.path)
                 let archive = try await compress([docs, welcome], to: fixture)
                 let sourceBytes = try Data(contentsOf: archive)
-                let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(), initialURL: fixture)
+                let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(), initialURL: fixture, viewPropertiesStore: viewStore)
                 window = wc
                 let browser = wc.browser
                 wc.window?.setContentSize(NSSize(width: 1000, height: 650))
@@ -51,6 +53,8 @@ enum ArchiveBrowserSmokeTests {
                     await listed(browser, at: fixture)
                     browser.setViewMode(mode)
                     browser.setGroupKey(.kind)
+                    // Virtual pages start from the explicit default on entry.
+                    browser.useCurrentViewAsDefault()
                     browser.nameFilter = "*.zip"
                     browser.fileView.select(urls: [archive])
                     check("\(mode): select source ZIP before Open", browser.fileView.selectedItems.count == 1)

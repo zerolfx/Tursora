@@ -41,11 +41,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         static let group = NSToolbarItem.Identifier("tursora.group")
     }
 
-    init(provider: FileProvider, places: PlacesModel, initialURL: URL) {
+    init(provider: FileProvider, places: PlacesModel, initialURL: URL,
+         viewPropertiesStore: DirectoryViewPropertiesStore = .shared) {
         self.provider = provider
         self.places = places
         self.sidebar = SidebarViewController(places: places)
-        self.tabs = TabsController(provider: provider, initialURL: initialURL, host: nil)
+        self.tabs = TabsController(provider: provider, initialURL: initialURL, host: nil, viewPropertiesStore: viewPropertiesStore)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1000, height: 640),
@@ -401,6 +402,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func toggleGroups(_ sender: Any?) { browser.toggleGroups(sender) }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if let valid = validateViewPropertiesMenuItem(item) { return valid }
         switch item.action {
         case #selector(toggleTerminal(_:)):
             item.title = terminalPanel == nil ? "Show Terminal" : "Hide Terminal"

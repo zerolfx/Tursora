@@ -12,4 +12,6 @@
 
 The current set is captured in macOS dark appearance. Interface labels are English. Temporary test paths may appear in the address bar; they are demonstration locations.
 
+`folder-views.jpg`, `folder-views-unified.jpg`, and `settings.jpg` were captured from the final directory-view-properties release bundle on 2026-09-12. The [verification record](../research/computer-use-2026-09-12-directory-views.md) distinguishes directory restoration after restart, unified-policy layout, menu actions, and automated-only boundaries.
+
 Computer-use captures are JPEG files; native menu-window captures are PNG files. Keep the extension consistent with the actual image format. Capture expanded menus by window ID (`screencapture -x -o -l<window-id>`) when authorized; full-screen regions can include other apps behind a background-controlled window.

@@ -127,7 +127,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         tableView.delegate = self
         tableView.target = self
         tableView.doubleAction = #selector(doubleClicked(_:))
-        tableView.sortDescriptors = [NSSortDescriptor(key: Column.name.rawValue, ascending: true)]
+        setSort(key: model.sortKey, ascending: model.ascending)
         tableView.registerForDraggedTypes([.fileURL])
         updateDragOperations()
 
@@ -292,6 +292,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
 
     /// Drive sorting through the table so the header indicator stays in sync.
     func setSort(key: DirectoryModel.SortKey, ascending: Bool) {
+        model.setSort(key: key, ascending: ascending)
         let column = Column.allCases.first { $0.sortKey == key } ?? .name
         tableView.sortDescriptors = [NSSortDescriptor(key: column.rawValue, ascending: ascending)]
     }

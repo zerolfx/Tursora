@@ -10,7 +10,7 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | About Tursora | — | `NSApplication` |
 | Settings… | ⌘, | `AppDelegate.showSettings`; applies changes immediately |
 | Hide Tursora / Hide Others / Show All | ⌘H / ⌥⌘H / — | `NSApplication` |
-| Quit Tursora | ⌘Q | `NSApplication`; `AppDelegate.applicationWillTerminate` closes Info windows so a half-typed comment is saved |
+| Quit Tursora | ⌘Q | `NSApplication`; `AppDelegate.applicationWillTerminate` closes Info windows so a half-typed comment is saved and flushes the directory-view library |
 
 ### File
 | Item | Shortcut | Icon | Does | Handler |
@@ -49,11 +49,14 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Actual Size | ⌘0 | — | 64 pt icons / 16 pt rows |
 | Show Previews | ⇧⌘P | — | Thumbnails from 32 pt up (Finder's ⇧⌘P is the preview pane) |
 | Filter | ⌘F by default; configurable | `magnifyingglass` | Focuses the toolbar name-filter field; checkmark while filtering |
-| Show Hidden Files | ⇧⌘. | — | Per pane |
+| Show Hidden Files | ⇧⌘. | — | Saved by the selected folder-view policy; transient in ZIP pages |
 | Reload | ⌘R | `arrow.clockwise` | (Finder: Show Original) |
 | Use Groups | ⌃⌘0 | `square.grid.3x1.below.line.grid.1x2` | Off → back to the last key (Kind first) |
 | Group By ▸ None · Name · Kind · Application · Date Last Opened · Date Added · Date Modified · Date Created · Size | ⌃⌘0 · ⌃⌘1 · ⌃⌘2 · — · ⌃⌘3 … ⌃⌘7 | `arrow.up.arrow.down` | Same submenu as the toolbar Group button |
 | Sort By ▸ Name / Date Modified / Size / Kind · Ascending | — | — | Driven through the table so the header arrow stays in sync |
+| Folder View Settings ▸ Remember Each Folder / Use One View for All Folders | — | — | Selects per-directory memory (default) or the existing shared default; also in Settings |
+| Folder View Settings ▸ Use Current Settings as Default | — | — | Saves the active ordinary folder's complete view properties as the default; existing customized folders keep their records |
+| Folder View Settings ▸ Restore This Folder to Default | — | — | Removes this folder's override and reapplies defaults; ordinary folders in per-directory policy only |
 | Split View | ⇧⌘D | `rectangle.split.2x1` | Title becomes "Close Left/Right Pane" while split (Dolphin's toggle; Finder: ⇧⌘D = Desktop) |
 | Focus Other Pane | ⌥⇥ | — | Split only |
 | Show Sidebar | ⌃⌘S | `sidebar.leading` | (Finder: ⌥⌘S) |
@@ -157,11 +160,11 @@ The configured filter shortcut (⌘F by default) focuses the toolbar field, expa
 
 ## Settings and experimental features
 
-Settings (⌘,) offers extension-label display, the Filter by Name shortcut recorder, and two experiments that default off. Shortcut recording requires Command or Control, optionally Option/Shift; it rejects existing command conflicts. Escape cancels recording and Reset restores ⌘F. The menu binding updates immediately.
+Settings (⌘,) offers extension-label display, Folder View Settings, the Filter by Name shortcut recorder, and two experiments that default off. Folder View Settings chooses Remember Each Folder or Use One View for All Folders; the View submenu also saves the current view as default and restores a folder. If saving fails, Settings shows the error inline and offers Retry Saving View Settings; successful retry clears the error. Shortcut recording requires Command or Control, optionally Option/Shift; it rejects existing command conflicts. Escape cancels recording and Reset restores ⌘F. The menu binding updates immediately.
 
 With **Terminal panel** enabled, F4 toggles a window-wide panel below the file panes. Opening starts an interactive shell in the active folder; inside a ZIP, it uses the original ZIP's containing folder rather than a temporary snapshot. Navigation changes only the destination for **Restart in Current Folder**; it never types `cd` into the running session. Restart ends the shell/current command and asks for confirmation when a foreground command is detected. F4 to hide, the panel close button, disabling the experiment, closing its window, or quitting Tursora ends the session.
 
-With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in the current pane. ⌘↓ / double-click opens the selected entry; ⌘↑ goes up, returning from the ZIP root to its containing folder and selecting the ZIP. ⌘[ / ⌘] navigate history. ⌘L, breadcrumbs, tabs, splits, list / icon view, grouping, sorting and current-directory name filtering use the ordinary pane controls, with logical paths under the source ZIP. Return does not rename archive entries.
+With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in the current pane. ⌘↓ / double-click opens the selected entry; ⌘↑ goes up, returning from the ZIP root to its containing folder and selecting the ZIP. ⌘[ / ⌘] navigate history. ⌘L, breadcrumbs, tabs, splits, list / icon view, grouping, sorting and current-directory name filtering use the ordinary pane controls, with logical paths under the source ZIP. Each archive navigation starts from the saved default view; changes remain temporary and never write directory records or defaults. Return does not rename archive entries.
 
 ⌘C and copy-only drag-out can take archive files into a regular folder; ⇧⌘C requires a writable opposite pane. Space / ⌘Y previews readable copies, and Share uses the same temporary content. Archive pages disable mutation commands, incoming drops, and editable Info / Inspector. The status bar shows `ZIP · Read-only`, with temporary-copy and Save As details in its tooltip. External edits do not update the ZIP; copies stay until Tursora quits. Turning the experiment off leaves existing archive pages and history read-only, while newly opened ZIPs in regular folders extract beside the original. Explicit Extract remains available for a ZIP selected in its containing folder; there is no separate Extract All button.
 
