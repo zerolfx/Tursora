@@ -2,6 +2,12 @@
 
 Historical entries record development dates and their smoke-test counts where available. Verification applies to the revision and scope recorded with each entry; integrating newer changes requires fresh checks (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
 
+## Unreleased — feature integration
+
+- Integrate recursive search, controllable transfers and folder views. Keep search displays transient, retain explicit sources across symlink boundaries, and refresh exact results after file operations.
+- Verify 1,253 smoke checks in three consecutive runs, release signing and packaged-app integration paths; see the [integration record](docs/research/pr-integration-2026-09-12.md) for evidence and limits.
+- Use module-specific commit scopes, omitting scopes for global or multi-module changes.
+
 ## Unreleased — controllable file operations
 
 - Preserve opaque descendants during same-volume moves and keep recovery backups after a refused Undo/Redo even when its history entry is released.

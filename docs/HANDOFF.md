@@ -4,7 +4,9 @@
 
 ## 本轮 PR 整合
 
-三个功能 PR 的独立验证已完成。每目录视图与文件操作任务组合已提交为 `1464169`，1,063 项 smoke 连续三轮通过；当前在独立 worktree 接入搜索并处理跨功能回归，尚未合入 main。三功能组合的最终 smoke、打包签名、实机操作和最终 PR / main CI 仍待完成；统一见 [PR 整合记录](research/pr-integration-2026-09-12.md)。以下各功能的历史检查数不代表三功能组合结果。
+三功能整合与审阅修复已完成：最终 **1,253 项 smoke 连续三轮通过**，debug / release 构建与 strict codesign 通过；打包应用实测覆盖搜索视图隔离、目录往返恢复、大文件暂停 / 继续 / 取消、精确 Duplicate / Undo 和保存条件重跑，原文件与清理检查通过。统一见 [PR 整合记录](research/pr-integration-2026-09-12.md)。PR [#1](https://github.com/zerolfx/Tursora/pull/1) / [#2](https://github.com/zerolfx/Tursora/pull/2) / [#3](https://github.com/zerolfx/Tursora/pull/3) 和 main 的远端构建状态以对应精确提交的 GitHub 记录为准。以下各功能历史检查数不代表三功能组合结果。
+
+提交规范改为实际模块 scope；全局或跨模块提交不写 scope。main 提交信息重写保留每个 tree、作者 / 时间及旧历史备份，原功能分支不随之重写。
 
 ## 现状
 
