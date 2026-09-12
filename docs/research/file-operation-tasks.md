@@ -59,3 +59,7 @@
 实际 JPEG 截图：[`file-operation-tasks.jpg`](../images/features/file-operation-tasks.jpg) 为一项暂停、一项传输；[`file-operations.jpg`](../images/features/file-operations.jpg) 为位于历史记录前方的内联冲突。已检查实际图片格式与可读性，未拼接或模拟界面。清除历史后即时截图未显示卡片，未用作完成证据；保留清除前已目视确认的原始截图，随后实际 Keep Both 按钮操作成功。
 
 实机边界：本轮拖放手势尝试仅改变选择、未触发传输，因此不记录为成功的原生拖放证据；随后验证的是 Move to Other Pane 命令。两种视图接受拖放后的实际控制器回调有自动化覆盖；原生拖放手势、真实跨卷 / 服务器、浅色模式和极端长路径布局仍需专项实测。
+
+## PR 整合审阅补修
+
+同卷原子移动现在只验证根项，不递归枚举仅需整体改名的后代，含 FIFO / 不可枚举子目录的 Move、Merge、Undo 与 Redo 有新增回归。Undo / Redo 失败时独立保留恢复目录并提示路径，真实控制器测试覆盖撤销记录被消费及释放后的原目标保留。组合 smoke 和最终提交证据见 [PR 整合记录](pr-integration-2026-09-12.md)。

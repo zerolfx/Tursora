@@ -30,7 +30,7 @@ Microsoft 的[ZIP 与解压说明](https://support.microsoft.com/en-us/windows/e
 
 ## 验证状态与限制
 
-本轮已通过 computer use 操作当前 pane 进入 ZIP、原始根结构与 Documents 导航、More 只读禁用项、TextEdit 打开临时副本、复制 167 字节文件到普通 Delivery pane 与撤销，以及 Up / Back / Forward。详见[本轮实机记录](computer-use-2026-09-12-inline-zip.md)。快照路径重映射已修复，包含别名回归的最终 739 项 smoke 连续三轮通过；拖出手势、归档内 Quick Look / Share 和关闭实验后既有页的专项 CUA 仍未逐项完成。
+当前验证状态统一见 [HANDOFF](../HANDOFF.md)，同 pane 导航、只读菜单、外部打开副本、复制与撤销的操作证据见[实机记录](computer-use-2026-09-12-inline-zip.md)。该记录分别列出自动化覆盖和未逐项实测的交互，本文只维护行为与实现边界。
 
 **历史证据：旧独立窗口实现。** 2026-09-12 曾在打包应用中检查独立 ZIP 窗口布局、原始根结构、嵌套目录和 Back / Up；Return 将文本交给 TextEdit，确认读取临时副本，关闭 ZIP 窗口后副本仍可读。旧窗口的只读 / Save As 说明、关闭实验后恢复解压也已检查。详见[实机检查记录](computer-use-2026-09-12.md)。这些结果说明旧实现当时的行为，不能视为当前 pane 导航与菜单已通过实测。
 

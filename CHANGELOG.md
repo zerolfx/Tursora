@@ -1,11 +1,32 @@
 # Changelog
 
-Historical entries record development dates and their smoke-test counts where available. The current unreleased changes are tracked separately until final integrated verification completes (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
+Historical entries record development dates and their smoke-test counts where available. Verification applies to the revision and scope recorded with each entry; integrating newer changes requires fresh checks (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
 
-## Unreleased — settings, native services and optional workspaces
+## Unreleased — controllable file operations
+
+- Preserve opaque descendants during same-volume moves and keep recovery backups after a refused Undo/Redo even when its history entry is released.
 
 - Add independent copy/move/Duplicate tasks with block-level pause/resume/cancel, truthful byte totals/rate/ETA and a File Operations window. Route clipboard, drag/drop, other-pane and ZIP copy-out through the same engine; keep conflict choices asynchronous per task.
 - Publish completed transfers from private staging, preserve replaced targets and cross-volume sources on failure/cancellation, and replay only successful mutations for undo/redo. Bind tasks to their original context, cancel/wait on browser-window close or quit, and preserve later clipboard changes.
+
+## Unreleased — persistent folder view settings
+
+- Feature revision `eac9ffc` passed 854 full smoke checks three consecutive times after the packaged-app layout fix. After incorporating main revision `ae5e47a`, the integrated tree again passed 854 checks three consecutive times, each with exit 0 and empty stderr; debug/release builds and strict codesign passed. Integrated revision `d309d87` also passed GitHub Build, and its downloaded artifact passed checksum and strict signature verification. Packaged-app observations apply to the unchanged feature UI; revision-specific evidence is tracked in [the feature verification record](docs/research/computer-use-2026-09-12-directory-views.md).
+- Keep the Name column visible when restored settings switch a narrow pane from grouped icons to a list, while preserving intentional horizontal scrolling.
+
+- Remember each folder's view mode, sorting and direction, separate list/icon zoom steps, grouping, hidden files and previews across navigation, new tabs/panes and application restarts.
+- Add Settings and View menu choices for remembering each folder or using one default, plus explicit commands to save the current settings as default and restore a folder. Existing same-folder panes remain independent during ordinary per-folder edits; unified edits and explicit default/policy/reset commands synchronize affected panes.
+- Store versioned, tolerant JSON in Application Support with immediate memory updates and coalesced atomic writes. Normalize local paths and symlinks; preserve unsupported files until an effective mutation. Keep ZIP logical locations, snapshot paths, filters, selections, scroll and history out of folder records.
+- Add isolated model/storage and browser smoke coverage. Revision-specific build, smoke, packaged-app and signature results are tracked in [HANDOFF](docs/HANDOFF.md); the historical 739-check ZIP baseline does not verify this feature or the merged tree.
+
+## Unreleased — cleanup and product page
+
+- Remove an unused PlacesModel constant and simplify the archive readable-URL helper's always-enabled option without changing application behavior.
+- Consolidate current verification status in HANDOFF and keep detailed evidence in dated research records.
+- Improve the product page's secondary-text contrast and prevent the header from clipping content after direct anchor navigation.
+- Add a Chinese product page for editable paths, tabs, split panes and read-only ZIP browsing, using actual application screenshots. A dependency-free Python builder produces portable static output and validates local references. Desktop and narrow-screen browser checks cover workflow selection, screenshot dialogs, direct fragments and the no-JavaScript fallback; the page is locally previewed and has not been deployed. See [the recorded scope](docs/research/computer-use-2026-09-12-inline-zip.md#整理阶段与产品页).
+
+## 2026-09-12 baseline — settings, native services and optional workspaces
 
 - Add a toolbar Split View toggle that follows the selected tab and active pane, plus sidebar Open in Other Pane using the existing split-navigation behavior. Sidebar commands retain the actual right-clicked place, fixing New Tab actions that lost their target after menu tracking.
 - Prevent a new pane's deferred initial load from replacing a location explicitly selected before that load runs; the initial navigation only proceeds while the navigation generation is zero.
@@ -27,7 +48,7 @@ Historical entries record development dates and their smoke-test counts where av
 - Require documentation and actual application screenshots to evolve with implementation, while keeping automated verification and computer-use evidence distinct.
 - Preserve exact file selections through appearance and external refreshes, including same-named files in expanded folders; Escape cancels inline rename in both views.
 - Rebuild stale icon-grid layouts when grouping changes; use the scroll viewport when verifying Info section widths.
-- Verification: final debug and release builds passed. Current packaged-app computer-use checks and all 13 screenshot groups are complete within [the recorded scope](docs/research/computer-use-2026-09-12-inline-zip.md). After correcting archive path remapping, 739 smoke checks passed three consecutive runs, each with exit status 0 and empty stderr. The latest release build 5 was rebuilt and passed strict codesign verification. [Older evidence](docs/research/computer-use-2026-09-12.md) describes the previous standalone ZIP window.
+- Verification and its limits are recorded in [the dated computer-use log](docs/research/computer-use-2026-09-12-inline-zip.md); [earlier evidence](docs/research/computer-use-2026-09-12.md) covers the previous standalone ZIP window.
 
 ## 2026-09-12 — application icon and squashed baseline
 
