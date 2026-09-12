@@ -12,7 +12,7 @@ Deselect All、Move Items Here（⌥⌘V）、Copy as Pathname 快捷键对齐�
 
 ## 之后（M）
 
-批量重命名、Make Alias / Show Original、Recent Folders、右侧预览栏（复用 Get Info 的 FileInfo）、Customize Toolbar、Toolbar / Path Bar / Status Bar / Tab Bar 开关、Show All Tabs、Move Tab to New Window / Merge、spring-loaded folders、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、快捷键与 Finder 对齐（可做成开关）、会话恢复、最近关闭的标签列表、附加信息列、文件夹项目数 / 递归大小列、操作进度与取消。
+批量重命名、Make Alias / Show Original、Recent Folders、右侧预览栏（复用 Get Info 的 FileInfo）、Customize Toolbar、Toolbar / Path Bar / Status Bar / Tab Bar 开关、Show All Tabs、Move Tab to New Window / Merge、spring-loaded folders、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、快捷键与 Finder 对齐（可做成开关）、会话恢复、最近关闭的标签列表、附加信息列、文件夹项目数 / 递归大小列。
 
 ## 大件（L）
 
@@ -23,6 +23,8 @@ Column 视图、Gallery 视图、Show View Options（每目录视图属性）、
 Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私有存储）、Smart Folders（依赖搜索且结果不确定）、FinderSync 角标（只有 iCloud 公开）、桌面、选择模式。
 
 ## 新功能的后续验证
+
+- 复制 / 移动 / Duplicate 的逐任务进度、暂停 / 继续 / 取消已实现；专项自动化与实机记录见[文件操作任务](research/file-operation-tasks.md)。跨卷故障分支可注入验证，真实独立卷和真实服务器专项实测应分别记录；ZIP 压缩 / 解压工具取消、崩溃后任务恢复、废纸篓 / 删除任务化仍未实现。
 
 - 在有用户提供的服务器时验证 SMB / NFS / WebDAV / legacy AFP 的认证、读写和掉线；当前只验证系统挂载接口与无网络状态流转。
 - 既有功能提交的 GitHub Build 已成功；本轮推送后仍需检查新提交的托管构建与下载产物，手动 Release 发布 / 安装尚未验证。本地打包不能替代对应提交的实际 Actions 运行。

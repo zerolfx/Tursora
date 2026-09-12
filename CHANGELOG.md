@@ -4,6 +4,9 @@ Historical entries record development dates and their smoke-test counts where av
 
 ## Unreleased — settings, native services and optional workspaces
 
+- Add independent copy/move/Duplicate tasks with block-level pause/resume/cancel, truthful byte totals/rate/ETA and a File Operations window. Route clipboard, drag/drop, other-pane and ZIP copy-out through the same engine; keep conflict choices asynchronous per task.
+- Publish completed transfers from private staging, preserve replaced targets and cross-volume sources on failure/cancellation, and replay only successful mutations for undo/redo. Bind tasks to their original context, cancel/wait on browser-window close or quit, and preserve later clipboard changes.
+
 - Add a toolbar Split View toggle that follows the selected tab and active pane, plus sidebar Open in Other Pane using the existing split-navigation behavior. Sidebar commands retain the actual right-clicked place, fixing New Tab actions that lost their target after menu tracking.
 - Prevent a new pane's deferred initial load from replacing a location explicitly selected before that load runs; the initial navigation only proceeds while the navigation generation is zero.
 - Reuse existing Info and Summary windows for standardized URL variants of the same targets, avoiding duplicate windows from alternate path representations such as `/var` and `/private/var`.

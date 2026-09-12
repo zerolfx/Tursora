@@ -67,7 +67,11 @@ Press Space for Quick Look. `⌘I` opens Get Info, while `⌥⌘I` opens an Insp
 
 Copy, cut, paste, rename, duplicate, drag files between folders, or move them to the system Trash. Undo and redo cover supported file operations. When names collide, choose Keep Both, Skip, Replace or Merge where applicable, including a choice for the remaining batch.
 
-![A real filename conflict with choices for handling the copy](docs/images/features/file-operations.jpg)
+Copies, moves and duplicates have independent tasks in **Window → File Operations**. Pause or cancel in the middle of a large file, resume later, and see transferred bytes, speed and remaining time. Conflicts stay inside their task, so you can keep using the other tasks and panes. Replace preserves the previous destination until the incoming item is complete. Preparing, atomic moves and metadata finishing display their actual phase; they do not claim a byte-based ETA. Undo recovery contents use disk space while the window's history retains them.
+
+![Independent file operations, with one paused and another transferring](docs/images/features/file-operation-tasks.jpg)
+
+![A real filename conflict with choices for handling the move](docs/images/features/file-operations.jpg)
 
 ### Compress a selection. Extract beside the original.
 
