@@ -13,8 +13,8 @@ protocol BrowserHost: AnyObject {
     func viewModeDidChange(in pane: BrowserViewController)
 }
 
-/// One browsing pane: a directory model, its navigation history, and the
-/// file list that shows it. Each tab owns one of these.
+/// One browsing pane: its own path navigator, directory model, history, and
+/// file views. A tab owns one or two independently navigable panes.
 final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemValidation,
                                    QLPreviewPanelDataSource, QLPreviewPanelDelegate {
 
@@ -33,6 +33,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private(set) var fileView: FileViewing
     var focusView: NSView { fileView.focusView }
     let statusBar = StatusBarView()
+    let addressBar = BreadcrumbBar()
     weak var host: BrowserHost?
 
     private(set) var viewMode: ViewMode = .details
@@ -107,6 +108,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         model.showHidden = initialProperties.showHidden
         model.setSort(key: initialProperties.sortKey, ascending: initialProperties.ascending)
         super.init(nibName: nil, bundle: nil)
+        addressBar.homeURL = provider.homeURL
+        addressBar.url = initialURL
+        addressBar.onNavigate = { [weak self] url in
+            guard let self else { return }
+            self.onFocus?()
+            self.navigate(to: url)
+            self.view.window?.makeFirstResponder(self.focusView)
+        }
         wire(fileList)
         configureSearch()
         // Match the persisted mode before loadView mounts a child. Calling
@@ -251,6 +260,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         activeIndicator.wantsLayer = true
         viewHost.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(activeIndicator)
+        addressBar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(addressBar)
+        NSLayoutConstraint.activate([
+            addressBar.topAnchor.constraint(equalTo: activeIndicator.bottomAnchor),
+            addressBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            addressBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            addressBar.heightAnchor.constraint(equalToConstant: BreadcrumbBar.height),
+        ])
         addChild(searchPanel)
         searchPanel.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(searchPanel.view)
@@ -258,7 +275,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let searchHeight = searchPanel.view.heightAnchor.constraint(equalToConstant: 0)
         searchPanelHeight = searchHeight
         NSLayoutConstraint.activate([
-            searchPanel.view.topAnchor.constraint(equalTo: activeIndicator.bottomAnchor),
+            searchPanel.view.topAnchor.constraint(equalTo: addressBar.bottomAnchor),
             searchPanel.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             searchPanel.view.trailingAnchor.constraint(equalTo: view.trailingAnchor), searchHeight,
         ])
@@ -1259,6 +1276,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
         if changingDirectory { pendingRenames = [:] }
         currentURL = url
+        addressBar.url = url
         viewPropertiesKey = destinationKey
         restoreViewProperties()
         fileList.isReadOnly = isBrowsingArchive

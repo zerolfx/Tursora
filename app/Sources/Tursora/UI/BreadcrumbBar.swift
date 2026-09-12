@@ -11,10 +11,13 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     var homeURL = FileManager.default.homeDirectoryForCurrentUser
     var onNavigate: ((URL) -> Void)?
     var onInvalidPath: ((String) -> Void)?
+    /// Activate this navigator's pane before its field takes keyboard focus.
+    var onBeginEditing: (() -> Void)?
     /// Called when editing ends for any reason, so focus can go back to the list.
     var onEndEditing: (() -> Void)?
 
     private(set) var isEditing = false
+    private var isBeginningEditing = false
     let textField = NSTextField()
     let completion = CompletionPopup()
     private var segments: [Segment] = []
@@ -64,6 +67,10 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     var segmentTitles: [String] { segments.map(\.title) }
     /// For tests: the visible segment buttons, left to right.
     var visibleSegmentFrames: [NSRect] { segmentButtons.filter { !$0.isHidden }.map(\.frame) }
+    var visibleNavigationFrames: [NSRect] {
+        (segmentButtons + chevronButtons + [overflowButton].compactMap { $0 })
+            .filter { !$0.isHidden }.map(\.frame)
+    }
     var hasOverflowMenu: Bool { overflowButton != nil }
 
     private func rebuild() {
@@ -182,9 +189,14 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         // 2. Still too wide (few but long segments): shrink the widest visible
         //    ones — the buttons truncate their titles in the middle.
         let visibleIdx = (0..<segments.count).filter { $0 == 0 || $0 >= firstVisible }
+        // A split pane can be only 160 pt wide. Share its remaining width
+        // between captions so even the trailing subfolder control stays inside.
+        let controlsWidth = CGFloat(visibleIdx.count - (hidden.isEmpty ? 0 : 1)) * chevronW
+            + (hidden.isEmpty ? 0 : overflowW)
+        let minimumCaptionWidth = min(60, max(0, (available - controlsWidth) / CGFloat(max(1, visibleIdx.count))))
         var overflow = total(from: firstVisible, withOverflow: !hidden.isEmpty) - available
-        while overflow > 0, let widest = visibleIdx.max(by: { widths[$0] < widths[$1] }), widths[widest] > 60 {
-            let cut = min(overflow, widths[widest] - 60)
+        while overflow > 0, let widest = visibleIdx.max(by: { widths[$0] < widths[$1] }), widths[widest] > minimumCaptionWidth {
+            let cut = min(overflow, widths[widest] - minimumCaptionWidth)
             widths[widest] -= cut
             overflow -= cut
         }
@@ -274,28 +286,37 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     // MARK: - Edit mode
 
     func beginEditing() {
-        guard !isEditing else { window?.makeFirstResponder(textField); return }
-        isEditing = true
-        segmentButtons.forEach { $0.isHidden = true }
-        chevronButtons.forEach { $0.isHidden = true }
-        overflowButton?.isHidden = true
-        let logical = url.map { ArchiveWorkspace.shared.logicalURL(for: $0) }
-        textField.stringValue = (logical?.path as NSString?)?.abbreviatingWithTildeInPath ?? ""
-        textField.isHidden = false
-        lastTypedCount = 0        // select-all + first keystroke must count as typing, not deleting
-        needsLayout = true
+        onBeginEditing?()
+        // The window reuses one field editor. Acquiring it again can deliver
+        // the previous session's didEndEditing synchronously to this same
+        // field; that notification must not tear down the new edit session.
+        isBeginningEditing = true
+        defer { isBeginningEditing = false }
+        let wasEditing = isEditing
+        if !wasEditing {
+            isEditing = true
+            segmentButtons.forEach { $0.isHidden = true }
+            chevronButtons.forEach { $0.isHidden = true }
+            overflowButton?.isHidden = true
+            let logical = url.map { ArchiveWorkspace.shared.logicalURL(for: $0) }
+            textField.stringValue = (logical?.path as NSString?)?.abbreviatingWithTildeInPath ?? ""
+            textField.isHidden = false
+            lastTypedCount = 0        // select-all + first keystroke must count as typing, not deleting
+            needsLayout = true
+            layoutSubtreeIfNeeded()
+        }
         window?.makeFirstResponder(textField)
-        textField.currentEditor()?.selectAll(nil)
+        if !wasEditing { textField.currentEditor()?.selectAll(nil) }
     }
 
-    func endEditing() {
+    func endEditing(returnFocus: Bool = true) {
         guard isEditing else { return }
         isEditing = false
         completion.hide()
         if window?.firstResponder === textField.currentEditor() { window?.makeFirstResponder(nil) }
         textField.isHidden = true
         rebuild()
-        onEndEditing?()
+        if returnFocus { onEndEditing?() }
     }
 
     /// Resolve the typed text and navigate. Returns false (and reports) if it is not a folder.
@@ -435,6 +456,7 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
 
     func controlTextDidEndEditing(_ obj: Notification) {
         // Focus left the field (clicked elsewhere): fall back to breadcrumb.
-        if isEditing { endEditing() }
+        guard obj.object as? NSTextField === textField, !isBeginningEditing else { return }
+        if isEditing { endEditing(returnFocus: false) }
     }
 }

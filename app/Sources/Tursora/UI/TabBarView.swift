@@ -11,6 +11,7 @@ final class TabBarView: NSView {
     var onClose: ((Int) -> Void)?
     var onAdd: (() -> Void)?
     var onMove: ((Int, Int) -> Void)?
+    var menuForTab: ((Int) -> NSMenu?)?
     /// A tab is being dragged below the strip, over the content (window
     /// point), or came back (nil). Index is the tab's original position.
     var onDragOutside: ((Int, NSPoint?) -> Void)?
@@ -28,6 +29,7 @@ final class TabBarView: NSView {
 
     private(set) var titles: [String] = []
     private(set) var selectedIndex = 0
+    private(set) var toolTips: [String] = []
     private var items: [TabItemView] = []
     private let addButton = NSButton()
 
@@ -47,8 +49,9 @@ final class TabBarView: NSView {
 
     override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: Self.height) }
 
-    func reload(titles: [String], selected: Int) {
+    func reload(titles: [String], selected: Int, toolTips: [String]? = nil) {
         self.titles = titles
+        self.toolTips = toolTips ?? titles
         self.selectedIndex = selected
         while items.count < titles.count {
             let v = TabItemView(bar: self)
@@ -61,9 +64,15 @@ final class TabBarView: NSView {
         for (i, v) in items.enumerated() {
             v.index = i
             v.title = titles[i]
+            v.toolTip = self.toolTips.indices.contains(i) ? self.toolTips[i] : titles[i]
             v.isSelected = i == selected
         }
         needsLayout = true
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let index = tabIndex(at: convert(event.locationInWindow, from: nil)) else { return nil }
+        return menuForTab?(index)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -291,9 +300,15 @@ private final class TabItemView: NSView {
         label.textColor = isSelected ? .labelColor : .secondaryLabelColor
     }
 
+    override func menu(for event: NSEvent) -> NSMenu? { bar.menuForTab?(index) }
+
     @objc private func closeClicked() { bar.close(self) }
 
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control), let menu = menu(for: event) {
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+            return
+        }
         dragStart = convert(event.locationInWindow, from: nil)
         didDrag = false
         bar.select(self)

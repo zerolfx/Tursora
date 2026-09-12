@@ -25,15 +25,17 @@ Tursora is an early project, and it does not yet cover everything Finder can do.
 
 ### Two folders, one workspace
 
-Put your source on the left and its destination on the right. Each tab has its own folders and can switch between one and two panes. Copy or move a selection directly to the other side, and reopen a closed tab with its split layout intact.
+Put your source on the left and its destination on the right. Each pane has its own visible, editable path. Each tab can switch between one and two panes; its title shows both folders with the inactive side in parentheses. Copy or move a selection directly to the other side, and reopen a closed tab with its split layout intact.
 
 **Try it:** click the toolbar’s Split View button or press `⇧⌘D` to split the view. `⌥Tab` switches panes, and `⇧⌘C` copies to the other pane. Tabs retain their own history, selection, scroll position and filters during the session; each folder's view settings are restored when you open it.
+
+Right-click a tab to open a new tab, detach it into another window, give it a custom name, or close it, other tabs, or tabs to its left or right. Clear a custom name to return to the folder titles. The tab strip stays visible even with one tab. Detach reopens both locations and any searches in a fresh window; navigation history, filters, selections, file operations and undo history stay with the original window.
 
 ![Split panes and tabs: source files on the left, delivery folder on the right](docs/images/features/split-panes.jpg)
 
 ### A path you can click—or type
 
-Click a breadcrumb, choose a subfolder from its menu, or press `⌘L` to edit the full path with completion. Favorites keep frequent destinations nearby; Back and Forward include history menus.
+Click either pane's breadcrumb, choose a subfolder from its menu, or press `⌘L` to edit the active pane's full path with completion. Navigating one side leaves the other side's path and search unchanged. Switching panes or tabs dismisses an unfinished path edit without submitting it. Favorites keep frequent destinations nearby; Back and Forward include history menus.
 
 ![Editable address bar with folder completion](docs/images/features/path-navigation.jpg)
 

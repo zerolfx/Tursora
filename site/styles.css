@@ -17,7 +17,7 @@ a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid 
 .site-header{border-bottom:1px solid rgba(210,220,232,.72);background:rgba(245,248,252,.94)}
 .nav{height:78px;display:flex;align-items:center;justify-content:space-between;gap:24px}
 .brand{display:inline-flex;align-items:center;gap:11px;font-weight:700;font-size:20px;letter-spacing:-.6px}
-.brand img{border-radius:24%;box-shadow:0 1px 3px #142d4720}
+.brand img{filter:drop-shadow(0 1px 3px #142d4720)}
 .nav-links{display:flex;align-items:center;gap:30px;font-size:14px;font-weight:500}
 .nav-links a:hover,.site-footer a:hover{color:var(--blue)}
 .nav-source span{margin-left:3px;color:var(--muted)}
@@ -38,7 +38,7 @@ a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid 
 .compatibility{margin-top:13px;font-size:12px;color:#617186}
 .compatibility span{padding-inline:6px}
 .hero-mark{margin-right:67px;display:flex;flex-direction:column;align-items:center;gap:24px;transform:rotate(-6deg);flex:none}
-.hero-mark img{border-radius:24%;box-shadow:0 22px 35px -14px #235ca547,0 1px 1px #fff inset;border:1px solid #d5e5f3}
+.hero-mark img{filter:drop-shadow(0 14px 18px #235ca530)}
 .hero-mark span{font-size:12px;color:var(--muted);letter-spacing:.03em;transform:rotate(6deg)}
 .hero-figure{margin-top:42px}
 .screenshot-link{position:relative;display:block;border-radius:13px;background:#24282d;box-shadow:0 10px 27px -14px #2339564d;overflow:hidden;isolation:isolate}
@@ -100,7 +100,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;min-width:48px
 .experiment-notes h3 span{font-size:11px;font-weight:500;margin-left:7px;color:#47688e}
 .experiment-notes p{font-size:12px;line-height:1.9;color:#5c718a;margin-top:7px}
 .download{display:grid;grid-template-columns:1fr 1fr;gap:115px;padding-top:87px;padding-bottom:55px;align-items:center}
-.download-icon{border-radius:24%;box-shadow:0 5px 13px #275d9620;margin-bottom:23px}
+.download-icon{filter:drop-shadow(0 5px 13px #275d9620);margin-bottom:23px}
 .download h2{margin-top:11px;font-size:39px}
 .download-copy>p:not(.eyebrow){font-size:14px;color:var(--muted);margin-top:18px;line-height:1.95}
 .download-actions{gap:24px;margin-top:24px;flex-wrap:wrap}

@@ -63,6 +63,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         super.init(window: window)
         window.delegate = self
         tabs.host = self
+        tabs.onCloseLastTab = { [weak self] in self?.window?.performClose(nil) }
+        tabs.onDetachTab = { [weak self] snapshot in
+            guard let self, let app = NSApp.delegate as? AppDelegate else { return false }
+            app.newWindow(snapshot: snapshot, viewPropertiesStore: self.tabs.viewPropertiesStore)
+            return true
+        }
 
         // Keep both panes flush at their shared edge; only the window owns outer corners.
         let sidebarItem = NSSplitViewItem(viewController: sidebar)
@@ -382,7 +388,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
     @objc func editLocation(_ sender: Any?) { tabs.addressBar.beginEditing() }
 
-    @objc func newTab(_ sender: Any?) { tabs.newTab(at: browser.currentURL ?? provider.homeURL) }
+    @objc func newTab(_ sender: Any?) { tabs.performTabAction(.newTab, on: tabs.currentPage) }
     @objc func closeTab(_ sender: Any?) {
         if !tabs.closeCurrentTab() { window?.performClose(sender) }
     }

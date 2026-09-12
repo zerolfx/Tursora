@@ -3,8 +3,8 @@ import AppKit
 enum PaneSide { case left, right }
 
 /// One tab: one or two browsing panes side by side — Dolphin's split view.
-/// The active pane is what commands, the address bar and the window title
-/// follow; clicking anywhere in a pane activates it.
+/// Each pane owns its path bar. Window commands follow the active pane;
+/// clicking anywhere in a pane activates it.
 final class TabPage: NSViewController, NSSplitViewDelegate {
 
     let viewPropertiesStore: DirectoryViewPropertiesStore
@@ -13,6 +13,7 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
 
     private(set) var panes: [BrowserViewController] = []
     private(set) var activeIndex = 0
+    var customTitle: String?
     var active: BrowserViewController { panes[activeIndex] }
     var isSplit: Bool { panes.count == 2 }
     var inactive: BrowserViewController? { isSplit ? panes[1 - activeIndex] : nil }
@@ -67,6 +68,7 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
     /// Detach the active pane without closing it, so another page can adopt it.
     func releaseActivePane() -> BrowserViewController {
         let pane = active
+        pane.addressBar.endEditing(returnFocus: false)
         if isViewLoaded { detach(pane) }
         panes.removeAll { $0 === pane }
         activeIndex = 0
@@ -76,12 +78,15 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
 
     func closePane(_ pane: BrowserViewController) {
         guard isSplit, let i = panes.firstIndex(where: { $0 === pane }) else { return }
+        let wasActive = pane === active
+        pane.addressBar.endEditing(returnFocus: false)
         panes.remove(at: i)
         if isViewLoaded { detach(pane) }
         removeMonitor()
         activeIndex = 0
         updateIndicators()
         onActivePaneChanged?(active)
+        if wasActive, isViewLoaded, !view.isHidden { view.window?.makeFirstResponder(active.focusView) }
     }
 
     func closeActivePane() { closePane(active) }
@@ -89,6 +94,7 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
     func activate(_ pane: BrowserViewController) {
         guard let i = panes.firstIndex(where: { $0 === pane }) else { return }
         let changed = i != activeIndex
+        if changed { active.addressBar.endEditing(returnFocus: false) }
         activeIndex = i
         updateIndicators()
         if changed { onActivePaneChanged?(pane) }
@@ -110,6 +116,15 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
     }
 
     private func wire(_ pane: BrowserViewController) {
+        pane.addressBar.onBeginEditing = { [weak self, weak pane] in
+            guard let self, let pane else { return }
+            self.activate(pane)
+        }
+        pane.addressBar.onEndEditing = { [weak self, weak pane] in
+            guard let self, let pane, self.active === pane,
+                  self.isViewLoaded, !self.view.isHiddenOrHasHiddenAncestor else { return }
+            self.view.window?.makeFirstResponder(pane.focusView)
+        }
         pane.onLocationChanged = { [weak self, weak pane] url in
             guard let self, let pane else { return }
             self.onPaneLocationChanged?(pane, url)
@@ -189,7 +204,8 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
     private func installMonitor() {
         guard clickMonitor == nil else { return }
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] e in
-            guard let self, self.isSplit, e.window === self.view.window else { return e }
+            guard let self, self.isSplit, !self.view.isHiddenOrHasHiddenAncestor,
+                  e.window === self.view.window else { return e }
             for p in self.panes where p.isViewLoaded {
                 if p.view.bounds.contains(p.view.convert(e.locationInWindow, from: nil)) {
                     self.activate(p)

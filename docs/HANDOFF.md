@@ -2,6 +2,14 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
+## 本轮分栏路径与标签操作
+
+每个 pane 上方显示独立地址栏；路径与补全只导航所属 pane，切换时收起未提交的路径编辑。标签栏始终可见，分栏标题固定左右顺序并用括号标记非活动侧，支持自定义名和 Dolphin 的七项标签右键动作。Detach 按逻辑位置在新窗口重新打开，保留活动侧、自定义名和搜索请求；历史、过滤、选区、任务及撤销栈留在原窗口上下文。
+
+最终源码 **1,500 项 smoke 连续三轮通过**，三次均 exit 0、stderr 为空；release 构建、strict codesign、Info.plist lint 和包内 ICNS 一致性检查通过。打包应用实测覆盖独立路径 / 相对导航与 Back、活动侧标题、后台标签右键目标与边界、Rename / 清空、新标签、Detach、未提交编辑取消、路径补全和 560→1200 宽窗口重排。分栏、路径与标签三张实际截图已更新；菜单展开期间截图工具不可用，七项菜单由辅助功能树与真实点击验证，标签截图为菜单关闭状态。日志、范围及 Dolphin 差异见[分栏地址栏与标签操作](research/pane-paths-and-tab-actions.md)。下面 1,253 项及各历史阶段结果仍仅代表各自阶段。
+
+用户补充指出应用图标的方形外沿。本轮保留原尾鳍画稿，新增确定的 CoreGraphics 导出：1024 px 画布中将背景裁为 `(80, 80)` 起、864 px 宽高、192 px 圆角的单底板，外侧透明，前景不缩放或移位；PNG 与 ICNS 一起更新。旧“系统自动裁圆角”假设已撤回，像素 / 图标族回归随最终三轮通过，打包资源一致性检查通过。实际图标视图中系统读取发布包图标，外沿透明、圆角平滑；产品页桌面 / 窄屏与截图弹窗复查通过，见[图标边缘记录](research/app-icon-edges.md)。自己的测试应用已退出，偏好和目录视图库已恢复，共享验证锁已释放。
+
 ## 本轮 PR 整合
 
 三功能整合与审阅修复已完成：最终 **1,253 项 smoke 连续三轮通过**，debug / release 构建与 strict codesign 通过；打包应用实测覆盖搜索视图隔离、目录往返恢复、大文件暂停 / 继续 / 取消、精确 Duplicate / Undo 和保存条件重跑，原文件与清理检查通过。统一见 [PR 整合记录](research/pr-integration-2026-09-12.md)。PR [#1](https://github.com/zerolfx/Tursora/pull/1) / [#2](https://github.com/zerolfx/Tursora/pull/2) / [#3](https://github.com/zerolfx/Tursora/pull/3) 和 main 的远端构建状态以对应精确提交的 GitHub 记录为准。以下各功能历史检查数不代表三功能组合结果。
@@ -15,10 +23,10 @@
 - **每目录视图属性独立阶段**：`codex/directory-view-properties` 基于 `fbb6762`，Application Support 中独立保存默认值和目录记录，支持两种视图缩放、排序、分组、隐藏与预览。View / Settings 提供每目录或统一默认策略、保存当前默认和目录恢复。普通同目录 pane 重新进入读取最近保存值，统一策略同步普通 pane。按规范化路径记忆，symlink 换目标在刷新时更新身份，ZIP 无持久化记录；不做会话恢复。**854 项 smoke 已连续三轮通过**，最终 release / strict codesign 通过；最终发布包已实机复查目录往返、分栏、策略 / 默认菜单和真实重启，截图见[本功能验证记录](research/computer-use-2026-09-12-directory-views.md)。
 - 新增独立搜索（⇧⌘F）：递归名称、Spotlight 正文、类型 / 日期和保存条件；每 pane 独立，结果按真实 URL 操作。未索引普通目录名称可用，正文受格式 / 索引限制；ZIP 内不支持搜索。搜索专项验证见 [search-verification.md](research/search-verification.md)。整合时搜索继承启动 pane 的视图，后续显示修改不写来源目录或统一默认，普通目录策略通知也不重置搜索；返回目录时重新读取保存值。复制 / 移动 / Duplicate 使用共同任务和真实源 URL，完成与撤销刷新当前搜索。组合验证状态见本页开头。
 
-- 2026-09-12：此前 42 个提交已 squash 成一个基线并 force-push，工作树内容保留。应用图标采用两块蓝色玻璃窗格形成抽象尾鳍的设计，内部图形宽度已收至画布约 67%，为系统圆角边缘留出间距，背景仍为单层满版。资源在 `app/Resources/`，打包时嵌入 `.icns`。
+- 2026-09-12 历史基线：此前 42 个提交已 squash 成一个基线并 force-push，工作树内容保留。图标采用两块蓝色玻璃窗格形成抽象尾鳍，前景宽度约为画布的 67%；当时背景满版、依赖系统圆角的做法已由本轮透明轮廓导出取代。原画保存在 `app/Resources/AppIcon-artwork.png`，导出的 PNG / ICNS 位于同目录，打包嵌入后者。
 
 - **Tursora**（原名 Otter File Manager，2026-09-11 改名）是 Swift + AppKit 原生 macOS 文件管理器，无 Xcode 工程，Command Line Tools 即可构建；终端使用 SPM 固定的 SwiftTerm 1.15.0。基础功能包括：地址栏（面包屑 + 兄弟目录菜单 + 行内补全）、标签页、Dolphin 式分栏、列表 / 图标视图与缩放预览、文件操作与撤销、拖放、Quick Look、过滤、Finder 的分组、Finder 的 Get Info / Inspector / Summary。现已加入 ZIP 压缩 / 解压、系统分享、NetFS 服务器连接与设置；终端面板、ZIP 只读浏览是默认关闭的实验功能。规格见 [SPEC.md](SPEC.md)。
-- 三项功能在本轮整合分支，尚未合并到 `main`；发布包 `app/build/Tursora.app` 由 `app/tools/make-app.sh` 生成，ad-hoc 签名，未上架、未公证。
+- 三项功能 PR #1 / #2 / #3 已合并到 `main`，提交信息重写后的整合基线为 `5a6d786`。发布包 `app/build/Tursora.app` 由 `app/tools/make-app.sh` 生成，ad-hoc 签名，未上架、未公证。
 - 仓库：https://github.com/zerolfx/Tursora（私有）。`upstream/` 是 git-ignored 的 KDE 源码 checkout，只有 Phase 0 审计和对照 Dolphin 语义时用到；缺了可以重新 clone（版本 pin 在 [audit/00-ground-truth.md](audit/00-ground-truth.md)）。
 
 ## 验证状态——统一入口

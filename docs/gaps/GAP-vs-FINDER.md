@@ -64,7 +64,7 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
-| Move Tab to New Window / Merge All Windows | ❌ | M | TabsController 加 release/adopt page；自定义标签栏，不用 NSWindow tabbing |
+| Move Tab to New Window / Merge All Windows | Detach Tab ✅；Merge All Windows ❌ | 合并 M | 标签右键按 Dolphin 语义将一到两个逻辑位置及搜索请求在新窗口重建；历史、过滤、任务和撤销栈不迁移，不宣称 Finder 完整状态搬迁。依据与验证见[专项记录](../research/pane-paths-and-tab-actions.md) |
 | Cycle Through Windows（⌘`） | ❌ | S | 没有公开的 cycleWindows:，自己按 orderedWindows 轮；系统级 ⌘` 热键可能先吃掉按键 |
 
 ## 非菜单行为

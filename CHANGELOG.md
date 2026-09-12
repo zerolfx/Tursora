@@ -2,6 +2,22 @@
 
 Historical entries record development dates and their smoke-test counts where available. Verification applies to the revision and scope recorded with each entry; integrating newer changes requires fresh checks (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
 
+## Unreleased — application icon edges
+
+- Remove the opaque square exterior from the app icon while preserving the existing two-pane tail-fin artwork, foreground scale and position. Export one rounded background with transparent padding instead of relying on a system mask for the manually packaged ICNS.
+- Retain the original artwork separately and deterministically regenerate the alpha PNG and 16–1024 px ICNS family with CoreGraphics, `sips` and `iconutil` before every packaged application build.
+- Let product-page icon shadows follow the PNG alpha, removing rectangular CSS frames around the transparent artwork.
+- Replace opaque-corner expectations with decoded alpha checks for the master and every ICNS representation, included in the final 1,500-check suite and three consecutive successful runs. Release packaging and embedded-icon consistency checks passed; the packaged app's system-loaded icon and desktop/narrow product page were visually verified in [the icon record](docs/research/app-icon-edges.md).
+
+## Unreleased — pane paths and tab actions
+
+- Give every pane its own visible editable path and completion, keeping navigation bound to the owner and dismissing unsubmitted edits safely when switching panes or tabs.
+- Show both split locations in physical order, mark the inactive side with parentheses, support custom tab names and full logical-path tooltips, and keep the tab strip visible with one tab.
+- Add Dolphin-inspired tab context actions for New, Detach, Rename, Close Other, Close Left, Close Right and Close. Capture the clicked page's identity and preserve a surviving active tab during background or bulk closes.
+- Detach reopens one or two logical locations and search requests in a fresh window, retaining active side and custom name while preserving the original window's task and undo ownership. Closing and reopening a tab retains its full page and custom name.
+- Verify 1,500 smoke checks in three consecutive runs, each with exit 0 and empty stderr, plus release build, strict codesign, plist lint and embedded-icon consistency. Include regressions for real field-editor acquisition and focus after pane close or detach.
+- Verify the packaged app's independent paths, relative navigation, completion, split titles, background tab menus, rename/reset, New Tab, Detach and narrow-to-wide layout. Refresh the actual split, path and tab screenshots. Menu contents were checked through accessibility and real clicks because screenshots were unavailable while the native menu was open; the tab image shows the menu closed. Evidence and pinned-source differences are tracked in [the feature record](docs/research/pane-paths-and-tab-actions.md); older 1,253-check entries remain historical.
+
 ## Unreleased — feature integration
 
 - Integrate recursive search, controllable transfers and folder views. Keep search displays transient, retain explicit sources across symlink boundaries, and refresh exact results after file operations.

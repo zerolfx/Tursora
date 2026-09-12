@@ -30,6 +30,7 @@ OUT="$ROOT/build"
 APP="$OUT/$APP_NAME.app"
 
 cd "$ROOT"
+"$ROOT/tools/make-icon.sh"
 swift build -c "$CONFIG"
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 BIN="$BIN_DIR/$EXEC_NAME"

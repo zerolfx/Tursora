@@ -1,6 +1,6 @@
 import AppKit
 
-/// Owns the tabs of one window: a strip, a shared address bar, and one
+/// Owns the tabs of one window: a strip and one
 /// TabPage per tab (each with one or two panes). Closed tabs are kept whole
 /// so ⌘⇧T brings them back with their history and split intact.
 final class TabsController: NSViewController {
@@ -10,7 +10,8 @@ final class TabsController: NSViewController {
     weak var host: BrowserHost? { didSet { pages.forEach { $0.host = host } } }
 
     let tabBar = TabBarView()
-    let addressBar = BreadcrumbBar()
+    /// Window shortcuts address the active pane's own navigator.
+    var addressBar: BreadcrumbBar { current.addressBar }
     private let container = NSView()
     private let splitDropOverlay = SplitDropOverlay()
 
@@ -28,6 +29,10 @@ final class TabsController: NSViewController {
     var currentPage: TabPage { pages[currentIndex] }
     var current: BrowserViewController { currentPage.active }
     var canReopenClosedTab: Bool { !closedTabs.isEmpty }
+    var onCloseLastTab: (() -> Void)?
+    var onDetachTab: ((TabSnapshot) -> Bool)?
+    /// Tests can supply the sheet result without opening a modal UI headlessly.
+    var renameTabTitleProvider: ((String, @escaping (String?) -> Void) -> Void)?
 
     init(provider: FileProvider, initialURL: URL, host: BrowserHost?,
          viewPropertiesStore: DirectoryViewPropertiesStore = .shared) {
@@ -35,17 +40,15 @@ final class TabsController: NSViewController {
         self.provider = provider
         self.host = host
         super.init(nibName: nil, bundle: nil)
-        addressBar.homeURL = provider.homeURL
-        addressBar.onNavigate = { [weak self] url in self?.current.navigate(to: url) }
-        addressBar.onEndEditing = { [weak self] in
-            guard let self else { return }
-            self.view.window?.makeFirstResponder(self.current.focusView)
-        }
         tabBar.onSelect = { [weak self] i in self?.selectTab(at: i) }
-        tabBar.onClose = { [weak self] i in self?.closeTab(at: i) }
+        tabBar.onClose = { [weak self] i in
+            guard let self, self.pages.indices.contains(i) else { return }
+            self.performTabAction(.close, on: self.pages[i])
+        }
+        tabBar.menuForTab = { [weak self] i in self?.tabContextMenu(at: i) }
         tabBar.onAdd = { [weak self] in
             guard let self else { return }
-            self.newTab(at: self.current.currentURL ?? self.provider.homeURL)
+            self.performTabAction(.newTab, on: self.currentPage)
         }
         tabBar.onMove = { [weak self] from, to in self?.moveTab(from: from, to: to) }
         tabBar.onDragOutside = { [weak self] index, windowPoint in self?.updateSplitOverlay(for: index, at: windowPoint) }
@@ -72,7 +75,7 @@ final class TabsController: NSViewController {
 
     override func loadView() {
         view = NSView()
-        let stack = NSStackView(views: [tabBar, addressBar, container])
+        let stack = NSStackView(views: [tabBar, container])
         stack.orientation = .vertical
         stack.spacing = 0
         stack.alignment = .leading
@@ -80,9 +83,8 @@ final class TabsController: NSViewController {
         view.pinToEdges(stack)
         NSLayoutConstraint.activate([
             tabBar.heightAnchor.constraint(equalToConstant: TabBarView.height),
-            addressBar.heightAnchor.constraint(equalToConstant: BreadcrumbBar.height),
         ])
-        for row in [tabBar, addressBar, container] {
+        for row in [tabBar, container] {
             row.leadingAnchor.constraint(equalTo: stack.leadingAnchor).isActive = true
             row.trailingAnchor.constraint(equalTo: stack.trailingAnchor).isActive = true
         }
@@ -109,14 +111,22 @@ final class TabsController: NSViewController {
     @discardableResult
     func closeTab(at index: Int) -> Bool {
         guard pages.count > 1, pages.indices.contains(index) else { return false }
+        let previous = currentPage
         let page = pages.remove(at: index)
+        page.panes.forEach { $0.addressBar.endEditing(returnFocus: false) }
         detach(page)
         closedTabs.append(page)
         if closedTabs.count > maxClosedTabs { closedTabs.removeFirst() }
-        // Prefer the tab to the right, like Safari; fall back to the left.
-        let next = index < pages.count ? index : pages.count - 1
-        currentIndex = -1   // force selectTab to apply
-        selectTab(at: next)
+        // Closing a background page must not change the current page. When
+        // closing the current one, prefer its right neighbour, then its left.
+        if let surviving = pages.firstIndex(where: { $0 === previous }) {
+            currentIndex = surviving
+            applyVisibility()
+            refreshChrome()
+        } else {
+            currentIndex = -1   // force selectTab to apply
+            selectTab(at: min(index, pages.count - 1))
+        }
         return true
     }
 
@@ -135,13 +145,22 @@ final class TabsController: NSViewController {
     func selectTab(at index: Int) {
         guard pages.indices.contains(index) else { return }
         let changed = index != currentIndex
+        if changed, pages.indices.contains(currentIndex) {
+            currentPage.panes.forEach { $0.addressBar.endEditing(returnFocus: false) }
+        }
         currentIndex = index
         applyVisibility()
         refreshChrome()
         guard changed else { return }
-        if addressBar.isEditing { addressBar.endEditing() }
         if let url = current.currentURL { onCurrentLocationChanged?(url) }
         view.window?.makeFirstResponder(current.focusView)
+    }
+
+    func setTitle(_ title: String?, for page: TabPage) {
+        guard pages.contains(where: { $0 === page }) else { return }
+        let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        page.customTitle = trimmed.isEmpty ? nil : trimmed
+        refreshChrome()
     }
 
     func selectNext() { selectTab(at: (currentIndex + 1) % pages.count) }
@@ -235,7 +254,6 @@ final class TabsController: NSViewController {
 
     private func afterPaneChange() {
         refreshChrome()
-        addressBar.url = current.currentURL
         if let url = current.currentURL { onCurrentLocationChanged?(url) }
     }
 
@@ -247,15 +265,14 @@ final class TabsController: NSViewController {
             guard let self, let page else { return }
             self.refreshChrome()
             if page === self.currentPage, pane === page.active {
-                self.addressBar.url = url
                 self.onCurrentLocationChanged?(url)
             }
         }
         page.onActivePaneChanged = { [weak self, weak page] pane in
-            guard let self, let page, page === self.currentPage else { return }
-            self.addressBar.url = pane.currentURL
+            guard let self, let page, self.pages.contains(where: { $0 === page }) else { return }
+            self.refreshChrome()
+            guard page === self.currentPage else { return }
             if let url = pane.currentURL { self.onCurrentLocationChanged?(url) }
-            self.onTabsChanged?()
         }
         return page
     }
@@ -279,16 +296,9 @@ final class TabsController: NSViewController {
     }
 
     private func refreshChrome() {
-        let titles = pages.map { page -> String in
-            guard let url = page.active.currentURL else { return "…" }
-            if page.active.isBrowsingArchive { return url.lastPathComponent }
-            return provider.displayName(for: url)
-        }
-        tabBar.reload(titles: titles, selected: currentIndex)
-        tabBar.isHidden = pages.count == 1
-        if pages.indices.contains(currentIndex) {
-            addressBar.url = current.currentURL
-        }
+        let titles = pages.map(\.tabTitle)
+        tabBar.reload(titles: titles, selected: currentIndex, toolTips: pages.map(\.tabToolTip))
+        tabBar.isHidden = false
         onTabsChanged?()
     }
 }

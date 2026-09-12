@@ -15,7 +15,7 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
     private let rowHeight: CGFloat = 22
     private let maxRows = 8
 
-    private final class NonKeyPanel: NSPanel {
+    final class NonKeyPanel: NSPanel {
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
     }

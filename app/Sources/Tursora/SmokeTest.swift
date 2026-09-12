@@ -17,6 +17,9 @@ enum SmokeTest {
     }
 
     static func run(_ wc: MainWindowController) {
+        // Keep the last completed check available even if AppKit catches an
+        // Objective-C exception before the asynchronous suite can report it.
+        setvbuf(stdout, nil, _IOLBF, 0)
         for key in appPreferenceKeys { savedPreferences[key] = UserDefaults.standard.object(forKey: key) }
         atexit {
             try? DirectoryViewPropertiesStore.shared.flush()
@@ -48,10 +51,14 @@ enum SmokeTest {
                             TerminalSmokeTests.run {
                                 SearchSmokeTests.run {
                                     IntegratedSearchSmokeTests.run {
+                                    PanePathsSmokeTests.run {
+                                    TabActionsSmokeTests.run {
                                     delayedListing {
                                         infoSectionLayout()
                                         savedViewModes(wc.provider)
                                         preferencesIntegration(wc) { windowChrome(wc) { navigation(wc) } }
+                                    }
+                                    }
                                     }
                                     }
                                 }
@@ -96,23 +103,7 @@ enum SmokeTest {
     }
 
     private static func appIconAssets() {
-        print("== app icon assets ==")
-        let resources = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Resources")
-        guard let data = try? Data(contentsOf: resources.appendingPathComponent("AppIcon.png")),
-              let bitmap = NSBitmapImageRep(data: data) else {
-            check("app icon master decodes", false)
-            return
-        }
-        check("app icon master is 1024px square", bitmap.pixelsWide == 1024 && bitmap.pixelsHigh == 1024)
-        let corners = [(0, 0), (1023, 0), (0, 1023), (1023, 1023)]
-        check("app icon background reaches every corner without an inset tile", corners.allSatisfy {
-            (bitmap.colorAt(x: $0.0, y: $0.1)?.alphaComponent ?? 0) > 0.999
-        })
-        let icon = NSImage(contentsOf: resources.appendingPathComponent("AppIcon.icns"))
-        let sizes = Set(icon?.representations.filter { $0.pixelsWide == $0.pixelsHigh }.map(\.pixelsWide) ?? [])
-        check("app icon family covers 16px through 1024px", Set([16, 32, 64, 128, 256, 512, 1024]).isSubset(of: sizes), "\(sizes.sorted())")
+        IconAssetsSmokeTests.run()
     }
 
     private static func awaitInitialListing(_ model: DirectoryModel, timeout: TimeInterval = 15,
@@ -357,7 +348,7 @@ enum SmokeTest {
         check("no history yet", !b.canGoBack && !b.canGoForward)
         check("address bar: home is one segment", wc.tabs.addressBar.segmentCount == 1,
               "\(wc.tabs.addressBar.segmentTitles)")
-        check("tab bar hidden with one tab", wc.tabs.tabBar.isHidden)
+        check("tab bar stays visible with one tab", !wc.tabs.tabBar.isHidden)
 
         guard let folder = b.model.items.first(where: { $0.isNavigable }) else {
             print("skip: no subfolder in home"); exit(0)
@@ -431,7 +422,7 @@ enum SmokeTest {
             check("moveTab keeps current tab current", t.currentIndex == 0 && t.current !== first)
             t.moveTab(from: 0, to: 1)
             check("closeCurrentTab", t.closeCurrentTab() && t.count == 1)
-            check("tab bar hidden again", t.tabBar.isHidden)
+            check("single tab keeps its title and context menu visible", !t.tabBar.isHidden)
             check("can reopen", t.canReopenClosedTab)
             check("reopenClosedTab restores it", t.reopenClosedTab() && t.count == 2 && t.current.currentURL?.lastPathComponent == folder.name)
             check("reopened tab kept its history", t.current.history.entries.count == 1)
@@ -666,7 +657,7 @@ enum SmokeTest {
                 check("openInOtherPane navigates the other pane", left.currentURL?.lastPathComponent == "sub", "\(left.currentURL?.lastPathComponent ?? "nil")")
                 check("…and activates it", t.current === left)
                 check("address bar follows the active pane", t.addressBar.segmentTitles.last == "sub", "\(t.addressBar.segmentTitles)")
-                check("tab title follows the active pane", t.tabBar.titles[t.currentIndex] == "sub", "\(t.tabBar.titles)")
+                check("split tab title shows both paths and inactive side", t.tabBar.titles[t.currentIndex] == "sub | (\(wc.provider.displayName(for: tmp)))", "\(t.tabBar.titles)")
                 check("window title follows the active pane", wc.window?.title == "sub")
                 // copy to other pane: active = left (sub), other = right (tmp); copy sub/note copy.txt? use tmp/note.txt from right→ do it from right
                 t.focusOtherPane()                       // right (tmp) active
@@ -707,7 +698,7 @@ enum SmokeTest {
             check("drag tab 1 into the left half splits tab 0", t.splitCurrentPage(withTab: 1, side: .left) && t.count == 1 && t.isSplit)
             check("adopted pane is on the left and active", t.currentPage.activeSide == .left && t.current === dragged && t.current.currentURL?.lastPathComponent == "sub")
             check("original pane is on the right", t.currentPage.panes[1] === first)
-            check("tab bar hidden again (one tab)", t.tabBar.isHidden)
+            check("single split tab keeps both directory names visible", !t.tabBar.isHidden)
             // a closed split tab comes back split
             t.newTab(at: tmp)                 // tab 1 (unsplit) becomes current
             t.selectTab(at: 0)

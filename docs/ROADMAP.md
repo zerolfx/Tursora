@@ -3,6 +3,8 @@
 v1（纯本地）的功能已经齐了：地址栏、标签页、分栏、两种视图与缩放预览、文件操作与撤销、过滤、分组、Get Info。
 新增功能已扩展到 ZIP 压缩 / 解压、系统分享、系统服务器挂载与设置，以及每目录视图记忆 / 统一默认、可控制的文件操作任务、递归和保存搜索；终端面板和当前 pane 的 ZIP 只读浏览为默认关闭的实验功能。三项新功能的组合验证状态见 [PR 整合记录](research/pr-integration-2026-09-12.md)。接下来按"用户最常碰到、成本最低"排。难度尺度（S ≤ 半天 / M 1–2 天 / L 3–5 天 / XL > 1 周）与每项的依据见两份差距清单：
 
+分栏独立地址栏、双侧标签标题与标签右键操作的本轮实现及验证状态见[专项记录](research/pane-paths-and-tab-actions.md)；会话恢复、合并窗口和单独弹出 pane 仍留待后续。
+
 - [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) — 对照 Finder 菜单 nib 逐项
 - [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md) — 对照 Dolphin 注册的 action / 面板 / 设置
 

@@ -1,10 +1,12 @@
 #!/bin/bash
-# Rebuild the macOS icon family from the 1024px PNG master using system tools.
+# Export the rounded alpha master and macOS icon family using system tools.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ARTWORK="$ROOT/Resources/AppIcon-artwork.png"
 SOURCE="$ROOT/Resources/AppIcon.png"
-[ -f "$SOURCE" ] || { echo "Missing icon master: $SOURCE" >&2; exit 1; }
+[ -f "$ARTWORK" ] || { echo "Missing icon artwork: $ARTWORK" >&2; exit 1; }
+swift "$ROOT/tools/render-icon.swift" "$ARTWORK" "$SOURCE"
 WORK="$(mktemp -d "${TMPDIR:-/tmp/}tursora-icon.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 ICONSET="$WORK/AppIcon.iconset"

@@ -18,7 +18,7 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Item | Shortcut | Icon | Does | Handler |
 |---|---|---|---|---|
 | New Window | ⌘N | `plus.rectangle` | New window at home, cascaded | `AppDelegate.newWindow` |
-| New Tab | ⌘T | `macwindow.badge.plus` | Tab at the current folder | `MainWindowController.newTab` |
+| New Tab | ⌘T | `macwindow.badge.plus` | Fresh single-pane tab at the active location; reruns its search when applicable | `MainWindowController.newTab` |
 | New Folder | ⇧⌘N | `folder.badge.plus` | "untitled folder" (then " 2", …), selected | `BrowserViewController.newFolder` |
 | Open | ⌘↓ | — | Opens the selection; disabled when empty | `MainWindowController.openSelection` |
 | Quick Look | ⌘Y | `eye` | Toggles `QLPreviewPanel` | `BrowserViewController.quickLook` |
@@ -32,7 +32,7 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Delete Immediately… | ⌥⌘⌫ | `trash` | Confirmation, then unrecoverable | `BrowserViewController.deletePermanently` |
 | Close Tab | ⌘W | — | Title flips to "Close Window" with one tab | `MainWindowController.closeTab` |
 | Close Window | ⇧⌘W | — | | `NSWindow.performClose` |
-| Reopen Closed Tab | ⇧⌘T | — | Up to 10 closed tabs kept whole (history + split) — Finder uses ⇧⌘T for the tab bar | `TabsController.reopenClosedTab` |
+| Reopen Closed Tab | ⇧⌘T | — | Up to 10 closed tabs kept whole (history + split + custom name) — Finder uses ⇧⌘T for the tab bar | `TabsController.reopenClosedTab` |
 
 ### Edit
 | Item | Shortcut | Icon | Does |
@@ -89,7 +89,7 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | A folder | Open · Open in New Tab (or "Open in N New Tabs") · Open in New Window · Open in Other/New Pane · then the file block · — · Add/Remove from Favourites |
 | Several items | As above minus Open With and Rename; "Copy Paths" |
 | Sidebar (`SidebarViewController`) | Open · Open in New Tab · Open in Other Pane · Reveal in Finder · [removable: Remove from Favourites · Reset Favourites] · [volume: Eject "name"]; empty when no row was clicked |
-| Tab | No context menu; middle-click closes |
+| Tab | New Tab · Detach Tab · — · Rename Tab · — · Close Other Tabs · Close Tabs to the Left · Close Tabs to the Right · Close Tab; middle-click closes |
 
 ## Keyboard in the file views (`FileOutlineView` / `FileCollectionView`)
 
@@ -104,6 +104,8 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | Esc while renaming | Both views cancel the edit and restore the original filename, even after typing a different valid name |
 
 ## Address bar and completion (`BreadcrumbBar`, `CompletionPopup`)
+
+Each pane has its own visible address bar above its search and file content. Clicking a bar activates its owner; navigation and completion remain bound to that pane. `⌘L` / `⇧⌘G` focus the active pane's bar. Switching panes or tabs dismisses the departing edit and popup without submitting unconfirmed text.
 
 | Input | Effect |
 |---|---|
@@ -130,7 +132,21 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | ⌥⇥ | Focus the other pane |
 | Click anywhere in a pane (incl. its status bar) | Activates it; a 3 pt accent bar marks the active pane. Panes stay ≥ 160 pt and never collapse |
 
-Closing a tab prefers the tab to the right (Safari). The strip hides itself with one tab; the `+` button's tooltip is "New Tab (⌘T)"; a tab's close button shows when selected or hovered.
+Closing a background tab preserves the current tab; closing the current tab prefers its right neighbor and falls back to the left. The strip stays visible with one tab; the `+` button's tooltip is "New Tab (⌘T)"; a tab's close button shows when selected or hovered. Split titles show both sides in physical order, with the inactive side in parentheses (`Left | (Right)` or `(Left) | Right`). A custom name overrides the title; tooltips retain full logical paths.
+
+Right-clicking a tab opens the following Dolphin-inspired actions without first switching tabs. Each command captures the clicked page, so reordering tabs cannot change its target. The `+` button and `⌘T` use the same New Tab behavior for the current page, including rerunning a search. Opening an explicit folder in a new tab opens that folder. No additional shortcuts are assigned.
+
+| Item | Effect / availability |
+|---|---|
+| New Tab | New activated single-pane tab at the clicked tab's active location; restarts its search request when applicable; disabled while that pane prepares a ZIP |
+| Detach Tab | Reopen the clicked tab's one or two logical locations in a new window, keeping active side, custom name and searches, then close the original tab; disabled while either pane prepares a ZIP |
+| Rename Tab | Change the tab name, not the folder name; an empty name restores the automatic title |
+| Close Other Tabs | Keep the clicked tab; disabled when no others exist |
+| Close Tabs to the Left | Close only the tabs before the target; disabled at the left edge |
+| Close Tabs to the Right | Close only the tabs after the target; disabled at the right edge |
+| Close Tab | Close the target; the last tab uses normal window close |
+
+Detach starts fresh navigation histories, selections, filters and scroll positions. File transfers and undo history stay with the original window; closing that window cancels its active tasks and waits for cleanup. Closing and reopening an ordinary tab still restores its retained full page. Menu order and upstream differences are recorded in [the source comparison](research/pane-paths-and-tab-actions.md).
 
 ## Mouse and trackpad
 

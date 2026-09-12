@@ -230,10 +230,14 @@ enum ArchiveBrowserSmokeTests {
     }
 
     /// Earlier suites can release closed AppKit windows while ZIP preparation
-    /// yields. Their disappearance is harmless; any newly created window is not.
+    /// yields. Pane-local navigators also allocate hidden completion panels.
+    /// Their existence is harmless; visible panels and new browser windows are not.
     /// Retaining each before-snapshot also prevents object-identifier reuse.
     @MainActor private static func addedWindows(before: [NSWindow], after: [NSWindow]) -> [NSWindow] {
-        after.filter { window in !before.contains { $0 === window } }
+        after.filter { window in
+            !before.contains { $0 === window }
+                && !(window is CompletionPopup.NonKeyPanel && !window.isVisible)
+        }
     }
 
     @MainActor private static func windowChanges(before: [NSWindow], after: [NSWindow]) -> String {
@@ -248,13 +252,20 @@ enum ArchiveBrowserSmokeTests {
     @MainActor private static func windowIdentityChecks() {
         let earlier = NSWindow(contentRect: .zero, styleMask: [], backing: .buffered, defer: true)
         let replacement = NSWindow(contentRect: .zero, styleMask: [], backing: .buffered, defer: true)
+        let completion = CompletionPopup.NonKeyPanel(contentRect: .zero, styleMask: .nonactivatingPanel, backing: .buffered, defer: true)
         earlier.isReleasedWhenClosed = false
         replacement.isReleasedWhenClosed = false
-        defer { earlier.close(); replacement.close() }
+        completion.isReleasedWhenClosed = false
+        defer { earlier.close(); replacement.close(); completion.close() }
         check("window tracking permits an earlier suite's window to disappear",
               addedWindows(before: [earlier], after: []).isEmpty)
         check("window tracking catches a new window even when total count stays equal",
               addedWindows(before: [earlier], after: [replacement]).first === replacement)
+        check("window tracking permits a pane's hidden completion panel",
+              addedWindows(before: [earlier], after: [earlier, completion]).isEmpty)
+        completion.orderFront(nil)
+        check("window tracking still catches a visible completion panel",
+              addedWindows(before: [earlier], after: [earlier, completion]).first === completion)
     }
 
     @MainActor private static func listed(_ browser: BrowserViewController, at url: URL) async {

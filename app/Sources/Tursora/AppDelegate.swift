@@ -67,8 +67,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @discardableResult
-    func newWindow(at url: URL) -> MainWindowController {
-        let wc = MainWindowController(provider: provider, places: places, initialURL: url)
+    func newWindow(snapshot: TabSnapshot, viewPropertiesStore: DirectoryViewPropertiesStore) -> MainWindowController {
+        let wc = newWindow(at: snapshot.panes.first?.url ?? provider.homeURL, viewPropertiesStore: viewPropertiesStore)
+        snapshot.restore(in: wc.tabs)
+        return wc
+    }
+
+    @discardableResult
+    func newWindow(at url: URL, viewPropertiesStore: DirectoryViewPropertiesStore = .shared) -> MainWindowController {
+        let wc = MainWindowController(provider: provider, places: places, initialURL: url, viewPropertiesStore: viewPropertiesStore)
         windowControllers.append(wc)
         wc.onClose = { [weak self, weak wc] in
             self?.windowControllers.removeAll { $0 === wc }
