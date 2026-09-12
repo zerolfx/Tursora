@@ -162,3 +162,13 @@ python3 -m http.server 8080 --directory site/dist
 Open `http://localhost:8080` and stop the server with Control-C. The builder uses only the standard library, recreates `site/dist/`, and refuses a symlink at that location. Generated output is ignored by Git. It copies the required icon and four canonical screenshots without editing their pixels, then validates local references, fragments, IDs, alt attributes and the four workflow panels. Static validation does not replace browser review or verify live GitHub downloads.
 
 Use [site/README.md](../site/README.md) for the exact asset list and desktop/mobile, keyboard, dialog, reduced-motion and no-JavaScript review sequence. Record observed results in dated research and maintain current status in [HANDOFF](HANDOFF.md). Previewing or building the page does not deploy it; hosting and publication are separate actions.
+
+## Search-specific filesystem and UI pitfalls
+
+Darwin's URL directory enumerator does not follow symbolic links. Calling `skipDescendants()` on a symlink leaf can skip the *next sibling directory*, silently losing valid recursive search results. Use `.skipsPackageDescendants` and explicit result containment checks; the search smoke fixture includes a symlink before an ordinary sibling folder.
+
+Search results have no directory URL, and both views retain full-URL selection through filtering, grouping and view changes. The icon grid snapshots displayed item identities before model arrangement changes; resolving old index paths against new groups can select another file. Inline rename remembers its original FileItem and cancels on streamed result reload, so a reused row cannot receive a late edit. Do not write a search selection into its originating directory's navigation history.
+
+NSMetadataQuery rejects AND/OR compound predicates with only one child by throwing an Objective-C exception during `start()`, even though ordinary NSPredicate evaluation accepts them. Return the leaf predicate for a single condition; an unrestricted query must use a supported match-all filename comparison rather than TRUEPREDICATE. Validate the actual generated predicates against the native query service as well as using deterministic content fixtures.
+
+Context menus snapshot full FileItems when built, retaining them through menu closure and action dispatch. Never re-resolve clicked rows after a search batch changes ordering. FileOperations normalizes overlapping selections to actual top-level directories before mutations, so selecting a folder plus its search-result child cannot remove the parent and then throw before registering Undo. Symbolic links do not cover explicit descendant sources.

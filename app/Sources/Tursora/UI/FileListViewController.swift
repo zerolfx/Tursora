@@ -62,9 +62,18 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     }
 
     private var shownGeneration = -1
+    private var renameTarget: (field: NSTextField, item: FileItem)?
+
+    /// A result batch can reorder/reuse rows while an editor is open.
+    private func cancelResultRename() {
+        guard model.isSearchResults, let target = renameTarget else { return }
+        renameTarget = nil
+        _ = target.field.abortEditing()
+        target.field.isEditable = false
+    }
 
     private enum Column: String, CaseIterable {
-        case name, dateModified, size, kind
+        case name, dateModified, size, kind, location
 
         var id: NSUserInterfaceItemIdentifier { NSUserInterfaceItemIdentifier(rawValue) }
         var title: String {
@@ -73,6 +82,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             case .dateModified: return "Date Modified"
             case .size: return "Size"
             case .kind: return "Kind"
+            case .location: return "Location"
             }
         }
         var sortKey: DirectoryModel.SortKey {
@@ -81,6 +91,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             case .dateModified: return .dateModified
             case .size: return .size
             case .kind: return .kind
+            case .location: return .name
             }
         }
         var width: CGFloat {
@@ -89,6 +100,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             case .dateModified: return 170
             case .size: return 90
             case .kind: return 170
+            case .location: return 320
             }
         }
     }
@@ -109,7 +121,8 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             // Keep filenames useful in a split pane; metadata can scroll.
             col.minWidth = column == .name ? 180 : 60
             col.resizingMask = [.userResizingMask, .autoresizingMask]
-            col.sortDescriptorPrototype = NSSortDescriptor(key: column.rawValue, ascending: true)
+            if column != .location { col.sortDescriptorPrototype = NSSortDescriptor(key: column.rawValue, ascending: true) }
+            col.isHidden = column == .location && !model.isSearchResults
             tableView.addTableColumn(col)
             if column == .name { tableView.outlineTableColumn = col }
         }
@@ -164,6 +177,12 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     /// Reload, keeping folders that were expanded expanded. When the change is
     /// a fresh listing (not just a re-sort) their contents are re-listed too.
     func reloadData() {
+        cancelResultRename()
+        tableView.tableColumn(withIdentifier: Column.location.id)?.isHidden = !model.isSearchResults
+        let locationIndex = tableView.column(withIdentifier: Column.location.id)
+        let desiredIndex = model.isSearchResults ? 1 : tableView.tableColumns.count - 1
+        if locationIndex >= 0, locationIndex != desiredIndex { tableView.moveColumn(locationIndex, toColumn: desiredIndex) }
+        if model.isSearchResults { expandedURLs = [] }
         let refresh = model.generation != shownGeneration
         shownGeneration = model.generation
         // Shorter paths first so a parent is refreshed before its children.
@@ -307,6 +326,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         tableView.scrollRowToVisible(row)
         guard let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView,
               let field = cell.textField else { return }
+        renameTarget = (field, item)
         field.stringValue = item.name
         field.isEditable = true
         tableView.editColumn(0, row: row, with: nil, select: true)
@@ -320,8 +340,9 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let field = obj.object as? NSTextField else { return }
         field.isEditable = false
-        let row = tableView.row(for: field)
-        guard row >= 0, let item = item(atRow: row) else { return }
+        guard let target = renameTarget, target.field === field else { return }
+        renameTarget = nil
+        let item = target.item
         let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if isReadOnly || item.isArchiveEntry || !item.canAccess || newName.isEmpty || newName == item.name || newName.contains("/") {
             field.stringValue = item.displayName            // revert
@@ -332,7 +353,8 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         guard commandSelector == #selector(NSResponder.cancelOperation(_:)),
-              let field = control as? NSTextField, let item = item(atRow: tableView.row(for: field)) else { return false }
+              let field = control as? NSTextField, let target = renameTarget, target.field === field else { return false }
+        let item = target.item
         textView.string = item.name
         field.stringValue = item.name
         view.window?.makeFirstResponder(tableView)
@@ -373,7 +395,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         if item is GroupNode { return true }
-        return (item as? FileNode)?.item.isNavigable ?? false
+        return !model.isSearchResults && ((item as? FileNode)?.item.isNavigable ?? false)
     }
 
     // Group rows: Finder-style headers — not selectable, no disclosure, always open.
@@ -499,6 +521,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             ?? NSTableCellView.make(identifier: id, withIcon: column == .name,
                                     alignment: column == .size ? .right : .natural, iconSize: iconSize)
         cell.alphaValue = cutURLs.contains(item.url) ? 0.45 : 1
+        cell.toolTip = model.isSearchResults ? item.url.path : nil
 
         switch column {
         case .name:
@@ -522,6 +545,10 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             cell.textField?.textColor = .secondaryLabelColor
         case .size:
             cell.textField?.stringValue = item.displaySize
+            cell.textField?.textColor = .secondaryLabelColor
+        case .location:
+            cell.textField?.lineBreakMode = .byTruncatingMiddle
+            cell.textField?.stringValue = item.url.deletingLastPathComponent().path
             cell.textField?.textColor = .secondaryLabelColor
         case .kind:
             cell.textField?.stringValue = item.kindDescription

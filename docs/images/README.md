@@ -15,3 +15,5 @@ The product page reuses this collection. Its additional `tabs.jpg` shows three i
 The current set is captured in macOS dark appearance. Interface labels are English. Temporary test paths may appear in the address bar; they are demonstration locations.
 
 Computer-use captures are JPEG files; native menu-window captures are PNG files. Keep the extension consistent with the actual image format. Capture expanded menus by window ID (`screencapture -x -o -l<window-id>`) when authorized; full-screen regions can include other apps behind a background-controlled window.
+
+`features/search.jpg` shows independent recursive queries in list and icon panes with original locations. Its conditions, restart checks and native Spotlight limits are recorded in [search verification](../research/search-verification.md).

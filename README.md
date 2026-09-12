@@ -47,9 +47,17 @@ Right-click a Favorite to open it in a new tab or the other pane. If the current
 
 Press `⌘F` and type part of a filename or a pattern such as `*.png`. Results update immediately in the active pane, while the other pane stays as it was. Escape clears the filter; its shortcut can be changed in Settings.
 
-**This is current-folder name filtering.** Recursive search, file-content search and advanced search conditions are not implemented.
+**This is current-folder name filtering.** Use the separate Search command for recursive results.
 
 ![The active pane filtered by filename while the destination remains visible](docs/images/features/name-filter.jpg)
+
+### Search across folders, then save the search
+
+Press `⇧⌘F` or click Search. Search this folder and its subfolders, or your Home folder, combining filename, content, type and modification-date conditions. Save a named search and open it again after restarting. Each pane owns its query, cancellation and results.
+
+Filename search works in ordinary unindexed folders. Content search uses Spotlight and depends on its index and supported document formats; the interface explains that limit. Results show their original location and support Quick Look, file commands and Reveal in Enclosing Folder. ZIP contents are excluded.
+
+![Recursive search results with original locations](docs/images/features/search.jpg)
 
 ### A view that fits your files
 
@@ -124,7 +132,7 @@ These are current gaps, not promises of complete Finder parity:
 | Area | Not available in Tursora today |
 |---|---|
 | Views | Column view, Gallery view, a fixed preview sidebar, free icon placement |
-| Search | Recursive and content search, advanced conditions, Smart Folders |
+| Search | Finder Smart Folder interoperability, Tags / rating conditions, ZIP contents |
 | Organization | Batch rename, New Folder with Selection, Make Alias / Show Original, Show Package Contents |
 | Trash | Browsing Trash, Put Back, emptying Trash; moving files to Trash and undoing that move are supported |
 | Customization | Per-folder persistent view options and toolbar customization |

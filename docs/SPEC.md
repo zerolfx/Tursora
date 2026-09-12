@@ -20,7 +20,7 @@
 | **标签页** | Finder 有，但没有"恢复关闭的标签""每标签独立历史"这些 |
 | **快捷导航** | 侧边栏 + 后退/前进/上级 + 历史下拉 + 前往文件夹 |
 
-明确不在 v1：紧凑视图、批量重命名、Spotlight 搜索、Finder 标签读写、版本控制集成、服务菜单、终端面板、远程协议。
+明确不在 v1：紧凑视图、批量重命名、Finder 标签读写、版本控制集成、服务菜单、终端面板、远程协议。
 
 ## 1. 窗口、侧边栏与快捷导航（对标 Dolphin 的 Places + Finder 的侧栏）
 
@@ -192,7 +192,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 - Tursora → Settings…（`⌘,`）打开应用级设置窗口，General / Keyboard / Experimental 三区；勾选立即生效并持久化。
 - 名称过滤快捷键默认 `⌘F`。点击录制按钮后输入组合；要求 Command 或 Control，可加 Option / Shift，支持字母、数字和允许的标点。拒绝已有应用命令及常见系统组合；冲突内联提示，原绑定不变。Escape 取消录制，Reset 恢复 `⌘F`。
-- 过滤仍是当前目录名称过滤，没有递归搜索或全文索引。扩展名显示只影响界面标签，不改文件名或 Finder 的逐文件 Hide extension 标记。
+- 过滤仍是当前目录名称过滤；独立递归搜索见 §19。扩展名显示只影响界面标签，不改文件名或 Finder 的逐文件 Hide extension 标记。
 - Terminal panel 与 Browse ZIP archives 两个实验开关默认均关闭；启用终端开关只让入口可用，不自行启动 shell。
 - 证据、允许的组合与持久化规则见 [设置对照](research/settings-and-shortcuts.md)。
 
@@ -213,3 +213,17 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 - 状态栏显示简短的 `ZIP · Read-only`；tooltip 解释临时副本、外部编辑不回写与 Save As。没有额外范围栏或 Extract All 按钮；需要解压时返回普通目录选中原 ZIP，按 §14 使用 Extract。
 - 首次打开在后台准备完整的私有解压副本，同一归档的 pane 共用会话。副本保留到 Tursora 退出，避免外部应用丢失正在使用的文件；修改不写回 ZIP，需要保留编辑结果时使用 Save As。
 - 关闭实验开关后，已有归档页与历史仍可安全只读浏览，普通目录中新打开 ZIP 恢复默认解压。归档内嵌套 ZIP 的普通 Open 使用系统默认应用，不自动进入另一归档会话。仅支持普通 ZIP；密码、其他格式、归档写回与原 ZIP 外部改变后的自动重载不属于本次实现。实现与验证边界见 [归档浏览研究](research/archive-browsing.md)。
+
+## 19. 搜索（Dolphin 语义，macOS 后端）
+
+- 工具栏 Search / View → Search… / `⇧⌘F` 打开当前 pane 的搜索表单；原 Filter 与可自定义 `⌘F` 保留。新快捷键列入冲突检查。
+- 范围是 Current Folder（含子目录）或 Home（含子目录）；显示具体根路径。名称、正文、类型、修改时间条件按 AND 组合，名称为不区分大小写的文字包含。日期支持预设与自定义起止界限；起点包含、终点排除，保存时预设转为固定日期，重开显示实际界限。Clear 清空条件、结果和请求，保留范围，不启动广泛遍历；再次 Search 才执行，清空后的 Reload 不会恢复旧请求。
+- 没有正文条件时在后台递归枚举，未索引目录仍可按名称、类型、日期查询；不递归包、ZIP、符号链接。正文通过 Spotlight，受系统索引、权限与格式支持限制；状态文字解释限制，零结果不宣称已完整扫描正文。
+- 查询按 pane 保存，Search 可替换查询并清空旧名称过滤；Reload / 文件操作刷新保留结果过滤。Cancel 保留已有部分结果并标记取消；旧查询迟到结果不覆盖新查询。切标签 / 激活另一 pane 不串状态；导航退出搜索，Back 在搜索中返回原目录，Close Search 返回原目录。
+- 搜索结果不作为目录或 ZIP 逻辑地址。列表 Location 列、图标位置标签和完整路径 tooltip 展示来源；切模式、过滤、分组、选择与后续文件命令按真实 URL 工作。Open / Quick Look / Copy / Get Info / Rename / Duplicate / Trash / 跨 pane 传输可用；Reveal in Enclosing Folder 在本 pane 打开父目录并选中精确项。无默认写入目标，所以结果背景不支持 Paste / New Folder / Compress / Extract；拖到明确的目录结果仍使用该目录。
+- Save 输入名称后保存当前条件与范围；Saved Searches 菜单、Open、Delete 可发现。删除仅删除保存条件；重启后仍可再次执行。应用保存格式不与 Finder Smart Folder 互通。
+- ZIP 内搜索禁用，不遍历临时解压副本；普通目录可搜到 ZIP 文件本身。Reload 重新执行当前请求。权限、启动失败、取消和空结果均用非模态状态说明。实现依据和边界见 [搜索研究](research/search.md)。
+
+- 单次最多展示 50,000 项；递归按匹配结果截断，Spotlight 最多检查前 50,000 个索引候选；达到上限明确提示收窄条件。
+
+搜索批次改变行序时，已打开的右键菜单仍绑定打开时的真实文件。批量文件操作同时选中普通目录及其后代时，仅处理最上层目录一次；Trash 的撤销可恢复整棵目录。
