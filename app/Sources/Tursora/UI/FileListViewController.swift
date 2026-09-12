@@ -15,6 +15,20 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     let tableView = FileOutlineView()
     let scrollView = NSScrollView()
 
+    var isReadOnly = false {
+        didSet {
+            tableView.allowsRenaming = !isReadOnly
+            updateDragOperations()
+        }
+    }
+    private var draggingReadOnlyItems = false
+
+    private func updateDragOperations() {
+        let copyOnly = isReadOnly || draggingReadOnlyItems
+        tableView.setDraggingSourceOperationMask(copyOnly ? .copy : [.copy, .move], forLocal: true)
+        tableView.setDraggingSourceOperationMask(copyOnly ? .copy : [.copy, .move, .link], forLocal: false)
+    }
+
     /// Called once per item the user asked to open (double-click, ⌘↓).
     var onOpen: ((FileItem) -> Void)?
     /// ⌘-double-click or middle-click on a folder.
@@ -92,7 +106,8 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             let col = NSTableColumn(identifier: column.id)
             col.title = column.title
             col.width = column.width
-            col.minWidth = 60
+            // Keep filenames useful in a split pane; metadata can scroll.
+            col.minWidth = column == .name ? 180 : 60
             col.resizingMask = [.userResizingMask, .autoresizingMask]
             col.sortDescriptorPrototype = NSSortDescriptor(key: column.rawValue, ascending: true)
             tableView.addTableColumn(col)
@@ -114,8 +129,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         tableView.doubleAction = #selector(doubleClicked(_:))
         tableView.sortDescriptors = [NSSortDescriptor(key: Column.name.rawValue, ascending: true)]
         tableView.registerForDraggedTypes([.fileURL])
-        tableView.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
-        tableView.setDraggingSourceOperationMask([.copy, .move, .link], forLocal: false)
+        updateDragOperations()
 
         tableView.onMiddleClickRow = { [weak self] row in
             guard let self, let item = self.item(atRow: row) else { return }
@@ -288,7 +302,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     /// selected — Finder's behaviour. The field is made editable only for the
     /// duration of the edit, so an ordinary click never starts one by itself.
     func beginRename(row: Int) {
-        guard let item = item(atRow: row) else { return }
+        guard !isReadOnly, let item = item(atRow: row), item.canAccess, !item.isArchiveEntry else { return }
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
         guard let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView,
@@ -309,7 +323,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         let row = tableView.row(for: field)
         guard row >= 0, let item = item(atRow: row) else { return }
         let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if newName.isEmpty || newName == item.name || newName.contains("/") {
+        if isReadOnly || item.isArchiveEntry || !item.canAccess || newName.isEmpty || newName == item.name || newName.contains("/") {
             field.stringValue = item.displayName            // revert
             return
         }
@@ -395,19 +409,25 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         model.setSort(key: column.sortKey, ascending: d.ascending)
     }
 
-    // Drag source: real file URLs, so Finder and other apps accept the drop.
+    // Archive entries export validated snapshot URLs with a copy-only mask.
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        (item as? FileNode)?.url as NSURL?
+        guard let entry = (item as? FileNode)?.item, entry.canAccess,
+              let url = entry.readableContentURL else { return nil }
+        return url as NSURL
     }
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession,
                      willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]) {
+        draggingReadOnlyItems = isReadOnly || draggedItems.contains { ($0 as? FileNode)?.item.isArchiveEntry == true }
+        updateDragOperations()
         tableView.noteDragSessionBegan()
     }
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession,
                      endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         tableView.noteDragSessionEnded()
+        draggingReadOnlyItems = false
+        updateDragOperations()
     }
 
     private func droppedFileURLs(_ info: NSDraggingInfo) -> [URL] {
@@ -418,6 +438,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     /// Where a drop would land: onto a folder row, between an expanded
     /// folder's children (= into that folder), or into the listed directory.
     func dropDestination(item: Any?, childIndex: Int) -> (url: URL, node: FileNode?)? {
+        guard !isReadOnly else { return nil }
         if let node = item as? FileNode {
             return node.item.isNavigable ? (node.url, node) : nil
         }
@@ -483,7 +504,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         case .name:
             cell.imageView?.image = item.icon(size: iconSize)
             cell.objectValue = item.url.path
-            if showPreviews, iconSize >= ZoomLevel.previewThreshold, ThumbnailProvider.canPreview(item) {
+            if item.canAccess, showPreviews, iconSize >= ZoomLevel.previewThreshold, ThumbnailProvider.canPreview(item) {
                 let scale = outlineView.window?.backingScaleFactor ?? 2
                 if let cached = ThumbnailProvider.shared.thumbnail(for: item, size: iconSize, scale: scale, completion: { [weak cell] image in
                     guard let image, let cell, (cell.objectValue as? String) == item.url.path else { return }
@@ -525,6 +546,9 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
 /// double-click interval — unless a double-click, drag or selection change
 /// arrives first.
 final class FileOutlineView: NSOutlineView {
+    var allowsRenaming = true {
+        didSet { if !allowsRenaming { cancelPendingRename() } }
+    }
     var onMiddleClickRow: ((Int) -> Void)?
     var onReturn: (() -> Void)?
     var onSpace: (() -> Void)?
@@ -602,13 +626,13 @@ final class FileOutlineView: NSOutlineView {
     /// pointer did not move past the drag threshold between down and up.
     func renameAllowedAfterMouseUp(candidate: Bool, pointerTravelled: CGFloat) -> Bool {
         defer { dragSessionBegan = false }
-        return candidate && !dragSessionBegan && pointerTravelled <= 3
+        return allowsRenaming && candidate && !dragSessionBegan && pointerTravelled <= 3
     }
 
     /// Finder's rule: a plain single click on the *name* of the one row that
     /// is already the sole selection.
     func renameCandidate(row: Int, point: NSPoint, event: NSEvent) -> Bool {
-        guard row >= 0, event.clickCount == 1,
+        guard allowsRenaming, row >= 0, event.clickCount == 1,
               event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
               selectedRowIndexes == IndexSet(integer: row),
               column(at: point) == 0,
@@ -618,8 +642,9 @@ final class FileOutlineView: NSOutlineView {
     }
 
     func scheduleRename(row: Int, after delay: TimeInterval = NSEvent.doubleClickInterval) {
+        guard allowsRenaming else { return }
         let work = DispatchWorkItem { [weak self] in
-            guard let self, !self.dragSessionBegan,
+            guard let self, self.allowsRenaming, !self.dragSessionBegan,
                   self.selectedRowIndexes == IndexSet(integer: row) else { return }
             self.pendingRename = nil
             self.onRenameRequest?(row)

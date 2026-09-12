@@ -74,7 +74,7 @@ Minimize ⌘M · Zoom · Show Previous Tab ⇧⌘[ · Show Next Tab ⇧⌘] (dis
 
 ## Context menus (`BrowserViewController.buildContextMenu`)
 
-Targets: the selection if the clicked row is in it, otherwise the clicked row alone (Finder).
+Targets: the selection if the clicked row is in it, otherwise the clicked row alone (Finder). Sidebar commands retain the right-clicked place even after menu tracking ends; Open in New Tab / Other Pane does not first select or navigate the source pane. The table below describes ordinary directories. Read-only ZIP pages offer Open / Open With, folder navigation, Quick Look, Copy / Copy to Other Pane, Copy Path, Reload, hidden-file visibility and sorting; writable file actions, editable Info and Favorites changes are omitted.
 
 | Where | Items |
 |---|---|
@@ -82,14 +82,14 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | A file | Open · Open With ▸ (default app first, "(default)", separator, up to 20 apps with icons; "No Applications" when none) · [split: Copy/Move to Other Pane] · — · Quick Look · Get Info · Rename · Duplicate · Move to Trash · — · Cut · Copy · — · Reveal in Finder · Copy Path |
 | A folder | Open · Open in New Tab (or "Open in N New Tabs") · Open in New Window · Open in Other/New Pane · then the file block · — · Add/Remove from Favourites |
 | Several items | As above minus Open With and Rename; "Copy Paths" |
-| Sidebar (`SidebarViewController`) | Open · Open in New Tab · Reveal in Finder · [removable: Remove from Favourites · Reset Favourites] · [volume: Eject "name"]; empty when no row was clicked |
+| Sidebar (`SidebarViewController`) | Open · Open in New Tab · Open in Other Pane · Reveal in Finder · [removable: Remove from Favourites · Reset Favourites] · [volume: Eject "name"]; empty when no row was clicked |
 | Tab | No context menu; middle-click closes |
 
 ## Keyboard in the file views (`FileOutlineView` / `FileCollectionView`)
 
 | Key | Effect |
 |---|---|
-| Return / Enter | Rename the one selected item (Finder; Dolphin uses F2). See [DECISIONS.md](DECISIONS.md) D3 |
+| Return / Enter | Rename the one selected item; disabled inside read-only ZIPs (Finder; Dolphin uses F2). See [DECISIONS.md](DECISIONS.md) D3 |
 | Space | Toggle Quick Look |
 | ⌘↓ / ⌘↑ | Open the selection / enclosing folder |
 | Arrows | Selection; inside the Quick Look panel ←→↑↓ are forwarded to the view so previews browse |
@@ -120,7 +120,7 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | Middle-click a tab | Close |
 | Middle-click or ⌘-double-click a folder | Open in a background tab |
 | Drag a tab | > 4 px reorders; dragged below the strip it becomes a split drop: left 35 % / right 65 % of the content area splits the current tab with that tab's pane, the middle band cancels |
-| ⇧⌘D | Split (second pane at the same folder) or close the **active** pane |
+| Toolbar Split View / ⇧⌘D | Split (second pane at the same folder) or close the **active** pane; toolbar state follows the current tab and its tooltip identifies the pane that will close |
 | ⌥⇥ | Focus the other pane |
 | Click anywhere in a pane (incl. its status bar) | Activates it; a 3 pt accent bar marks the active pane. Panes stay ≥ 160 pt and never collapse |
 
@@ -146,7 +146,7 @@ Closing a tab prefers the tab to the right (Safari). The strip hides itself with
 - Otherwise **same volume → move, different volume → copy** (Finder's rule).
 - Dropping items into the folder they already live in, or onto themselves → no-op.
 - Targets in the list: a folder row, the gap between an expanded folder's children (= that folder), or the listed directory. The grid highlights a folder icon or the whole grid — never an insertion line.
-- Source masks: local `[.copy, .move]`, external `[.copy, .move, .link]`.
+- Source masks: ordinary files use local `[.copy, .move]` and external `[.copy, .move, .link]`. Read-only ZIP entries offer `.copy` only, including on the same volume. Archive panes and their tab targets reject incoming file drops.
 - Sidebar: files onto a place follow the same rule; folders dropped **between** favourites are added there; dragging a favourite reorders it; volumes can't be dragged.
 - Tab strip: hovering a tab with a drag activates it after **0.8 s** (`TabBarView.autoActivationDelay`, Dolphin); dropping on a tab lands in that tab's active pane; dropping on empty strip space opens each folder as a background tab.
 - Cross-tab and cross-pane drags work; the source pane refreshes through `DirectoryChanges`.
@@ -159,9 +159,11 @@ The configured filter shortcut (⌘F by default) focuses the toolbar field, expa
 
 Settings (⌘,) offers extension-label display, the Filter by Name shortcut recorder, and two experiments that default off. Shortcut recording requires Command or Control, optionally Option/Shift; it rejects existing command conflicts. Escape cancels recording and Reset restores ⌘F. The menu binding updates immediately.
 
-With **Terminal panel** enabled, F4 toggles a window-wide panel below the file panes. Opening starts an interactive shell in the active folder. Navigation changes only the destination for **Restart in Current Folder**; it never types `cd` into the running session. Restart ends the shell/current command and asks for confirmation when a foreground command is detected. F4 to hide, the panel close button, disabling the experiment, closing its window, or quitting Tursora ends the session.
+With **Terminal panel** enabled, F4 toggles a window-wide panel below the file panes. Opening starts an interactive shell in the active folder; inside a ZIP, it uses the original ZIP's containing folder rather than a temporary snapshot. Navigation changes only the destination for **Restart in Current Folder**; it never types `cd` into the running session. Restart ends the shell/current command and asks for confirmation when a foreground command is detected. F4 to hide, the panel close button, disabling the experiment, closing its window, or quitting Tursora ends the session.
 
-With **Browse ZIP archives** enabled, normal Open/double-click of a ZIP opens a separate read-only archive window. Return opens the selected entry, ⌘↑ goes up, and ⌘[ goes back; breadcrumb segments also navigate. Files open as temporary copies retained until Tursora quits. External edits do not update the ZIP; use Save As to retain them. With the experiment off, Open extracts beside the ZIP. Explicit Extract always remains available.
+With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in the current pane. ⌘↓ / double-click opens the selected entry; ⌘↑ goes up, returning from the ZIP root to its containing folder and selecting the ZIP. ⌘[ / ⌘] navigate history. ⌘L, breadcrumbs, tabs, splits, list / icon view, grouping, sorting and current-directory name filtering use the ordinary pane controls, with logical paths under the source ZIP. Return does not rename archive entries.
+
+⌘C and copy-only drag-out can take archive files into a regular folder; ⇧⌘C requires a writable opposite pane. Space / ⌘Y previews readable copies, and Share uses the same temporary content. Archive pages disable mutation commands, incoming drops, and editable Info / Inspector. The status bar shows `ZIP · Read-only`, with temporary-copy and Save As details in its tooltip. External edits do not update the ZIP; copies stay until Tursora quits. Turning the experiment off leaves existing archive pages and history read-only, while newly opened ZIPs in regular folders extract beside the original. Explicit Extract remains available for a ZIP selected in its containing folder; there is no separate Extract All button.
 
 ## Get Info (`InfoWindowController`)
 
@@ -170,8 +172,9 @@ With **Browse ZIP archives** enabled, normal Open/double-click of a ZIP opens a 
 ## Toolbar actions
 
 - More (ellipsis): New Folder, Open, Get Info, Quick Look, Rename, Duplicate, Copy, Paste, Move to Trash. Commands target the active pane even while the sidebar has focus.
-- Share: the system sharing picker for selected files, disabled without a selection.
+- Share: the system sharing picker for selected files, using validated temporary copies inside a ZIP; disabled without a readable selection.
 - Toggle Sidebar: fixed leading button; Show/Hide Sidebar (`⌃⌘S`) performs the same action.
+- Split View: toggle alongside the view controls; selected when the current tab has two panes. Its tooltip and overflow menu read Close Left/Right Pane while split, following the active pane; it uses the same action as ⇧⌘D. Sidebar Open in Other Pane creates a split when needed, otherwise navigates and activates the opposite pane.
 - Filter by Name: current-folder substring/wildcard filtering, without an additional scope row.
 - Compress: File / More / selection context menu. Name includes the single filename or selection count.
-- Extract: File / More / ZIP context menu; normal ZIP Open also extracts while experimental browsing is off. Compress and Extract support Undo / Redo.
+- Extract: File / More / ZIP context menu in ordinary directories; normal ZIP Open also extracts while experimental browsing is off. Compress and Extract support Undo / Redo.

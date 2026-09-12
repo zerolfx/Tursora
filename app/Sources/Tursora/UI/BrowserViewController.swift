@@ -49,6 +49,23 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var onFocus: (() -> Void)?
 
     private(set) var currentURL: URL?
+    private var navigationGeneration = 0
+    private(set) var isPreparingArchive = false
+    var archiveFileOpener: (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    var archiveSourceURL: URL? { currentURL.flatMap { ArchiveWorkspace.shared.session(for: $0)?.archiveURL } }
+    var isBrowsingArchive: Bool { archiveSourceURL != nil }
+    var canModifyCurrentLocation: Bool { currentURL != nil && !isBrowsingArchive && !isPreparingArchive }
+    var archiveStatus: String? { isBrowsingArchive ? "ZIP · Read-only" : nil }
+    var readableSelectionURLs: [URL] { readableURLs(fileView.selectedItems) }
+    var canPreviewSelection: Bool { !readableSelectionURLs.isEmpty && !isPreparingArchive }
+    var canOpenSelection: Bool { canPreviewSelection }
+    private func readableURLs(_ items: [FileItem]) -> [URL] {
+        items.compactMap(\.readableContentURL)
+    }
+    private func isArchiveContent(_ url: URL) -> Bool {
+        guard let session = ArchiveWorkspace.shared.session(for: url) else { return false }
+        return url.resolvingSymlinksInPath().standardizedFileURL != session.archiveURL.resolvingSymlinksInPath().standardizedFileURL
+    }
     private let activeIndicator = NSView()
     private var indicatorHeight: NSLayoutConstraint?
     private var lastError: Error?
@@ -60,8 +77,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private var refreshDebounce: DispatchWorkItem?
 
     init(provider: FileProvider, initialURL: URL) {
-        self.provider = provider
-        self.model = DirectoryModel(provider: provider)
+        let routedProvider = ArchiveFileProvider(base: provider)
+        self.provider = routedProvider
+        self.model = DirectoryModel(provider: routedProvider)
         self.fileList = FileListViewController(model: model)
         self.fileView = fileList
         model.groupKey = ViewPreferences.groupKey
@@ -87,7 +105,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             self.errorLabel.stringValue = "Cannot open this folder.\n\(error.localizedDescription)"
         }
         // Deferred so the owner can wire onLocationChanged first.
-        DispatchQueue.main.async { [weak self] in self?.navigate(to: initialURL) }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.navigationGeneration == 0 else { return }
+            self.navigate(to: initialURL)
+        }
     }
     required init?(coder: NSCoder) { fatalError() }
     deinit { NotificationCenter.default.removeObserver(self) }
@@ -154,6 +175,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     /// Hook a file view (list or grid) up to the browser.
     private func wire(_ v: FileViewing) {
+        v.isReadOnly = isBrowsingArchive || isPreparingArchive
         v.onOpen = { [weak self] item in self?.open(item) }
         v.onOpenInNewTab = { [weak self] item in
             guard item.isNavigable else { return }
@@ -250,6 +272,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         zoomIndex = ViewPreferences.zoomIndex(for: mode)
         ViewPreferences.viewMode = mode
         fileView = mode == .icons ? iconGrid : fileList
+        fileView.isReadOnly = isBrowsingArchive || isPreparingArchive
         if isViewLoaded { mount(fileView) }
         fileView.setIconSize(ZoomLevel.sizes(for: mode)[zoomIndex], showPreviews: showsPreviews)
         fileView.reloadData()
@@ -310,6 +333,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     // MARK: - Quick Look (shared by both views)
 
     func toggleQuickLook() {
+        guard canPreviewSelection else { return }
         guard let panel = QLPreviewPanel.shared() else { return }
         if panel.isVisible { panel.orderOut(nil) } else { panel.makeKeyAndOrderFront(nil) }
     }
@@ -318,11 +342,11 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) { panel.dataSource = self; panel.delegate = self }
     override func endPreviewPanelControl(_ panel: QLPreviewPanel!) { panel.dataSource = nil; panel.delegate = nil }
 
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { fileView.selectedItems.count }
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { readableSelectionURLs.count }
 
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        let items = fileView.selectedItems
-        return items.indices.contains(index) ? items[index].url as NSURL : nil
+        let urls = readableSelectionURLs
+        return urls.indices.contains(index) ? urls[index] as NSURL : nil
     }
 
     /// Arrow keys in the panel move the selection, so ↑/↓ browse previews.
@@ -334,7 +358,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: QLPreviewItem!) -> NSRect {
         guard let url = item.previewItemURL else { return .zero }
-        return fileView.frameOnScreen(for: url)
+        return fileView.frameOnScreen(for: ArchiveWorkspace.shared.logicalURL(for: url))
     }
 
     /// nil = not in a split (no indicator); true/false = active/inactive pane.
@@ -352,8 +376,51 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     func navigate(to url: URL) {
         saveViewState()
-        history.push(url)
-        load(url)
+        let workspace = ArchiveWorkspace.shared
+        let logical = workspace.logicalURL(for: url)
+        navigationGeneration += 1
+        let generation = navigationGeneration
+        pendingSelection = nil
+        isPreparingArchive = false
+        fileView.isReadOnly = isBrowsingArchive
+        if workspace.session(for: logical) != nil {
+            enterPreparedArchive(logical)
+        } else if AppPreferences.experimentalZIPBrowsingEnabled, let archive = workspace.archiveURL(containing: logical) {
+            isPreparingArchive = true
+            fileView.isReadOnly = true
+            statusBar.beginBusy()
+            workspace.prepare(archive: archive) { [weak self] result in
+                guard let self else { return }
+                self.statusBar.endBusy()
+                guard self.navigationGeneration == generation else { return }
+                self.isPreparingArchive = false
+                self.fileView.isReadOnly = self.isBrowsingArchive
+                switch result {
+                case .success: self.enterPreparedArchive(logical)
+                case .failure(let error): self.showArchiveError(error)
+                }
+            }
+        } else {
+            history.push(logical)
+            load(logical)
+        }
+    }
+
+    private func enterPreparedArchive(_ requested: URL) {
+        let logical = ArchiveWorkspace.shared.logicalURL(for: requested)
+        do {
+            let physical = try ArchiveWorkspace.shared.readableURL(for: logical)
+            guard FileItem(url: physical)?.isNavigable == true else { throw ArchiveBrowsingSession.SessionError.notDirectory }
+            history.push(logical)
+            load(logical)
+        } catch { showArchiveError(error) }
+    }
+
+    private func showArchiveError(_ error: Error) {
+        lastError = error
+        errorLabel.stringValue = error.localizedDescription
+        errorLabel.isHidden = false
+        errorLabel.toolTip = error.localizedDescription
     }
 
     func goBack() {
@@ -417,7 +484,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// Creates "untitled folder" (or "untitled folder 2", …) and selects it.
     @discardableResult
     func newFolder() -> URL? {
-        guard let currentURL else { return nil }
+        guard canModifyCurrentLocation, let currentURL else { return nil }
         var name = "untitled folder"
         var n = 2
         while FileManager.default.fileExists(atPath: currentURL.appendingPathComponent(name).path) {
@@ -454,7 +521,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func updateStatus() {
         statusBar.update(itemCount: model.items.count,
                          totalCount: model.nameFilter.isEmpty ? nil : model.unfilteredCount,
-                         selectedCount: fileView.selectedItems.count, directory: currentURL)
+                         selectedCount: fileView.selectedItems.count, directory: isBrowsingArchive ? nil : currentURL,
+                         archiveStatus: archiveStatus)
         host?.selectionDidChange(in: self)
     }
 
@@ -468,6 +536,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc func cut(_ sender: Any?) { putOnPasteboard(selectedURLs, cut: true) }
 
     private func putOnPasteboard(_ urls: [URL], cut: Bool) {
+        guard !urls.isEmpty, !isPreparingArchive else { return }
+        if cut && (!canModifyCurrentLocation || urls.contains(where: isArchiveContent)) { return }
+        let urls = urls.compactMap { isArchiveContent($0) ? try? ArchiveWorkspace.shared.readableURL(for: $0) : $0 }
         guard !urls.isEmpty else { return }
         let pb = NSPasteboard.general
         pb.clearContents()
@@ -478,7 +549,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     @objc func paste(_ sender: Any?) {
-        guard let dest = currentURL else { return }
+        guard canModifyCurrentLocation, let dest = currentURL else { return }
         let pb = NSPasteboard.general
         guard let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
               !urls.isEmpty else { return }
@@ -489,6 +560,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     @objc func duplicate(_ sender: Any?) {
+        guard canModifyCurrentLocation else { return }
         let urls = selectedURLs
         guard !urls.isEmpty else { return }
         let (created, failures) = FileOperations.duplicate(urls)
@@ -501,7 +573,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc func moveToTrash(_ sender: Any?) { trash(selectedURLs) }
 
     func trash(_ urls: [URL]) {
-        guard !urls.isEmpty else { return }
+        guard canModifyCurrentLocation, !urls.isEmpty,
+              !urls.contains(where: isArchiveContent) else { return }
         // Dolphin selects the next item after deleting; Finder selects nothing. Dolphin wins here.
         let nextName = fileView.itemAfterSelection()?.name
         do {
@@ -517,6 +590,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     @objc func deletePermanently(_ sender: Any?) {
+        guard canModifyCurrentLocation else { return }
         let urls = selectedURLs
         guard !urls.isEmpty else { return }
         let alert = NSAlert()
@@ -534,6 +608,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     @objc func renameSelection(_ sender: Any?) {
+        guard canModifyCurrentLocation else { return }
         guard let item = fileView.selectedItems.first, fileView.selectedItems.count == 1 else { return }
         fileView.beginRename(item: item)
     }
@@ -543,7 +618,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
     var compressionTitle: String { Self.compressionTitle(for: selectedURLs) }
     var canExtractSelection: Bool {
-        !fileView.selectedItems.isEmpty && fileView.selectedItems.allSatisfy { !$0.isDirectory && FileOperations.canExtractArchive($0.url) }
+        canModifyCurrentLocation && !fileView.selectedItems.isEmpty && fileView.selectedItems.allSatisfy { !$0.isDirectory && FileOperations.canExtractArchive($0.url) }
     }
 
     @objc func compressSelection(_ sender: Any?) {
@@ -556,7 +631,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     func compress(_ urls: [URL], completion: (() -> Void)? = nil) {
-        guard !urls.isEmpty, let destination = currentURL else { completion?(); return }
+        guard canModifyCurrentLocation, !urls.isEmpty, let destination = currentURL else { completion?(); return }
         statusBar.beginBusy()
         FileOperations.compress(urls: urls, to: destination) { [weak self] result in
             guard let self else { completion?(); return }
@@ -567,7 +642,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     func extract(_ archives: [URL], completion: (() -> Void)? = nil) {
-        guard !archives.isEmpty else { completion?(); return }
+        guard canModifyCurrentLocation, !archives.isEmpty else { completion?(); return }
         let startingURL = currentURL
         statusBar.beginBusy()
         var created: [URL] = []
@@ -612,6 +687,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc func quickLook(_ sender: Any?) { toggleQuickLook() }
 
     func rename(_ item: FileItem, to name: String) {
+        guard canModifyCurrentLocation, !item.isArchiveEntry else { return }
         do {
             let newURL = try FileOperations.rename(item.url, to: name)
             registerUndoRename(from: newURL, to: item.name, actionName: "Rename")
@@ -625,11 +701,16 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     /// Drop or sidebar-drop: op is .copy or .move.
     func dropFiles(_ urls: [URL], to destination: URL, op: NSDragOperation) {
+        guard !ArchiveWorkspace.shared.containsArchiveLocation(destination) else { return }
         transfer(urls, to: destination, kind: op == .copy ? .copy : .move)
     }
 
     private func transfer(_ urls: [URL], to destination: URL, kind: FileOperations.Kind,
                           then: (() -> Void)? = nil) {
+        guard !ArchiveWorkspace.shared.containsArchiveLocation(destination), !urls.isEmpty else { return }
+        if kind == .move && urls.contains(where: isArchiveContent) { return }
+        let urls = urls.compactMap { isArchiveContent($0) ? try? ArchiveWorkspace.shared.readableURL(for: $0) : $0 }
+        guard !urls.isEmpty else { return }
         statusBar.beginBusy()
         let window = view.window
         FileOperations.transfer(urls, to: destination, kind: kind,
@@ -728,13 +809,13 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let hasSelection = !fileView.selectedItems.isEmpty
         switch item.action {
-        case #selector(copy(_:)), #selector(cut(_:)), #selector(duplicate(_:)), #selector(moveToTrash(_:)),
-             #selector(deletePermanently(_:)), #selector(quickLook(_:)):
-            return hasSelection
+        case #selector(copy(_:)), #selector(quickLook(_:)): return canPreviewSelection
+        case #selector(cut(_:)), #selector(duplicate(_:)), #selector(moveToTrash(_:)), #selector(deletePermanently(_:)):
+            return canModifyCurrentLocation && hasSelection
         case #selector(renameSelection(_:)):
-            return fileView.selectedItems.count == 1
+            return canModifyCurrentLocation && fileView.selectedItems.count == 1
         case #selector(compressSelection(_:)):
-            item.title = compressionTitle; return hasSelection
+            item.title = compressionTitle; return canModifyCurrentLocation && hasSelection
         case #selector(extractSelection(_:)): return canExtractSelection
         case #selector(viewAsIcons(_:)):
             item.state = viewMode == .icons ? .on : .off; return true
@@ -749,10 +830,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             item.state = (item.representedObject as? String) == groupKey.rawValue ? .on : .off; return true
         case #selector(zoomIn(_:)):  return zoomIndex < ZoomLevel.sizes(for: viewMode).count - 1
         case #selector(zoomOut(_:)): return zoomIndex > 0
-        case #selector(copyToOtherPane(_:)), #selector(moveToOtherPane(_:)):
-            return hasSelection && host?.isSplit == true
+        case #selector(copyToOtherPane(_:)): return canPreviewSelection && host?.isSplit == true
+        case #selector(moveToOtherPane(_:)): return canModifyCurrentLocation && hasSelection && host?.isSplit == true
         case #selector(paste(_:)):
-            return currentURL != nil && NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+            return canModifyCurrentLocation && NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
         default:
             return true
         }
@@ -762,6 +843,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     /// Finder's targets: the selection, or the folder itself when nothing is selected.
     var infoTargets: [URL] {
+        guard !isBrowsingArchive else { return [] }
         let selected = selectedURLs
         if !selected.isEmpty { return selected }
         return currentURL.map { [$0] } ?? []
@@ -769,10 +851,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     @objc func getInfo(_ sender: Any?) { InfoWindowController.show(for: infoTargets, relativeTo: view.window) }
     @objc func getSummaryInfo(_ sender: Any?) { InfoWindowController.showSummary(for: infoTargets, relativeTo: view.window) }
-    @objc func showInspector(_ sender: Any?) { InfoWindowController.showInspector(relativeTo: view.window) }
+    @objc func showInspector(_ sender: Any?) {
+        guard !isBrowsingArchive else { return }
+        InfoWindowController.showInspector(relativeTo: view.window)
+    }
     @objc private func ctxCompress(_ sender: Any?) { compress(contextTargets.map(\.url)) }
     @objc private func ctxExtract(_ sender: Any?) { extract(contextTargets.map(\.url)) }
     @objc private func ctxGetInfo(_ s: Any?) {
+        guard !isBrowsingArchive else { return }
         let targets = contextTargets.map(\.url)
         InfoWindowController.show(for: targets.isEmpty ? infoTargets : targets, relativeTo: view.window)
     }
@@ -802,6 +888,31 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             mi.target = self; mi.isEnabled = enabled; mi.state = state
             mi.image = MenuIcons.image(symbol)
             menu.addItem(mi)
+        }
+        if isBrowsingArchive {
+            let readable = !readableURLs(items).isEmpty
+            let folders = items.filter(\.isNavigable)
+            if !items.isEmpty {
+                add("Open", #selector(ctxOpen(_:)), enabled: readable)
+                if let single = items.first, items.count == 1, !single.isNavigable,
+                   let url = single.readableContentURL { menu.addItem(openWithMenuItem(for: url)) }
+                if !folders.isEmpty {
+                    add("Open in New Tab", #selector(ctxOpenInNewTab(_:)))
+                    if folders.count == 1 {
+                        add("Open in New Window", #selector(ctxOpenInNewWindow(_:)))
+                        add(host?.isSplit == true ? "Open in Other Pane" : "Open in New Pane", #selector(ctxOpenInOtherPane(_:)))
+                    }
+                }
+                add("Quick Look", #selector(ctxQuickLook(_:)), enabled: readable, symbol: "eye")
+                add("Copy", #selector(ctxCopy(_:)), enabled: readable, symbol: "doc.on.doc")
+                if host?.isSplit == true { add("Copy to Other Pane", #selector(ctxCopyToOtherPane(_:)), enabled: readable) }
+                add(items.count == 1 ? "Copy Path" : "Copy Paths", #selector(ctxCopyPath(_:)))
+                menu.addItem(.separator())
+            }
+            add("Reload", #selector(ctxReload(_:)), symbol: "arrow.clockwise")
+            add("Show Hidden Files", #selector(ctxToggleHidden(_:)), state: showsHiddenFiles ? .on : .off)
+            menu.addItem(sortMenuItem())
+            return menu
         }
         if items.isEmpty {
             add("New Folder", #selector(ctxNewFolder(_:)), symbol: "folder.badge.plus")
@@ -910,21 +1021,22 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     @objc private func ctxOpen(_ s: Any?) { contextTargets.forEach(open) }
-    @objc private func ctxQuickLook(_ s: Any?) { selectContextTargets(); toggleQuickLook() }
+    @objc private func ctxQuickLook(_ s: Any?) { selectContextTargets(contextTargets); toggleQuickLook() }
     @objc private func ctxRename(_ s: Any?) {
+        guard canModifyCurrentLocation else { return }
         if let item = contextTargets.first { fileView.beginRename(item: item) }
     }
-    @objc private func ctxDuplicate(_ s: Any?) { selectContextTargets(); duplicate(nil) }
+    @objc private func ctxDuplicate(_ s: Any?) { selectContextTargets(contextTargets); duplicate(nil) }
     @objc private func ctxTrash(_ s: Any?) { trash(contextTargets.map(\.url)) }
     @objc private func ctxCut(_ s: Any?) { putOnPasteboard(contextTargets.map(\.url), cut: true) }
     @objc private func ctxCopy(_ s: Any?) { putOnPasteboard(contextTargets.map(\.url), cut: false) }
     /// Context actions that reuse selection-based commands first make the targets the selection.
-    private func selectContextTargets() {
-        fileView.select(names: contextTargets.map(\.name))
+    func selectContextTargets(_ items: [FileItem]) {
+        fileView.select(urls: items.map(\.url))
     }
     @objc private func ctxOpenWith(_ s: NSMenuItem) {
         guard let app = s.representedObject as? URL else { return }
-        NSWorkspace.shared.open(contextTargets.map(\.url), withApplicationAt: app,
+        NSWorkspace.shared.open(readableURLs(contextTargets), withApplicationAt: app,
                                 configuration: NSWorkspace.OpenConfiguration())
     }
     @objc private func ctxOpenInNewTab(_ s: Any?) {
@@ -933,14 +1045,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc private func ctxOpenInOtherPane(_ s: Any?) {
         if let f = contextTargets.first(where: \.isNavigable) { host?.openInOtherPane(f.url) }
     }
-    @objc private func ctxCopyToOtherPane(_ s: Any?) { host?.transferToOtherPane(contextTargets.map(\.url), move: false) }
-    @objc private func ctxMoveToOtherPane(_ s: Any?) { host?.transferToOtherPane(contextTargets.map(\.url), move: true) }
-    @objc func copyToOtherPane(_ s: Any?) { host?.transferToOtherPane(selectedURLs, move: false) }
-    @objc func moveToOtherPane(_ s: Any?) { host?.transferToOtherPane(selectedURLs, move: true) }
+    @objc private func ctxCopyToOtherPane(_ s: Any?) { host?.transferToOtherPane(readableURLs(contextTargets), move: false) }
+    @objc private func ctxMoveToOtherPane(_ s: Any?) { if canModifyCurrentLocation { host?.transferToOtherPane(contextTargets.map(\.url), move: true) } }
+    @objc func copyToOtherPane(_ s: Any?) { host?.transferToOtherPane(readableSelectionURLs, move: false) }
+    @objc func moveToOtherPane(_ s: Any?) { if canModifyCurrentLocation { host?.transferToOtherPane(selectedURLs, move: true) } }
     @objc private func ctxOpenInNewWindow(_ s: Any?) {
         if let f = contextTargets.first(where: \.isNavigable) { host?.openInNewWindow(f.url) }
     }
     @objc private func ctxRevealInFinder(_ s: Any?) {
+        guard !isBrowsingArchive else { return }
         NSWorkspace.shared.activateFileViewerSelecting(contextTargets.map(\.url))
     }
     @objc private func ctxCopyPath(_ s: Any?) {
@@ -949,6 +1062,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         pb.setString(contextTargets.map(\.url.path).joined(separator: "\n"), forType: .string)
     }
     @objc private func ctxToggleFavourite(_ s: Any?) {
+        guard !isBrowsingArchive else { return }
         guard let host else { return }
         let url = contextTargets.first(where: \.isNavigable)?.url ?? currentURL
         guard let url else { return }
@@ -968,25 +1082,38 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     // MARK: - Private
 
     private func load(_ url: URL) {
+        navigationGeneration += 1
+        isPreparingArchive = false
         let changingDirectory = currentURL?.standardizedFileURL != url.standardizedFileURL
         currentURL = url
+        fileList.isReadOnly = isBrowsingArchive
+        if viewMode == .icons { iconGrid.isReadOnly = isBrowsingArchive }
         lastError = nil
         errorLabel.isHidden = true
         refreshDebounce?.cancel()
         if changingDirectory, isFiltering { nameFilter = "" }     // Dolphin: clear on directory change
-        watcher = DirectoryWatcher(directory: url) { [weak self] paths in self?.fileSystemChanged(paths) }
+        watcher = isBrowsingArchive ? nil : DirectoryWatcher(directory: url) { [weak self] paths in self?.fileSystemChanged(paths) }
         model.load(url) { [weak self] in self?.restoreViewState() }
         onLocationChanged?(url)
         NotificationCenter.default.post(name: .tursoraSelectionChanged, object: self)
     }
 
     private func open(_ item: FileItem) {
+        guard !isPreparingArchive else { return }
+        guard item.canAccess else { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem); return }
+        if item.isArchiveEntry {
+            if item.isNavigable { navigate(to: item.url) }
+            else if let copy = item.readableContentURL {
+                if !archiveFileOpener(copy) { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
+            } else { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
+            return
+        }
         if item.isNavigable {
             navigate(to: item.url)
         } else {
             if FileOperations.canExtractArchive(item.url) {
                 if AppPreferences.experimentalZIPBrowsingEnabled {
-                    ArchiveBrowserController.open(archive: item.url, relativeTo: view.window)
+                    navigate(to: item.url)
                 } else { extract([item.url]) }
             }
             else { NSWorkspace.shared.open(item.url) }

@@ -8,6 +8,16 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     let model: DirectoryModel
     let collectionView = FileCollectionView()
     let scrollView = NSScrollView()
+    var isReadOnly = false {
+        didSet { updateDragOperations() }
+    }
+    private var draggingReadOnlyItems = false
+
+    private func updateDragOperations() {
+        let copyOnly = isReadOnly || draggingReadOnlyItems
+        collectionView.setDraggingSourceOperationMask(copyOnly ? .copy : [.copy, .move], forLocal: true)
+        collectionView.setDraggingSourceOperationMask(copyOnly ? .copy : [.copy, .move, .link], forLocal: false)
+    }
     private var layout = NSCollectionViewFlowLayout()
     private var layoutSignature: [Int] = []
 
@@ -60,8 +70,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.registerForDraggedTypes([.fileURL])
-        collectionView.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
-        collectionView.setDraggingSourceOperationMask([.copy, .move, .link], forLocal: false)
+        updateDragOperations()
         collectionView.onReturn = { [weak self] in
             guard let self, let item = self.selectedItems.first, self.selectedItems.count == 1 else { return }
             self.beginRename(item: item)
@@ -182,7 +191,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     func openSelection() { selectedItems.forEach { onOpen?($0) } }
 
     func beginRename(item: FileItem) {
-        guard let ip = indexPath(for: item.url) else { return }
+        guard !isReadOnly, item.canAccess, !item.isArchiveEntry, let ip = indexPath(for: item.url) else { return }
         collectionView.selectionIndexPaths = [ip]
         collectionView.scrollToItems(at: [ip], scrollPosition: .nearestHorizontalEdge)
         guard let cell = collectionView.item(at: ip) as? FileCollectionItem else { return }
@@ -260,7 +269,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         cell.configure(item: item, iconSize: iconSize, faded: cutURLs.contains(item.url))
         cell.onDoubleClick = { [weak self] in self?.onOpen?(item) }
         cell.onMiddleClick = { [weak self] in self?.onOpenInNewTab?(item) }
-        if showPreviews, iconSize >= ZoomLevel.previewThreshold, ThumbnailProvider.canPreview(item) {
+        if item.canAccess, showPreviews, iconSize >= ZoomLevel.previewThreshold, ThumbnailProvider.canPreview(item) {
             let scale = collectionView.window?.backingScaleFactor ?? 2
             if let cached = ThumbnailProvider.shared.thumbnail(for: item, size: iconSize, scale: scale, completion: { [weak cell] image in
                 guard let image, let cell, (cell.representedObject as? FileNode) === node else { return }
@@ -278,9 +287,25 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { onSelectionChanged?() }
 
     // Drag source
-    func collectionView(_ collectionView: NSCollectionView, canDragItemsAt indexPaths: Set<IndexPath>, with event: NSEvent) -> Bool { true }
+    func collectionView(_ collectionView: NSCollectionView, canDragItemsAt indexPaths: Set<IndexPath>, with event: NSEvent) -> Bool {
+        indexPaths.contains { node(at: $0)?.item.canAccess == true }
+    }
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        node(at: indexPath)?.url as NSURL?
+        guard let item = node(at: indexPath)?.item, item.canAccess,
+              let url = item.readableContentURL else { return nil }
+        return url as NSURL
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,
+                        willBeginAt screenPoint: NSPoint, forItemsAt indexPaths: Set<IndexPath>) {
+        draggingReadOnlyItems = isReadOnly || indexPaths.contains { node(at: $0)?.item.isArchiveEntry == true }
+        updateDragOperations()
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,
+                        endedAt screenPoint: NSPoint, dragOperation operation: NSDragOperation) {
+        draggingReadOnlyItems = false
+        updateDragOperations()
     }
 
     private func droppedFileURLs(_ info: NSDraggingInfo) -> [URL] {
@@ -289,6 +314,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
 
     /// Onto a folder icon → into that folder; anywhere else → into the listed directory.
     private func dropDestination(_ indexPath: IndexPath, _ op: NSCollectionView.DropOperation) -> URL? {
+        guard !isReadOnly else { return nil }
         if op == .on, let item = node(at: indexPath)?.item, item.isNavigable { return item.url }
         return model.url
     }
@@ -296,6 +322,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
+        guard !isReadOnly else { return [] }
         let ip = proposedIndexPath.pointee as IndexPath
         let onFolder = dropOperation.pointee == .on && node(at: ip)?.item.isNavigable == true
         if !onFolder {
@@ -329,7 +356,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
                 .first(where: { $0.label === field }),
               let node = cell.representedObject as? FileNode else { return }
         let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if newName.isEmpty || newName == node.item.name || newName.contains("/") {
+        if isReadOnly || node.item.isArchiveEntry || !node.item.canAccess || newName.isEmpty || newName == node.item.name || newName.contains("/") {
             field.stringValue = node.item.displayName
             cell.refreshAppearance()
             return

@@ -49,10 +49,11 @@ final class TabsController: NSViewController {
         tabBar.dropOperationForTab = { [weak self] index, urls, mask in
             guard let self else { return [] }
             if let index, self.pages.indices.contains(index), let dest = self.pages[index].active.currentURL {
+                guard self.pages[index].active.canModifyCurrentLocation else { return [] }
                 return FileListViewController.dropOperation(for: urls, into: dest, sourceMask: mask)
             }
             // Empty strip space: folders open as new tabs.
-            return urls.allSatisfy { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ? .generic : []
+            return urls.allSatisfy { self.directoryForTabDrop($0) != nil } ? .generic : []
         }
         tabBar.onFilesDroppedOnTab = { [weak self] index, urls, op in self?.filesDropped(urls, onTabAt: index, op: op) }
         tabBar.onAutoActivateTab = { [weak self] index in self?.selectTab(at: index) }
@@ -157,13 +158,19 @@ final class TabsController: NSViewController {
     func filesDropped(_ urls: [URL], onTabAt index: Int?, op: NSDragOperation) {
         if let index, pages.indices.contains(index) {
             let pane = pages[index].active
-            guard let dest = pane.currentURL else { return }
+            guard pane.canModifyCurrentLocation, let dest = pane.currentURL else { return }
             pane.dropFiles(urls, to: dest, op: op)
         } else {
-            for url in urls where (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                newTab(at: url, activate: false)
+            for url in urls {
+                guard let directory = directoryForTabDrop(url) else { continue }
+                newTab(at: directory, activate: false)
             }
         }
+    }
+
+    private func directoryForTabDrop(_ url: URL) -> URL? {
+        let logical = ArchiveWorkspace.shared.logicalURL(for: url)
+        return PathCompleter.resolveDirectory(logical.path, cwd: provider.homeURL, home: provider.homeURL)
     }
 
     // MARK: - Split view
@@ -271,6 +278,7 @@ final class TabsController: NSViewController {
     private func refreshChrome() {
         let titles = pages.map { page -> String in
             guard let url = page.active.currentURL else { return "…" }
+            if page.active.isBrowsingArchive { return url.lastPathComponent }
             return provider.displayName(for: url)
         }
         tabBar.reload(titles: titles, selected: currentIndex)

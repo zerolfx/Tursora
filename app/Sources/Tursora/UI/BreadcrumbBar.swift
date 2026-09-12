@@ -102,7 +102,9 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     }
 
     static func segments(for url: URL?, home: URL) -> [Segment] {
-        guard let url else { return [] }
+        guard let sourceURL = url else { return [] }
+        let url = ArchiveWorkspace.shared.logicalURL(for: sourceURL)
+        let archive = ArchiveWorkspace.shared.archiveURL(containing: url)?.standardizedFileURL
         let path = url.standardizedFileURL.path
         let homePath = home.standardizedFileURL.path
         var out: [Segment] = []
@@ -122,9 +124,28 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         }
         for c in components {
             base = base.appendingPathComponent(c)
-            out.append(Segment(url: base, title: FileManager.default.displayName(atPath: base.path), icon: nil))
+            let isArchive = base.standardizedFileURL == archive
+            let insideArchive = archive.map { base.pathComponents.starts(with: $0.pathComponents) } ?? false
+            let title = insideArchive ? c : FileManager.default.displayName(atPath: base.path)
+            let icon = isArchive ? NSImage(systemSymbolName: "doc.zipper", accessibilityDescription: "ZIP archive") : nil
+            out.append(Segment(url: base, title: title, icon: icon))
         }
         return out
+    }
+
+    private static func navigationIcon(for url: URL) -> NSImage? {
+        let workspace = ArchiveWorkspace.shared
+        let logical = workspace.logicalURL(for: url)
+        let image: NSImage?
+        if workspace.archiveURL(containing: logical)?.standardizedFileURL == logical.standardizedFileURL {
+            image = NSImage(systemSymbolName: "doc.zipper", accessibilityDescription: "ZIP archive")
+        } else if workspace.session(for: logical) != nil {
+            image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Folder")
+        } else {
+            image = NSWorkspace.shared.icon(forFile: logical.path)
+        }
+        image?.size = NSSize(width: 16, height: 16)
+        return image
     }
 
     // MARK: - Layout (manual, so overflow folding is deterministic)
@@ -210,7 +231,7 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         for i in hiddenSegmentIndexes {
             let item = NSMenuItem(title: segments[i].title, action: #selector(menuNavigate(_:)), keyEquivalent: "")
             item.target = self; item.representedObject = segments[i].url
-            item.image = NSWorkspace.shared.icon(forFile: segments[i].url.path); item.image?.size = NSSize(width: 16, height: 16)
+            item.image = Self.navigationIcon(for: segments[i].url)
             menu.addItem(item)
         }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
@@ -218,6 +239,7 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
 
     /// The sideways-jump menu: subfolders of `folder`, the one on the current path ticked.
     func subfolderMenu(of folder: URL, current: URL?) -> NSMenu {
+        let folder = ArchiveWorkspace.shared.logicalURL(for: folder)
         let menu = NSMenu()
         let names = PathCompleter.completions(for: folder.path + "/", cwd: folder, home: homeURL)
         if names.isEmpty {
@@ -230,8 +252,10 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
             let item = NSMenuItem(title: String(name.dropLast()), action: #selector(menuNavigate(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = child
-            item.image = NSWorkspace.shared.icon(forFile: child.path); item.image?.size = NSSize(width: 16, height: 16)
-            if let current, current.standardizedFileURL == child.standardizedFileURL { item.state = .on }
+            item.image = Self.navigationIcon(for: child)
+            if let current, ArchiveWorkspace.shared.logicalURL(for: current).standardizedFileURL == child.standardizedFileURL {
+                item.state = .on
+            }
             menu.addItem(item)
         }
         return menu
@@ -255,7 +279,8 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         segmentButtons.forEach { $0.isHidden = true }
         chevronButtons.forEach { $0.isHidden = true }
         overflowButton?.isHidden = true
-        textField.stringValue = (url?.path as NSString?)?.abbreviatingWithTildeInPath ?? ""
+        let logical = url.map { ArchiveWorkspace.shared.logicalURL(for: $0) }
+        textField.stringValue = (logical?.path as NSString?)?.abbreviatingWithTildeInPath ?? ""
         textField.isHidden = false
         lastTypedCount = 0        // select-all + first keystroke must count as typing, not deleting
         needsLayout = true
@@ -276,7 +301,7 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     /// Resolve the typed text and navigate. Returns false (and reports) if it is not a folder.
     @discardableResult
     func commit(_ text: String) -> Bool {
-        guard let cwd = url, let target = PathCompleter.resolveDirectory(text, cwd: cwd, home: homeURL) else {
+        guard let cwd = url, let target = PathCompleter.resolveNavigationLocation(text, cwd: cwd, home: homeURL) else {
             NSSound.beep()
             onInvalidPath?(text)
             return false

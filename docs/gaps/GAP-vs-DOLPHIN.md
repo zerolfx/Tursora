@@ -64,7 +64,7 @@
 | Dolphin 功能 | Tursora | 说明 |
 |---|---|---|
 | sftp / smb / webdav / ftp / fish | SMB / WebDAV 等系统挂载 ✅；SFTP / FTP / fish ❌ | NetFS 连接后复用本地浏览，另支持 NFS / legacy AFP；没有 KIO 后端，真实服务端仍待验证 |
-| `archive://` 浏览压缩包、`trash:/`、`recentlyused:/`、MTP、iOS(afc) | ZIP 浏览 ✅ 实验；其他 ❌ | ZIP 为单独只读窗口和临时副本，默认关闭，不实现虚拟协议或写回 |
+| `archive://` 浏览压缩包、`trash:/`、`recentlyused:/`、MTP、iOS(afc) | ZIP 浏览 ✅ 实验；其他 ❌ | ZIP 默认关闭，启用后在当前 pane 只读浏览，复用历史 / 地址栏 / 两种视图 / 分组 / 名称过滤，支持复制与拖出；使用临时副本，不实现 KIO 虚拟协议或归档写回 |
 
 ## F. 集成、设置与外观
 
@@ -81,7 +81,7 @@
 
 ## Tursora 有而 Dolphin 没有的
 
-Quick Look（空格）、与 Finder 一致的废纸篓与"放回"、拖到 Finder/其他 App、行内地址补全 + 候选面板、拖标签拆分 pane、原生外观与手势。
+Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 App、行内地址补全 + 候选面板、拖标签拆分 pane、原生外观与手势。废纸篓浏览与 Put Back 尚未实现。
 
 ## 建议的下一批（按性价比）
 

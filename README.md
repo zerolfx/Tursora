@@ -1,78 +1,150 @@
 <p align="center">
-  <img src="app/Resources/AppIcon.png" width="128" alt="Tursora — two glass panes forming an abstract tail fin">
+  <img src="app/Resources/AppIcon.png" width="112" alt="Tursora's two-pane tail-fin icon">
 </p>
 <h1 align="center">Tursora</h1>
-<p align="center"><strong>Two panes. Fewer detours. A file manager that feels at home on your Mac.</strong></p>
+<p align="center"><strong>Finder's familiar workflows. Useful ideas from Dolphin and Explorer.</strong></p>
 <p align="center">
   <a href="https://github.com/zerolfx/Tursora/actions/workflows/build.yml"><img src="https://github.com/zerolfx/Tursora/actions/workflows/build.yml/badge.svg" alt="Build"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B-blue" alt="macOS 14 or later">
-  <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Built with Swift and AppKit">
+  <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Native Swift and AppKit">
 </p>
 <p align="center">
-  <a href="https://github.com/zerolfx/Tursora/releases">Releases</a> ·
-  <a href="#get-started">Get started</a> ·
-  <a href="docs/SHORTCUTS.md">Keyboard shortcuts</a> ·
-  <a href="docs/ROADMAP.md">Roadmap</a>
+  <a href="#features">Features</a> ·
+  <a href="#experiments">Experiments</a> ·
+  <a href="#what-finder-still-does-that-tursora-doesnt">Finder differences</a> ·
+  <a href="#get-tursora">Get Tursora</a>
 </p>
 
-Tursora brings Dolphin's practical navigation ideas to a native macOS file manager: an editable path, independent tabs, two panes when you need them, and quick filtering that keeps you in the flow. Swift and AppKit provide the foundation, with Quick Look, system sharing, familiar file dialogs, and Finder-derived grouping and Info labels.
+Tursora is a native macOS file manager built around a simple goal: **keep what feels familiar in Finder, then add the file-management ideas that make Dolphin and Windows File Explorer useful.**
 
-Work with local folders and mounted servers in a native Mac interface, then bring a terminal or archive browser into the workflow when you need one.
+That means Quick Look, macOS sharing, familiar file operations and a native AppKit interface—with Dolphin-inspired split panes, editable paths and instant filtering. Optional experiments add an integrated terminal and Explorer-style ZIP navigation in the same pane.
 
-## Keep both sides of the job in view
+Tursora is an early project, and it does not yet cover everything Finder can do. The [differences below](#what-finder-still-does-that-tursora-doesnt) are part of the picture.
 
-Open a project in one pane and your destination in the other. Copy or move the selection across without juggling windows. Each tab can have its own split, so one workspace can compare folders while another stays simple.
+## Features
 
-- **Split on demand:** toggle with `⇧⌘D`, switch panes with `⌥Tab`, or drag a tab onto the left or right side of the content area.
-- **Move across directly:** `⇧⌘C` copies to the other pane; `⇧⌘M` moves. You can also open a folder in the opposite pane.
-- **Pick up where you left off:** tabs keep independent navigation history, selection, scroll position, sorting, grouping, and filters. Reopen a closed tab with `⇧⌘T`, including its split layout.
+### Two folders, one workspace
 
-## Get to the folder, then get to the file
+Put your source on the left and its destination on the right. Each tab has its own folders and can switch between one and two panes. Copy or move a selection directly to the other side, and reopen a closed tab with its split layout intact.
 
-The address bar is both a breadcrumb and an editor. Click through folder menus, or press `⌘L` and type a path with inline completion and suggestions. Back and forward buttons have history menus; mouse side buttons and trackpad swipes work too.
+**Try it:** click the toolbar’s Split View button or press `⇧⌘D` to split the view. `⌥Tab` switches panes, and `⇧⌘C` copies to the other pane. Tabs retain their own history, selection, scroll position, sorting, grouping and filters during the session.
 
-Favorites keep frequent destinations nearby, with drag reordering and mounted volumes in the sidebar. To narrow a busy folder, press `⌘F` (customizable in Settings) and type a name or a pattern such as `*.swift`. Filtering is immediate, ignores case, and belongs to the active pane. Escape clears it.
+![Split panes and tabs: source files on the left, delivery folder on the right](docs/images/features/split-panes.jpg)
 
-**Filtering works within the current folder.** Recursive search, file-content search, and advanced search conditions are not implemented yet. [See the Dolphin comparison](docs/research/dolphin-filter-search.md).
+### A path you can click—or type
 
-## Choose the view that fits the work
+Click a breadcrumb, choose a subfolder from its menu, or press `⌘L` to edit the full path with completion. Favorites keep frequent destinations nearby; Back and Forward include history menus.
 
-| Working with… | Tursora gives you… |
+![Editable address bar with folder completion](docs/images/features/path-navigation.jpg)
+
+### Open a favorite where you need it
+
+Right-click a Favorite to open it in a new tab or the other pane. If the current tab has one pane, **Open in Other Pane** creates a split while keeping your original folder in place.
+
+![A Favorite’s context menu with Open in New Tab and Open in Other Pane](docs/images/features/favorites.png)
+
+### Find a name without leaving the folder
+
+Press `⌘F` and type part of a filename or a pattern such as `*.png`. Results update immediately in the active pane, while the other pane stays as it was. Escape clears the filter; its shortcut can be changed in Settings.
+
+**This is current-folder name filtering.** Recursive search, file-content search and advanced search conditions are not implemented.
+
+![The active pane filtered by filename while the destination remains visible](docs/images/features/name-filter.jpg)
+
+### A view that fits your files
+
+Expand folders in a details list, or browse thumbnails in an icon grid. Group by kind, name, size or dates, sort within the view, and zoom using the slider, a pinch or `⌘`-scroll. Switch between Icons and List with `⌥⌘1` and `⌥⌘2`.
+
+![Grouped file browsing in the native list and icon views](docs/images/features/views-and-groups.jpg)
+
+### Preview first, open when you need to
+
+Press Space for Quick Look. `⌘I` opens Get Info, while `⌥⌘I` opens an Inspector that follows the selection. File information includes metadata, previews, comments, default applications and basic permissions.
+
+![Quick Look showing a selected file without leaving the workspace](docs/images/features/quick-look.jpg)
+
+### Everyday operations, with a way back
+
+Copy, cut, paste, rename, duplicate, drag files between folders, or move them to the system Trash. Undo and redo cover supported file operations. When names collide, choose Keep Both, Skip, Replace or Merge where applicable, including a choice for the remaining batch.
+
+![A real filename conflict with choices for handling the copy](docs/images/features/file-operations.jpg)
+
+### Compress a selection. Extract beside the original.
+
+Create a ZIP from one file or several, or extract a ZIP into its containing folder. Numbered output names avoid overwriting existing files, and both actions support undo. By default, opening a ZIP extracts it; the [ZIP browsing experiment](#browse-zips-like-folders) changes that behavior.
+
+**Supported today:** ordinary ZIP archives. Password-protected ZIPs and other archive formats are not supported.
+
+![The More menu exposing archive actions for a selected ZIP](docs/images/features/compress-extract.png)
+
+### Local folders and system-mounted servers
+
+`⌘K` opens Connect to Server for SMB, NFS, WebDAV and legacy AFP. macOS handles authentication and mounting. Connected volumes appear under Locations and can be browsed with the same panes and file operations; Eject disconnects them.
+
+The screenshot shows the connection interface, not a verified server session. **Real-server interoperability still needs testing.** Tursora has no custom SFTP/FTP backend, server discovery or automatic reconnection.
+
+![Connect to Server with an example SMB address](docs/images/features/connect-server.jpg)
+
+### macOS actions and sharing
+
+The toolbar's More menu collects common actions for the current selection. Share opens the system sharing picker, so available services come from macOS and the selected files.
+
+![The macOS sharing picker for a selected demonstration file](docs/images/features/share.jpg)
+
+### A few useful preferences
+
+Show or hide filename extensions, record a shortcut for name filtering, or opt into experiments. Shortcut recording checks conflicts. Hiding extensions changes their display; renaming still exposes the full filename.
+
+![Settings with extension display, shortcut recording and both experiments disabled](docs/images/features/settings.jpg)
+
+## Experiments
+
+Both experiments are **off by default**. Enable them in **Tursora → Settings…** (`⌘,`).
+
+### A terminal in your workspace
+
+Press `F4` to reveal an interactive terminal below your files, powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm). It starts in the active folder—or beside the original ZIP when browsing an archive.
+
+Navigating elsewhere updates the target of **Restart in Current Folder**; it does not inject commands into a running shell. Restarting, hiding the panel, closing the window or disabling the experiment ends its shell session.
+
+![The integrated terminal running in the same directory as the file pane](docs/images/features/terminal.jpg)
+
+### Browse ZIPs like folders
+
+Open a ZIP **in the current pane**, then navigate its folders using the same address bar, Back, Forward and Up controls. Keep using tabs, split panes, list or icon views, sorting, grouping and filtering. Preview members, open them in their default app, share them, or copy and drag them into a regular folder.
+
+**Archive contents are read-only.** Opened files are temporary copies retained until Tursora quits; external edits do not update the ZIP. Use Save As to keep those edits. Nested ZIP files open in the default application. Turn the experiment off to restore extraction for newly opened ZIPs; existing archive pages remain read-only. Explicit Extract is still available when selecting the ZIP in its containing folder.
+
+![A ZIP folder opened in the current pane with its normal breadcrumb and read-only status](docs/images/features/zip-browsing.jpg)
+
+## What Finder still does that Tursora doesn't
+
+These are current gaps, not promises of complete Finder parity:
+
+| Area | Not available in Tursora today |
 |---|---|
-| Deep folder trees | A details list with folders that expand in place |
-| Images and visual assets | An icon grid with Quick Look thumbnails and multiple zoom levels |
-| A crowded directory | Groups by name, kind, application, size, or dates, with sticky group headings |
-| Files you need to inspect | Space for Quick Look; `⌘I` for Info; `⌥⌘I` for an Inspector that follows the selection |
-| A folder changing in another app | Live refresh that preserves selection and scroll position where possible |
+| Views | Column view, Gallery view, a fixed preview sidebar, free icon placement |
+| Search | Recursive and content search, advanced conditions, Smart Folders |
+| Organization | Batch rename, New Folder with Selection, Make Alias / Show Original, Show Package Contents |
+| Trash | Browsing Trash, Put Back, emptying Trash; moving files to Trash and undoing that move are supported |
+| Customization | Per-folder persistent view options and toolbar customization |
+| System integration | Quick Actions, Services and FinderSync cloud status badges |
+| File information | Full ACL editing, owner/group changes and recursive permission application |
 
-Switch views with `⌥⌘1` / `⌥⌘2`. Zoom with the status-bar slider, `⌘+` / `⌘−`, a pinch, or `⌘`-scroll. Preferences for each view mode carry into new panes.
+**Outside the design:** file tags and Import from iPhone. These are intentionally excluded, rather than items waiting to be implemented.
 
-## Everyday operations, close at hand
+Tursora currently has an English interface and does not restore tabs after quitting. See the [Finder comparison](docs/gaps/GAP-vs-FINDER.md), [Dolphin comparison](docs/gaps/GAP-vs-DOLPHIN.md) and [roadmap](docs/ROADMAP.md) for the detailed status.
 
-Copy, cut, paste, duplicate, rename, move to Trash, and drag between folders. File operations integrate with undo and redo. When names collide, choose Keep Both, Skip, Replace, or Merge where applicable, and apply the choice to the remaining batch.
+## Get Tursora
 
-**Compress and extract ZIPs:** create an archive from one file or a selection, then extract beside the original ZIP. Existing files are kept intact with numbered output names, and both operations support undo. By default, opening a ZIP extracts it; an optional archive browser lets you inspect it first. Passwords and other archive formats are not supported yet.
+Requires **macOS 14 or later**. Downloadable builds currently target **Apple Silicon** and are **ad-hoc signed, not notarized**.
 
-**Connect to your server:** `⌘K` opens Connect to Server for SMB, NFS, WebDAV, and legacy AFP. macOS handles authentication and mounting; the volume appears in Locations and works with the same panes and file operations. Eject disconnects it when you are finished.
+- **Development builds:** open a successful [Build workflow run](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) and download its artifact ZIP. Unpack that artifact, then unpack the application ZIP inside it. Artifacts are kept for 14 days.
+- **Versioned releases:** available from [Releases](https://github.com/zerolfx/Tursora/releases) when a maintainer publishes one. Unzip the download and move `Tursora.app` to Applications.
 
-The toolbar's **More** menu gathers common file actions and adapts to the active pane's selection. **Share** opens the macOS sharing picker for selected files; you choose the service and destination. Get Info includes metadata, previews, comments, default applications, and permissions.
+### Build locally
 
-## Make it yours
-
-Open **Settings** with `⌘,` to choose a name-filter shortcut and show or hide filename extensions. Display preferences apply across your panes; rename always exposes the complete filename.
-
-Two experiments are available in Settings, **both off by default**:
-
-- **A terminal where you work.** Enable Terminal panel, then press `F4` to open an interactive terminal at the bottom of the window. It starts in the active folder and supports your shell and terminal programs through [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm). Browsing elsewhere updates the destination for **Restart in Current Folder**; it never sends `cd` into a running command. Restart ends the current shell and command. Hiding the panel, closing the window, or turning the experiment off ends its session too.
-- **Look inside a ZIP.** Enable Browse ZIP archives to open ZIPs in a separate, read-only browser. Navigate folders and open contained files in their usual apps. Opened files are temporary copies, kept until Tursora quits; edits do not update the ZIP, so use **Save As** to keep them. Explicit **Extract** remains available.
-
-## Get started
-
-**Run:** macOS 14 or later. Downloadable builds currently target **Apple Silicon**.
-
-Download a versioned application ZIP from [Releases](https://github.com/zerolfx/Tursora/releases), when available, unzip it, and move `Tursora.app` to Applications. Builds are currently ad-hoc signed and are not notarized. Development snapshots are available under a successful [Build workflow](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) run's **Artifacts** section; they do not create a release.
-
-To build locally, install Apple's Command Line Tools with Swift 6.2+ and the macOS 26 SDK (tested with Swift 6.2.4 / SDK 26.2):
+Use Apple's Command Line Tools with Swift 6.2+ and the macOS 26 SDK. The verified development setup is Swift 6.2.4 / SDK 26.2. No Xcode project is required.
 
 ```bash
 git clone https://github.com/zerolfx/Tursora.git
@@ -81,22 +153,15 @@ tools/make-app.sh
 open build/Tursora.app
 ```
 
-An Xcode project is not required. Swift Package Manager fetches the pinned SwiftTerm dependency on the first build; the packaging script produces the complete application bundle.
+Swift Package Manager fetches the pinned SwiftTerm dependency on the first build. The packaging script assembles the complete application bundle.
 
-## Deliberately focused
+### Build and release automation
 
-Tursora is an early native file-manager project. **Tags and “Import from iPhone” are intentionally outside its design.** Tabs are supported; file tagging is not. Custom remote backends such as SFTP, recursive search, session restoration, localization, and broader preference customization remain future work. Server connections use system mounts; real server interoperability still needs field testing. The [roadmap](docs/ROADMAP.md) and [parity lists](docs/gaps/) distinguish shipped behavior from plans.
+**Build** runs on pushes to `main`, pull requests and manual requests. It builds the release app on macOS, validates the bundle and signature, then uploads a ZIP and SHA-256 checksum.
 
-Tursora began with an audit of bringing Dolphin and KIO to macOS. That research led to a native implementation focused on the navigation behaviors that make Dolphin useful. The two-pane tail-fin mark reflects those roots. [Read the original audit](docs/audit/PHASE-0-REPORT.md).
+**Release is manual only.** In **Actions → Release → Run workflow**, select `main`, enter a new version without `v`, and optionally mark it as a prerelease. The workflow builds that exact commit, creates its version tag and publishes the application with its checksum. Existing tags are not overwritten; pushing a tag does not publish a release.
 
-## Build and release automation
-
-- **Build:** runs for pushes to `main`, pull requests, or a manual request. Builds the release bundle on macOS, verifies its signature and property list, and uploads a ZIP plus SHA-256 checksum. Artifacts expire after 14 days.
-- **Release:** manual only. In **Actions → Release → Run workflow**, choose `main`, enter a new version without `v` (for example `0.1.0`), and optionally mark it as a prerelease. It builds the exact selected commit, uploads the application and checksum, creates `v<version>`, and publishes generated release notes. Existing tags are never overwritten. Pushing a tag does not publish anything automatically.
-
-These workflows verify packaging; the interactive AppKit smoke suite is run separately in a macOS desktop session before committing. No signing certificate is required for the current ad-hoc builds.
-
-## Develop with confidence
+### Development and verification
 
 ```bash
 cd app
@@ -106,15 +171,8 @@ for run in 1 2 3; do
 done
 ```
 
-The in-app suite exercises real models and controllers: navigation, file operations and undo, both views, tabs and splits, filtering and grouping, Info windows, settings, archive handling, terminal lifecycle helpers, and UI regressions. Keep all three runs green before committing. See [the development guide](docs/DEVELOPMENT.md) for AppKit pitfalls and release checks.
+The in-app smoke suite exercises real models and controllers in a macOS desktop session. Run it three times before committing, then inspect the packaged application. GitHub Actions validates packaging; it does not replace those UI checks.
 
-| Learn more | |
-|---|---|
-| [Feature specification](docs/SPEC.md) | Exact behavior and Finder / Dolphin influences (中文) |
-| [Shortcuts](docs/SHORTCUTS.md) | Every shortcut, menu command, and gesture |
-| [Architecture](docs/ARCHITECTURE.md) | Controllers, data flow, filesystem operations, and refresh |
-| [Decisions](docs/DECISIONS.md) | Trade-offs and intentional differences (中文) |
-| [Handoff](docs/HANDOFF.md) | Current status and verification coverage (中文) |
-| [Changelog](CHANGELOG.md) | What changed |
+[Shortcuts](docs/SHORTCUTS.md) · [Specification](docs/SPEC.md) · [Architecture](docs/ARCHITECTURE.md) · [Development guide](docs/DEVELOPMENT.md) · [Changelog](CHANGELOG.md) · [Contributing rules](AGENTS.md)
 
-Contributions should follow [AGENTS.md](AGENTS.md), add regression coverage, and keep the specification current. Start with an issue for larger changes so the scope stays focused.
+Tursora began with an audit of porting Dolphin and KIO to macOS. That research led to a native implementation, borrowing useful behavior rather than the entire stack. The two-pane tail-fin mark reflects those roots. [Read the original audit](docs/audit/PHASE-0-REPORT.md).

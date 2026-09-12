@@ -6,7 +6,34 @@ enum PathCompleter {
 
     /// Expand `~`, resolve relative input against `cwd`, and require an
     /// existing directory. Returns nil when the text does not name one.
-    static func resolveDirectory(_ text: String, cwd: URL, home: URL) -> URL? {
+    static func resolveDirectory(_ text: String, cwd: URL, home: URL, workspace: ArchiveWorkspace = .shared) -> URL? {
+        guard let url = candidateURL(text, cwd: cwd, home: home) else { return nil }
+        if AppPreferences.experimentalZIPBrowsingEnabled || workspace.session(for: url) != nil,
+           let archive = workspace.archiveURL(containing: url) {
+            if workspace.session(for: url) == nil {
+                return archive.path == url.path ? archive : nil
+            }
+            guard let physical = try? workspace.readableURL(for: url),
+                  FileItem(url: physical)?.isNavigable == true else { return nil }
+            return workspace.logicalURL(for: url)
+        }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return nil }
+        return url
+    }
+
+    /// Address submission may name an unprepared ZIP child. The browser must
+    /// prepare the archive and validate that candidate before navigating.
+    static func resolveNavigationLocation(_ text: String, cwd: URL, home: URL, workspace: ArchiveWorkspace = .shared) -> URL? {
+        if let directory = resolveDirectory(text, cwd: cwd, home: home, workspace: workspace) { return directory }
+        guard AppPreferences.experimentalZIPBrowsingEnabled,
+              let candidate = candidateURL(text, cwd: cwd, home: home),
+              workspace.session(for: candidate) == nil,
+              workspace.archiveURL(containing: candidate) != nil else { return nil }
+        return candidate
+    }
+
+    private static func candidateURL(_ text: String, cwd: URL, home: URL) -> URL? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let expanded: String
@@ -21,25 +48,29 @@ enum PathCompleter {
         } else {
             expanded = cwd.appendingPathComponent(trimmed).path
         }
-        let url = URL(fileURLWithPath: expanded).standardizedFileURL
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else {
-            return nil
-        }
-        return url
+        return URL(fileURLWithPath: expanded).standardizedFileURL
     }
 
     /// Directory-name completions for the last path component of `text`.
     /// Returned strings replace that component and end in "/" so the next
     /// completion round starts inside the chosen folder.
-    static func completions(for text: String, cwd: URL, home: URL, includeHidden: Bool = false) -> [String] {
+    static func completions(for text: String, cwd: URL, home: URL, includeHidden: Bool = false, workspace: ArchiveWorkspace = .shared) -> [String] {
         let (dirText, partial) = splitLastComponent(text)
         let dir: URL
         if dirText.isEmpty {
             dir = cwd
         } else {
-            guard let resolved = resolveDirectory(dirText, cwd: cwd, home: home) else { return [] }
+            guard let resolved = resolveDirectory(dirText, cwd: cwd, home: home, workspace: workspace) else { return [] }
             dir = resolved
+        }
+        if workspace.session(for: dir) != nil {
+            let provider = ArchiveFileProvider(base: LocalFileProvider(), workspace: workspace)
+            guard let items = try? provider.listDirectory(dir) else { return [] }
+            let wantHidden = includeHidden || partial.hasPrefix(".")
+            return items.filter {
+                $0.isNavigable && (wantHidden || !$0.isHidden)
+                    && (partial.isEmpty || $0.name.lowercased().hasPrefix(partial.lowercased()))
+            }.map { $0.name + "/" }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         }
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: dir, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey, .isHiddenKey],
