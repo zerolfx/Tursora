@@ -12,7 +12,7 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | About Tursora | — | `NSApplication` |
 | Settings… | ⌘, | `AppDelegate.showSettings`; applies changes immediately |
 | Hide Tursora / Hide Others / Show All | ⌘H / ⌥⌘H / — | `NSApplication` |
-| Quit Tursora | ⌘Q | `NSApplication`; `AppDelegate.applicationWillTerminate` closes Info windows so a half-typed comment is saved and flushes the directory-view library |
+| Quit Tursora | ⌘Q | `NSApplication`; `AppDelegate.applicationShouldTerminate` cancels and waits for active transfers; `applicationWillTerminate` flushes the directory-view library, saves Info edits and releases owned resources |
 
 ### File
 | Item | Shortcut | Icon | Does | Handler |
@@ -51,7 +51,8 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Actual Size | ⌘0 | — | 64 pt icons / 16 pt rows |
 | Show Previews | ⇧⌘P | — | Thumbnails from 32 pt up (Finder's ⇧⌘P is the preview pane) |
 | Filter | ⌘F by default; configurable | `magnifyingglass` | Focuses the toolbar name-filter field; checkmark while filtering |
-| Show Hidden Files | ⇧⌘. | — | Saved by the selected folder-view policy; transient in ZIP pages |
+| Search… | ⇧⌘F | `doc.text.magnifyingglass` | Opens the active pane's recursive search form; unavailable inside ZIP locations |
+| Show Hidden Files | ⇧⌘. | — | Saved by the selected folder-view policy; transient in ZIP and search pages |
 | Reload | ⌘R | `arrow.clockwise` | (Finder: Show Original) |
 | Use Groups | ⌃⌘0 | `square.grid.3x1.below.line.grid.1x2` | Off → back to the last key (Kind first) |
 | Group By ▸ None · Name · Kind · Application · Date Last Opened · Date Added · Date Modified · Date Created · Size | ⌃⌘0 · ⌃⌘1 · ⌃⌘2 · — · ⌃⌘3 … ⌃⌘7 | `arrow.up.arrow.down` | Same submenu as the toolbar Group button |
@@ -75,7 +76,7 @@ Everything the user can press or click, as implemented. Menu items use `nil` tar
 | Connect to Server… | ⌘K | `rectangle.connected.to.line.below` |
 
 ### Window
-Minimize ⌘M · Zoom · Show Previous Tab ⇧⌘[ · Show Next Tab ⇧⌘] (disabled with one tab) · Bring All to Front. Help is empty.
+Minimize ⌘M · Zoom · Show Previous Tab ⇧⌘[ · Show Next Tab ⇧⌘] (disabled with one tab) · File Operations (reopens task controls) · Bring All to Front. Help is empty.
 
 ## Context menus (`BrowserViewController.buildContextMenu`)
 
@@ -183,3 +184,7 @@ With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in t
 - Filter by Name: current-folder substring/wildcard filtering, without an additional scope row.
 - Compress: File / More / selection context menu. Name includes the single filename or selection count.
 - Extract: File / More / ZIP context menu in ordinary directories; normal ZIP Open also extracts while experimental browsing is off. Compress and Extract support Undo / Redo.
+
+## Search
+
+`⇧⌘F` (View → Search… or toolbar Search) opens the active pane’s recursive search form. Filter keeps its independently configurable shortcut, default `⌘F`. Search / Cancel / Clear / Close Search controls are pane-local. Inline Save / Saved Searches / Open / Delete manage the app-wide list of saved conditions; opening one runs it only in the active pane. Search is unavailable inside ZIP locations. While results are active, Folder View Settings cannot save the result view as a default or reset the originating folder; Close Search restores that folder’s current saved view.

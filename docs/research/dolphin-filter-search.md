@@ -1,5 +1,7 @@
 # Dolphin 的过滤与搜索（2026-09-12）
 
+> 这是独立搜索实现前的历史记录；2026-09-12 后续实现与当前边界见 [搜索研究](search.md)。
+
 直接核对 `upstream/dolphin`，提交 `5e457ee9e88aa6277fbf056cd5c32462c5318866`，与项目 Phase 0 pin 一致。
 
 - `src/filterbar/filterbar.cpp:26–96`：过滤栏含跨目录保留锁、输入框、大小写按钮、Plain Text / Glob Pattern / Regular Expression 模式与关闭按钮。`clearIfUnlocked()` 在导航时清除未锁定过滤。

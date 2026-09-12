@@ -46,10 +46,14 @@ enum SmokeTest {
                     ArchiveBrowserSmokeTests.run {
                         SplitToolbarSmokeTests.run {
                             TerminalSmokeTests.run {
-                                delayedListing {
-                                    infoSectionLayout()
-                                    savedViewModes(wc.provider)
-                                    preferencesIntegration(wc) { windowChrome(wc) { navigation(wc) } }
+                                SearchSmokeTests.run {
+                                    IntegratedSearchSmokeTests.run {
+                                    delayedListing {
+                                        infoSectionLayout()
+                                        savedViewModes(wc.provider)
+                                        preferencesIntegration(wc) { windowChrome(wc) { navigation(wc) } }
+                                    }
+                                    }
                                 }
                             }
                         }
@@ -228,8 +232,8 @@ enum SmokeTest {
             let filterItem = menuItem(#selector(MainWindowController.focusFilter(_:)), in: NSApp.mainMenu)
             let terminalItem = menuItem(#selector(MainWindowController.toggleTerminal(_:)), in: NSApp.mainMenu)
             check("terminal command hidden while disabled", terminalItem?.isHidden == true)
-            try! AppPreferences.shared.setFilterShortcut(.init(keyEquivalent: "f", modifierFlags: [.command, .shift]), menu: NSApp.mainMenu)
-            check("filter shortcut updates the real menu immediately", filterItem?.keyEquivalent == "f" && filterItem?.keyEquivalentModifierMask == [.command, .shift])
+            try! AppPreferences.shared.setFilterShortcut(.init(keyEquivalent: "f", modifierFlags: [.command, .option, .shift]), menu: NSApp.mainMenu)
+            check("filter shortcut updates the real menu immediately", filterItem?.keyEquivalent == "f" && filterItem?.keyEquivalentModifierMask == [.command, .option, .shift])
             AppPreferences.shared.resetFilterShortcut()
             check("filter shortcut reset restores Command F", filterItem?.keyEquivalentModifierMask == .command)
             b.setViewMode(.details)

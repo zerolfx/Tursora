@@ -17,7 +17,7 @@
 
 Tursora is a native macOS file manager built around a simple goal: **keep what feels familiar in Finder, then add the file-management ideas that make Dolphin and Windows File Explorer useful.**
 
-That means Quick Look, macOS sharing, familiar file operations and a native AppKit interface—with Dolphin-inspired split panes, editable paths, instant filtering and folder-specific view settings. Optional experiments add an integrated terminal and Explorer-style ZIP navigation in the same pane.
+That means Quick Look, macOS sharing, familiar file operations and a native AppKit interface—with Dolphin-inspired split panes, editable paths, instant filtering, recursive search and folder-specific view settings. Optional experiments add an integrated terminal and Explorer-style ZIP navigation in the same pane.
 
 Tursora is an early project, and it does not yet cover everything Finder can do. The [differences below](#what-finder-still-does-that-tursora-doesnt) are part of the picture.
 
@@ -47,9 +47,17 @@ Right-click a Favorite to open it in a new tab or the other pane. If the current
 
 Press `⌘F` and type part of a filename or a pattern such as `*.png`. Results update immediately in the active pane, while the other pane stays as it was. Escape clears the filter; its shortcut can be changed in Settings.
 
-**This is current-folder name filtering.** Recursive search, file-content search and advanced search conditions are not implemented.
+**This is current-folder name filtering.** Use the separate Search command for recursive results.
 
 ![The active pane filtered by filename while the destination remains visible](docs/images/features/name-filter.jpg)
+
+### Search across folders, then save the search
+
+Press `⇧⌘F` or click Search. Search this folder and its subfolders, or your Home folder, combining filename, content, type and modification-date conditions. Save a named search and open it again after restarting. Each pane owns its query, cancellation and results.
+
+Filename search works in ordinary unindexed folders. Content search uses Spotlight and depends on its index and supported document formats; the interface explains that limit. Results show their original location and support Quick Look, file commands and Reveal in Enclosing Folder. ZIP contents are excluded.
+
+![Recursive search results with original locations](docs/images/features/search.jpg)
 
 ### A view that fits your files
 
@@ -57,7 +65,7 @@ Expand folders in a details list, or browse thumbnails in an icon grid. Group by
 
 Folders remember their view mode, sorting, list and icon sizes, groups, hidden files and previews—even when you open them in another tab or restart Tursora. **View → Folder View Settings** lets you choose **Remember Each Folder** or **Use One View for All Folders**, save the current settings as your default, and restore a folder to that default. The policy is also available in Settings.
 
-Two already-open panes keep their own folder views during ordinary per-folder edits; revisit the folder to pick up the latest saved settings. Folder memory uses Tursora's own library, so it works with read-only folders without adding files to them. Renamed or moved folders use their new path's settings. Every entry into a ZIP folder starts from your default view, and changes there stay temporary. Tursora does not restore tabs after quitting.
+Two already-open panes keep their own folder views during ordinary per-folder edits; revisit the folder to pick up the latest saved settings. Folder memory uses Tursora's own library, so it works with read-only folders without adding files to them. Renamed or moved folders use their new path's settings. Every entry into a ZIP folder starts from your default view, and changes there stay temporary. Search inherits the pane’s current view; changes in results stay temporary and the folder’s saved view returns when you close Search. Tursora does not restore tabs after quitting.
 
 ![Folder-specific icon grouping and list settings restored after restarting the app](docs/images/features/folder-views.jpg)
 
@@ -132,7 +140,7 @@ These are current gaps, not promises of complete Finder parity:
 | Area | Not available in Tursora today |
 |---|---|
 | Views | Column view, Gallery view, a fixed preview sidebar, free icon placement |
-| Search | Recursive and content search, advanced conditions, Smart Folders |
+| Search | Finder Smart Folder interoperability, Tags / rating conditions, ZIP contents |
 | Organization | Batch rename, New Folder with Selection, Make Alias / Show Original, Show Package Contents |
 | Trash | Browsing Trash, Put Back, emptying Trash; moving files to Trash and undoing that move are supported |
 | Customization | Finder's full View Options dialog, column-layout memory and toolbar customization |

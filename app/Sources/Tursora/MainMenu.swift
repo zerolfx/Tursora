@@ -120,6 +120,7 @@ enum MainMenu {
         add(menu, "Actual Size", #selector(BrowserViewController.zoomActualSize(_:)), "0")
         add(menu, "Show Previews", #selector(BrowserViewController.togglePreviews(_:)), "p", [.command, .shift])
         menu.addItem(.separator())
+        add(menu, "Search…", #selector(MainWindowController.showSearch(_:)), "f", [.command, .shift], symbol: "doc.text.magnifyingglass")
         add(menu, "Filter", #selector(MainWindowController.focusFilter(_:)), "f", symbol: "magnifyingglass")
         add(menu, "Show Hidden Files", #selector(MainWindowController.toggleHiddenFiles(_:)), ".", [.command, .shift])
         add(menu, "Reload", #selector(MainWindowController.reload(_:)), "r", symbol: "arrow.clockwise")
