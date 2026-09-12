@@ -19,6 +19,13 @@ Historical entries record development dates and their smoke-test counts where av
 - Store versioned, tolerant JSON in Application Support with immediate memory updates and coalesced atomic writes. Normalize local paths and symlinks; preserve unsupported files until an effective mutation. Keep ZIP logical locations, snapshot paths, filters, selections, scroll and history out of folder records.
 - Add isolated model/storage and browser smoke coverage. Revision-specific build, smoke, packaged-app and signature results are tracked in [HANDOFF](docs/HANDOFF.md); the historical 739-check ZIP baseline does not verify this feature or the merged tree.
 
+## Unreleased — search
+
+- Add pane-local recursive search with filename, Spotlight content, type and modification-date conditions, cancellation, generation guards, and persisted named searches. Keep the existing configurable name filter separate; Search uses ⇧⌘F.
+- Show real result locations in both views, reveal exact results in their parent folder, and preserve full-URL selection through view switches and file mutations. Search results have no implicit write destination; ZIP contents are excluded.
+- The independent search branch passed 891 smoke checks in three consecutive runs after native predicate, menu-target and overlapping-selection fixes. Actual packaged-app observations and Spotlight indexing limits are recorded in [the feature record](docs/research/search-verification.md); these do not verify the combined three-feature tree.
+- Isolate transient search view changes from directory records and unified defaults; restore the folder’s current saved view when returning. Route search Copy/Move/Duplicate through controllable tasks with normalized source selections, and refresh results by full URL after completion and undo. Combined validation remains tracked separately in [the integration record](docs/research/pr-integration-2026-09-12.md).
+
 ## Unreleased — cleanup and product page
 
 - Remove an unused PlacesModel constant and simplify the archive readable-URL helper's always-enabled option without changing application behavior.

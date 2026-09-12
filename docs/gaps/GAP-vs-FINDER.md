@@ -24,7 +24,7 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 | Slideshow（⌥空格） | ❌ | S | `QLPreviewPanel.enterFullScreenMode`；方向键当前会改选择，要拦 |
 | Customize Folder（文件夹颜色/表情，macOS 26） | ❌ | XL | 存储格式私有（可能在 IconServices 数据库里），不可靠 |
 | Copy as Pathname（⌥⌘C） | ✅ Copy Path | S | 只是把快捷键对齐，做成 Copy 的 ⌥ 备选项 |
-| New Smart Folder / Burn Folder / Burn Disc | ❌ | XL | 依赖 Spotlight 搜索视图（NSMetadataQuery 只看已索引位置，结果不确定）；刻录忽略 |
+| New Smart Folder / Burn Folder / Burn Disc | ❌ | XL | 已有应用内保存搜索；尚不支持 Finder .savedSearch 互通或刻录 |
 | Eject All（⌥⌘E） | ❌ | S | 逐个 `unmountAndEjectDevice`，要放后台；同一物理盘的分区会一起弹 |
 
 ## Edit 菜单

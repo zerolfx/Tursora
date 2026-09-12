@@ -53,12 +53,31 @@ final class DirectoryModel {
     var sortKey: SortKey = .name { didSet { resort() } }
     var ascending = true        { didSet { resort() } }
 
+    /// Search results have no directory destination and never expand into unfiltered children.
+    private(set) var isSearchResults = false
+    var onReloadResults: (((() -> Void)?) -> Void)?
+
+    func beginSearchResults() {
+        loadToken += 1
+        isSearchResults = true
+        url = nil
+        replaceSearchResults([])
+    }
+
+    func replaceSearchResults(_ items: [FileItem]) {
+        guard isSearchResults else { return }
+        allNodes = Self.merge(items, into: Self.index(allNodes))
+        generation += 1
+        resort()
+    }
+
     private var loadToken = 0
 
     var onChange: (() -> Void)?
     var onError: ((Error) -> Void)?
 
     func load(_ target: URL, completion: (() -> Void)? = nil) {
+        isSearchResults = false
         let changingDirectory = url?.standardizedFileURL != target.standardizedFileURL
         url = target
         loadToken += 1
@@ -103,6 +122,7 @@ final class DirectoryModel {
     }
 
     func reload(completion: (() -> Void)? = nil) {
+        if isSearchResults { onReloadResults?(completion); return }
         guard let url else { return }
         load(url, completion: completion)
     }
@@ -123,7 +143,7 @@ final class DirectoryModel {
     /// applying the current filter and sort. Synchronous.
     @discardableResult
     func loadChildren(of node: FileNode, refresh: Bool = false) -> [FileNode] {
-        guard node.item.isNavigable else { return [] }
+        guard !isSearchResults, node.item.isNavigable else { return [] }
         if node.allChildren == nil || refresh {
             let listed = (try? provider.listDirectory(node.url)) ?? []
             node.allChildren = Self.merge(listed, into: Self.index(node.allChildren ?? []))
@@ -190,27 +210,33 @@ final class DirectoryModel {
     }
 
     private func compare(_ a: FileItem, _ b: FileItem) -> Bool {
+        guard a.url.standardizedFileURL != b.url.standardizedFileURL else { return false }
+        let nameOrder = a.name.localizedStandardCompare(b.name)
+        // Recursive results can have equal names. Their real paths provide a
+        // stable, strict tie-breaker in either sorting direction.
+        let nameAscending = nameOrder == .orderedSame
+            ? a.url.path.compare(b.url.path) == .orderedAscending : nameOrder == .orderedAscending
         if foldersFirst, a.isNavigable != b.isNavigable {
             return a.isNavigable          // folders always lead, regardless of direction
         }
         let ordered: Bool
         switch sortKey {
         case .name:
-            ordered = a.name.localizedStandardCompare(b.name) == .orderedAscending
+            ordered = nameAscending
         case .size:
             ordered = a.size == b.size
-                ? a.name.localizedStandardCompare(b.name) == .orderedAscending
+                ? nameAscending
                 : a.size < b.size
         case .kind:
             let c = a.kindDescription.localizedStandardCompare(b.kindDescription)
             ordered = c == .orderedSame
-                ? a.name.localizedStandardCompare(b.name) == .orderedAscending
+                ? nameAscending
                 : c == .orderedAscending
         case .dateModified:
             let da = a.modificationDate ?? .distantPast
             let db = b.modificationDate ?? .distantPast
             ordered = da == db
-                ? a.name.localizedStandardCompare(b.name) == .orderedAscending
+                ? nameAscending
                 : da < db
         }
         return ascending ? ordered : !ordered

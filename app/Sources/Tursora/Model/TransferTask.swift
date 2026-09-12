@@ -45,7 +45,7 @@ final class TransferTask {
     private var activeSince: TimeInterval?
 
     init(sources: [URL], destination: URL, kind: FileOperations.Kind) {
-        self.sources = sources.map(\.standardizedFileURL)
+        self.sources = FileOperations.mutationSources(sources.map(\.standardizedFileURL))
         self.destination = destination.standardizedFileURL
         self.kind = kind
     }

@@ -35,6 +35,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         static let up = NSToolbarItem.Identifier("tursora.up")
         static let viewMode = NSToolbarItem.Identifier("tursora.viewMode")
         static let split = NSToolbarItem.Identifier("tursora.split")
+        static let recursiveSearch = NSToolbarItem.Identifier("tursora.recursiveSearch")
         static let search = NSToolbarItem.Identifier("tursora.search")
         static let share = NSToolbarItem.Identifier("tursora.share")
         static let more = NSToolbarItem.Identifier("tursora.more")
@@ -325,7 +326,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func openInOtherPane(_ url: URL) { tabs.openInOtherPane(url) }
     func transferToOtherPane(_ urls: [URL], move: Bool) {
         guard let other = tabs.currentPage.inactive, other.canModifyCurrentLocation,
-              !move || browser.canModifyCurrentLocation, let dest = other.currentURL else { return }
+              !move || browser.canModifySelectedItems, let dest = other.currentURL else { return }
         browser.dropFiles(urls, to: dest, op: move ? .move : .copy)
     }
 
@@ -337,6 +338,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: - Actions (menu responder chain + toolbar targets)
 
+    @objc func showSearch(_ sender: Any?) { browser.showSearch() }
     @objc func goBack(_ sender: Any?) { browser.goBack() }
     @objc func goForward(_ sender: Any?) { browser.goForward() }
     @objc func goUp(_ sender: Any?) { browser.goUp() }
@@ -431,6 +433,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(toggleSidebar(_:)):
             item.title = isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
             return true
+        case #selector(showSearch(_:)): return browser.currentURL != nil && !browser.isBrowsingArchive && !browser.isPreparingArchive
         case #selector(focusFilter(_:)):
             item.state = browser.isFiltering ? .on : .off; return true
         case #selector(nextTab(_:)), #selector(previousTab(_:)): return tabs.count > 1
@@ -452,6 +455,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case ToolbarID.forward: return browser.canGoForward
         case ToolbarID.up:      return browser.canGoUp
         case ToolbarID.share:   return !sharingItems.isEmpty
+        case ToolbarID.recursiveSearch: return browser.currentURL != nil && !browser.isBrowsingArchive && !browser.isPreparingArchive
         default: return true
         }
     }
@@ -474,14 +478,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case .open: return browser.canOpenSelection
         case .quickLook: return browser.canPreviewSelection
         case .copy: return !browser.readableSelectionURLs.isEmpty
-        case .rename: return browser.canModifyCurrentLocation && count == 1
+        case .rename: return browser.canModifySelectedItems && count == 1
         case .compress:
             item.title = browser.compressionTitle
             return browser.canModifyCurrentLocation && count > 0
         case .extract: return browser.canModifyCurrentLocation && browser.canExtractSelection
         case .paste:
             return browser.canModifyCurrentLocation && browser.validateMenuItem(NSMenuItem(title: "", action: #selector(BrowserViewController.paste(_:)), keyEquivalent: ""))
-        case .duplicate, .trash: return browser.canModifyCurrentLocation && count > 0
+        case .duplicate, .trash: return browser.canModifySelectedItems && count > 0
         }
     }
 
@@ -515,7 +519,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: - NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.sidebar, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.split, ToolbarID.viewMode, ToolbarID.group, ToolbarID.share, ToolbarID.more, ToolbarID.search]
+        [ToolbarID.sidebar, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.split, ToolbarID.viewMode, ToolbarID.group, ToolbarID.share, ToolbarID.more, ToolbarID.recursiveSearch, ToolbarID.search]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -582,6 +586,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.image = NSImage(systemSymbolName: "square.grid.3x1.below.line.grid.1x2", accessibilityDescription: "Group")
             item.showsIndicator = true
             item.menu = MainMenu.groupByMenuItem().submenu ?? NSMenu()
+            return item
+        case ToolbarID.recursiveSearch:
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.label = "Search"
+            item.toolTip = "Search names, contents, types and dates (⇧⌘F). ZIP contents are not searched."
+            item.image = NSImage(systemSymbolName: "doc.text.magnifyingglass", accessibilityDescription: "Search")
+            item.target = self
+            item.action = #selector(showSearch(_:))
             return item
         case ToolbarID.search:
             let item = NSSearchToolbarItem(itemIdentifier: id)
