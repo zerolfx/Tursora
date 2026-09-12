@@ -4,22 +4,26 @@
 
 ## 本轮 PR 整合
 
-三个功能 PR 的独立验证已完成；当前在独立 worktree 处理合并及组合回归，尚未合入 main。整合验证和审阅修复统一见 [PR 整合记录](research/pr-integration-2026-09-12.md)，以下各功能的历史检查数不代表组合结果。
+三功能整合与审阅修复已完成：最终 **1,253 项 smoke 连续三轮通过**，debug / release 构建与 strict codesign 通过；打包应用实测覆盖搜索视图隔离、目录往返恢复、大文件暂停 / 继续 / 取消、精确 Duplicate / Undo 和保存条件重跑，原文件与清理检查通过。统一见 [PR 整合记录](research/pr-integration-2026-09-12.md)。PR [#1](https://github.com/zerolfx/Tursora/pull/1) / [#2](https://github.com/zerolfx/Tursora/pull/2) / [#3](https://github.com/zerolfx/Tursora/pull/3) 和 main 的远端构建状态以对应精确提交的 GitHub 记录为准。以下各功能历史检查数不代表三功能组合结果。
+
+提交规范改为实际模块 scope；全局或跨模块提交不写 scope。main 提交信息重写保留每个 tree、作者 / 时间及旧历史备份，原功能分支不随之重写。
 
 ## 现状
 
-- 本功能分支增加文件操作任务：复制 / 移动 / Duplicate、剪贴板、拖放与 ZIP 复制出共用可暂停 / 继续 / 取消的传输引擎；Window → File Operations 管理多任务和内联冲突。安全暂存、Replace 恢复、跨卷移动与 Merge 的成功项撤销、目录身份竞态及退出清理的实现与专项验证统一记录在[文件操作任务](research/file-operation-tasks.md)。该段记录原独立功能阶段。
-- 文件操作任务最终验证：**928 项 smoke 连续三轮通过**，均 exit 0、stderr 为空；最终 release 构建与 strict codesign 通过。打包应用已实测列表 / 图标复制、逐任务暂停 / 继续 / 取消、同卷移动冲突、撤销 / 重做、暂停 Duplicate 后退出清理，更新两张实际截图；原文件及完整副本 SHA-256 检查通过。原生拖放手势和真实独立卷尚未完成实机验证，精确范围见上述记录。自己的应用已退出，偏好已恢复，共享验证锁已释放。
-- **本分支新增每目录视图属性**：`codex/directory-view-properties` 基于 `fbb6762`，Application Support 中独立保存默认值和目录记录，支持两种视图缩放、排序、分组、隐藏与预览。View / Settings 提供每目录或统一默认策略、保存当前默认和目录恢复。普通同目录 pane 重新进入读取最近保存值，统一策略同步普通 pane。按规范化路径记忆，symlink 换目标在刷新时更新身份，ZIP 无持久化记录；不做会话恢复。**854 项 smoke 已连续三轮通过**，最终 release / strict codesign 通过；最终发布包已实机复查目录往返、分栏、策略 / 默认菜单和真实重启，截图见[本功能验证记录](research/computer-use-2026-09-12-directory-views.md)。
+- 文件操作任务：复制 / 移动 / Duplicate、剪贴板、拖放与 ZIP 复制出共用可暂停 / 继续 / 取消的传输引擎；Window → File Operations 管理多任务和内联冲突。安全暂存、Replace 恢复、跨卷移动与 Merge 的成功项撤销、目录身份竞态及退出清理的实现与专项验证统一记录在[文件操作任务](research/file-operation-tasks.md)。该段记录原独立功能阶段。
+- 文件操作任务独立阶段验证：**928 项 smoke 连续三轮通过**，均 exit 0、stderr 为空；最终 release 构建与 strict codesign 通过。打包应用已实测列表 / 图标复制、逐任务暂停 / 继续 / 取消、同卷移动冲突、撤销 / 重做、暂停 Duplicate 后退出清理，更新两张实际截图；原文件及完整副本 SHA-256 检查通过。原生拖放手势和真实独立卷尚未完成实机验证，精确范围见上述记录。该独立阶段结束时已退出自己的应用、恢复偏好并释放共享验证锁。
+- **每目录视图属性独立阶段**：`codex/directory-view-properties` 基于 `fbb6762`，Application Support 中独立保存默认值和目录记录，支持两种视图缩放、排序、分组、隐藏与预览。View / Settings 提供每目录或统一默认策略、保存当前默认和目录恢复。普通同目录 pane 重新进入读取最近保存值，统一策略同步普通 pane。按规范化路径记忆，symlink 换目标在刷新时更新身份，ZIP 无持久化记录；不做会话恢复。**854 项 smoke 已连续三轮通过**，最终 release / strict codesign 通过；最终发布包已实机复查目录往返、分栏、策略 / 默认菜单和真实重启，截图见[本功能验证记录](research/computer-use-2026-09-12-directory-views.md)。
+- 新增独立搜索（⇧⌘F）：递归名称、Spotlight 正文、类型 / 日期和保存条件；每 pane 独立，结果按真实 URL 操作。未索引普通目录名称可用，正文受格式 / 索引限制；ZIP 内不支持搜索。搜索专项验证见 [search-verification.md](research/search-verification.md)。整合时搜索继承启动 pane 的视图，后续显示修改不写来源目录或统一默认，普通目录策略通知也不重置搜索；返回目录时重新读取保存值。复制 / 移动 / Duplicate 使用共同任务和真实源 URL，完成与撤销刷新当前搜索。组合验证状态见本页开头。
 
 - 2026-09-12：此前 42 个提交已 squash 成一个基线并 force-push，工作树内容保留。应用图标采用两块蓝色玻璃窗格形成抽象尾鳍的设计，内部图形宽度已收至画布约 67%，为系统圆角边缘留出间距，背景仍为单层满版。资源在 `app/Resources/`，打包时嵌入 `.icns`。
 
 - **Tursora**（原名 Otter File Manager，2026-09-11 改名）是 Swift + AppKit 原生 macOS 文件管理器，无 Xcode 工程，Command Line Tools 即可构建；终端使用 SPM 固定的 SwiftTerm 1.15.0。基础功能包括：地址栏（面包屑 + 兄弟目录菜单 + 行内补全）、标签页、Dolphin 式分栏、列表 / 图标视图与缩放预览、文件操作与撤销、拖放、Quick Look、过滤、Finder 的分组、Finder 的 Get Info / Inspector / Summary。现已加入 ZIP 压缩 / 解压、系统分享、NetFS 服务器连接与设置；终端面板、ZIP 只读浏览是默认关闭的实验功能。规格见 [SPEC.md](SPEC.md)。
-- 每目录视图属性在上述独立分支，尚未合并到 `main`；发布包 `app/build/Tursora.app` 由 `app/tools/make-app.sh` 生成，ad-hoc 签名，未上架、未公证。
+- 三项功能在本轮整合分支，尚未合并到 `main`；发布包 `app/build/Tursora.app` 由 `app/tools/make-app.sh` 生成，ad-hoc 签名，未上架、未公证。
 - 仓库：https://github.com/zerolfx/Tursora（私有）。`upstream/` 是 git-ignored 的 KDE 源码 checkout，只有 Phase 0 审计和对照 Dolphin 语义时用到；缺了可以重新 clone（版本 pin 在 [audit/00-ground-truth.md](audit/00-ground-truth.md)）。
 
 ## 验证状态——统一入口
 
+- **独立搜索阶段**：原生正文查询修复、递归结果、保存条件与同名文件操作已完成；891 项 smoke 连续三轮通过，debug / release 构建及 strict codesign 通过；完整验证范围见[搜索专项记录](research/search-verification.md)。
 - **每目录视图阶段 `eac9ffc` 与整合检查**：854 项 smoke 连续三轮通过，debug / release 与 strict codesign 通过；已实机检查逐目录 / 统一策略、默认与恢复菜单、分栏和真实重启。合入产品页阶段 `ae5e47a` 后，再次完成 854 项 smoke 连续三轮，均 exit 0、stderr 为空，debug / release 与 strict codesign 通过；整合未改变应用界面代码，沿用原阶段实机证据，未重复驱动整合包。`d309d87` 的 GitHub Build 已通过，下载产物的校验和与严格签名也通过。独立 review、布局回归、阶段边界及截图见[本功能记录](research/computer-use-2026-09-12-directory-views.md)。
 - **已提交阶段 `fbb6762`**：739 项 smoke 连续三轮通过，均 exit 0、stderr 为空；最新路径重映射修复的 release build 5 已重建并通过 strict codesign。日志、CUA 操作范围、13 组截图和偏好恢复证据统一保留在[同 pane ZIP 实机记录](research/computer-use-2026-09-12-inline-zip.md)。
 - **产品页阶段 `ae5e47a`——应用与产品页已验证**：删除未使用的 PlacesModel 常量，简化始终为 true 的归档读取参数，不改变应用行为；该阶段重新完成 739 项 smoke 连续三轮，均 exit 0、stderr 为空，debug / release build 6 与 strict codesign 通过。新增真实标签页截图。中文产品页仅介绍地址栏、标签、分栏和 ZIP，已按 [site/README.md](../site/README.md) 完成静态构建、资源引用校验与桌面 / 窄屏浏览器 QA；功能切换、图片弹窗焦点恢复、锚点直达及无 JavaScript 回退均已检查。站点仅在本地预览，未部署。具体日志与阶段边界见[同日记录](research/computer-use-2026-09-12-inline-zip.md#整理阶段与产品页)。
@@ -44,6 +48,7 @@
 - Finder 的 Get Info 里 Stationery pad、ACL、改 owner / group、Apply to enclosed items 没做。
 - 快捷键与 Finder 有几处冲突（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌥⌘S），是有意的，见 [DECISIONS.md](DECISIONS.md) D9。
 - 已有基础设置：扩展名只改显示、过滤快捷键可录制，每目录 / 统一默认视图策略已实现；其他偏好策略、本地化、会话恢复未实现。
+- 搜索支持普通目录递归名称与 Spotlight 正文，正文受索引 / importer / 权限限制，真实正向正文命中尚未验证。单次最多展示 50,000 项，Spotlight 最多检查 50,000 个候选；没有 ZIP 内搜索、Tags / 评分条件、Finder `.savedSearch` 互通或实时结果增量。
 - 实验性终端 F4 开关默认关闭；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认关闭，启用后 Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭实验开关后已有页仍只读，新打开 ZIP 恢复 Extract。
 - 归档与服务器新增功能边界：仅普通 ZIP；远程走系统 NetFS 挂载，不含自建 SFTP / 重连；真实服务器读写还未验证。`FileOperations.report` 和 Eject 错误路径已防止 smoke 模式弹模态框。
 

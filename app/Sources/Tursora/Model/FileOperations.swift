@@ -93,6 +93,63 @@ enum FileOperations {
 
     // MARK: - Instant operations
 
+    /// Recursive results and expanded lists can select both a folder and its
+    /// descendants. Mutate each selected tree once, preserving source identity
+    /// and input order. This is lexical: never resolve a selected symlink into
+    /// its target or confuse adjacent names such as "Notes" and "Notes old".
+    static func topLevelSources(_ urls: [URL], excludingAncestorURLs: Set<URL> = []) -> [URL] {
+        let paths = urls.map { $0.standardizedFileURL.path }
+        let excludedPaths = Set(excludingAncestorURLs.map { $0.standardizedFileURL.path })
+        let selectedPaths = Set(paths).subtracting(excludedPaths)
+        var emitted = Set<String>()
+        return zip(urls, paths).compactMap { url, path in
+            guard emitted.insert(path).inserted else { return nil }
+            var parent = (path as NSString).deletingLastPathComponent
+            while parent != path, !parent.isEmpty {
+                if selectedPaths.contains(parent) { return nil }
+                let next = (parent as NSString).deletingLastPathComponent
+                if next == parent { break }
+                parent = next
+            }
+            return url
+        }
+    }
+
+    /// A selected directory covers descendants only through actual directories.
+    /// An intervening symlink leaves its explicitly selected target child outside
+    /// the copied/removed tree, even when the link itself was not selected.
+    /// FileManager attributes inspect each path's leaf without following a link.
+    static func mutationSources(_ urls: [URL]) -> [URL] {
+        let paths = urls.map { $0.standardizedFileURL.path }
+        let selectedPaths = Set(paths)
+        var directoryCache: [String: Bool] = [:]
+        func isActualDirectory(_ path: String) -> Bool {
+            if let cached = directoryCache[path] { return cached }
+            let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+            let isDirectory = attributes?[.type] as? FileAttributeType == .typeDirectory
+            directoryCache[path] = isDirectory
+            return isDirectory
+        }
+        var emitted = Set<String>()
+        return zip(urls, paths).compactMap { url, path in
+            guard emitted.insert(path).inserted else { return nil }
+            var intermediates: [String] = []
+            var parent = (path as NSString).deletingLastPathComponent
+            while parent != path, !parent.isEmpty {
+                intermediates.append(parent)
+                if selectedPaths.contains(parent) {
+                    // A barrier below the nearest selected ancestor also prevents
+                    // any higher selected ancestor from covering this source.
+                    return intermediates.allSatisfy(isActualDirectory) ? nil : url
+                }
+                let next = (parent as NSString).deletingLastPathComponent
+                if next == parent { break }
+                parent = next
+            }
+            return url
+        }
+    }
+
     /// Rename via the name resource, which — unlike moveItem — handles a
     /// case-only rename on case-insensitive APFS ("Foo" → "foo").
     @discardableResult
@@ -107,7 +164,7 @@ enum FileOperations {
     /// Finder-visible trash with Put Back. Returns (original, trashed) pairs.
     static func trash(_ urls: [URL]) throws -> [(original: URL, trashed: URL)] {
         var out: [(URL, URL)] = []
-        for url in urls {
+        for url in mutationSources(urls) {
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             if let r = result as URL? { out.append((url, r)) }
@@ -116,7 +173,7 @@ enum FileOperations {
     }
 
     static func delete(_ urls: [URL]) throws {
-        for url in urls { try FileManager.default.removeItem(at: url) }
+        for url in mutationSources(urls) { try FileManager.default.removeItem(at: url) }
     }
 
     static func sameVolume(_ a: URL, _ b: URL) -> Bool {

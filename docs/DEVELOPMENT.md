@@ -36,7 +36,7 @@ To try a change in the packaged app, rebuild and relaunch:
 cd app && tools/make-app.sh && pkill -f "Tursora.app/Contents/MacOS/Tursora"; open "build/Tursora.app"
 ```
 
-The debug binary and the packaged app have **different UserDefaults domains** (the bare process has no bundle id), so favourites, view preferences and Info-section state do not carry over between them.
+The debug binary and the packaged app have **different UserDefaults domains** (the bare process has no bundle id), so favourites, saved searches, legacy view defaults and Info-section state do not carry over between them. The directory-view library is an application-owned file in Application Support and is shared by ordinary debug and packaged runs; smoke tests replace it with a unique temporary store.
 
 The packaging script also includes `SwiftTerm_SwiftTerm.bundle` and `SwiftTerm-LICENSE.txt`. Keep the resource bundle in `Contents/Resources`; building only the executable is not a complete distributable. Experimental terminal support is compiled in but remains disabled until enabled in Settings and opened with F4.
 
@@ -63,7 +63,7 @@ How it is written (`SmokeTest.swift`):
 - The app is not active in a headless run: there is **no key or main window**. Code that needs one (`editColumn`, the Inspector's "follow the main window") has fallbacks; tests activate the window where required.
 - Every feature adds a section or extends one. Test the model helpers as pure functions first (`FileOperations.uniqueURL`, `Grouping.bucket`, `FileInfo.mode`), then the UI path.
 
-Section order today: navigation → insideFolder → backHome → tabs → addressBarEditing → narrowAddressBar → contextMenus → fileOperations → copyPaste → duplicateAndTrash → expansion → splitView → tabDragSplit → viewModes → liveRefresh → crossTabDrag → filterAndConflicts → scrollClamp → groups → conflicts → getInfo → infoWindow → infoWindowFollows → favouritesAndHistory.
+The chain begins with the initial-listing wait, isolated directory-view checks, icon/server/settings checks, transfer and archive/ZIP/split-toolbar/terminal suites, search and integrated-search suites, then delayed-listing, saved-view and preferences integration checks. The original navigation chain follows: navigation → insideFolder → backHome → tabs → addressBarEditing → narrowAddressBar → contextMenus → fileOperations → copyPaste → duplicateAndTrash → expansion → splitView → tabDragSplit → viewModes → liveRefresh → crossTabDrag → filterAndConflicts → scrollClamp → groups → conflicts → getInfo → infoWindow → infoWindowFollows → favouritesAndHistory.
 
 `TURSORA_DND_DEBUG=1` prints drag-and-drop decisions.
 
@@ -76,7 +76,7 @@ Section order today: navigation → insideFolder → backHome → tabs → addre
 - **Views never touch the filesystem.** `FileOperations` does the work; `BrowserViewController` owns undo and refresh; the two file views only render `DirectoryModel` and report intent through the `FileViewing` callbacks.
 - **One undo group per operation** (`asUndoGroup`), registered on the window's undo manager, and every operation posts `DirectoryChanges.post` so other panes and Info windows refresh without waiting for FSEvents.
 - **Comments say why.** The code carries short comments where AppKit behaviour is surprising (see the pitfalls below); the spec carries the intended behaviour.
-- **Commits**: `feat(tursora): …`, `fix(tursora): …`, `docs: …`; the body says what changed and why, and ends with the smoke-test count.
+- **Commits**: use a meaningful module scope, such as `feat(search): …`, `fix(transfers): …`, or `docs(view-settings): …`. Omit the scope for global or multi-module changes (`feat: …`, `fix: …`, `docs: …`); do not use `tursora` as a blanket scope. The body says what changed and why and ends with the smoke-test count.
 - Docs: specs and decisions in Chinese (product-facing), code-facing docs in English.
 
 ## AppKit pitfalls met so far
@@ -165,3 +165,17 @@ python3 -m http.server 8080 --directory site/dist
 Open `http://localhost:8080` and stop the server with Control-C. The builder uses only the standard library, recreates `site/dist/`, and refuses a symlink at that location. Generated output is ignored by Git. It copies the required icon and four canonical screenshots without editing their pixels, then validates local references, fragments, IDs, alt attributes and the four workflow panels. Static validation does not replace browser review or verify live GitHub downloads.
 
 Use [site/README.md](../site/README.md) for the exact asset list and desktop/mobile, keyboard, dialog, reduced-motion and no-JavaScript review sequence. Record observed results in dated research and maintain current status in [HANDOFF](HANDOFF.md). Previewing or building the page does not deploy it; hosting and publication are separate actions.
+
+## Search-specific filesystem and UI pitfalls
+
+Darwin's URL directory enumerator does not follow symbolic links. Calling `skipDescendants()` on a symlink leaf can skip the *next sibling directory*, silently losing valid recursive search results. Use `.skipsPackageDescendants` and explicit result containment checks; the search smoke fixture includes a symlink before an ordinary sibling folder.
+
+Search results have no directory URL, and both views retain full-URL selection through filtering, grouping and view changes. The icon grid snapshots displayed item identities before model arrangement changes; resolving old index paths against new groups can select another file. Inline rename remembers its original FileItem and cancels on streamed result reload, so a reused row cannot receive a late edit. Do not write a search selection into its originating directory's navigation history.
+
+NSMetadataQuery rejects AND/OR compound predicates with only one child by throwing an Objective-C exception during `start()`, even though ordinary NSPredicate evaluation accepts them. Return the leaf predicate for a single condition; an unrestricted query must use a supported match-all filename comparison rather than TRUEPREDICATE. Validate the actual generated predicates against the native query service as well as using deterministic content fixtures.
+
+Context menus snapshot full FileItems when built, retaining them through menu closure and action dispatch. Never re-resolve clicked rows after a search batch changes ordering. FileOperations normalizes overlapping selections through actual directory ancestors before mutations, so selecting a folder plus its ordinary search-result child cannot remove the parent and then throw before registering Undo. An intervening symlink prevents that coverage even if the link itself is not selected: selecting an actual `root` directory and `root/link/externalChild` retains both sources. A selected actual directory below a symlink still covers its own ordinary descendants; only the path from that selection to its child matters. Symbolic links do not cover explicit descendant sources. TransferTask applies the same source normalization before capturing its task context; Duplicate uses each retained source’s real parent. The integrated fixture covers source normalization and the real Copy worker for selected and intervening links; see the integration record for run status. Search completions and Undo/Redo reload the query with full-URL selection instead of selecting basenames in the originating folder.
+
+Search retains the originating currentURL and viewPropertiesKey for returning to the folder, so a non-nil key alone does not permit view persistence. `canPersistViewProperties` also rejects `isSearching` and `model.isSearchResults`; use it for ordinary saves, store observers, default/reset commands and menu validation. Search initially inherits the pane’s current view and subsequent changes stay transient. Reload/refresh must handle search before directory-key retarget checks, and leaving search restores the folder’s current saved properties.
+
+When checking that Open or Split creates no window, snapshot window object identities immediately around that operation and inspect additions plus the original pane/window identity. A process-wide window count can change as earlier suites release closed windows; equal counts can also hide a replacement window. The ZIP browser suite covers both cases without a fixed delay.

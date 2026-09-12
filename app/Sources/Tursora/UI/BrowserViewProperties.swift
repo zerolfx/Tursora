@@ -20,8 +20,14 @@ extension BrowserViewController {
         return properties
     }
 
+    /// Search keeps its originating URL for navigation, but its temporary view
+    /// must never overwrite that folder or react to folder-policy broadcasts.
+    var canPersistViewProperties: Bool {
+        viewPropertiesKey != nil && !isPreparingArchive && !isSearching && !model.isSearchResults
+    }
+
     func persistViewProperties() {
-        guard !isApplyingViewProperties, !isPreparingArchive,
+        guard !isApplyingViewProperties, canPersistViewProperties,
               let key = viewPropertiesKey else { return }
         let properties = currentViewProperties
         guard properties != lastAppliedViewProperties else { return }
@@ -65,7 +71,7 @@ extension BrowserViewController {
         viewPropertiesObserver = NotificationCenter.default.addObserver(
             forName: DirectoryViewPropertiesStore.didChange, object: viewPropertiesStore, queue: .main
         ) { [weak self] notification in
-            guard let self, let key = self.viewPropertiesKey else { return }
+            guard let self, self.canPersistViewProperties, let key = self.viewPropertiesKey else { return }
             switch notification.userInfo?["reason"] as? String {
             case "writeStatus": return
             case "reset":
@@ -83,12 +89,12 @@ extension BrowserViewController {
     }
 
     func useCurrentViewAsDefault() {
-        guard viewPropertiesKey != nil, !isPreparingArchive else { return }
+        guard canPersistViewProperties else { return }
         viewPropertiesStore.setDefault(currentViewProperties)
     }
 
     func restoreDirectoryViewDefaults() {
-        guard let key = viewPropertiesKey, !isPreparingArchive else { return }
+        guard canPersistViewProperties, let key = viewPropertiesKey else { return }
         viewPropertiesStore.reset(key: key)
         restoreViewProperties()
     }
@@ -109,9 +115,9 @@ extension MainWindowController {
             item.state = browser.viewPropertiesStore.policy == .unified ? .on : .off
             return true
         case #selector(useCurrentViewAsDefault(_:)):
-            return browser.viewPropertiesKey != nil && !browser.isPreparingArchive
+            return browser.canPersistViewProperties
         case #selector(restoreFolderViewDefaults(_:)):
-            return browser.viewPropertiesKey != nil && !browser.isPreparingArchive && browser.viewPropertiesStore.policy == .perDirectory
+            return browser.canPersistViewProperties && browser.viewPropertiesStore.policy == .perDirectory
         default: return nil
         }
     }

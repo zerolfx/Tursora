@@ -19,3 +19,7 @@ The current set is captured in macOS dark appearance. Interface labels are Engli
 Computer-use captures are JPEG files; native menu-window captures are PNG files. Keep the extension consistent with the actual image format. Capture expanded menus by window ID (`screencapture -x -o -l<window-id>`) when authorized; full-screen regions can include other apps behind a background-controlled window.
 
 The file-operation task change adds `file-operation-tasks.jpg` and refreshes `file-operations.jpg` from the final signed app: independent paused/running copies and the nonmodal move conflict. The disposable 128 MiB fixtures use process-local pacing to make controls observable; the displayed rates are not benchmarks. Exact automated and computer-use evidence is in [file-operation-tasks.md](../research/file-operation-tasks.md).
+
+`features/search.jpg` shows independent recursive queries in list and icon panes with original locations. Its conditions, restart checks and native Spotlight limits are recorded in [search verification](../research/search-verification.md).
+
+These feature captures come from their independently verified release bundles. They do not establish visual verification of the combined three-feature build; the current merge stage and later captures are tracked in [the integration record](../research/pr-integration-2026-09-12.md).

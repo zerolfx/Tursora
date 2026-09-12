@@ -80,7 +80,7 @@ enum AppPreferences {
                 entries += keys.map { (Shortcut(keyEquivalent: String($0), modifierFlags: modifiers), title) }
             }
             add("hqntyidwxczvarlkm,[]-+=0123456789", .command, "an existing app command")
-            add("nwtzcmdphg.[]", [.command, .shift], "an existing app command")
+            add("nwtzcmdphgf.[]", [.command, .shift], "an existing app command")
             add("hi12", [.command, .option], "an existing app command")
             add("is01234567", [.command, .control], "an existing app command")
             add("=", [.command, .shift], "Zoom In")
