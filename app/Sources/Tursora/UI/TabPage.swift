@@ -7,6 +7,7 @@ enum PaneSide { case left, right }
 /// follow; clicking anywhere in a pane activates it.
 final class TabPage: NSViewController, NSSplitViewDelegate {
 
+    let viewPropertiesStore: DirectoryViewPropertiesStore
     let provider: FileProvider
     weak var host: BrowserHost? { didSet { panes.forEach { $0.host = host } } }
 
@@ -22,7 +23,9 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
     var onPaneLocationChanged: ((BrowserViewController, URL) -> Void)?
     private var clickMonitor: Any?
 
-    init(provider: FileProvider, initialURL: URL, host: BrowserHost?) {
+    init(provider: FileProvider, initialURL: URL, host: BrowserHost?,
+         viewPropertiesStore: DirectoryViewPropertiesStore = .shared) {
+        self.viewPropertiesStore = viewPropertiesStore
         self.provider = provider
         self.host = host
         super.init(nibName: nil, bundle: nil)
@@ -100,7 +103,7 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
     // MARK: - Private
 
     private func makePane(at url: URL) -> BrowserViewController {
-        let pane = BrowserViewController(provider: provider, initialURL: url)
+        let pane = BrowserViewController(provider: provider, initialURL: url, viewPropertiesStore: viewPropertiesStore)
         pane.host = host
         wire(pane)
         return pane

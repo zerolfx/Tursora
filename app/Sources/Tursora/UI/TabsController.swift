@@ -5,6 +5,7 @@ import AppKit
 /// so ⌘⇧T brings them back with their history and split intact.
 final class TabsController: NSViewController {
 
+    let viewPropertiesStore: DirectoryViewPropertiesStore
     let provider: FileProvider
     weak var host: BrowserHost? { didSet { pages.forEach { $0.host = host } } }
 
@@ -28,7 +29,9 @@ final class TabsController: NSViewController {
     var current: BrowserViewController { currentPage.active }
     var canReopenClosedTab: Bool { !closedTabs.isEmpty }
 
-    init(provider: FileProvider, initialURL: URL, host: BrowserHost?) {
+    init(provider: FileProvider, initialURL: URL, host: BrowserHost?,
+         viewPropertiesStore: DirectoryViewPropertiesStore = .shared) {
+        self.viewPropertiesStore = viewPropertiesStore
         self.provider = provider
         self.host = host
         super.init(nibName: nil, bundle: nil)
@@ -239,7 +242,7 @@ final class TabsController: NSViewController {
     // MARK: - Private
 
     private func makePage(at url: URL) -> TabPage {
-        let page = TabPage(provider: provider, initialURL: url, host: host)
+        let page = TabPage(provider: provider, initialURL: url, host: host, viewPropertiesStore: viewPropertiesStore)
         page.onPaneLocationChanged = { [weak self, weak page] pane, url in
             guard let self, let page else { return }
             self.refreshChrome()

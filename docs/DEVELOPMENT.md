@@ -106,6 +106,7 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 | Headless run hangs | A modal alert with no screen | `report(...)` prints in smoke mode |
 | Info sections crowd the right edge; inline preview is too narrow | Stack alignment was used as a width/fill constraint | Use leading alignment and explicit leading/trailing anchors for every outer row and section header/content; test actual frames and resizing |
 | A new pane claims Icons but shows a list | The saved mode was read, but `fileView` still held the list; calling `setViewMode` with the same mode returned early | Choose the initial `fileView` from the saved mode before `loadView` mounts it |
+| A narrow pane loses its Name column when remembered properties switch Icons to List | Mounting the list before applying the final group key expands obsolete groups and can scroll horizontally | Apply the final arrangement before mounting, then restore the pane's captured list horizontal offset after layout; test both zero and intentional nonzero offsets |
 | Toolbar still selects List after the Icons shortcut | Pane view changes did not notify the window | Notify `BrowserHost` after mounting the view; only the active pane updates toolbar validation |
 
 ## Release checklist
