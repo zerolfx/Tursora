@@ -57,6 +57,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private static var cutState: (changeCount: Int, urls: [URL])?
 
     var onLocationChanged: ((URL) -> Void)?
+    /// Includes pending navigation, before a ZIP has finished preparing.
+    var onWorkspaceSessionChanged: (() -> Void)?
     /// The pane took focus or was clicked — the tab page activates it.
     var onFocus: (() -> Void)?
 
@@ -67,6 +69,11 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var searchSelection: [URL] = []
     var searchPanelHeight: NSLayoutConstraint?
     private(set) var currentURL: URL?
+    private var workspaceNavigationURL: URL
+    var workspacePaneState: WorkspacePaneState {
+        WorkspacePaneState(url: ArchiveWorkspace.shared.logicalURL(for: workspaceNavigationURL),
+                           search: isSearching ? searchSession.request : nil)
+    }
     private var navigationGeneration = 0
     private(set) var isPreparingArchive = false
     var fileOpener: (URL) -> Bool = { NSWorkspace.shared.open($0) }
@@ -99,6 +106,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     init(provider: FileProvider, initialURL: URL,
          viewPropertiesStore: DirectoryViewPropertiesStore = .shared) {
+        workspaceNavigationURL = ArchiveWorkspace.shared.logicalURL(for: initialURL)
         self.viewPropertiesStore = viewPropertiesStore
         let initialProperties = viewPropertiesStore.properties(forKey: Self.persistenceKey(for: initialURL))
         self.rememberedViewProperties = initialProperties
@@ -467,11 +475,13 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         leaveSearchContext()
         let workspace = ArchiveWorkspace.shared
         let logical = workspace.logicalURL(for: url)
+        workspaceNavigationURL = logical
         navigationGeneration += 1
         let generation = navigationGeneration
         pendingSelection = nil
         isPreparingArchive = false
         fileView.isReadOnly = isBrowsingArchive
+        onWorkspaceSessionChanged?()
         if workspace.session(for: logical) != nil {
             enterPreparedArchive(logical)
         } else if AppPreferences.experimentalZIPBrowsingEnabled, let archive = workspace.archiveURL(containing: logical) {
@@ -506,10 +516,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     private func showArchiveError(_ error: Error) {
+        // Failed navigation leaves the existing directory on screen. Persist
+        // that location, so a subsequent search keeps its true browsing origin.
+        // With no prior directory (startup), retain the requested ZIP to retry.
+        if let currentURL { workspaceNavigationURL = ArchiveWorkspace.shared.logicalURL(for: currentURL) }
         lastError = error
         errorLabel.stringValue = error.localizedDescription
         errorLabel.isHidden = false
         errorLabel.toolTip = error.localizedDescription
+        onWorkspaceSessionChanged?()
     }
 
     func goBack() {
@@ -1276,6 +1291,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
         if changingDirectory { pendingRenames = [:] }
         currentURL = url
+        workspaceNavigationURL = ArchiveWorkspace.shared.logicalURL(for: url)
         addressBar.url = url
         viewPropertiesKey = destinationKey
         restoreViewProperties()

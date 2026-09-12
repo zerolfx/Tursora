@@ -83,6 +83,7 @@ Locations
 - **文件拖到标签上**（同 Dolphin）：悬停 800 ms 自动切到该标签；放到标签上 = 放进该标签的当前目录（同卷移动 / 跨卷或 `⌥` 复制）；放到标签栏空白处 = 每个文件夹开一个后台新标签。
 - 关闭再恢复标签：分栏状态、两个 pane 的历史和自定义名称一并恢复。关闭后台标签或批量关闭时保留仍存在的活动页；活动页被关闭才选择相邻页。
 - 新 pane 等父控制器接好回调后才执行初始导航；若这期间已经明确选择另一位置，迟到的初始导航不能将其覆盖。
+- 启动时默认恢复上次工作区中的窗口、标签和分栏；完整范围、持久化与关闭开关的语义见 §22。运行中 `⌘⇧T` 恢复关闭页的完整对象，与退出后的新会话重建是两种独立行为。
 
 标签右键菜单按 Dolphin 提供 **New Tab、Detach Tab、Rename Tab、Close Other Tabs、Close Tabs to the Left、Close Tabs to the Right、Close Tab**。命令目标固定为实际右键标签，不依赖菜单结束后的索引或当前页；右键本身不切页。无其他页时禁用 Close Other Tabs，左右边界分别禁用对应批量关闭项，最后一页 Close Tab 关窗口。
 
@@ -135,7 +136,7 @@ Locations
 - 保存库位于 `~/Library/Application Support/Tursora/DirectoryViewProperties.json`，不向浏览目录写 `.directory`、`.DS_Store` 或 xattr，不要求该目录可写。v1 JSON 分开保存策略、默认值和目录记录；连续修改合并写入并原子替换，应用退出时等待待写数据完成。未支持版本或损坏文件回退到可用默认，读入和无修改的退出不覆盖原文件；之后实际修改才替换为当前格式。单个已知字段错误回退为工厂值，缩放越界夹到有效档位，坏目录记录单独跳过。保存失败不阻止当次操作；Settings 内联显示失败原因和 Retry Saving View Settings，重试成功后清除错误，无模态提示。
 - 普通本地 file URL 使用规范化并解析 symlink 的绝对路径键；忽略尾斜杠、query 和 fragment，不主动把大小写全部折叠。非本地主机的 file URL 与非 file URL 无目录键。导航时固定本次键，之后修改使用此键；symlink 改指新目标后，刷新 / Reload 识别键变化，清除旧目标的过滤、选择、滚动及待处理改名，再恢复新目标设置。枚举目录时解析 symlink，条目和历史仍保留请求路径的拼写。当前浏览器不会自动解析 Finder alias；只有调用者已给出目标目录时才共享目标记录。重命名或移动后按新路径查找，不追踪 inode；旧路径复用、卷复用同一挂载点可能继承旧记录，同卷换挂载点则不跟随。
 - ZIP 与搜索结果视图不持久化。ZIP 每次导航进入根或内部目录都采用当时默认，当次修改只影响该 pane；搜索继承启动时 pane 的视图，搜索中改变模式、排序、缩放、分组、隐藏与预览只保留到退出搜索。两者均不响应普通目录策略 / 默认 / 重置通知，也不能将当次视图设为默认或重置来源目录。不能将 ZIP 逻辑地址或临时解压路径写入目录库；搜索保留来源目录上下文作返回用途，但不写其记录或统一默认。返回普通目录重新读取该目录当前保存值，归档只读操作边界不变。
-- 本功能不恢复上次窗口、标签或历史，不递归向子目录应用设置，不提供 Finder 的完整 Show View Options 对话框。Dolphin 固定源码依据与存储取舍见[每目录视图研究](research/directory-view-properties.md)；最终自动与实机验证状态见 [HANDOFF](HANDOFF.md)。
+- 目录视图库不负责恢复窗口、标签或历史；窗口和标签由 §22 的独立会话库恢复，导航历史仍不持久化。不递归向子目录应用设置，不提供 Finder 的完整 Show View Options 对话框。Dolphin 固定源码依据与存储取舍见[每目录视图研究](research/directory-view-properties.md)；最终自动与实机验证状态见 [HANDOFF](HANDOFF.md)。
 
 ## 6. 文件操作（语义对标 Finder）
 
@@ -225,7 +226,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 ## 16. 设置与过滤快捷键
 
-- Tursora → Settings…（`⌘,`）打开应用级设置窗口，分 General / Updates 两页，首次选择 General。General 页含通用、Folder View Settings、Keyboard 和 Experimental；修改立即生效并持久化。Folder View Settings 选择每目录记忆或统一默认，保存当前默认和恢复当前目录的入口在 View 菜单，语义见 §5。Updates 页见 §20。
+- Tursora → Settings…（`⌘,`）打开应用级设置窗口，分 General / Updates 两页，首次选择 General。General 页含通用、Startup、Folder View Settings、Keyboard 和 Experimental；修改立即生效并持久化。Startup 的 Reopen windows and tabs on launch 默认开启，语义见 §22。Folder View Settings 选择每目录记忆或统一默认，保存当前默认和恢复当前目录的入口在 View 菜单，语义见 §5。Updates 页见 §20。
 - 名称过滤快捷键默认 `⌘F`。点击录制按钮后输入组合；要求 Command 或 Control，可加 Option / Shift，支持字母、数字和允许的标点。拒绝已有应用命令及常见系统组合；冲突内联提示，原绑定不变。Escape 取消录制，Reset 恢复 `⌘F`。
 - 过滤仍是当前目录名称过滤；独立递归搜索见 §19。扩展名显示只影响界面标签，不改文件名或 Finder 的逐文件 Hide extension 标记。
 - Terminal panel 与 Browse ZIP archives 两个实验开关默认均关闭；启用终端开关只让入口可用，不自行启动 shell。
@@ -280,3 +281,15 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 - 原始 `0.1.0` 继续保留已发布 ZIP，不重写历史资产。网站和 README 在首个 DMG 发布前明确区分已发布 ZIP 与准备中的 DMG。
 - 安装说明按下载、拖入 Applications、从 Applications 启动排列。当前 ad-hoc 且未公证，可信下载被系统以无法验证开发者为由阻止时，按 Apple 指引先尝试打开，再到 System Settings → Privacy & Security → Open Anyway 并确认 Open。README 另提供折叠终端备选，仅在确认官方来源及同版本 SHA-256 一致后，移除该应用包的 `com.apple.quarantine` 属性；不清空全部扩展属性，不赋予公证或修复损坏。损坏提示先重下核验，恶意软件警告不按普通隔离提示处理。网站仅提供简短步骤与 README 详情链接；不执行系统安全设置变更。
 - 本轮没有可用 Developer ID 签名身份，用户也确认尚无证书，因此维持 ad-hoc 签名。Apple Developer Program 资格、Developer ID 证书与公证凭据就绪后再单独接入并验证签名 / 公证；不以 DMG 外观或 Sparkle 签名代替 Apple 信任。Mac App Store 分发与其 sandbox 设计另行评估。
+
+## 22. 工作区会话恢复（工作连续性）
+
+- Reopen windows and tabs on launch 默认开启。正常启动重建已保存的浏览窗口及其标签顺序、选中标签、自定义名、每标签一到两个 pane 的位置、活动侧与分栏比例；同时恢复活动窗口、窗口位置和尺寸、最小化状态、侧栏宽度及折叠状态。显式关闭的窗口或标签不在下次启动时复活；当前没有浏览窗口时启动打开 Home。
+- 保存的是逻辑位置与已执行搜索的条件，启动重新导航并重新查询，不保存搜索结果或尚未执行的草稿。ZIP 使用原归档加内部目录的逻辑 URL，准备过程中也保留目标，不写入临时解压目录。关闭 ZIP 实验且能识别实际归档时改开归档父目录；离线或缺失路径不按 `.zip` 后缀猜测，不把同名普通目录改为归档。
+- 不存在、未挂载或无权限的目录仍保留原路径，由既有异步浏览错误在 pane 内说明，不自动替换为 Home，不自动挂载或重新认证服务器。重新连接卷后可 Reload 或继续导航。窗口按当前屏幕的可见区域约束，移除显示器不会让恢复窗口留在屏幕外；分栏暂时受窄窗口最小宽度约束时，仍保留原比例供放宽后恢复。
+- 过滤文字、选区、滚动、Back / Forward 历史、最近关闭标签、终端进程、文件任务和撤销历史不持久化。两种文件视图继续按 §5 读取目录属性；搜索与 ZIP 的临时视图属性不并入会话库。退出仍按原有规则取消传输并等待清理，恢复工作区不会继续复制或执行终端命令。
+- 工作区位于 `~/Library/Application Support/Tursora/WorkspaceSession.json`，与目录视图库分离。位置、搜索、标签、分栏、侧栏及窗口状态变化在 0.4 秒停止变化后合并写入；退出先捕获并同步保存，随后才清理任务和临时归档。文件用私有权限原子替换，不写浏览目录。读取保护上限为 16 个窗口、每窗口 32 个标签和 2 MiB 文件；超限保存明确提示失败并保留旧文件，不能静默截断当前工作区。不接受远程协议 URL。
+- 损坏、未知版本或无法读取的会话文件保留原样，当次仍可使用 Home；后续导航及退出也不自动覆盖它。Settings → General 内联显示错误，Retry Saving Workspace 明确以当前工作区重试保存；关闭再开启选项也开始保存当前工作区。普通保存失败同样内联提示，不弹模态对话框。
+- 关闭选项立即取消待保存并清除会话文件，当前窗口继续工作；重新开启立即保存当前工作区。清除失败显示 Retry Clearing Saved Workspace，不能把失败记作已经删除。
+
+本轮实现及已完成的三轮自动化、打包和实机验证见[会话恢复记录](research/workspace-sessions.md)。既有功能的历史通过次数不作为本轮验证结果。

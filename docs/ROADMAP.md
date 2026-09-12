@@ -3,10 +3,14 @@
 v1（纯本地）的功能已经齐了：地址栏、标签页、分栏、两种视图与缩放预览、文件操作与撤销、过滤、分组、Get Info。
 新增功能已扩展到 ZIP 压缩 / 解压、系统分享、系统服务器挂载与设置，以及每目录视图记忆 / 统一默认、可控制的文件操作任务、递归和保存搜索；终端面板和当前 pane 的 ZIP 只读浏览为默认关闭的实验功能。三项新功能的组合验证状态见 [PR 整合记录](research/pr-integration-2026-09-12.md)。接下来按"用户最常碰到、成本最低"排。难度尺度（S ≤ 半天 / M 1–2 天 / L 3–5 天 / XL > 1 周）与每项的依据见两份差距清单：
 
-分栏独立地址栏、双侧标签标题与标签右键操作的本轮实现及验证状态见[专项记录](research/pane-paths-and-tab-actions.md)；会话恢复、合并窗口和单独弹出 pane 仍留待后续。
+分栏独立地址栏、双侧标签标题与标签右键操作的实现及验证状态见[专项记录](research/pane-paths-and-tab-actions.md)；合并窗口和单独弹出 pane 仍留待后续。
 
 - [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) — 对照 Finder 菜单 nib 逐项
 - [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md) — 对照 Dolphin 注册的 action / 面板 / 设置
+
+## 当前优先：工作连续性
+
+按用户反馈，会话恢复已排到小功能补齐之前。本轮已实现默认恢复窗口、多标签与双 pane 工作区，保留活动位置、名称、分栏比例、侧栏和窗口布局；Settings 可关闭并清除保存。已执行搜索重新查询，缺失目录保留原路径，不重放终端、传输或撤销操作。**本轮构建、2,418 项 smoke 连续三轮及打包应用真实退出 / 重启验证已完成**，精确范围统一见[会话恢复记录](research/workspace-sessions.md)。后续是否扩展选区 / 滚动、导航历史与关闭页记忆应独立评估，不计入本轮完成范围。
 
 ## 下一批（S，各不到半天）
 
@@ -14,7 +18,7 @@ Deselect All、Move Items Here（⌥⌘V）、Copy as Pathname 快捷键对齐�
 
 ## 之后（M）
 
-批量重命名、Make Alias / Show Original、Recent Folders、右侧预览栏（复用 Get Info 的 FileInfo）、Customize Toolbar、Toolbar / Path Bar / Status Bar / Tab Bar 开关、Show All Tabs、Move Tab to New Window / Merge、spring-loaded folders、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、快捷键与 Finder 对齐（可做成开关）、会话恢复、最近关闭的标签列表、附加信息列、文件夹项目数 / 递归大小列。
+批量重命名、Make Alias / Show Original、Recent Folders、右侧预览栏（复用 Get Info 的 FileInfo）、Customize Toolbar、Toolbar / Path Bar / Status Bar / Tab Bar 开关、Show All Tabs、Move Tab to New Window / Merge、spring-loaded folders、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、快捷键与 Finder 对齐（可做成开关）、最近关闭的标签列表、附加信息列、文件夹项目数 / 递归大小列。
 
 ## 大件（L）
 
@@ -27,7 +31,7 @@ Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私
 ## 新功能的后续验证
 
 - 复制 / 移动 / Duplicate 的逐任务进度、暂停 / 继续 / 取消已实现；专项自动化与实机记录见[文件操作任务](research/file-operation-tasks.md)。跨卷故障分支可注入验证，真实独立卷和真实服务器专项实测应分别记录；ZIP 压缩 / 解压工具取消、崩溃后任务恢复、废纸篓 / 删除任务化仍未实现。
-- 每目录视图属性使用应用私有路径库；原独立分支同步 `ae5e47a` 后的三轮 smoke、打包签名与实机证据见 [HANDOFF](HANDOFF.md)，三功能组合不能复用该检查数。后续项包括递归应用子目录、列布局与逻辑页专用属性；如需目录改名 / 移动后跟随或跨挂载点恢复，应独立评估卷身份与 bookmark，不将本次路径键行为暗改为 inode 跟随。会话恢复仍是独立功能。
+- 每目录视图属性使用应用私有路径库；原独立分支同步 `ae5e47a` 后的三轮 smoke、打包签名与实机证据见 [HANDOFF](HANDOFF.md)，三功能组合不能复用该检查数。后续项包括递归应用子目录、列布局与逻辑页专用属性；如需目录改名 / 移动后跟随或跨挂载点恢复，应独立评估卷身份与 bookmark，不将本次路径键行为暗改为 inode 跟随。会话恢复使用独立库，本轮验证见页首。
 
 - 在有用户提供的服务器时验证 SMB / NFS / WebDAV / legacy AFP 的认证、读写和掉线；当前只验证系统挂载接口与无网络状态流转。
 - [0.1.0](https://github.com/zerolfx/Tursora/releases/tag/v0.1.0) 已发布，对应提交的 Build / Release 成功，重新下载的 ZIP 校验和、签名、版本、架构与资源核对通过，见 [HANDOFF](HANDOFF.md)。下载产物在其他机器上的首次安装 / 启动仍待验证；本地同源打包实测不替代该检查。

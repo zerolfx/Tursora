@@ -12,6 +12,10 @@ enum AppPreferences {
         get { shared.showFileExtensions }
         set { shared.showFileExtensions = newValue }
     }
+    static var restoreWorkspaceOnLaunch: Bool {
+        get { shared.restoreWorkspaceOnLaunch }
+        set { shared.restoreWorkspaceOnLaunch = newValue }
+    }
     static var experimentalTerminalEnabled: Bool {
         get { shared.experimentalTerminalEnabled }
         set { shared.experimentalTerminalEnabled = newValue }
@@ -100,6 +104,7 @@ enum AppPreferences {
     final class Store {
         private enum Key {
             static let extensions = "showFileExtensions"
+            static let workspace = "restoreWorkspaceOnLaunch"
             static let terminal = "experimentalTerminalEnabled"
             static let zip = "experimentalZIPBrowsingEnabled"
             static let shortcutKey = "filterShortcutKey"
@@ -116,6 +121,10 @@ enum AppPreferences {
         var showFileExtensions: Bool {
             get { defaults.object(forKey: Key.extensions) == nil ? true : defaults.bool(forKey: Key.extensions) }
             set { set(newValue, forKey: Key.extensions, oldValue: showFileExtensions) }
+        }
+        var restoreWorkspaceOnLaunch: Bool {
+            get { defaults.object(forKey: Key.workspace) == nil ? true : defaults.bool(forKey: Key.workspace) }
+            set { set(newValue, forKey: Key.workspace, oldValue: restoreWorkspaceOnLaunch) }
         }
         var experimentalTerminalEnabled: Bool {
             get { defaults.bool(forKey: Key.terminal) }

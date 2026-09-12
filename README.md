@@ -35,9 +35,13 @@ Click a screenshot to view it at full size.
       <td>
         <strong>Two folders, one workspace</strong>
         <p>Keep a source and destination side by side, each with its own editable path, history and selection. Copy or move files directly to the other pane.</p>
+        <p>Reopen Tursora and return to your windows, ordered tabs and split panes, including their names, active side and layout. <strong>Settings → General → Reopen windows and tabs on launch</strong> is on by default; turning it off clears the saved workspace. Searches rerun their saved conditions.</p>
         <p>Click Split View or press <code>⇧⌘D</code>. <code>⌥Tab</code> switches panes; <code>⇧⌘C</code> copies to the other side.</p>
       </td>
-      <td><a href="docs/images/features/split-panes.png"><img src="docs/images/features/split-panes.png" width="600" alt="Split panes with independent paths: source files on the left, delivery folder on the right"></a></td>
+      <td>
+        <a href="docs/images/features/split-panes.png"><img src="docs/images/features/split-panes.png" width="600" alt="Split panes with independent paths: source files on the left, delivery folder on the right"></a>
+        <a href="docs/images/features/workspace-restored.png"><img src="docs/images/features/workspace-restored.png" width="600" alt="After relaunch: Daily work, Inbox and Archive tabs, with the original split layout and active right pane restored"></a>
+      </td>
     </tr>
     <tr>
       <td>
@@ -116,10 +120,10 @@ Click a screenshot to view it at full size.
     <tr>
       <td>
         <strong>A few useful preferences</strong>
-        <p>General lets you choose per-folder views or a shared default, show or hide extensions, record a filtering shortcut, and enable experiments. Shortcut recording checks conflicts. Hidden extensions affect display only; renaming always shows the full filename. Updates offers daily automatic checks, optional automatic installation and a manual check. ZIP browsing is enabled in this actual capture; both experiments still default off.</p>
+        <p>General lets you reopen the previous workspace, choose per-folder views or a shared default, show or hide extensions, record a filtering shortcut, and enable experiments. Shortcut recording checks conflicts. Hidden extensions affect display only; renaming always shows the full filename. Updates offers daily automatic checks, optional automatic installation and a manual check. Workspace restoration is on in this actual capture; both experiments are off, matching their defaults.</p>
       </td>
       <td>
-        <a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="General settings with folder view policy, extension display, shortcut recording, Terminal disabled and ZIP browsing enabled"></a>
+        <a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="General settings with startup workspace restoration, folder view policy, shortcut recording and both experiments disabled"></a>
         <a href="docs/images/features/updates.png"><img src="docs/images/features/updates.png" width="600" alt="Updates settings with automatic checks, optional download and installation, a manual check and last-check status"></a>
       </td>
     </tr>
@@ -170,7 +174,7 @@ These are current gaps, not promises of complete Finder parity:
 
 **Outside the design:** file tags and Import from iPhone. These are intentionally excluded, rather than items waiting to be implemented.
 
-Tursora currently has an English interface and does not restore tabs after quitting. See the [Finder comparison](docs/gaps/GAP-vs-FINDER.md), [Dolphin comparison](docs/gaps/GAP-vs-DOLPHIN.md) and [roadmap](docs/ROADMAP.md) for the detailed status.
+Tursora currently has an English interface. Workspace restoration keeps locations and layout; filters, selection, scroll position, navigation history, closed tabs, terminal sessions, transfers and undo history do not survive quitting. Missing folders remain at their original paths with an inline error; restoration does not reconnect servers. Implementation and pending verification are tracked in the [workspace session record](docs/research/workspace-sessions.md). See the [Finder comparison](docs/gaps/GAP-vs-FINDER.md), [Dolphin comparison](docs/gaps/GAP-vs-DOLPHIN.md) and [roadmap](docs/ROADMAP.md) for the detailed status.
 
 ## Get Tursora
 

@@ -103,6 +103,10 @@ final class DirectoryViewPropertiesStore {
                 isDirectory: true)
             return DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("DirectoryViewProperties.json"))
         }
+        if let path = ProcessInfo.processInfo.environment["TURSORA_UI_TEST_VIEW_PROPERTIES_FILE"],
+           path.hasPrefix("/"), !path.contains("\0") {
+            return DirectoryViewPropertiesStore(fileURL: URL(fileURLWithPath: path))
+        }
         let root = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Tursora", isDirectory: true)
         return DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("DirectoryViewProperties.json"),

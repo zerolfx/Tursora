@@ -11,6 +11,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     let extensionsCheckbox = NSButton(checkboxWithTitle: "Show all filename extensions", target: nil, action: nil)
+    let restoreWorkspaceCheckbox = NSButton(checkboxWithTitle: "Reopen windows and tabs on launch", target: nil, action: nil)
+    let workspaceSaveMessage = NSTextField(wrappingLabelWithString: "")
+    let retryWorkspaceSave = NSButton(title: "Retry Saving Workspace", target: nil, action: nil)
+    let generalScrollView = NSScrollView()
     let terminalCheckbox = NSButton(checkboxWithTitle: "Terminal panel", target: nil, action: nil)
     let zipCheckbox = NSButton(checkboxWithTitle: "Browse ZIP archives", target: nil, action: nil)
     let shortcutRecorder = ShortcutRecorderButton()
@@ -29,10 +33,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var viewPropertiesObserver: NSObjectProtocol?
     private let preferences: AppPreferences.Store
     private var observer: NSObjectProtocol?
+    private let workspaceStore: WorkspaceSessionStore
+    private var workspaceObserver: NSObjectProtocol?
 
     init(preferences: AppPreferences.Store = AppPreferences.shared,
          viewPropertiesStore: DirectoryViewPropertiesStore = .shared,
-         updater: AppUpdater = .shared) {
+         updater: AppUpdater = .shared,
+         workspaceStore: WorkspaceSessionStore = .shared) {
+        self.workspaceStore = workspaceStore
         self.updater = updater
         self.viewPropertiesStore = viewPropertiesStore
         self.preferences = preferences
@@ -42,6 +50,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         super.init(window: window)
         viewPropertiesObserver = NotificationCenter.default.addObserver(forName: DirectoryViewPropertiesStore.didChange, object: viewPropertiesStore, queue: .main) { [weak self] _ in
+            self?.refreshControls()
+        }
+        workspaceObserver = NotificationCenter.default.addObserver(forName: WorkspaceSessionStore.didChange, object: workspaceStore, queue: .main) { [weak self] _ in
             self?.refreshControls()
         }
         window.delegate = self
@@ -71,8 +82,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ])
         let general = NSTabViewItem(identifier: "general")
         general.label = "General"
-        let content = NSView()
-        general.view = content
+        // General can grow to show a save error without clipping controls on
+        // a smaller display; the document remains at its natural text height.
+        generalScrollView.hasVerticalScroller = true
+        generalScrollView.autohidesScrollers = true
+        generalScrollView.drawsBackground = false
+        generalScrollView.borderType = .noBorder
+        let content = SettingsDocumentView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        generalScrollView.documentView = content
+        let clip = generalScrollView.contentView
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            content.topAnchor.constraint(equalTo: clip.topAnchor),
+            content.widthAnchor.constraint(equalTo: clip.widthAnchor),
+            content.heightAnchor.constraint(greaterThanOrEqualTo: clip.heightAnchor),
+        ])
+        general.view = generalScrollView
         settingsTabs.addTabViewItem(general)
         let updates = NSTabViewItem(identifier: "updates")
         updates.label = "Updates"
@@ -105,6 +131,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         folderViewPolicy.setAccessibilityLabel("Folder View Settings")
         extensionsCheckbox.target = self
         extensionsCheckbox.action = #selector(toggleExtensions(_:))
+        restoreWorkspaceCheckbox.target = self
+        restoreWorkspaceCheckbox.action = #selector(toggleWorkspaceRestoration(_:))
+        workspaceSaveMessage.font = .systemFont(ofSize: 12)
+        workspaceSaveMessage.textColor = .systemRed
+        retryWorkspaceSave.bezelStyle = .rounded
+        retryWorkspaceSave.target = self
+        retryWorkspaceSave.action = #selector(retrySavingWorkspace(_:))
         terminalCheckbox.target = self
         terminalCheckbox.action = #selector(toggleTerminal(_:))
         zipCheckbox.target = self
@@ -133,6 +166,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         shortcutMessage.heightAnchor.constraint(greaterThanOrEqualToConstant: 30).isActive = true
 
         let rows: [NSView] = [
+            heading("Startup"), restoreWorkspaceCheckbox,
+            detail("Restore your windows, tabs and split panes. Turning this off clears the saved workspace."),
+            workspaceSaveMessage, retryWorkspaceSave, separator(),
             heading("General"), extensionsCheckbox,
             detail("Applies to file labels. Files keep their original names."), separator(),
             heading("Folder View Settings"), folderViewPolicy,
@@ -154,7 +190,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
             stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20),
+            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -20),
         ])
         for row in rows {
             row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -164,6 +200,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func refreshControls() {
         refreshUpdateControls()
+        restoreWorkspaceCheckbox.state = preferences.restoreWorkspaceOnLaunch ? .on : .off
+        workspaceSaveMessage.stringValue = workspaceStore.lastError ?? ""
+        workspaceSaveMessage.isHidden = workspaceStore.lastError == nil
+        retryWorkspaceSave.isHidden = workspaceStore.lastError == nil
+        retryWorkspaceSave.title = preferences.restoreWorkspaceOnLaunch ? "Retry Saving Workspace" : "Retry Clearing Saved Workspace"
         if let error = viewPropertiesStore.lastWriteError {
             folderViewSaveMessage.stringValue = "View settings could not be saved. Changes are available for this session. " + error.localizedDescription
             folderViewSaveMessage.textColor = .systemRed
@@ -240,6 +281,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc func toggleExtensions(_ sender: NSButton) { preferences.showFileExtensions = sender.state == .on }
+    @objc func toggleWorkspaceRestoration(_ sender: NSButton) { preferences.restoreWorkspaceOnLaunch = sender.state == .on }
+    @objc func retrySavingWorkspace(_ sender: Any?) {
+        NotificationCenter.default.post(name: .tursoraWorkspaceSaveRequested, object: workspaceStore)
+    }
     @objc func toggleTerminal(_ sender: NSButton) { preferences.experimentalTerminalEnabled = sender.state == .on }
     @objc func toggleZIPBrowsing(_ sender: NSButton) { preferences.experimentalZIPBrowsingEnabled = sender.state == .on }
     @objc func resetShortcut(_ sender: Any?) {
@@ -255,7 +300,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if let observer { preferences.notificationCenter.removeObserver(observer) }
         if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
         if let updaterObserver { updater.notificationCenter.removeObserver(updaterObserver) }
+        if let workspaceObserver { NotificationCenter.default.removeObserver(workspaceObserver) }
     }
+}
+
+private final class SettingsDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 /// Intercepts recording before menu dispatch, so pressing an existing command

@@ -2,9 +2,17 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
-## 本轮：公开仓库、GitHub Pages、DMG 与软件更新
+## 本轮：工作区会话恢复
 
-仓库已公开，GitHub API 核实 Pages 已选 GitHub Actions、HTTPS 开启，目标为 <https://zerolfx.github.io/Tursora/>。新增 Pages 工作流只从 `main` 发布 `site/dist/`，相关 PR 构建校验；产品页下载按钮指向最新正式 release 并移除私有登录要求。本地构建与 `/Tursora/` 子路径浏览器检查已完成，用户已授权提 PR 并合入。本工作流合入 `main` 后部署，当前结果以 [Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 为准；本地检查不作为线上发布证据，详见 [Pages 记录](research/github-pages.md)。
+用户将“退出应用后双窗格、多标签丢失”列为高优先级。本轮已实现默认开启的会话恢复选项，保存浏览窗口、标签顺序 / 名称 / 当前项、双 pane 位置与活动侧、分栏比例、侧栏状态和窗口几何 / 最小化。普通目录视图继续读取每目录视图库；已执行搜索重新查询，ZIP 只记逻辑位置并重新准备。失效目录保留路径并显示内联错误，不静默丢掉工作区。
+
+变动防抖 0.4 秒保存，退出在 ZIP / 终端清理之前同步保存。关闭恢复选项清理文件且停止保存，重新开启保存当前布局。坏文件 / 未知版本在显式重试或关闭后重开选项前保留原字节。第一版不恢复过滤、选区、滚动、历史、已关闭标签、终端会话、传输或撤销。容量与实现细节见[会话恢复记录](research/workspace-sessions.md)、SPEC §22、D48。
+
+最终 81 份 Swift 源码 **2,418 项 smoke 连续三轮通过**，均 exit 0、stderr 为空，源码哈希前后一致。debug / release、strict codesign、plist lint 通过；独立发布包已实测两个窗口、三个主窗口标签、不同文件视图、活动侧、真实拖动的分栏 / 侧栏、最小化及正常退出重开。完整状态重存与退出前相同；关闭选项清理并重启回到 Home、重新开启保存当前布局也通过。General 与恢复后工作区真实 PNG 已更新。未改生产 bundle id 或用户工作区，自己的 QA 进程已退出、锁已释放；日志和精确边界见上述记录。
+
+## 已完成：公开仓库、GitHub Pages、DMG 与软件更新
+
+仓库已公开，GitHub API 核实 Pages 已选 GitHub Actions、HTTPS 开启，目标为 <https://zerolfx.github.io/Tursora/>。新增 Pages 工作流只从 `main` 发布 `site/dist/`，相关 PR 构建校验；产品页下载按钮指向最新正式 release 并移除私有登录要求。本地构建与 `/Tursora/` 子路径浏览器检查已完成，用户已授权提 PR 并合入。已随 [PR #5](https://github.com/zerolfx/Tursora/pull/5) 合入 `main`，提交 `57e0e78` 的 [Pages 部署](https://github.com/zerolfx/Tursora/actions/runs/34707107693) 与 [Build](https://github.com/zerolfx/Tursora/actions/runs/34707107688) 成功；线上首页及六份资源返回 HTTP 200 并与本地构建字节一致，详见 [Pages 记录](research/github-pages.md)。
 
 软件更新使用固定 Sparkle 2.9.6。Settings 分 General / Updates 两页；每日自动检查默认开且可关，自动下载安装默认关。关闭自动检查时禁用自动下载控件但保留保存的选择，手动检查仍可用；已下载或已安排退出安装的会话不被开关取消。app menu 提供 Check for Updates…，bare SPM 与 smoke 完全不构造 Sparkle。原始 `0.1.0` 没有 updater，用户必须先手动安装一次含此功能的版本。
 
@@ -16,7 +24,7 @@
 
 生产公钥已入 Resources，私钥已存 Keychain account `com.tursora.Tursora`；用户明确授权后，仓库 `SPARKLE_PRIVATE_KEY` secret 已于 2026-09-13 00:48:20（Asia/Shanghai）配置，并通过 GitHub secret 列表核实。上传前派生公钥与 Resources 一致，临时导出已清理，未将私钥写入源码或日志；此前自动审批拦截属于历史状态。用户另已授权提 PR / 合入，新的稳定 release 尚未发布，原 `0.1.0` 标签与资产未改。本机没有有效 code-signing identity，用户确认尚无 Developer ID；本轮不加入 Apple 签名脚本，待会员、证书及公证凭据就绪再独立接入，Sparkle 签名不等于公证。日志、源码哈希与精确阶段见[软件更新记录](research/app-updates.md)，发布步骤见 [RELEASING.md](RELEASING.md)。
 
-收尾核对 77 份 Swift 源码与最终测试哈希一致。测试应用、loopback server 和测试挂载已清理，只恢复本轮更新偏好并释放实机验证锁。最终网站下载区的桌面 / 390 px 复查、静态构建和文档链接 / PNG 格式校验通过；无线上部署证据。
+收尾核对 77 份 Swift 源码与最终测试哈希一致。测试应用、loopback server 和测试挂载已清理，只恢复本轮更新偏好并释放实机验证锁。最终网站下载区的桌面 / 390 px 复查、静态构建和文档链接 / PNG 格式校验通过；后续 PR #5 合入与线上验证见本段开头。
 
 2026-09-13 按用户要求参考 Rascal，README 改为下载 → 拖到 Applications → 从 Applications 打开，并新增 First launch。主要流程依据 Apple 当前官方步骤；折叠终端备选只移除该可信、同版本 SHA-256 已核验应用的下载隔离属性，说明损坏与恶意软件警告的区别。网站增加简短步骤及 README 链接。仅修改说明，未执行 `xattr` 或改系统安全设置，也未把既有安装 / 更新验证扩展为首次 Gatekeeper 拦截实测；依据见[更新记录](research/app-updates.md#首次启动说明2026-09-13)。
 
@@ -76,7 +84,7 @@ CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开�
 - **已提交阶段 `fbb6762`**：739 项 smoke 连续三轮通过，均 exit 0、stderr 为空；最新路径重映射修复的 release build 5 已重建并通过 strict codesign。日志、CUA 操作范围、13 组截图和偏好恢复证据统一保留在[同 pane ZIP 实机记录](research/computer-use-2026-09-12-inline-zip.md)。
 - **产品页阶段 `ae5e47a`——应用与产品页已验证**：删除未使用的 PlacesModel 常量，简化始终为 true 的归档读取参数，不改变应用行为；该阶段重新完成 739 项 smoke 连续三轮，均 exit 0、stderr 为空，debug / release build 6 与 strict codesign 通过。新增真实标签页截图。中文产品页仅介绍地址栏、标签、分栏和 ZIP，已按 [site/README.md](../site/README.md) 完成静态构建、资源引用校验与桌面 / 窄屏浏览器 QA；功能切换、图片弹窗焦点恢复、锚点直达及无 JavaScript 回退均已检查。站点仅在本地预览，未部署。具体日志与阶段边界见[同日记录](research/computer-use-2026-09-12-inline-zip.md#整理阶段与产品页)。
 - **历史结果**：[早期实机记录](research/computer-use-2026-09-12.md)包含旧独立 ZIP 窗口及先前 UI 修复。历史测试和 D28 保留原貌，不作为当前实现的新增验证。
-- **外部验证边界**：真实服务器认证、挂载与读写未验证；0.1.0 已发布并完成产物校验，见本页顶部；历史 [fbb6762 Build](https://github.com/zerolfx/Tursora/actions/runs/34671658320) 及后续 [Build 运行列表](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) 保留各阶段记录。产品页目前未发布上线。
+- **外部验证边界**：真实服务器认证、挂载与读写未验证；0.1.0 已发布并完成产物校验，见本页顶部；历史 [fbb6762 Build](https://github.com/zerolfx/Tursora/actions/runs/34671658320) 及后续 [Build 运行列表](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) 保留各阶段记录。产品页已随 PR #5 上线，见页首部署证据。
 
 **仍需专项视觉检查的东西**：
 
@@ -95,14 +103,14 @@ CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开�
 - 分组的 Size 桶边界与 Kind 组顺序仍是推断，"Earlier" 键未用。
 - Finder 的 Get Info 里 Stationery pad、ACL、改 owner / group、Apply to enclosed items 没做。
 - 快捷键与 Finder 有几处冲突（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌥⌘S），是有意的，见 [DECISIONS.md](DECISIONS.md) D9。
-- 已有 General / Updates 设置：扩展名只改显示、过滤快捷键可录制，每目录 / 统一默认视图策略已实现；软件更新开关与发布进度见页首。其他偏好策略、本地化、会话恢复未实现。
+- 已有 General / Updates 设置：扩展名只改显示、过滤快捷键可录制，每目录 / 统一默认视图策略已实现；软件更新开关与发布进度见页首。会话恢复已实现，当前验证进度见页首；其他偏好策略、本地化仍未实现。
 - 搜索支持普通目录递归名称与 Spotlight 正文，正文受索引 / importer / 权限限制，真实正向正文命中尚未验证。单次最多展示 50,000 项，Spotlight 最多检查 50,000 个候选；没有 ZIP 内搜索、Tags / 评分条件、Finder `.savedSearch` 互通或实时结果增量。
 - 实验性终端 F4 开关默认关闭；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认关闭，启用后 Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭实验开关后已有页仍只读，新打开 ZIP 恢复 Extract。
 - 归档与服务器新增功能边界：仅普通 ZIP；远程走系统 NetFS 挂载，不含自建 SFTP / 重连；真实服务器读写还未验证。`FileOperations.report` 和 Eject 错误路径已防止 smoke 模式弹模态框。
 
 ## 下一步
 
-[ROADMAP.md](ROADMAP.md) 按成本排了序；每项的难度依据在 [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) 和 [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md)。最便宜且最常用的一批：Deselect All、Move Items Here、New Folder with Selection、Show Package Contents、Go 菜单的标准文件夹快捷键、Services 菜单、会话恢复。
+[ROADMAP.md](ROADMAP.md) 按成本排了序；每项的难度依据在 [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) 和 [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md)。最便宜且最常用的一批：Deselect All、Move Items Here、New Folder with Selection、Show Package Contents、Go 菜单的标准文件夹快捷键、Services 菜单。会话恢复已在本轮优先实现，验证状态见页首。
 
 ## 工作方式（这个项目的经验）
 

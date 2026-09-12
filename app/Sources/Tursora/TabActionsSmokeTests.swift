@@ -40,6 +40,11 @@ enum TabActionsSmokeTests {
         let store = DirectoryViewPropertiesStore(fileURL: fixture.appendingPathComponent("\(mode)-views.json"))
         let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(), initialURL: folders[0], viewPropertiesStore: store)
         defer { wc.close() }
+        // This case clicks a background tab directly. Keep all three tabs
+        // visible instead of inheriting a prior test's narrow saved frame.
+        wc.window?.setContentSize(NSSize(width: 1000, height: 640))
+        wc.window?.center()
+        wc.window?.contentView?.layoutSubtreeIfNeeded()
         wc.window?.makeKeyAndOrderFront(nil)
         let tabs = wc.tabs
         await listed(wc.browser, at: folders[0])
@@ -68,7 +73,11 @@ enum TabActionsSmokeTests {
         let event = NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: [], timestamp: 0,
                                        windowNumber: wc.window?.windowNumber ?? 0, context: nil,
                                        eventNumber: 0, clickCount: 1, pressure: 1)!
-        let menu = tabs.tabBar.menu(for: event)!
+        guard let menu = tabs.tabBar.menu(for: event) else {
+            check("\(mode): visible background tab provides its context menu", false,
+                  "window=\(String(describing: wc.window?.frame)), strip=\(tabs.tabBar.bounds), tab=\(frame), viewport=\(tabs.tabBar.layoutForTesting.viewportFrame)")
+            return
+        }
         check("\(mode): right click builds all seven Dolphin actions", menu.items.filter { !$0.isSeparatorItem }.map(\.title) == TabContextAction.allCases.map(\.title))
         check("\(mode): context menu grouping matches pinned Dolphin", menu.items.enumerated().filter { $0.element.isSeparatorItem }.map(\.offset) == [2, 4])
         check("\(mode): background context menu does not select its tab", tabs.currentPage === third)

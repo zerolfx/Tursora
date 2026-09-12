@@ -15,6 +15,7 @@ enum SettingsSmokeTests {
         check("settings: new installs show extensions with experiments disabled",
               store.showFileExtensions && !store.experimentalTerminalEnabled && !store.experimentalZIPBrowsingEnabled)
         check("settings: filter defaults to Command F", store.filterShortcut == .defaultFilter)
+        check("settings: workspace restoration defaults on", store.restoreWorkspaceOnLaunch)
         let changes = Counter()
         let observer = center.addObserver(forName: .tursoraPreferencesChanged, object: store, queue: nil) { _ in
             changes.value += 1
@@ -67,7 +68,7 @@ enum SettingsSmokeTests {
         extraCommand.action = Selector(("focusFilter:"))
         check("settings: the filter does not conflict with its own menu binding", controlI.validationError(in: menu) == nil)
 
-        let controller = SettingsWindowController(preferences: store)
+        let controller = SettingsWindowController(preferences: store, workspaceStore: WorkspaceSessionStore(fileURL: nil))
         check("settings UI: controls reflect persisted preferences",
               controller.extensionsCheckbox.state == .off && controller.terminalCheckbox.state == .on
               && controller.zipCheckbox.state == .on && controller.shortcutRecorder.shortcut == controlI)
@@ -79,6 +80,11 @@ enum SettingsSmokeTests {
         controller.toggleZIPBrowsing(controller.zipCheckbox)
         check("settings UI: controls apply all three settings immediately",
               store.showFileExtensions && !store.experimentalTerminalEnabled && !store.experimentalZIPBrowsingEnabled)
+        check("settings UI: startup option initially reflects the stored preference", controller.restoreWorkspaceCheckbox.state == .on)
+        controller.restoreWorkspaceCheckbox.performClick(nil)
+        check("settings UI: startup action persists and refreshes its control", !restored.restoreWorkspaceOnLaunch && controller.restoreWorkspaceCheckbox.state == .off)
+        store.restoreWorkspaceOnLaunch = true
+        check("settings UI: externally enabling restoration refreshes Startup", controller.restoreWorkspaceCheckbox.state == .on)
         check("settings UI: recorder applies a valid shortcut",
               controller.shortcutRecorder.record(keyEquivalent: "f", modifierFlags: [.command, .option, .shift])
               && store.filterShortcut == modifiedF)
@@ -108,12 +114,16 @@ enum SettingsSmokeTests {
               store.filterShortcut == controlI && !controller.shortcutRecorder.isRecording)
         controller.resetShortcut(nil)
         controller.window?.contentView?.layoutSubtreeIfNeeded()
-        let controls = [controller.extensionsCheckbox, controller.terminalCheckbox, controller.zipCheckbox]
-        check("settings UI: sections fit inside the window",
+        let controls = [controller.restoreWorkspaceCheckbox, controller.extensionsCheckbox, controller.terminalCheckbox, controller.zipCheckbox]
+        check("settings UI: every General section is reachable within the scroll viewport",
               controls.allSatisfy { control in
                   guard let content = controller.window?.contentView else { return false }
+                  control.scrollToVisible(control.bounds)
+                  content.layoutSubtreeIfNeeded()
                   let rect = control.convert(control.bounds, to: content)
-                  return content.bounds.contains(rect) && rect.width > 300 && rect.height >= 14
+                  let clip = controller.generalScrollView.contentView
+                  return content.bounds.contains(rect) && clip.bounds.contains(control.convert(control.bounds, to: clip))
+                      && rect.width > 300 && rect.height >= 14
               })
         defaults.set("q", forKey: "filterShortcutKey")
         defaults.set(NSEvent.ModifierFlags.command.rawValue, forKey: "filterShortcutModifiers")

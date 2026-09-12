@@ -11,7 +11,7 @@ enum SmokeTest {
 
     private static var savedPreferences: [String: Any] = [:]
     private static let infoSectionKeys = ["general", "moreInfo", "name", "comments", "openWith", "preview", "sharing", "smoke-layout"]
-    private static let appPreferenceKeys = ["viewMode", "zoom.details", "zoom.icons", "groupKey", "lastGroupKey", "showPreviews", "showFileExtensions", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
+    private static let appPreferenceKeys = ["viewMode", "zoom.details", "zoom.icons", "groupKey", "lastGroupKey", "showPreviews", "showFileExtensions", "restoreWorkspaceOnLaunch", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
         + infoSectionKeys.flatMap { ["InfoSection.\($0)", InfoSection.explicitPreferenceKey(for: $0)] }
     static func restorePreferences() {
         for key in appPreferenceKeys { UserDefaults.standard.set(savedPreferences[key], forKey: key) }
@@ -34,6 +34,7 @@ enum SmokeTest {
             ArchiveWorkspace.shared.shutdownAll()
         }
         AppPreferences.showFileExtensions = true
+        AppPreferences.restoreWorkspaceOnLaunch = true
         AppPreferences.experimentalTerminalEnabled = false
         AppPreferences.experimentalZIPBrowsingEnabled = false
         AppPreferences.shared.resetFilterShortcut()
@@ -52,6 +53,8 @@ enum SmokeTest {
             ServerConnectionSmokeTests.run()
             SettingsSmokeTests.run()
             UpdateSmokeTests.run()
+            WorkspaceSessionModelSmokeTests.run()
+            WorkspaceSessionSmokeTests.run {
             TabAppearanceSmokeTests.run()
             InfoDisclosureSmokeTests.run()
             AppearanceSmokeTests.run(browser: wc.browser) {
@@ -83,6 +86,7 @@ enum SmokeTest {
             } }
             }
             }
+        }
         }
         }
         }

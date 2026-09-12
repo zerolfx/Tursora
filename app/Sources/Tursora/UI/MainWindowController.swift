@@ -27,8 +27,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     var searchField: NSSearchField? { searchItem?.searchField }
     private var keyMonitor: Any?
     private var mouseMonitor: Any?
+    private var sidebarResizeObserver: NSObjectProtocol?
+    private var rememberedSidebarWidth: Double = 190
+    private var rememberedSidebarCollapsed = false
+    private var isRestoringWorkspace = false
 
     var onClose: (() -> Void)?
+    var onSessionChanged: (() -> Void)?
 
     private enum ToolbarID {
         static let sidebar = NSToolbarItem.Identifier("tursora.sidebar")
@@ -77,7 +82,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         sidebarItem.maximumThickness = 320
         sidebarItem.canCollapse = true
         sidebarItem.preferredThicknessFraction = 0.2
-        sidebarItem.holdingPriority = .defaultHigh
+        // Keep the sidebar steadier than the content, but below AppKit's
+        // divider-drag priority (490), so native dragging and setPosition work.
+        sidebarItem.holdingPriority = NSLayoutConstraint.Priority(260)
         sidebarItem.collapseBehavior = .preferResizingSiblingsWithFixedSplitView
         splitViewController.addSplitViewItem(sidebarItem)
         splitViewController.addSplitViewItem(NSSplitViewItem(viewController: tabs))
@@ -95,8 +102,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         window.contentView?.layoutSubtreeIfNeeded()
         splitViewController.splitView.setPosition(190, ofDividerAt: 0)
 
+        sidebarResizeObserver = NotificationCenter.default.addObserver(
+            forName: NSSplitView.didResizeSubviewsNotification,
+            object: splitViewController.splitView, queue: .main
+        ) { [weak self] _ in self?.sidebarSessionGeometryChanged() }
+
         tabs.onCurrentLocationChanged = { [weak self] url in self?.locationChanged(url) }
         tabs.onTabsChanged = { [weak self] in self?.validateNavigation(); self?.syncFilterUI() }
+        tabs.onWorkspaceSessionChanged = { [weak self] in self?.onSessionChanged?() }
         sidebar.onSelectPlace = { [weak self] url in self?.browser.navigate(to: url) }
         sidebar.onOpenInNewTab = { [weak self] url in self?.tabs.newTab(at: url) }
         sidebar.onOpenInOtherPane = { [weak self] url in self?.tabs.openInOtherPane(url) }
@@ -119,6 +132,58 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    var workspaceSessionState: WorkspaceWindowState {
+        let frame = window.map {
+            WorkspaceWindowFrame(x: $0.frame.minX, y: $0.frame.minY,
+                                 width: $0.frame.width, height: $0.frame.height)
+        }
+        return WorkspaceWindowState(tabs: tabs.pages.map(\.workspaceTabState),
+                                    selectedTabIndex: tabs.currentIndex, frame: frame,
+                                    sidebarWidth: capturedSidebarWidth,
+                                    sidebarCollapsed: isSidebarCollapsed,
+                                    isMiniaturized: window?.isMiniaturized ?? false)
+    }
+
+    /// The application owns window ordering and minimization after every
+    /// window is restored. This method does not bring a background window forward.
+    func restoreWorkspaceSession(_ state: WorkspaceWindowState) {
+        guard let state = state.sanitized() else { return }
+        isRestoringWorkspace = true
+        defer { isRestoringWorkspace = false }
+        if let frame = state.frame, let window {
+            let proposed = NSRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height)
+            let safe = WorkspaceWindowGeometry.constrainedFrame(
+                proposed, visibleFrames: NSScreen.screens.map(\.visibleFrame), minimumSize: window.minSize)
+            window.setFrame(safe, display: false)
+        }
+        let item = splitViewController.splitViewItems[0]
+        item.isCollapsed = false
+        rememberedSidebarWidth = state.sidebarWidth.isFinite ? min(320, max(160, state.sidebarWidth)) : 190
+        window?.contentView?.layoutSubtreeIfNeeded()
+        splitViewController.splitView.setPosition(rememberedSidebarWidth, ofDividerAt: 0)
+        item.isCollapsed = state.sidebarCollapsed
+        rememberedSidebarCollapsed = state.sidebarCollapsed
+        tabs.restoreWorkspaceTabs(state.tabs, selectedIndex: state.selectedTabIndex)
+        window?.contentView?.layoutSubtreeIfNeeded()
+        window?.initialFirstResponder = browser.focusView
+        window?.makeFirstResponder(browser.focusView)
+    }
+
+    private var capturedSidebarWidth: Double {
+        let width = Double(sidebar.view.frame.width)
+        return !isSidebarCollapsed && width > 0 ? min(320, max(160, width)) : rememberedSidebarWidth
+    }
+
+    private func sidebarSessionGeometryChanged() {
+        guard !isRestoringWorkspace else { return }
+        let width = capturedSidebarWidth
+        let collapsed = isSidebarCollapsed
+        guard abs(width - rememberedSidebarWidth) > 0.1 || collapsed != rememberedSidebarCollapsed else { return }
+        rememberedSidebarWidth = width
+        rememberedSidebarCollapsed = collapsed
+        onSessionChanged?()
+    }
 
     private func locationChanged(_ url: URL) {
         guard let window else { return }
@@ -578,6 +643,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func toggleSidebar(_ sender: Any?) {
         let item = splitViewController.splitViewItems[0]
         item.isCollapsed.toggle()
+        sidebarSessionGeometryChanged()
         // Restoring focus avoids leaving it in an invisible outline view.
         if item.isCollapsed { window?.makeFirstResponder(browser.focusView) }
     }
@@ -723,6 +789,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: - NSWindowDelegate
 
+    func windowDidMove(_ notification: Notification) { onSessionChanged?() }
+    func windowDidResize(_ notification: Notification) { onSessionChanged?() }
+    func windowDidMiniaturize(_ notification: Notification) { onSessionChanged?() }
+    func windowDidDeminiaturize(_ notification: Notification) { onSessionChanged?() }
+    func windowDidBecomeKey(_ notification: Notification) { onSessionChanged?() }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         let tasks = TransferTasksWindowController.shared
         guard tasks.hasActiveTasks(ownedBy: sender) else { return true }
@@ -736,6 +808,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         hideTerminal()
         if let preferencesObserver { NotificationCenter.default.removeObserver(preferencesObserver) }
         preferencesObserver = nil
+        if let sidebarResizeObserver { NotificationCenter.default.removeObserver(sidebarResizeObserver) }
+        sidebarResizeObserver = nil
         onClose?()
     }
 }

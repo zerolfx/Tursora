@@ -6,6 +6,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ### Added
 
+- Workspace restoration on launch, enabled by default: reopen windows, ordered and named tabs, split panes, active locations and layout, and rerun existing search requests. General settings can disable restoration and clear the saved workspace; saving failures appear inline with a retry action. Navigation history, filters, selection, terminal sessions, transfers and undo are not restored.
 - Software updates through Sparkle, with a manual Check for Updates command and a dedicated Updates settings page. Daily automatic checks default on and can be disabled; automatic download and installation is a separate option that defaults off.
 - Signed update DMGs and a stable-release appcast carrying their signatures, published alongside release assets. The original 0.1.0 application requires one manual upgrade to gain the updater.
 - Direct DMG downloads with a two-icon Tursora → Applications installer window and arrow background; automated packaging checks the mounted app, signature and layout.

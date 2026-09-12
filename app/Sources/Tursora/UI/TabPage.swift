@@ -22,6 +22,10 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
     let splitView = NSSplitView()
     var onActivePaneChanged: ((BrowserViewController) -> Void)?
     var onPaneLocationChanged: ((BrowserViewController, URL) -> Void)?
+    var onWorkspaceSessionChanged: (() -> Void)?
+    private(set) var workspaceSplitFraction: Double = 0.5
+    private var isApplyingSplitFraction = false
+    private var lastAppliedSplitPosition: CGFloat?
     private var clickMonitor: Any?
 
     init(provider: FileProvider, initialURL: URL, host: BrowserHost?,
@@ -85,8 +89,10 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
         if isViewLoaded { detach(pane) }
         removeMonitor()
         activeIndex = 0
+        workspaceSplitFraction = 0.5
         updateIndicators()
         onActivePaneChanged?(active)
+        onWorkspaceSessionChanged?()
         if wasActive, isViewLoaded, !view.isHidden { view.window?.makeFirstResponder(active.focusView) }
     }
 
@@ -117,6 +123,7 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
     }
 
     private func wire(_ pane: BrowserViewController) {
+        pane.onWorkspaceSessionChanged = { [weak self] in self?.onWorkspaceSessionChanged?() }
         pane.addressBar.onBeginEditing = { [weak self, weak pane] in
             guard let self, let pane else { return }
             self.activate(pane)
@@ -146,6 +153,7 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
         installMonitor()
         activate(pane)
         updateIndicators()
+        onWorkspaceSessionChanged?()
         if !(activeIndex == index) { onActivePaneChanged?(pane) }
         view.window?.makeFirstResponder(pane.focusView)
     }
@@ -177,14 +185,63 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
     }
 
     private func equalize() {
+        isApplyingSplitFraction = true
+        defer { isApplyingSplitFraction = false }
         splitView.layoutSubtreeIfNeeded()
         splitView.adjustSubviews()
-        splitView.setPosition(splitView.bounds.width / 2, ofDividerAt: 0)
+        workspaceSplitFraction = 0.5
+        applySplitFraction()
+    }
+
+    /// Keep the requested ratio across narrow windows and hidden-tab layouts.
+    /// A temporary minimum-width constraint must not replace the saved ratio.
+    func setWorkspaceSplitFraction(_ fraction: Double) {
+        workspaceSplitFraction = fraction.isFinite ? min(0.99, max(0.01, fraction)) : 0.5
+        guard isViewLoaded else { return }
+        isApplyingSplitFraction = true
+        defer { isApplyingSplitFraction = false }
+        applySplitFraction()
+    }
+
+    private func applySplitFraction() {
+        guard splitView.arrangedSubviews.count == 2, splitView.bounds.width > 0 else { return }
+        let width = max(0, splitView.bounds.width - splitView.dividerThickness)
+        let minimum = min(CGFloat(160), width / 2)
+        let left = min(width - minimum, max(minimum, width * workspaceSplitFraction))
+        lastAppliedSplitPosition = left
+        splitView.arrangedSubviews[0].frame = NSRect(x: 0, y: 0, width: left, height: splitView.bounds.height)
+        splitView.arrangedSubviews[1].frame = NSRect(x: left + splitView.dividerThickness, y: 0,
+                                                    width: width - left, height: splitView.bounds.height)
     }
 
     // MARK: - NSSplitViewDelegate
 
     func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool { false }
+
+    func splitView(_ splitView: NSSplitView, resizeSubviewsWithOldSize oldSize: NSSize) {
+        isApplyingSplitFraction = true
+        defer { isApplyingSplitFraction = false }
+        if splitView.arrangedSubviews.count == 2 {
+            applySplitFraction()
+        } else if let only = splitView.arrangedSubviews.first {
+            only.frame = splitView.bounds
+        }
+    }
+
+    func splitViewDidResizeSubviews(_ notification: Notification) {
+        guard !isApplyingSplitFraction, isSplit, splitView.arrangedSubviews.count == 2 else { return }
+        let width = splitView.bounds.width - splitView.dividerThickness
+        guard width > 0 else { return }
+        let left = splitView.arrangedSubviews[0].frame.width
+        // AppKit can send its resize notification after the delegate returns.
+        // Distinguish that completed layout from the user's divider movement.
+        if let applied = lastAppliedSplitPosition, abs(left - applied) < 0.01 { return }
+        let fraction = Double(left / width)
+        guard fraction.isFinite, abs(fraction - workspaceSplitFraction) > 0.0001 else { return }
+        workspaceSplitFraction = min(0.99, max(0.01, fraction))
+        lastAppliedSplitPosition = left
+        onWorkspaceSessionChanged?()
+    }
 
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
         max(proposedMinimumPosition, 160)

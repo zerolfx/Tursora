@@ -24,6 +24,7 @@ final class TabsController: NSViewController {
     var onCurrentLocationChanged: ((URL) -> Void)?
     /// Fires when tabs/panes are added, removed, switched or activated — drives validation.
     var onTabsChanged: (() -> Void)?
+    var onWorkspaceSessionChanged: (() -> Void)?
 
     var count: Int { pages.count }
     var currentPage: TabPage { pages[currentIndex] }
@@ -97,6 +98,31 @@ final class TabsController: NSViewController {
     }
 
     // MARK: - Tab operations
+
+    /// Restore fresh navigation contexts, never the closed-tab undo/history pool.
+    func restoreWorkspaceTabs(_ states: [WorkspaceTabState], selectedIndex: Int) {
+        let restorable = states.filter { !$0.panes.isEmpty }
+        guard !restorable.isEmpty else { return }
+        for page in pages + closedTabs {
+            page.panes.forEach {
+                $0.addressBar.endEditing(returnFocus: false)
+                $0.searchPanel.cancelPendingSearch()
+                $0.searchSession.cancel()
+            }
+        }
+        if isViewLoaded { pages.forEach(detach) }
+        closedTabs = []
+        pages = restorable.map { makePage(at: $0.panes[0].workspaceRestorationURL) }
+        currentIndex = max(0, min(selectedIndex, pages.count - 1))
+        for (page, state) in zip(pages, restorable) {
+            page.restoreWorkspaceTab(state)
+            if isViewLoaded { attach(page) }
+        }
+        applyVisibility()
+        refreshChrome()
+        if let url = current.currentURL { onCurrentLocationChanged?(url) }
+        view.window?.makeFirstResponder(current.focusView)
+    }
 
     @discardableResult
     func newTab(at url: URL, activate: Bool = true) -> BrowserViewController {
@@ -267,8 +293,12 @@ final class TabsController: NSViewController {
 
     private func makePage(at url: URL) -> TabPage {
         let page = TabPage(provider: provider, initialURL: url, host: host, viewPropertiesStore: viewPropertiesStore)
+        page.onWorkspaceSessionChanged = { [weak self, weak page] in
+            guard let self, let page, self.pages.contains(where: { $0 === page }) else { return }
+            self.onWorkspaceSessionChanged?()
+        }
         page.onPaneLocationChanged = { [weak self, weak page] pane, url in
-            guard let self, let page else { return }
+            guard let self, let page, self.pages.contains(where: { $0 === page }) else { return }
             self.refreshChrome()
             if page === self.currentPage, pane === page.active {
                 self.onCurrentLocationChanged?(url)
@@ -306,6 +336,7 @@ final class TabsController: NSViewController {
         tabBar.reload(titles: titles, selected: currentIndex, toolTips: pages.map(\.tabToolTip))
         tabBar.isHidden = false
         onTabsChanged?()
+        onWorkspaceSessionChanged?()
     }
 }
 

@@ -17,6 +17,7 @@ extension BrowserViewController {
             self.searchReloadCompletions = []
             self.searchSelection = []
             self.searchSession.clear()
+            if let currentURL = self.currentURL { self.onLocationChanged?(currentURL) }
         }
         searchPanel.onCancel = { [weak self] in self?.searchSession.cancel() }
         searchPanel.onClose = { [weak self] in self?.closeSearch() }
