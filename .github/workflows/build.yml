@@ -23,10 +23,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Show toolchain
         run: |
           test "$(uname -m)" = arm64
           swift --version
+      - name: Test release and update metadata
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s app/tools -p 'test_*.py'
       - name: Build and verify application bundle
         working-directory: app
         run: |
@@ -35,17 +40,14 @@ jobs:
           codesign --verify --deep --strict build/Tursora.app
           plutil -lint build/Tursora.app/Contents/Info.plist
           test -s build/Tursora.app/Contents/Resources/AppIcon.icns
-          ditto -c -k --sequesterRsrc --keepParent build/Tursora.app build/Tursora-macOS-arm64.zip
-          ditto -x -k build/Tursora-macOS-arm64.zip "$RUNNER_TEMP/tursora-unpacked"
-          test -x "$RUNNER_TEMP/tursora-unpacked/Tursora.app/Contents/MacOS/Tursora"
-          codesign --verify --deep --strict "$RUNNER_TEMP/tursora-unpacked/Tursora.app"
-          cd build
-          shasum -a 256 Tursora-macOS-arm64.zip > SHA256SUMS.txt
+          tools/make-dmg.sh
+          cd dist
+          shasum -a 256 Tursora-*-macOS-arm64.dmg > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Tursora-macOS-arm64-${{ github.sha }}
           path: |
-            app/build/Tursora-macOS-arm64.zip
-            app/build/SHA256SUMS.txt
+            app/dist/Tursora-*-macOS-arm64.dmg
+            app/dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14

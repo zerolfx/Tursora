@@ -1,8 +1,26 @@
-# 交接说明（2026-09-12）
+# 交接说明（2026-09-13）
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
-## 0.1.0 已发布：外观、搜索、Dock 与文档
+## 本轮：公开仓库、GitHub Pages、DMG 与软件更新
+
+仓库已公开，GitHub API 核实 Pages 已选 GitHub Actions、HTTPS 开启，目标为 <https://zerolfx.github.io/Tursora/>。新增 Pages 工作流只从 `main` 发布 `site/dist/`，相关 PR 构建校验；产品页下载按钮指向最新正式 release 并移除私有登录要求。本地构建与 `/Tursora/` 子路径浏览器检查已完成，用户已授权提 PR 并合入。本工作流合入 `main` 后部署，当前结果以 [Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 为准；本地检查不作为线上发布证据，详见 [Pages 记录](research/github-pages.md)。
+
+软件更新使用固定 Sparkle 2.9.6。Settings 分 General / Updates 两页；每日自动检查默认开且可关，自动下载安装默认关。关闭自动检查时禁用自动下载控件但保留保存的选择，手动检查仍可用；已下载或已安排退出安装的会话不被开关取消。app menu 提供 Check for Updates…，bare SPM 与 smoke 完全不构造 Sparkle。原始 `0.1.0` 没有 updater，用户必须先手动安装一次含此功能的版本。
+
+按用户补充要求，后续 release 改为直接 DMG 下载，窗口内 Tursora → Applications 拖拽安装；原始 `0.1.0` ZIP 保持不变。固定 dmgbuild 1.6.7 及三份 wheel hash，独立 Python venv 生成两图标、箭头背景和 Applications symlink，CI 无需 Finder UI。稳定 release 将附带携带 DMG Ed25519 签名的 `appcast.xml`，feed 在 GitHub Releases 的 `latest/download/appcast.xml`，与 Pages 分开。包 build 取源码提交 Unix committer timestamp；稳定发布检查 semver 和已有 feed build 递增，prerelease 不进入稳定通道。
+
+最终 77 份 Swift 源码 **2,158 项 smoke 连续三轮通过**，stderr 均为空；Python 工具 **70 项通过**（更新元数据 / 布局 37 + 发布说明 33）。本地 `0.1.1` 应用和 DMG 的 strict codesign、updater 元数据、独立 framework rpath、只读挂载及保存的安装布局检查通过。General / Updates 已实测布局、开关、真重启持久化及关闭自动检查后的手动检查；真实截图已更新，ZIP 开启状态和左上系统指示如实保留，两张 JPEG 已转为像素一致的真正 PNG，抠角拒绝后未修改边缘。
+
+完整本地 Sparkle 更新已从临时 `0.1.1` 经正常签名 DMG 下载、验证、安装并重启到 `0.1.2`，bundle / About / 进程核对通过；使用临时 QA key 与 loopback feed，**不代表生产线上已通**。错误 key、同长度篡改离线签名负测通过；篡改 DMG 的 GUI 安装动作被自动审批拒绝，已放弃该动作并使用离线检查，不记为 GUI 通过。最终 DMG 在 Finder 中正常打开，两侧图标与中间箭头完整可见，640 × 280 内容窗口和无工具栏布局已目视核对；[真实截图](images/features/installation.png)已转为 PNG 保留。
+
+生产公钥已入 Resources，私钥已存 Keychain account `com.tursora.Tursora`；用户明确授权后，仓库 `SPARKLE_PRIVATE_KEY` secret 已于 2026-09-13 00:48:20（Asia/Shanghai）配置，并通过 GitHub secret 列表核实。上传前派生公钥与 Resources 一致，临时导出已清理，未将私钥写入源码或日志；此前自动审批拦截属于历史状态。用户另已授权提 PR / 合入，新的稳定 release 尚未发布，原 `0.1.0` 标签与资产未改。本机没有有效 code-signing identity，用户确认尚无 Developer ID；本轮不加入 Apple 签名脚本，待会员、证书及公证凭据就绪再独立接入，Sparkle 签名不等于公证。日志、源码哈希与精确阶段见[软件更新记录](research/app-updates.md)，发布步骤见 [RELEASING.md](RELEASING.md)。
+
+收尾核对 77 份 Swift 源码与最终测试哈希一致。测试应用、loopback server 和测试挂载已清理，只恢复本轮更新偏好并释放实机验证锁。最终网站下载区的桌面 / 390 px 复查、静态构建和文档链接 / PNG 格式校验通过；无线上部署证据。
+
+2026-09-13 按用户要求参考 Rascal，README 改为下载 → 拖到 Applications → 从 Applications 打开，并新增 First launch。主要流程依据 Apple 当前官方步骤；折叠终端备选只移除该可信、同版本 SHA-256 已核验应用的下载隔离属性，说明损坏与恶意软件警告的区别。网站增加简短步骤及 README 链接。仅修改说明，未执行 `xattr` 或改系统安全设置，也未把既有安装 / 更新验证扩展为首次 Gatekeeper 拦截实测；依据见[更新记录](research/app-updates.md#首次启动说明2026-09-13)。
+
+## 0.1.0 发布阶段：外观、搜索、Dock 与文档（历史基线）
 
 标签栏主要参考本机 Safari：连续中性底条、居中标题、柔和胶囊形选中面和悬停关闭，固定新增按钮，过多时滚动 / 文字溢出菜单。亮暗随系统，既有补全面板、活动 pane 线与任务边框随外观刷新。分栏标题改为 `Left | Right`，不再添加活动侧括号；所有 Reveal in Finder 入口移除，搜索结果仍在 Tursora 内定位。README / 产品页不再把通用标签页作为独立卖点，产品页改为路径、双窗格与 ZIP 三种工作流。
 
@@ -20,7 +38,7 @@ Dock 右键增加 New Window / Downloads / Applications，均打开独立窗口�
 
 截图阶段的组合 2,024 项也曾连续三轮通过；该阶段 release 构建、签名、plist 和包内图标核对通过，实测系统暗色及进程浅色、560→1200 宽度、标签与分栏、路径补全、64→96 pt 文本图标、Info 初始折叠和统一搜索流程。证据：[标签与外观](research/tabs-and-appearance.md)、[文本图标](research/text-thumbnails.md)、[Info 折叠](research/info-disclosures.md)。
 
-首个 [Tursora 0.1.0](https://github.com/zerolfx/Tursora/releases/tag/v0.1.0) 已发布，tag 指向 `b0c1c20d705b0c047742b940e36372ecb35b1a9d`。[Build](https://github.com/zerolfx/Tursora/actions/runs/34696089665) 与 [Release](https://github.com/zerolfx/Tursora/actions/runs/34696116417) 均成功。已重新下载 ZIP / SHA256SUMS 并核对：版本 0.1.0、build 1、arm64、strict codesign、SwiftTerm 资源与包内 ICNS 一致性通过；ZIP 的 SHA-256 为 `7619e8ee33ade5283bbddf0eef306892bc806811801bdd36abdb4d8682b06124`。仓库仍为私有，站点未部署。
+首个 [Tursora 0.1.0](https://github.com/zerolfx/Tursora/releases/tag/v0.1.0) 已发布，tag 指向 `b0c1c20d705b0c047742b940e36372ecb35b1a9d`。[Build](https://github.com/zerolfx/Tursora/actions/runs/34696089665) 与 [Release](https://github.com/zerolfx/Tursora/actions/runs/34696116417) 均成功。已重新下载 ZIP / SHA256SUMS 并核对：版本 0.1.0、build 1、arm64、strict codesign、SwiftTerm 资源与包内 ICNS 一致性通过；ZIP 的 SHA-256 为 `7619e8ee33ade5283bbddf0eef306892bc806811801bdd36abdb4d8682b06124`。发布当时仓库为私有、站点未部署；本轮公开状态与 Pages 工作见页首。
 
 CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开发流水移至 [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)。发布工作流从对应版本节提取说明并检查完整性，具体维护流程见 [RELEASING.md](RELEASING.md)。本轮只退出用于最终检查的独立副本，保留用户原有应用及已使用的演示窗口；未用旧偏好快照覆盖用户后续改动。本地预览服务器已停止，共享验证锁已释放。
 
@@ -49,7 +67,7 @@ CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开�
 
 - **Tursora**（原名 Otter File Manager，2026-09-11 改名）是 Swift + AppKit 原生 macOS 文件管理器，无 Xcode 工程，Command Line Tools 即可构建；终端使用 SPM 固定的 SwiftTerm 1.15.0。基础功能包括：地址栏（面包屑 + 兄弟目录菜单 + 行内补全）、标签页、Dolphin 式分栏、列表 / 图标视图与缩放预览、文件操作与撤销、拖放、Quick Look、过滤、Finder 的分组、Finder 的 Get Info / Inspector / Summary。现已加入 ZIP 压缩 / 解压、系统分享、NetFS 服务器连接与设置；终端面板、ZIP 只读浏览是默认关闭的实验功能。规格见 [SPEC.md](SPEC.md)。
 - 三项功能 PR #1 / #2 / #3 已合并到 `main`，提交信息重写后的整合基线为 `5a6d786`。发布包 `app/build/Tursora.app` 由 `app/tools/make-app.sh` 生成，ad-hoc 签名，未上架、未公证。
-- 仓库：https://github.com/zerolfx/Tursora（私有）。`upstream/` 是 git-ignored 的 KDE 源码 checkout，只有 Phase 0 审计和对照 Dolphin 语义时用到；缺了可以重新 clone（版本 pin 在 [audit/00-ground-truth.md](audit/00-ground-truth.md)）。
+- 仓库：https://github.com/zerolfx/Tursora（已公开）。`upstream/` 是 git-ignored 的 KDE 源码 checkout，只有 Phase 0 审计和对照 Dolphin 语义时用到；缺了可以重新 clone（版本 pin 在 [audit/00-ground-truth.md](audit/00-ground-truth.md)）。
 
 ## 验证状态——统一入口
 
@@ -77,7 +95,7 @@ CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开�
 - 分组的 Size 桶边界与 Kind 组顺序仍是推断，"Earlier" 键未用。
 - Finder 的 Get Info 里 Stationery pad、ACL、改 owner / group、Apply to enclosed items 没做。
 - 快捷键与 Finder 有几处冲突（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌥⌘S），是有意的，见 [DECISIONS.md](DECISIONS.md) D9。
-- 已有基础设置：扩展名只改显示、过滤快捷键可录制，每目录 / 统一默认视图策略已实现；其他偏好策略、本地化、会话恢复未实现。
+- 已有 General / Updates 设置：扩展名只改显示、过滤快捷键可录制，每目录 / 统一默认视图策略已实现；软件更新开关与发布进度见页首。其他偏好策略、本地化、会话恢复未实现。
 - 搜索支持普通目录递归名称与 Spotlight 正文，正文受索引 / importer / 权限限制，真实正向正文命中尚未验证。单次最多展示 50,000 项，Spotlight 最多检查 50,000 个候选；没有 ZIP 内搜索、Tags / 评分条件、Finder `.savedSearch` 互通或实时结果增量。
 - 实验性终端 F4 开关默认关闭；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认关闭，启用后 Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭实验开关后已有页仍只读，新打开 ZIP 恢复 Extract。
 - 归档与服务器新增功能边界：仅普通 ZIP；远程走系统 NetFS 挂载，不含自建 SFTP / 重连；真实服务器读写还未验证。`FileOperations.report` 和 Eject 错误路径已防止 smoke 模式弹模态框。

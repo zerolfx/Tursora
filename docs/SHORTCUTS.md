@@ -15,6 +15,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 |---|---|---|
 | About Tursora | — | `NSApplication` |
 | Settings… | ⌘, | `AppDelegate.showSettings`; applies changes immediately |
+| Check for Updates… | — | `AppDelegate.checkForUpdates` → shared `AppUpdater`; enabled while the packaged updater can accept a manual check, including when automatic checks are off |
 | Hide Tursora / Hide Others / Show All | ⌘H / ⌥⌘H / — | `NSApplication` |
 | Quit Tursora | ⌘Q | `NSApplication`; `AppDelegate.applicationShouldTerminate` cancels and waits for active transfers; `applicationWillTerminate` flushes the directory-view library, saves Info edits and releases owned resources |
 
@@ -183,7 +184,9 @@ The configured filter shortcut (⌘F by default) focuses the toolbar field, expa
 
 ## Settings and experimental features
 
-Settings (⌘,) offers extension-label display, Folder View Settings, the Filter by Name shortcut recorder, and two experiments that default off. Folder View Settings chooses Remember Each Folder or Use One View for All Folders; the View submenu also saves the current view as default and restores a folder. If saving fails, Settings shows the error inline and offers Retry Saving View Settings; successful retry clears the error. Shortcut recording requires Command or Control, optionally Option/Shift; it rejects existing command conflicts. Escape cancels recording and Reset restores ⌘F. The menu binding updates immediately.
+Settings (⌘,) has General and Updates tabs and initially selects General. General offers extension-label display, Folder View Settings, the Filter by Name shortcut recorder, and two experiments that default off. Folder View Settings chooses Remember Each Folder or Use One View for All Folders; the View submenu also saves the current view as default and restores a folder. If saving fails, Settings shows the error inline and offers Retry Saving View Settings; successful retry clears the error. Shortcut recording requires Command or Control, optionally Option/Shift; it rejects existing command conflicts. Escape cancels recording and Reset restores ⌘F. The menu binding updates immediately.
+
+Updates provides **Automatically check for updates** (daily, default on), **Automatically download and install updates** (default off), **Check for Updates…**, and the last-check status. Disabling automatic checks disables the automatic-installation control without clearing its saved choice; manual checking remains available. Existing downloaded or deferred-install updates are not cancelled by changing these preferences. Startup failures appear inline and disable unavailable controls; bare debug binaries and smoke runs do not start Sparkle. No new keyboard shortcut is assigned to updating.
 
 With **Terminal panel** enabled, F4 toggles a window-wide panel below the file panes. Opening starts an interactive shell in the active folder; inside a ZIP, it uses the original ZIP's containing folder rather than a temporary snapshot. Navigation changes only the destination for **Restart in Current Folder**; it never types `cd` into the running session. Restart ends the shell/current command and asks for confirmation when a foreground command is detected. F4 to hide, the panel close button, disabling the experiment, closing its window, or quitting Tursora ends the session.
 

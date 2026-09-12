@@ -225,7 +225,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 ## 16. 设置与过滤快捷键
 
-- Tursora → Settings…（`⌘,`）打开应用级设置窗口，含 General / Folder View Settings / Keyboard / Experimental；修改立即生效并持久化。Folder View Settings 选择每目录记忆或统一默认，保存当前默认和恢复当前目录的入口在 View 菜单，语义见 §5。
+- Tursora → Settings…（`⌘,`）打开应用级设置窗口，分 General / Updates 两页，首次选择 General。General 页含通用、Folder View Settings、Keyboard 和 Experimental；修改立即生效并持久化。Folder View Settings 选择每目录记忆或统一默认，保存当前默认和恢复当前目录的入口在 View 菜单，语义见 §5。Updates 页见 §20。
 - 名称过滤快捷键默认 `⌘F`。点击录制按钮后输入组合；要求 Command 或 Control，可加 Option / Shift，支持字母、数字和允许的标点。拒绝已有应用命令及常见系统组合；冲突内联提示，原绑定不变。Escape 取消录制，Reset 恢复 `⌘F`。
 - 过滤仍是当前目录名称过滤；独立递归搜索见 §19。扩展名显示只影响界面标签，不改文件名或 Finder 的逐文件 Hide extension 标记。
 - Terminal panel 与 Browse ZIP archives 两个实验开关默认均关闭；启用终端开关只让入口可用，不自行启动 shell。
@@ -262,3 +262,21 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 - 单次最多展示 50,000 项；递归按匹配结果截断，Spotlight 最多检查前 50,000 个索引候选；达到上限明确提示收窄条件。
 
 搜索批次改变行序时，已打开的右键菜单仍绑定打开时的真实文件。批量文件操作同时选中普通目录及沿真实目录路径的后代时，仅处理最上层目录一次；Trash 的撤销可恢复整棵目录。Copy / Move / Duplicate 在创建任务时也归一化同一组源，Duplicate 将各保留源复制到其实际父目录。符号链接不覆盖显式选择的 `link/child`；即使只选实际目录 `root` 和 `root/link/externalChild`，中间的链接也使后者成为独立源。若选中链接下的实际目录及其普通子项，两者之间没有链接，仍按父目录去重；不通过解析链接把操作对象替换为目标。
+
+## 20. 软件更新（Sparkle 原生更新流程）
+
+- 正式打包应用通过 Sparkle 2.9.6 检查、下载、校验、安装及重新启动更新。Tursora → Check for Updates… 与 Settings → Updates 的同名按钮共用一个应用级 updater；不受标签、分栏或当前目录影响，无新增快捷键。
+- Automatically check for updates 默认开启，按 Sparkle 的每日周期检查，可关闭并记住选择。关闭自动检查仍可手动检查；不在每次启动时覆盖用户已保存的偏好，也不额外强制联网查询。
+- Automatically download and install updates 为独立选项，默认关闭。启用后可在后台下载，校验成功的更新可在退出时安装；需要授权或其他用户操作时由 Sparkle 提示。关闭自动检查会禁用该控件但保留原选择，重新启用检查后恢复可操作状态。
+- 两个选项控制后续检查和自动更新策略，不取消已下载或已经安排退出安装的更新；保留 Sparkle 的既有会话语义。手动检查入口的可用性由 updater 当前状态决定，后台处理期间不能重复启动新检查。
+- Updates 显示最近检查时间或尚未检查；updater 配置启动失败时内联显示原因并禁用对应操作。未打包的 SPM 可执行文件与 smoke 模式完全不构造 Sparkle，不安排更新网络请求或更新弹窗。测试使用注入 driver 验证控件和状态。
+- 更新只跟随 GitHub 的最新正式 release；prerelease 不进入稳定通道。公开 HTTPS feed 位于最新 release 的 `appcast.xml`，其中 DMG 指向对应版本的固定资产 URL，下载内容经 Ed25519 签名校验后才提取应用安装。不发送可选系统 profile；应用仍是 ad-hoc 签名、未公证，更新签名不改变这个状态。
+- 原始 `0.1.0` 不含 updater，必须先手动下载一次含此功能的版本。实现、签名配置、实际发布和验证阶段分别记录于[软件更新研究](research/app-updates.md)；实现完成不等于稳定 feed 已上线。
+
+## 21. 下载与安装
+
+- 后续 release 直接提供 `Tursora-<version>-macOS-arm64.dmg` 与 SHA-256 校验文件，正式版另附更新 appcast。打开镜像后，窗口中左侧为 Tursora、右侧为 Applications，中间箭头指向目标；将应用拖入 Applications 完成安装。Applications 是 `/Applications` 的链接，没有额外安装脚本。
+- 镜像预设 640 × 280 窗口、128 px 图标，布局在构建时直接写入 Finder 元数据。用户正常拖拽应用时由 macOS 执行复制；不修改文件管理器的 ZIP 浏览或普通文件操作行为。
+- 原始 `0.1.0` 继续保留已发布 ZIP，不重写历史资产。网站和 README 在首个 DMG 发布前明确区分已发布 ZIP 与准备中的 DMG。
+- 安装说明按下载、拖入 Applications、从 Applications 启动排列。当前 ad-hoc 且未公证，可信下载被系统以无法验证开发者为由阻止时，按 Apple 指引先尝试打开，再到 System Settings → Privacy & Security → Open Anyway 并确认 Open。README 另提供折叠终端备选，仅在确认官方来源及同版本 SHA-256 一致后，移除该应用包的 `com.apple.quarantine` 属性；不清空全部扩展属性，不赋予公证或修复损坏。损坏提示先重下核验，恶意软件警告不按普通隔离提示处理。网站仅提供简短步骤与 README 详情链接；不执行系统安全设置变更。
+- 本轮没有可用 Developer ID 签名身份，用户也确认尚无证书，因此维持 ad-hoc 签名。Apple Developer Program 资格、Developer ID 证书与公证凭据就绪后再单独接入并验证签名 / 公证；不以 DMG 外观或 Sparkle 签名代替 Apple 信任。Mac App Store 分发与其 sandbox 设计另行评估。

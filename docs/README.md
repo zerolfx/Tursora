@@ -4,7 +4,7 @@
 |---|---|---|
 | you are picking the project up | [HANDOFF.md](HANDOFF.md) — state, what is verified and what is not, next steps | 中文 |
 | you need the intended behaviour of a feature | [SPEC.md](SPEC.md) — v1 spec, each section marked "对标 Dolphin / Finder" | 中文 |
-| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D42 | 中文 |
+| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D47 | 中文 |
 | you are changing code | [ARCHITECTURE.md](ARCHITECTURE.md) — object graph, per-file map, data flows, notifications, persistence, threading | English |
 | you are building, testing or releasing | [DEVELOPMENT.md](DEVELOPMENT.md) — toolchain, smoke test, conventions, AppKit pitfalls, release checklist | English |
 | you are editing or previewing the Chinese product page | [site/README.md](../site/README.md) — three workflows, canonical screenshots, Python static build and browser checks; [architecture](ARCHITECTURE.md#product-page) | English |
@@ -16,7 +16,9 @@
 | you are changing Get Info section defaults | [research/info-disclosures.md](research/info-disclosures.md) — local Finder evidence and explicit-choice migration | 中文 |
 | you are changing Dock shortcuts | [research/dock-menu.md](research/dock-menu.md) — fixed destinations, explicit action targets and Finder label evidence | 中文 |
 | you are preparing README or site screenshots | [images/README.md](images/README.md), [research/screenshot-transparency.md](research/screenshot-transparency.md) — deterministic alpha preparation and pixel verification | English / 中文 |
-| you are preparing a versioned release | [RELEASING.md](RELEASING.md), [../CHANGELOG.md](../CHANGELOG.md); older implementation entries are in [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md) | English |
+| you are preparing a versioned release, drag-install DMG or future Apple signing | [RELEASING.md](RELEASING.md), [../CHANGELOG.md](../CHANGELOG.md); older implementation entries are in [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md) | English |
+| you are changing software updates, release signing or update settings | [research/app-updates.md](research/app-updates.md) — Sparkle driver, stored choices, release feed, key readiness and verification; [SPEC.md §20](SPEC.md#20-软件更新sparkle-原生更新流程) | 中文 |
+| you are configuring or deploying GitHub Pages | [research/github-pages.md](research/github-pages.md) — public repository evidence, workflow, subpath checks and deployment status; [site/README.md](../site/README.md) | 中文 / English |
 | you are changing text icon previews | [research/text-thumbnails.md](research/text-thumbnails.md) — readable excerpts, Finder / Dolphin evidence and stale request checks | 中文 |
 | you are changing tab appearance or Light/Dark adaptation | [research/tabs-and-appearance.md](research/tabs-and-appearance.md) — Apple references, adaptive layers, overflow and verification | 中文 |
 | you are changing the application icon or its export | [research/app-icon-edges.md](research/app-icon-edges.md) — original artwork, explicit alpha silhouette, legacy ICNS boundary and verification | 中文 |

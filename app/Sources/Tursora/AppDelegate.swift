@@ -1,15 +1,17 @@
 import AppKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private var preferencesObserver: NSObjectProtocol?
     private(set) var windowControllers: [MainWindowController] = []
     let provider: FileProvider
     let places: PlacesModel
     private let dockDirectories: DockMenuDirectories
+    private let updater: AppUpdater
 
     init(provider: FileProvider = LocalFileProvider(), places: PlacesModel = PlacesModel(),
-         dockDirectories: DockMenuDirectories? = nil) {
+         dockDirectories: DockMenuDirectories? = nil, updater: AppUpdater = .shared) {
+        self.updater = updater
         self.provider = provider
         self.places = places
         self.dockDirectories = dockDirectories ?? .system(home: provider.homeURL)
@@ -29,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let menu = NSApp.mainMenu { MainMenu.applyPreferences(to: menu) }
         }
         let wc = newWindow(self)
+        updater.start()
         NSApp.activate(ignoringOtherApps: true)
         if SmokeTest.isRequested { SmokeTest.run(wc) }
     }
@@ -49,6 +52,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showSettings(_ sender: Any?) { SettingsWindowController.show() }
+
+    @objc func checkForUpdates(_ sender: Any?) { updater.checkForUpdates(sender) }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(checkForUpdates(_:)) { return updater.canCheckForUpdates }
+        return true
+    }
 
     @objc func showFileOperations(_ sender: Any?) { TransferTasksWindowController.shared.show() }
 

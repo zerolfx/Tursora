@@ -38,6 +38,9 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Validate version and require a new tag
         shell: bash
         run: |
@@ -56,14 +59,29 @@ jobs:
             exit 1
           fi
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
-            -s app/tools -p 'test_release_notes.py'
+            -s app/tools -p 'test_*.py'
           python3 app/tools/release-notes.py "$VERSION" \
             --changelog CHANGELOG.md --output "$RUNNER_TEMP/tursora-release-notes.md" \
             --repository "$GH_REPO" --ref "$GITHUB_SHA"
+      - name: Require signing key and increasing stable version
+        if: inputs.prerelease == false
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          test -n "$SPARKLE_PRIVATE_KEY" || { echo 'SPARKLE_PRIVATE_KEY is not configured.' >&2; exit 1; }
+          gh api "repos/$GH_REPO/releases/latest" > "$RUNNER_TEMP/tursora-latest-release.json"
+          previous=()
+          if python3 -c 'import json,sys; sys.exit(not any(a["name"] == "appcast.xml" for a in json.load(open(sys.argv[1]))["assets"]))' "$RUNNER_TEMP/tursora-latest-release.json"; then
+            latest_tag="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag_name"])' "$RUNNER_TEMP/tursora-latest-release.json")"
+            gh release download "$latest_tag" --pattern appcast.xml --dir "$RUNNER_TEMP/tursora-current-feed"
+            previous=(--previous-appcast "$RUNNER_TEMP/tursora-current-feed/appcast.xml")
+          fi
+          python3 app/tools/update-metadata.py stable-release \
+            --version "$VERSION" --build "$(git show -s --format=%ct HEAD)" \
+            --latest-release "$RUNNER_TEMP/tursora-latest-release.json" "${previous[@]}"
       - name: Build and verify application bundle
         working-directory: app
-        env:
-          TURSORA_BUILD: ${{ github.run_number }}
         shell: bash
         run: |
           TURSORA_VERSION="${VERSION%%-*}" tools/make-app.sh
@@ -71,17 +89,29 @@ jobs:
           codesign --verify --deep --strict build/Tursora.app
           plutil -lint build/Tursora.app/Contents/Info.plist
           test -s build/Tursora.app/Contents/Resources/AppIcon.icns
-          mkdir -p dist
-          ditto -c -k --sequesterRsrc --keepParent build/Tursora.app "dist/Tursora-$VERSION-macOS-arm64.zip"
-          ditto -x -k "dist/Tursora-$VERSION-macOS-arm64.zip" "$RUNNER_TEMP/tursora-unpacked"
-          test -x "$RUNNER_TEMP/tursora-unpacked/Tursora.app/Contents/MacOS/Tursora"
-          codesign --verify --deep --strict "$RUNNER_TEMP/tursora-unpacked/Tursora.app"
+          tools/make-dmg.sh "$VERSION"
+      - name: Sign and verify stable update appcast
+        if: inputs.prerelease == false
+        working-directory: app
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        shell: bash
+        run: tools/make-appcast.sh "$VERSION" "$RUNNER_TEMP/tursora-release-notes.md"
+      - name: Checksum release assets
+        working-directory: app
+        shell: bash
+        run: |
           cd dist
-          shasum -a 256 "Tursora-$VERSION-macOS-arm64.zip" > SHA256SUMS.txt
+          assets=("Tursora-$VERSION-macOS-arm64.dmg")
+          if [[ "$PRERELEASE" != true ]]; then assets+=(appcast.xml); fi
+          shasum -a 256 "${assets[@]}" > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Tursora-release-${{ inputs.version }}
-          path: app/dist/*
+          path: |
+            app/dist/Tursora-${{ inputs.version }}-macOS-arm64.dmg
+            app/dist/SHA256SUMS.txt
+            app/dist/appcast.xml
           if-no-files-found: error
       - name: Publish release from this exact commit
         shell: bash
@@ -90,9 +120,11 @@ jobs:
           # during the build, rather than publishing against an unrelated SHA.
           gh api --method POST "repos/$GH_REPO/git/refs" \
             -f "ref=refs/tags/v$VERSION" -f "sha=$GITHUB_SHA"
-          flags=()
-          if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
-          gh release create "v$VERSION" app/dist/* \
+          flags=(--latest)
+          if [[ "$PRERELEASE" == true ]]; then flags=(--prerelease --latest=false); fi
+          assets=("app/dist/Tursora-$VERSION-macOS-arm64.dmg" app/dist/SHA256SUMS.txt)
+          if [[ "$PRERELEASE" != true ]]; then assets+=(app/dist/appcast.xml); fi
+          gh release create "v$VERSION" "${assets[@]}" \
             --verify-tag \
             --title "Tursora $VERSION" \
             --notes-file "$RUNNER_TEMP/tursora-release-notes.md" \

@@ -18,16 +18,25 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     let folderViewSaveMessage = NSTextField(wrappingLabelWithString: "")
     let retryFolderViewSave = NSButton(title: "Retry Saving View Settings", target: nil, action: nil)
     let folderViewPolicy = NSPopUpButton(frame: .zero, pullsDown: false)
+    let settingsTabs = NSTabView()
+    let automaticUpdateChecksCheckbox = NSButton(checkboxWithTitle: "Automatically check for updates", target: nil, action: nil)
+    let automaticUpdateDownloadsCheckbox = NSButton(checkboxWithTitle: "Automatically download and install updates", target: nil, action: nil)
+    let checkForUpdatesButton = NSButton(title: "Check for Updates…", target: nil, action: nil)
+    let updateStatus = NSTextField(wrappingLabelWithString: "")
+    private let updater: AppUpdater
+    private var updaterObserver: NSObjectProtocol?
     private let viewPropertiesStore: DirectoryViewPropertiesStore
     private var viewPropertiesObserver: NSObjectProtocol?
     private let preferences: AppPreferences.Store
     private var observer: NSObjectProtocol?
 
     init(preferences: AppPreferences.Store = AppPreferences.shared,
-         viewPropertiesStore: DirectoryViewPropertiesStore = .shared) {
+         viewPropertiesStore: DirectoryViewPropertiesStore = .shared,
+         updater: AppUpdater = .shared) {
+        self.updater = updater
         self.viewPropertiesStore = viewPropertiesStore
         self.preferences = preferences
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 665),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 705),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Settings"
         window.isReleasedWhenClosed = false
@@ -39,6 +48,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.center()
         buildContent()
         refreshControls()
+        updaterObserver = updater.notificationCenter.addObserver(forName: AppUpdater.didChange, object: updater, queue: .main) { [weak self] _ in
+            self?.refreshUpdateControls()
+        }
         observer = preferences.notificationCenter.addObserver(forName: .tursoraPreferencesChanged,
                                                                object: preferences, queue: .main) { [weak self] _ in
             self?.refreshControls()
@@ -48,7 +60,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private func buildContent() {
-        guard let content = window?.contentView else { return }
+        guard let windowContent = window?.contentView else { return }
+        settingsTabs.translatesAutoresizingMaskIntoConstraints = false
+        windowContent.addSubview(settingsTabs)
+        NSLayoutConstraint.activate([
+            settingsTabs.leadingAnchor.constraint(equalTo: windowContent.leadingAnchor, constant: 8),
+            settingsTabs.trailingAnchor.constraint(equalTo: windowContent.trailingAnchor, constant: -8),
+            settingsTabs.topAnchor.constraint(equalTo: windowContent.topAnchor, constant: 8),
+            settingsTabs.bottomAnchor.constraint(equalTo: windowContent.bottomAnchor, constant: -8),
+        ])
+        let general = NSTabViewItem(identifier: "general")
+        general.label = "General"
+        let content = NSView()
+        general.view = content
+        settingsTabs.addTabViewItem(general)
+        let updates = NSTabViewItem(identifier: "updates")
+        updates.label = "Updates"
+        let updateContent = NSView()
+        updates.view = updateContent
+        settingsTabs.addTabViewItem(updates)
+        buildUpdates(in: updateContent)
         func heading(_ title: String) -> NSTextField {
             let field = NSTextField(labelWithString: title)
             field.font = .systemFont(ofSize: 13, weight: .semibold)
@@ -132,6 +163,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func refreshControls() {
+        refreshUpdateControls()
         if let error = viewPropertiesStore.lastWriteError {
             folderViewSaveMessage.stringValue = "View settings could not be saved. Changes are available for this session. " + error.localizedDescription
             folderViewSaveMessage.textColor = .systemRed
@@ -146,6 +178,56 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         terminalCheckbox.state = preferences.experimentalTerminalEnabled ? .on : .off
         zipCheckbox.state = preferences.experimentalZIPBrowsingEnabled ? .on : .off
         shortcutRecorder.shortcut = preferences.filterShortcut
+    }
+
+    private func buildUpdates(in content: NSView) {
+        let title = NSTextField(labelWithString: "Software Updates")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        let detail = NSTextField(wrappingLabelWithString: "Check for new versions daily. Downloaded updates are verified before installation. Automatic installation is off by default; when enabled, updates can install when you quit Tursora.")
+        detail.font = .systemFont(ofSize: 12)
+        detail.textColor = .secondaryLabelColor
+        automaticUpdateChecksCheckbox.target = self
+        automaticUpdateChecksCheckbox.action = #selector(toggleAutomaticUpdateChecks(_:))
+        automaticUpdateDownloadsCheckbox.target = self
+        automaticUpdateDownloadsCheckbox.action = #selector(toggleAutomaticUpdateDownloads(_:))
+        checkForUpdatesButton.target = updater
+        checkForUpdatesButton.action = #selector(AppUpdater.checkForUpdates(_:))
+        checkForUpdatesButton.bezelStyle = .rounded
+        updateStatus.font = .systemFont(ofSize: 12)
+        updateStatus.textColor = .secondaryLabelColor
+        let stack = NSStackView(views: [title, automaticUpdateChecksCheckbox, automaticUpdateDownloadsCheckbox,
+                                       detail, checkForUpdatesButton, updateStatus])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 14
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
+            detail.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            updateStatus.widthAnchor.constraint(equalTo: stack.widthAnchor),
+        ])
+    }
+
+    private func refreshUpdateControls() {
+        automaticUpdateChecksCheckbox.state = updater.automaticallyChecksForUpdates ? .on : .off
+        automaticUpdateChecksCheckbox.isEnabled = updater.isAvailable
+        automaticUpdateDownloadsCheckbox.state = updater.automaticallyDownloadsUpdates ? .on : .off
+        automaticUpdateDownloadsCheckbox.isEnabled = updater.allowsAutomaticUpdates
+        checkForUpdatesButton.isEnabled = updater.canCheckForUpdates
+        updateStatus.stringValue = updater.statusText
+    }
+
+    @objc func toggleAutomaticUpdateChecks(_ sender: NSButton) {
+        updater.automaticallyChecksForUpdates = sender.state == .on
+        refreshUpdateControls()
+    }
+
+    @objc func toggleAutomaticUpdateDownloads(_ sender: NSButton) {
+        updater.automaticallyDownloadsUpdates = sender.state == .on
+        refreshUpdateControls()
     }
 
     @objc func retrySavingFolderViews(_ sender: Any?) {
@@ -172,6 +254,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     deinit {
         if let observer { preferences.notificationCenter.removeObserver(observer) }
         if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
+        if let updaterObserver { updater.notificationCenter.removeObserver(updaterObserver) }
     }
 }
 

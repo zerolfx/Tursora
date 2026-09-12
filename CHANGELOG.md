@@ -4,6 +4,14 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Added
+
+- Software updates through Sparkle, with a manual Check for Updates command and a dedicated Updates settings page. Daily automatic checks default on and can be disabled; automatic download and installation is a separate option that defaults off.
+- Signed update DMGs and a stable-release appcast carrying their signatures, published alongside release assets. The original 0.1.0 application requires one manual upgrade to gain the updater.
+- Direct DMG downloads with a two-icon Tursora → Applications installer window and arrow background; automated packaging checks the mounted app, signature and layout.
+- First-launch instructions for current unnotarized builds, with Apple's per-app approval steps and an optional quarantine command limited to trusted, checksum-verified downloads.
+- GitHub Pages deployment workflow for the Chinese product page, with pull-request validation and a public latest-release download link.
+
 ## [0.1.0] - 2026-09-12
 
 First release of Tursora, a native macOS file manager built with Swift and AppKit.

@@ -51,6 +51,7 @@ enum SmokeTest {
             appIconAssets()
             ServerConnectionSmokeTests.run()
             SettingsSmokeTests.run()
+            UpdateSmokeTests.run()
             TabAppearanceSmokeTests.run()
             InfoDisclosureSmokeTests.run()
             AppearanceSmokeTests.run(browser: wc.browser) {

@@ -58,6 +58,7 @@ enum MainMenu {
     private static func appMenu() -> NSMenuItem {
         let (item, menu) = submenu("Tursora")
         add(menu, "About Tursora", #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
+        add(menu, "Check for Updates…", #selector(AppDelegate.checkForUpdates(_:)))
         menu.addItem(.separator())
         add(menu, "Settings…", #selector(AppDelegate.showSettings(_:)), ",")
         menu.addItem(.separator())

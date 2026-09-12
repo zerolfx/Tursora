@@ -1,6 +1,6 @@
 # Development
 
-Tursora is a Swift Package with one executable target, built with the Command Line Tools only. There is no Xcode project, no nib, no asset catalog: every view, menu and toolbar is built in code.
+Tursora is a Swift Package with one executable target, built with the Command Line Tools only. There is no Xcode project or application nib/asset catalog: Tursora's views, menus and toolbars are built in code. Sparkle embeds its own updater UI and helper resources.
 
 ## Requirements
 
@@ -10,7 +10,8 @@ Tursora is a Swift Package with one executable target, built with the Command Li
 | Deployment target | macOS 14 (`Package.swift`); developed and tested on macOS 26 |
 | Language mode | Swift 5 (`swift-tools-version:5.9`) — see [DECISIONS.md](DECISIONS.md) D7 |
 | Frameworks | AppKit, Quartz (Quick Look UI), QuickLookThumbnailing, CoreServices (FSEvents, Spotlight MDItem), NetFS |
-| Swift package dependency | SwiftTerm 1.15.0 (exact pin); fetched by SPM on the first build |
+| Swift package dependencies | SwiftTerm 1.15.0 and Sparkle 2.9.6 (exact pins); fetched by SPM on the first build |
+| DMG packaging | Python 3.10+; workflows use 3.13. Hash-pinned dmgbuild 1.6.7, ds-store 1.3.3 and mac-alias 2.2.3 are installed into `app/.build/dmg-tools` |
 
 ## Build, run, package
 
@@ -30,7 +31,7 @@ cd app && tools/make-app.sh                # release build → app/build/Tursora
 
 The script then uses system `sips` and `iconutil` to regenerate the checked-in `AppIcon.icns` family. Both deliverable files must retain their alpha silhouette; do not restore opaque corners based on an assumption that the system will mask a manually packaged ICNS. `IconAssetsSmokeTests` decodes and normalizes pixels before checking transparent outer edges and corner regions, an opaque inset interior, an antialiased boundary, and transparent corners plus an opaque center in every decoded ICNS representation. The family must cover 16–1024 px. Inspect the packaged icon as well; pixel checks do not establish how every system surface or icon cache displays it. See [the icon evidence and current verification](research/app-icon-edges.md).
 
-`make-app.sh [debug|release]` runs `make-icon.sh` before building Swift, so each package regenerates the PNG and ICNS from the retained artwork. It assembles the bundle: `Info.plist` (bundle id `com.tursora.Tursora`, TCC usage strings, version from `git rev-list --count`), the executable, `AppIcon.icns` registered through `CFBundleIconFile`, and an ad-hoc `codesign`. Override with `TURSORA_BUNDLE_ID`, `TURSORA_VERSION`, `TURSORA_BUILD`.
+`make-app.sh [debug|release]` runs `make-icon.sh` before building Swift, so each package regenerates the PNG and ICNS from the retained artwork. It assembles the bundle: `Info.plist` (bundle id `com.tursora.Tursora`, TCC usage strings and updater configuration), the executable, `AppIcon.icns` registered through `CFBundleIconFile`, and an ad-hoc `codesign`. `CFBundleShortVersionString` defaults to `0.1.0`; `CFBundleVersion` defaults to the source commit's Unix committer timestamp (`git show -s --format=%ct HEAD`). `TURSORA_VERSION`, `TURSORA_BUILD` and `TURSORA_BUNDLE_ID` can override metadata for controlled local checks; the packaging validator receives that chosen identifier. Release validation independently requires `com.tursora.Tursora`. Changing public application identity is a separate migration, not a release setting.
 
 To try a change in the packaged app, rebuild and relaunch:
 
@@ -41,6 +42,10 @@ cd app && tools/make-app.sh && pkill -f "Tursora.app/Contents/MacOS/Tursora"; op
 The debug binary and the packaged app have **different UserDefaults domains** (the bare process has no bundle id), so favourites, saved searches, legacy view defaults and Info-section state do not carry over between them. The directory-view library is an application-owned file in Application Support and is shared by ordinary debug and packaged runs; smoke tests replace it with a unique temporary store.
 
 The packaging script also includes `SwiftTerm_SwiftTerm.bundle` and `SwiftTerm-LICENSE.txt`. Keep the resource bundle in `Contents/Resources`; building only the executable is not a complete distributable. Experimental terminal support is compiled in but remains disabled until enabled in Settings and opened with F4.
+
+Sparkle's complete framework is copied with `ditto` to `Contents/Frameworks`, preserving helper signatures, XPC services, symlinks and executable modes. `Sparkle-LICENSE.txt` is included in Resources. Packaging removes SwiftPM's development-directory runtime search paths so the app must use its embedded framework. Only the outer app is ad-hoc signed; do not use `codesign --deep --sign` to replace Sparkle's nested signatures or entitlements. `update-metadata.py verify-bundle` validates the pinned public key, feed, defaults, runtime paths, framework layout and helpers; strict codesign verification remains a separate check. The bare SPM executable disables its updater and Settings explains that a packaged app is required.
+
+For a distributable installer, run `tools/make-dmg.sh` after packaging. Set `TURSORA_PYTHON` if the default Python is older than 3.10. The script writes `app/dist/Tursora-<version>-macOS-arm64.dmg` using the pinned tools above, then mounts it read-only and validates the app, signature, metadata, Applications symlink, background license and saved Finder layout. `dmg-settings.py` defines a 640 × 280 two-icon window with an arrow; `verify-dmg-layout.py` reads its `.DS_Store` directly, so CI does not need Finder automation. See [RELEASING.md](RELEASING.md) for the exact layout and publication checks.
 
 ## The smoke test
 
@@ -66,6 +71,8 @@ How it is written (`SmokeTest.swift`):
 - Every feature adds a section or extends one. Test the model helpers as pure functions first (`FileOperations.uniqueURL`, `Grouping.bucket`, `FileInfo.mode`), then the UI path.
 
 The chain begins with the initial-listing wait, isolated directory-view checks, icon/server/settings checks, transfer and archive/ZIP/split-toolbar/terminal suites, search and integrated-search suites, pane-path and tab-action suites, then delayed-listing, saved-view and preferences integration checks. The original navigation chain follows: navigation → insideFolder → backHome → tabs → addressBarEditing → narrowAddressBar → contextMenus → fileOperations → copyPaste → duplicateAndTrash → expansion → splitView → tabDragSplit → viewModes → liveRefresh → crossTabDrag → filterAndConflicts → scrollClamp → groups → conflicts → getInfo → infoWindow → infoWindowFollows → favouritesAndHistory.
+
+`UpdateSmokeTests` runs alongside settings checks, using a fake driver and isolated defaults to exercise update policy, startup/retry, persistence, both Settings pages, cross-window refresh and actual menu/button dispatch. The shared updater never constructs Sparkle in smoke mode; no feed downloads, updater permission prompts or installer processes belong in these tests. Run release-tool tests with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s app/tools -p 'test_*.py'` from the repository root.
 
 `TURSORA_DND_DEBUG=1` prints drag-and-drop decisions.
 
@@ -125,9 +132,13 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 
 ## GitHub Actions
 
-`.github/workflows/build.yml` builds a release application on `macos-26` (Apple Silicon) for main pushes, pull requests, or manual runs. It verifies the ad-hoc signature, plist, and icon, then archives the bundle with `ditto` so executable permissions survive. Each artifact includes a ZIP and SHA-256 checksum, retained for 14 days.
+`.github/workflows/build.yml` builds a release application on `macos-26` (Apple Silicon) for main pushes, pull requests, or manual runs. It runs release/update metadata tests, verifies the ad-hoc signature, plist, icon and updater components, then creates a DMG and checks its mounted contents and layout. Each artifact includes the DMG and SHA-256 checksum, retained for 14 days; GitHub wraps artifact downloads in an outer ZIP. This build does not require an update-signing secret.
 
 `.github/workflows/release.yml` has only `workflow_dispatch`. Run it on `main` with a version such as `0.1.0` or `0.2.0-beta.1` and the prerelease switch when appropriate. It rejects existing tags, unsafe/invalid version strings and missing or empty dated changelog sections, packages the exact dispatch SHA, then creates the version tag and GitHub Release using that changelog section. The bundle's short version uses the numeric portion; the filename and release retain the prerelease suffix. No automatic release is triggered by a push or tag. Follow [RELEASING.md](RELEASING.md); add subsequent changes under Unreleased until the next release.
+
+Stable releases require `SPARKLE_PRIVATE_KEY`, a higher stable semantic version and a higher build than the current appcast. They generate `appcast.xml` with an Ed25519 DMG signature, verify that signature and the feed's metadata, checksum the feed and DMG, and explicitly become GitHub's latest release. Release assets are the DMG directly, appcast and checksums; no application ZIP is additionally published. The feed XML itself is not signed and `SURequireSignedFeed` is not enabled. Prereleases do not publish an appcast or become latest. Build values come from the source commit timestamp in both workflows; they do not use independent workflow run numbers. Local signing-key and first-feed readiness are tracked in [the update research](research/app-updates.md).
+
+`.github/workflows/pages.yml` validates relevant site changes on PRs and deploys `site/dist/` when they reach `main`; manual dispatch also deploys `main`. It uses the existing GitHub Actions Pages source and `github-pages` environment. Other branches and PRs never deploy. The stable updater feed is a Release asset, so a Pages deployment failure does not replace or publish update metadata.
 
 The workflows validate packaging; run the AppKit smoke suite three times in a desktop session before committing. Hosted workflow execution is only verified once these files are pushed and a run completes. Current releases are ad-hoc signed, not Developer ID signed or notarized.
 

@@ -12,7 +12,8 @@
   <a href="#features">Features</a> ·
   <a href="#experiments">Experiments</a> ·
   <a href="#what-finder-still-does-that-tursora-doesnt">Finder differences</a> ·
-  <a href="#get-tursora">Get Tursora</a>
+  <a href="#get-tursora">Get Tursora</a> ·
+  <a href="https://zerolfx.github.io/Tursora/">Website</a>
 </p>
 
 Tursora is a native macOS file manager built around a simple goal: **keep what feels familiar in Finder, then add the file-management ideas that make Dolphin and Windows File Explorer useful.**
@@ -115,9 +116,12 @@ Click a screenshot to view it at full size.
     <tr>
       <td>
         <strong>A few useful preferences</strong>
-        <p>Choose per-folder views or a shared default, show or hide extensions, record a filtering shortcut, and enable experiments. Shortcut recording checks conflicts. Hidden extensions affect display only; renaming always shows the full filename.</p>
+        <p>General lets you choose per-folder views or a shared default, show or hide extensions, record a filtering shortcut, and enable experiments. Shortcut recording checks conflicts. Hidden extensions affect display only; renaming always shows the full filename. Updates offers daily automatic checks, optional automatic installation and a manual check. ZIP browsing is enabled in this actual capture; both experiments still default off.</p>
       </td>
-      <td><a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="Settings with folder view policy, extension display, shortcut recording and both experiments disabled"></a></td>
+      <td>
+        <a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="General settings with folder view policy, extension display, shortcut recording, Terminal disabled and ZIP browsing enabled"></a>
+        <a href="docs/images/features/updates.png"><img src="docs/images/features/updates.png" width="600" alt="Updates settings with automatic checks, optional download and installation, a manual check and last-check status"></a>
+      </td>
     </tr>
   </tbody>
 </table>
@@ -172,8 +176,42 @@ Tursora currently has an English interface and does not restore tabs after quitt
 
 Requires **macOS 14 or later**. Downloadable builds currently target **Apple Silicon** and are **ad-hoc signed, not notarized**.
 
-- **Versioned releases:** download the application ZIP from [Releases](https://github.com/zerolfx/Tursora/releases), unzip it and move `Tursora.app` to Applications. Each release includes `SHA256SUMS.txt`; changes are recorded in the [changelog](CHANGELOG.md).
-- **Development builds:** open a successful [Build workflow run](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) and download its artifact ZIP. Unpack that artifact, then unpack the application ZIP inside it. Artifacts are kept for 14 days.
+1. **Download** from the [latest stable release](https://github.com/zerolfx/Tursora/releases/latest). Public downloads need no GitHub account; the same release includes `SHA256SUMS.txt` for checking your download.
+2. **Install:** open the DMG and drag **Tursora → Applications**, as shown below. **The current release, 0.1.0, still provides a ZIP:** unzip it and move `Tursora.app` to Applications instead. The DMG is prepared for the next release and is not yet published.
+3. **Launch Tursora from Applications.** If macOS blocks the first launch, follow the steps below.
+
+**Development builds:** after the updated workflow is published, successful [Build runs](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) will contain a DMG and checksum inside GitHub's artifact ZIP. Unpack that outer ZIP, open the DMG and drag Tursora to Applications. Older runs contain the previous application ZIP. Artifacts are kept for 14 days. See the [changelog](CHANGELOG.md) for version history.
+
+<p><a href="docs/images/features/installation.png"><img src="docs/images/features/installation.png" width="640" alt="The prepared DMG opened in Finder, with Tursora on the left and an arrow pointing to Applications on the right"></a></p>
+
+### First launch
+
+Current builds are ad-hoc signed and **not notarized by Apple**, so macOS may say that Apple could not verify Tursora. If you trust your download from this repository's official release:
+
+1. Try opening `Tursora.app` from Applications once.
+2. Open **System Settings → Privacy & Security**, scroll to the blocked-app message and click **Open Anyway**.
+3. In the confirmation, click **Open**. macOS remembers this exception for the app. These steps follow [Apple's first-launch guidance](https://support.apple.com/en-us/102445).
+
+If macOS reports that the app is damaged, download it again and compare its SHA-256 hash with `SHA256SUMS.txt` from the same release before proceeding. A warning that it contains malware or will damage your computer is a different issue: stop and follow Apple's guidance above.
+
+<details>
+<summary>Terminal alternative for a trusted, verified download</summary>
+
+Use this only after confirming that the download came from [this repository's official release](https://github.com/zerolfx/Tursora/releases/latest) and that its SHA-256 matches that release's `SHA256SUMS.txt`. With Tursora installed in `/Applications`, run:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Tursora.app
+```
+
+This recursively removes only the download-quarantine attribute from this app bundle. It does not notarize the app or repair damaged files. Open Tursora from Applications afterward. Do not use this to dismiss a malware warning.
+
+</details>
+
+### Software updates
+
+The next release adds **Tursora → Check for Updates…** and **Settings… → Updates**. Automatic checks are enabled by default and run daily; you can turn them off and still check manually. **Automatically download and install updates** is a separate option, disabled by default. When enabled, verified updates can install when you quit. Turning off automatic checks disables that control while preserving its saved choice; changing these options does not cancel an update already downloaded or scheduled to install on quit.
+
+**The original 0.1.0 release has no updater.** Download the first release containing this feature manually once; subsequent stable releases can update through the app. The implementation, release workflow and repository signing secret are prepared; the first update-enabled release and its live feed have not yet been published. See [update status](docs/research/app-updates.md).
 
 ### Build locally
 
@@ -186,13 +224,17 @@ tools/make-app.sh
 open build/Tursora.app
 ```
 
-Swift Package Manager fetches the pinned SwiftTerm dependency on the first build. The packaging script assembles the complete application bundle.
+Swift Package Manager fetches pinned SwiftTerm 1.15.0 and Sparkle 2.9.6 dependencies on the first build. The packaging script assembles the complete application bundle, including Sparkle's updater helpers. Software updates run only from the packaged app; the bare debug executable and smoke tests do not start the updater.
+
+To build the drag-to-install disk image, run `tools/make-dmg.sh` after `make-app.sh` from `app/`. This step needs Python 3.10+; set `TURSORA_PYTHON` to its executable if your default Python is older. The script installs pinned, hash-verified `dmgbuild` dependencies into `app/.build/dmg-tools` and writes `app/dist/Tursora-<version>-macOS-arm64.dmg`.
 
 ### Build and release automation
 
-**Build** runs on pushes to `main`, pull requests and manual requests. It builds the release app on macOS, validates the bundle and signature, then uploads a ZIP and SHA-256 checksum.
+**Build** runs on pushes to `main`, pull requests and manual requests. It builds the release app on macOS, validates the bundle and signature, creates and verifies the DMG's mounted contents and installer layout, then uploads the DMG and SHA-256 checksum as an Actions artifact.
 
-**Release is manual only.** In **Actions → Release → Run workflow**, select `main`, enter a new version without `v`, and optionally mark it as a prerelease. The workflow builds that exact commit, creates its version tag and publishes the application with its checksum. Existing tags are not overwritten; pushing a tag does not publish a release.
+**Release is manual only.** In **Actions → Release → Run workflow**, select `main`, enter a new version without `v`, and optionally mark it as a prerelease. The workflow builds that exact commit, creates its version tag and publishes the DMG directly with its checksum. Stable releases also require the update-signing secret, increasing version/build values and an `appcast.xml` carrying the verified DMG signature; prereleases stay outside the stable update feed. Existing tags are not overwritten; pushing a tag does not publish a release.
+
+**Pages** validates the product page on relevant pull requests and deploys changes to the site or its source screenshots when they reach `main`. The workflow publishes the configured [website](https://zerolfx.github.io/Tursora/) after merging; check [Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) for the current deployment result. [Site instructions and status](site/README.md) distinguish local checks from live publication.
 
 ### Development and verification
 
@@ -208,6 +250,6 @@ The in-app smoke suite exercises real models and controllers in a macOS desktop 
 
 [Shortcuts](docs/SHORTCUTS.md) · [Specification](docs/SPEC.md) · [Architecture](docs/ARCHITECTURE.md) · [Development guide](docs/DEVELOPMENT.md) · [Changelog](CHANGELOG.md) · [Contributing rules](AGENTS.md)
 
-The [product page](site/README.md) presents address navigation, split panes and ZIP browsing with real application screenshots. It builds into a standalone static site for local preview or hosting. Release preparation and changelog maintenance are documented in [Releasing](docs/RELEASING.md).
+The [product page](https://zerolfx.github.io/Tursora/) presents address navigation, split panes and ZIP browsing with real application screenshots. Its [source and preview instructions](site/README.md) describe the static build and Pages deployment. Release preparation, update signing and changelog maintenance are documented in [Releasing](docs/RELEASING.md).
 
 Tursora began with an audit of porting Dolphin and KIO to macOS. That research led to a native implementation, borrowing useful behavior rather than the entire stack. The two-pane tail-fin mark reflects those roots. [Read the original audit](docs/audit/PHASE-0-REPORT.md).
