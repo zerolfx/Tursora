@@ -95,6 +95,8 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 | Blank space after navigation, or the first row hidden under its header after refresh | Raw clip coordinates can include bounce and a legitimate negative header inset; clamping raw y to zero hides the first row | Save a nonnegative offset relative to the native constrained top; restore through `NSClipView.constrainBoundsRect` |
 | First tab showed an empty folder | The tab's view was attached hidden and never shown | `applyVisibility()` after inserting; the smoke test checks frame sizes |
 | Search field never folds back | `beginSearchInteraction` called when already expanded; focus loss cancelled the filter | Only call it when collapsed; `endSearchInteraction` on empty blur; only an emptied field cancels |
+| Deferred initial navigation replaces a newly chosen favorite | A new pane schedules its initial load after the owner wires callbacks | Run that initial load only while its navigation generation is still zero |
+| ZIP root paths compare differently after Up | Removing a path component adds a directory hint to a URL that represents a ZIP file | Canonicalize prepared archive locations and ZIP ancestors; compare filesystem identity using standardized paths in tests |
 | Inspector renamed the wrong file | A field ending editing after `urls` had changed committed to the new item | Fields remember the URL they were built for (`nameFieldURL`, `commentsURL`, …) |
 | Info window rebuilt on every cache write under `~` | FSEvents streams the whole subtree of the watched parent | Filter events to the items and their siblings |
 | Section chevrons missing, remembered state ignored | Property observers do not run when a class sets its own property in `init` | Call `applyExpansion()` explicitly from `init` |
@@ -128,3 +130,22 @@ On macOS 26, an offscreen `NSCollectionViewFlowLayout` can retain old ungrouped 
 Info sections fill the scroll view's clip viewport, not its outer frame. A legacy vertical scroller consumes horizontal space when the document exceeds the screen-height cap; layout assertions must compare against `scrollView.contentView.bounds.width`.
 
 Selection preservation and rename hints use full standardized URLs. Basenames alone can select an unrelated root file after extracting or refreshing an expanded folder containing the same name.
+
+Keep the list name column's minimum width at 180 pt. In narrow split panes, allowing it to shrink like a metadata column can make the filename unreadable even when the row and item count are correct. Cover its minimum in smoke checks and inspect the actual split layout.
+
+An editable server address must not submit when it merely loses focus. Otherwise clicking Cancel can dispatch the text field's Connect action before cancellation. Keep action-on-end-editing disabled and verify explicit Return / Connect separately from focus changes and cancellation. The corrected form passed the recorded Tab / Cancel / reopen / protocol-error / edit / Escape computer-use sequence; final integrated smoke results remain tracked in the dated computer-use record.
+
+### Capturing the packaged application
+
+Use a verified window ID with `screencapture -x -o -l<windowID>` for the target application window and relevant menu state, then inspect the saved result. During the current screenshot pass, rectangle-based `-R` captures accidentally included a background application and were replaced. Do not assume screen coordinates identify the intended window, and never treat a saved image alone as proof of a completed interaction. See [the current computer-use record](research/computer-use-2026-09-12-inline-zip.md) and [screenshot maintenance](images/README.md).
+
+## Keep documentation in step with development
+
+Update documentation in the same change as the behavior it describes:
+
+- `SPEC.md` records what users can do, including disabled states and experimental limits.
+- `DECISIONS.md` records meaningful trade-offs; `SHORTCUTS.md` records new controls and key bindings.
+- Update `ARCHITECTURE.md` when ownership, routing or lifecycle changes, and close shipped items in the gap lists and roadmap.
+- `HANDOFF.md` and research records distinguish implemented behavior, automated checks, actual computer-use verification and remaining gaps. Replace pending verification only after performing it.
+- Refresh the root README and its feature screenshots when the visible workflow changes. Screenshots must come from the packaged application with demonstration files, never personal documents or invented UI. Each advertised feature group must retain its own relevant screenshot. See [image maintenance](images/README.md).
+- Add a changelog entry with the resulting behavior. Historical research should remain historical; link to new evidence instead of rewriting old observations as current results.

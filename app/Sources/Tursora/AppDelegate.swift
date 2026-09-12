@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         InfoWindowController.closeAll()
         windowControllers.forEach { $0.hideTerminal() }
-        ArchiveBrowserController.shutdownAll()
+        ArchiveWorkspace.shared.shutdownAll()
     }
 
     @objc func showSettings(_ sender: Any?) { SettingsWindowController.show() }

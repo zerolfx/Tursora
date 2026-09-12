@@ -65,14 +65,14 @@ final class ArchiveBrowsingSession {
     }
 
     fileprivate init(archive: URL, storage: URL, root: URL, fileID: UInt64) {
-        archiveURL = archive.resolvingSymlinksInPath().standardizedFileURL
+        archiveURL = archive.standardizedFileURL
         storageURL = storage
         rootURL = root.resolvingSymlinksInPath().standardizedFileURL
         storageFileID = fileID
     }
 
-    static func prepare(archive: URL, completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) {
-        FileOperations.prepareArchiveBrowsingSession(archive: archive, completion: completion)
+    static func prepare(archive: URL, logicalArchiveURL: URL? = nil, completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) {
+        FileOperations.prepareArchiveBrowsingSession(archive: archive, logicalArchiveURL: logicalArchiveURL, completion: completion)
     }
 
     static func containsPath(root: URL, candidate: URL) -> Bool {
@@ -96,7 +96,7 @@ final class ArchiveBrowsingSession {
             throw SessionError.notDirectory
         }
         let urls = try FileManager.default.contentsOfDirectory(at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey, .fileSizeKey])
+            includingPropertiesForKeys: nil)
         return try urls.map { url in
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             let link = attributes[.type] as? FileAttributeType == .typeSymbolicLink
@@ -123,7 +123,7 @@ final class ArchiveBrowsingSession {
 }
 
 extension FileOperations {
-    static func prepareArchiveBrowsingSession(archive: URL,
+    static func prepareArchiveBrowsingSession(archive: URL, logicalArchiveURL: URL? = nil,
         completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let fm = FileManager.default
@@ -141,7 +141,7 @@ extension FileOperations {
                     ArchiveBrowsingSession.finishPreparation(storage)
                     switch result {
                     case .success(let root):
-                        completion(.success(ArchiveBrowsingSession(archive: archive, storage: storage, root: root, fileID: id)))
+                        completion(.success(ArchiveBrowsingSession(archive: logicalArchiveURL ?? archive, storage: storage, root: root, fileID: id)))
                     case .failure(let error):
                         discardArchiveBrowsingSession(storage, fileID: id)
                         completion(.failure(error))

@@ -18,7 +18,10 @@ enum SmokeTest {
 
     static func run(_ wc: MainWindowController) {
         for key in appPreferenceKeys { savedPreferences[key] = UserDefaults.standard.object(forKey: key) }
-        atexit { SmokeTest.restorePreferences() }
+        atexit {
+            SmokeTest.restorePreferences()
+            ArchiveWorkspace.shared.shutdownAll()
+        }
         AppPreferences.showFileExtensions = true
         AppPreferences.experimentalTerminalEnabled = false
         AppPreferences.experimentalZIPBrowsingEnabled = false
@@ -36,12 +39,16 @@ enum SmokeTest {
             ServerConnectionSmokeTests.run()
             SettingsSmokeTests.run()
             ArchiveSmokeTests.run {
-                ArchiveBrowserSmokeTests.run {
-                    TerminalSmokeTests.run {
-                        delayedListing {
-                            infoSectionLayout()
-                            savedViewModes(wc.provider)
-                            preferencesIntegration(wc) { windowChrome(wc) { navigation(wc) } }
+                ArchiveWorkspaceSmokeTests.run {
+                    ArchiveBrowserSmokeTests.run {
+                        SplitToolbarSmokeTests.run {
+                            TerminalSmokeTests.run {
+                                delayedListing {
+                                    infoSectionLayout()
+                                    savedViewModes(wc.provider)
+                                    preferencesIntegration(wc) { windowChrome(wc) { navigation(wc) } }
+                                }
+                            }
                         }
                     }
                 }
@@ -1383,7 +1390,7 @@ enum SmokeTest {
         check("renamed back", fm.fileExists(atPath: file.path) && info.window?.title == "info.txt Info", info.window?.title ?? "nil")
         b.fileList.select(name: "info.txt")
         b.getInfo(nil)
-        check("⌘I on the same item reuses its window", InfoWindowController.openWindows.count == 1)
+        check("⌘I on the same item reuses its window", InfoWindowController.openWindows.count == 1, "windows=\(InfoWindowController.openWindows.map(\.urls)) targets=\(b.infoTargets)")
         b.fileList.select(names: ["info.txt", "infoDir"])
         b.getSummaryInfo(nil)
         guard let summary = InfoWindowController.openWindows.first(where: { $0.mode == .summary }) else { check("summary window", false); return }
@@ -1455,6 +1462,7 @@ enum SmokeTest {
         check("favourites appended in order", places.favouriteIndex(of: a) == builtInCount && places.favouriteIndex(of: c) == builtInCount + 1)
         check("sidebar shows added favourites", wc.sidebar.outlineView.numberOfRows >= builtInCount + 4, "\(wc.sidebar.outlineView.numberOfRows)")
         let sb = wc.sidebar
+        SidebarContextSmokeTests.run(sb, firstURL: a, secondURL: c)
         let rowA = sb.row(for: a), rowC = sb.row(for: c)
         check("favourite rows found", rowA >= 0 && rowC == rowA + 1, "\(rowA) \(rowC)")
         let itemA = sb.outlineView.item(atRow: rowA), rectA = sb.outlineView.rect(ofRow: rowA)

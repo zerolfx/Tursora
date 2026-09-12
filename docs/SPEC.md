@@ -76,6 +76,7 @@ Locations
 - 标签可拖拽重排；只有一个标签时标签栏自动隐藏。
 - **文件拖到标签上**（同 Dolphin）：悬停 800 ms 自动切到该标签；放到标签上 = 放进该标签的当前目录（同卷移动 / 跨卷或 `⌥` 复制）；放到标签栏空白处 = 每个文件夹开一个后台新标签。
 - 关闭再恢复标签：分栏状态与两个 pane 的历史一并恢复。
+- 新 pane 等父控制器接好回调后才执行初始导航；若这期间已经明确选择另一位置，迟到的初始导航不能将其覆盖。
 
 ## 4. 分栏（对标 Dolphin）
 
@@ -83,12 +84,14 @@ Locations
 
 | 交互 | 行为 |
 |---|---|
-| `⌘⇧D` | 未分栏：在右侧打开第二个 pane（同一目录）并激活；已分栏：关闭**活动** pane（菜单项写明"关闭左/右 pane"） |
+| 工具栏 Split View / `⌘⇧D` | 未分栏：在右侧打开第二个 pane（同一目录）并激活；已分栏：关闭**活动** pane（菜单项与按钮 tooltip 写明 Close Left / Right Pane） |
 | 点任意 pane | 激活它；顶部 3 pt 强调色线标识活动 pane；地址栏、窗口标题、标签标题、侧边栏高亮、搜索框都跟活动 pane |
 | `⌥⇥` | 焦点切到另一 pane |
 | 右键文件夹 → 在新 pane 中打开 | 未分栏则拆分并显示该文件夹；已分栏则另一 pane 导航过去并激活 |
 | `⌘⇧C` / `⌘⇧M`、右键 | 复制 / 移动到另一 pane |
 | **拖动标签到内容区** | 拖到左 / 右三分之一（半透明高亮提示）松手 → 该标签变成当前标签的左 / 右 pane；中间区域松手 = 取消 |
+
+工具栏的分栏按钮显示当前标签的分栏状态，切换标签或激活另一 pane 后立即同步选中态与关闭目标；按钮收进溢出菜单后仍执行同一动作。侧栏地点的 Open in Other Pane 将该地点交给另一 pane；未分栏时创建第二个 pane，已分栏时导航另一 pane 并激活，不改变原 pane 的目录。侧栏菜单的 Open in New Tab 与 Open in Other Pane 捕获实际右键地点，不依赖点击结束后的行号，也不先导航原 pane；右键分区标题或空白处无菜单。
 
 ## 5. 视图模式、缩放与预览（对标 Dolphin）
 
@@ -105,6 +108,7 @@ Locations
 - 工具栏的视图按钮始终反映活动 pane；菜单或快捷键切换后立即同步，后台 pane 改变模式不影响当前工具栏。
 - 图标视图：多选 / 框选、方向键、`Return` 重命名（预选主名）、`空格` Quick Look、拖放（拖到文件夹图标上 = 放进去）、右键菜单与列表一致。
 - 排序：名称 / 修改日期 / 大小 / 种类，升降序；文件夹始终在前。
+- 列表名称列最小宽度为 180 pt，窄分栏仍为文件名保留空间，不让日期、大小和种类列将其挤到无法辨认。
 - Settings 的 Show all filename extensions 默认开启；关闭后，列表 / 图标中的文件和包名称隐藏最后一段扩展名，普通文件夹名不变。只改变标签显示；过滤、排序、路径与重命名仍使用完整真名。新旧窗口、各标签和分栏同步更新。
 
 ## 6. 文件操作（语义对标 Finder）
@@ -144,7 +148,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 ## 10. 简介窗口（Get Info，对标 Finder）
 
-- **Get Info** `⌘I`：每个选中项一个窗口（超过 10 项时只给一个汇总窗口）；没有选中时是当前文件夹本身。同一项再按 `⌘I` 只把已有窗口带到前面。**Show Inspector** `⌥⌘I`：单个浮动面板，跟随主窗口活动 pane 的选择（多选时显示汇总）。**Get Summary Info** `⌃⌘I`："Multiple Item Info"，Kind 写成 "2 documents, 1 folder"，Size 是总和。三个是同一菜单行的 ⌥ / ⌃ 备选项。
+- **Get Info** `⌘I`：每个选中项一个窗口（超过 10 项时只给一个汇总窗口）；没有选中时是当前文件夹本身。同一项再按 `⌘I` 只把已有窗口带到前面；Get Info 与汇总窗口以标准化后的 URL 比较已有目标，避免路径表示差异产生重复窗口。**Show Inspector** `⌥⌘I`：单个浮动面板，跟随主窗口活动 pane 的选择（多选时显示汇总）。**Get Summary Info** `⌃⌘I`："Multiple Item Info"，Kind 写成 "2 documents, 1 folder"，Size 是总和。三个是同一菜单行的 ⌥ / ⌃ 备选项。
 - 分区和标签取自 Finder 的 `InfoWindow*.nib`（[research/finder-menu-icons.md](research/finder-menu-icons.md)）：页眉（64 pt 图标、名字、大小、Modified）、**General:**（Kind / Size / Where / Created / Modified / Original（符号链接与别名）/ Version + Copyright（应用）/ Capacity + Available + Used + Format（卷）、Locked）、**More Info:**（Spotlight：Dimensions / Duration / Codecs / Authors / Page count / Where from / Last opened…）、**Name & Extension:**（可编辑，Return 或失焦提交，可撤销；Hide extension）、**Comments:**（Finder 的 `com.apple.metadata:kMDItemFinderComment` xattr，失焦、关窗或退出时保存）、**Open with:**（默认程序在前，其余按名，Other…；Change All… 先确认再改整个类型）、**Preview:**（`QLPreviewView`）、**Sharing & Permissions:**（owner / group / everyone 三行，Read & Write / Read only / Write only (Drop Box) / No Access，改的是 POSIX 位；文件夹的 x 位跟随读写，文件的 x 位不动；非本人所有的项只读）。每个分区可折叠，折叠状态按分区记住。
 - Size 的写法照 Finder：文件 "6,148 bytes (8 KB on disk)"，文件夹 "8 KB on disk (6,148 bytes) for 2 items"，0 是 "Zero bytes"；文件夹在后台递归统计，中途刷新。Where 是 "Macintosh HD ▸ Users ▸ me"。日期是 long date + short time。
 - 项目被删除时窗口自动关闭（Inspector 则换到当前选择）；项目被改名（本应用内：改名广播带 from/to；外部：按 inode 在父目录里找）时窗口跟着改标题，浏览 pane 的选择也跟着新名字。父目录有变化时整窗重建，但**正在输入名字或注释时不重建**，等编辑结束再补。每个分区记住自己对应的 URL，Inspector 换目标后迟到的 sheet / 点击不会作用到新目标上。Info 窗口能成为 key 但**永不成为 main**，所以 Inspector 和 Go 菜单继续跟着浏览窗口。
@@ -170,7 +174,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 ## 14. ZIP 压缩与解压（对照 Finder）
 
 - File、More 和文件右键菜单提供 Compress；单项生成 `原名.zip`（保留原扩展名），多项生成 `Archive.zip`，保存到当前浏览目录。
-- ZIP 文件提供 Extract；实验性 ZIP 浏览关闭时（默认），打开 / 双击 ZIP 也在应用内解压。启用后的打开行为见 §18；显式 Extract 始终保留。多选 ZIP 按顺序处理。解压在原 ZIP 旁边输出：单根项目直接保留其名，多根项目放入以归档名命名的文件夹。
+- ZIP 文件提供 Extract；实验性 ZIP 浏览关闭时（默认），打开 / 双击 ZIP 也在应用内解压。启用后的打开行为见 §18；在普通目录中选中 ZIP 时，显式 Extract 始终保留。多选 ZIP 按顺序处理。解压在原 ZIP 旁边输出：单根项目直接保留其名，多根项目放入以归档名命名的文件夹。
 - 重名时依次加 ` 2`、` 3`，不会覆盖或合并已有内容；源文件和 ZIP 都保留。完成后刷新相关 pane，Compress / Extract 支持撤销与重做。
 - 耗时工作放在后台，状态栏显示忙碌；失败报告错误，不发布半成品。系统归档工具在私有临时目录中处理内容，并保持路径 / 符号链接越界保护，保留资源叉与下载隔离属性。
 - 当前仅支持普通 ZIP；密码归档与其他格式不属于本次实现。没有设置系统文件关联。
@@ -178,6 +182,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 ## 15. 服务器与挂载卷（对照 Finder）
 
 - Go → Connect to Server…（`⌘K`）接受 SMB / CIFS、NFS、WebDAV HTTP(S) 和系统仍支持的旧式 AFP 地址。内联显示格式错误；不接受内嵌密码，由 macOS 的认证界面处理登录和共享选择。
+- 只有 Connect 或在地址框按 Return 明确提交才启动连接；地址框失焦、点击 Cancel 不得开始新的挂载请求。失焦提交回归的修复验证状态见[本轮实机记录](research/computer-use-2026-09-12-inline-zip.md)。
 - 通过系统 NetFS 异步挂载，连接成功后进入返回的本地挂载路径；不自行实现网络文件系统。网络卷自动出现在 Locations，显示网络图标，支持 Eject / 断开；可移动本地卷保留原有弹出行为。
 - 关闭连接窗口会取消请求，不让过时回调导航窗口。SMB / WebDAV 等协议实际可用性取决于系统和服务器。
 - 不提供 SSH / SFTP 后端、服务器发现、收藏服务器或断线重连。本次只验证地址、状态流转与卷策略；没有真实服务器地址，因此未进行远端读写测试。
@@ -194,14 +199,17 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 ## 17. 实验性终端面板
 
 - 启用设置后，View → Show / Hide Terminal（`F4`）在浏览窗口底部展开 / 关闭终端。每个窗口最多一个终端，与该窗口的全部标签 / 分栏共用；面板高度可拖动。
-- 使用 SwiftTerm 1.15.0 的原生终端视图与真实 PTY，启动当前用户的交互登录 shell；初始目录为打开面板时的活动目录。只有开关启用且面板实际显示时才启动进程。
+- 使用 SwiftTerm 1.15.0 的原生终端视图与真实 PTY，启动当前用户的交互登录 shell；初始目录为打开面板时的活动目录；活动 pane 在 ZIP 内时，使用原 ZIP 所在目录，不在临时副本内启动或重启 shell。只有开关启用且面板实际显示时才启动进程。
 - 浏览器导航、切换标签或 pane 只更新 Restart in Current Folder 的目标，不向现有 shell 注入 `cd`，也不根据终端输出驱动文件浏览器导航。
 - Restart 明确结束当前 shell 及前台命令后，在目标目录启动新会话；检测到前台命令时确认。关闭面板（含 F4 收起）、禁用实验、关闭所属窗口或退出应用都会结束该会话，不保留后台终端。
 - 本轮不提供多个终端标签、会话恢复或自动双向目录同步。
 
 ## 18. 实验性 ZIP 浏览
 
-- 开关默认关闭；启用后，从普通浏览器 Open / 双击 ZIP 会打开独立只读归档窗口，不在文件列表的当前 pane 中替换目录。
-- 支持目录、面包屑、返回、上一级和打开选中文件；同一 ZIP 已有窗口时复用。打开文件交给系统默认应用，使用隔离临时目录中的副本，不写回 ZIP。
-- 临时副本保留到 Tursora 退出，关闭归档窗口不会立即删除，以免外部编辑器丢失打开的文件；退出应用清理临时会话。需要保留编辑结果时在外部应用使用 Save As。
-- 归档浏览没有增删、重命名或保存回归档；仅普通 ZIP，密码及其他格式仍不支持。显式 Extract 继续按 §14 执行。
+- 开关默认关闭；启用后，在普通目录 Open / 双击 ZIP 会进入当前 pane 的 ZIP 根目录，不再打开独立归档窗口。保留归档原始根结构，不自动省去单个顶层文件夹或添加包装层。
+- 复用列表 / 图标视图、就地展开、分组、排序、缩放和当前目录名称过滤；过滤仍非递归搜索。地址栏与面包屑显示原 ZIP 路径及内部目录，例如 `/Downloads/Sample.zip/Notes`，不会显示临时路径。输入 ZIP 根或子目录可进入；输入归档内普通文件不会触发外部打开。
+- Back / Forward、历史菜单、标签页和分栏按普通目录方式工作。Up 从内部目录回到上层；在 ZIP 根执行 Up 返回原 ZIP 所在目录并选中 ZIP。关闭标签页或离开归档不清理其副本，历史仍可返回。
+- 所有归档目录只读：不能新建、重命名、剪切、粘贴、拖入、删除、创建 Duplicate 副本、压缩 / 解压内部项目或移动到另一 pane，也不提供可编辑的 Get Info / Inspector。Copy 与拖出只复制；可复制到普通目录或另一可写 pane。Quick Look、Share 和显式 Open 使用经过路径校验的临时副本。
+- 状态栏显示简短的 `ZIP · Read-only`；tooltip 解释临时副本、外部编辑不回写与 Save As。没有额外范围栏或 Extract All 按钮；需要解压时返回普通目录选中原 ZIP，按 §14 使用 Extract。
+- 首次打开在后台准备完整的私有解压副本，同一归档的 pane 共用会话。副本保留到 Tursora 退出，避免外部应用丢失正在使用的文件；修改不写回 ZIP，需要保留编辑结果时使用 Save As。
+- 关闭实验开关后，已有归档页与历史仍可安全只读浏览，普通目录中新打开 ZIP 恢复默认解压。归档内嵌套 ZIP 的普通 Open 使用系统默认应用，不自动进入另一归档会话。仅支持普通 ZIP；密码、其他格式、归档写回与原 ZIP 外部改变后的自动重载不属于本次实现。实现与验证边界见 [归档浏览研究](research/archive-browsing.md)。

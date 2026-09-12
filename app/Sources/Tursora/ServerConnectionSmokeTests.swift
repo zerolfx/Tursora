@@ -39,6 +39,41 @@ enum ServerConnectionSmokeTests {
         check("server: remote volumes use a network symbol",
               PlacesModel.volumeSymbol(isLocal: false, isInternal: false, isRemovable: true) == "network")
 
+        let focusMount = MockMount()
+        let focusController = ServerConnectionController(connection: focusMount)
+        let field = focusController.addressField
+        check("server UI: finishing field editing has no submission action",
+              field.action == nil && field.cell?.sendsActionOnEndEditing == false)
+        field.stringValue = "smb://never-contact.invalid/share"
+        focusController.window?.makeFirstResponder(field)
+        check("server UI: the hidden window starts an address field editor", field.currentEditor() != nil)
+        focusController.window?.makeFirstResponder(focusController.cancelButton)
+        check("server UI: moving focus from a valid address never starts a mount",
+              focusMount.urls.isEmpty && !focusController.isConnecting && focusController.messageLabel.stringValue.isEmpty)
+        focusController.window?.makeFirstResponder(field)
+        focusController.cancelButton.performClick(nil)
+        check("server UI: Cancel ends address editing without starting a connection",
+              focusMount.urls.isEmpty && !focusController.isConnecting && focusController.messageLabel.stringValue.isEmpty)
+        let fieldEditor = NSTextView()
+        check("server UI: Tab is left to normal focus handling",
+              !focusController.control(field, textView: fieldEditor, doCommandBy: #selector(NSResponder.insertTab(_:)))
+              && focusMount.urls.isEmpty)
+        let returnMount = MockMount()
+        let returnController = ServerConnectionController(connection: returnMount)
+        returnController.addressField.stringValue = "smb://stale.invalid/share"
+        returnController.window?.makeFirstResponder(returnController.addressField)
+        guard let returnEditor = returnController.addressField.currentEditor() as? NSTextView else {
+            check("server UI: Return has a real address field editor", false)
+            return
+        }
+        returnEditor.string = "smb://typed.invalid/share"
+        check("server UI: Return submits the latest field editor text exactly once",
+              returnController.control(returnController.addressField, textView: returnEditor, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+              && returnMount.urls.map(\.absoluteString) == ["smb://typed.invalid/share"] && returnController.isConnecting)
+        check("server UI: Escape cancels a pending connection without another submit",
+              returnController.control(returnController.addressField, textView: returnEditor, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
+              && returnMount.urls.count == 1 && !returnController.isConnecting)
+
         let mount = MockMount()
         let controller = ServerConnectionController(connection: mount)
         controller.addressField.stringValue = "ftp://server"
@@ -46,7 +81,10 @@ enum ServerConnectionSmokeTests {
         check("server UI: invalid input stays inline without invoking mount",
               mount.urls.isEmpty && !controller.messageLabel.stringValue.isEmpty && !controller.isConnecting)
         controller.addressField.stringValue = "https://server/dav"
-        controller.connect(nil)
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: controller.addressField))
+        check("server UI: editing clears an old validation error without connecting",
+              controller.messageLabel.stringValue.isEmpty && mount.urls.isEmpty)
+        controller.connectButton.performClick(nil)
         check("server UI: WebDAV goes to mount service and disables duplicate submits",
               mount.urls.first?.scheme == "https" && controller.isConnecting && !controller.connectButton.isEnabled)
         controller.connect(nil)

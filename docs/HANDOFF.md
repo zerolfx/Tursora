@@ -16,13 +16,17 @@
 
 **2026-09-12 已做 computer use 基础检查**：地址栏跳转、标签独立目录、双窗格与切换、后退、列表 / 图标切换、活动窗格过滤、Kind 分组、Quick Look、简介窗口，均在实际打包应用中操作。发现并修复了简介内容挤在右侧、工具栏模式不同步、保存图标模式后新窗格仍挂载列表三个问题。Smoke test 启动改为等待首轮加载完成（15 秒超时），不再固定等一秒；此前图标阶段记录的 392 项已连续通过三轮；重启、新标签页的保存视图模式，以及修复后的工具栏与简介排版也已实机复查。
 
-本轮新增设置、终端、ZIP 浏览等已加入专门 smoke 和集成检查；最新 **618 项已连续通过三轮**，release 包与签名检查通过，此前资源及 ZIP 打包往返检查也通过。解锁后已补做新增界面的 computer use：快捷键录制与冲突、扩展名与取消改名、终端交互及重启、ZIP 目录浏览及 TextEdit 打开临时副本、More / Share、压缩 / 解压与撤销重做、服务器协议校验均已操作。检查还发现并修复刷新后首行被表头遮住的问题，新包已通过实机复测。完整结果与限制见[实机检查记录](research/computer-use-2026-09-12.md)。
+**同 pane ZIP 改造前的验证记录**：设置、终端与旧独立 ZIP 窗口已完成当时的连续 smoke、release 包与签名检查，此前资源及 ZIP 打包往返检查也通过。解锁后已操作快捷键录制与冲突、扩展名与取消改名、终端交互及重启、旧 ZIP 窗口目录浏览及 TextEdit 打开临时副本、More / Share、压缩 / 解压与撤销重做、服务器协议校验；刷新后首行被表头遮住的问题也已修复并实机复测。详见[历史实机检查记录](research/computer-use-2026-09-12.md)。
+
+**本轮 CUA、截图与最终自动化检查已完成**：工具栏分栏、Favorites → Other Pane / New Tab、地址补全、活动 pane 过滤、两种视图与 Kind、Quick Look、Share、同 pane ZIP 导航 / 只读菜单 / TextEdit 打开临时副本 / 复制到另一 pane 与撤销、文件冲突 Keep Both / 撤销、终端 pwd / ls 均已操作。窄分栏名称列可读；服务器失焦触发连接的回归已修复，并实测 Tab / Cancel 不连接、Return 校验协议、编辑清错、Escape 关闭。全部 13 组 README 截图已保存检查，服务器图来自最终修正版。详见[本轮实机记录](research/computer-use-2026-09-12-inline-zip.md)。
+
+最终 debug 构建通过，含最新快照路径重映射修复的 release build 5 已重建并通过 strict codesign。**739 项 smoke 连续三轮通过**，均 exit 0、stderr 为空；日志与精确范围见[本轮实机记录](research/computer-use-2026-09-12-inline-zip.md)。开发中新增别名断言失败已解决，失败或旧版本运行均未计入最终三轮。测试前偏好已恢复：扩展名开、⌘F、终端关、ZIP 浏览开；演示 Favorite 已移除。归档边界见 [archive-browsing.md](research/archive-browsing.md)。
 
 真实服务器读写未验证；自动化终端专测使用隔离的 `/bin/sh` PTY，实机检查另外验证了用户配置的 zsh。GitHub Actions 提供自动 Build 和手动 Release；[功能提交的 Build 已成功](https://github.com/zerolfx/Tursora/actions/runs/34631655771)并上传产物。Release 尚未发布版本。
 
 **仍需专项视觉检查的东西**：
 
-- 补全弹窗、拖放的分栏高亮层；Kind 组头、活动 pane 强调线已做基础检查，尚未覆盖全部边界。
+- 地址补全弹窗、Kind 组头与活动 pane 强调线已做基础检查，尚未覆盖全部边界；拖放的分栏高亮层仍需专项检查。
 - Get Info 的文本文件简介排版已检查并修复宽度；长文件名、卷、多选汇总的视觉边界与 Inspector 浮动跟随手感仍需专项检查。
 - 菜单栏和右键菜单里 SF Symbol 图标在 macOS 26 上的显示。
 - 图标视图在超大档位（256 / 512）下的布局。
@@ -38,7 +42,7 @@
 - Finder 的 Get Info 里 Stationery pad、ACL、改 owner / group、Apply to enclosed items 没做。
 - 快捷键与 Finder 有几处冲突（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌥⌘S），是有意的，见 [DECISIONS.md](DECISIONS.md) D9。
 - 已有基础设置：扩展名只改显示、过滤快捷键可录制；其他偏好策略、本地化、会话恢复未实现。
-- 实验性终端 F4 开关默认关闭；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话。ZIP 浏览默认关闭，独立只读窗口里的文件为临时副本，编辑不写回归档，保留到应用退出。
+- 实验性终端 F4 开关默认关闭；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认关闭，启用后 Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭实验开关后已有页仍只读，新打开 ZIP 恢复 Extract。
 - 归档与服务器新增功能边界：仅普通 ZIP；远程走系统 NetFS 挂载，不含自建 SFTP / 重连；真实服务器读写还未验证。`FileOperations.report` 和 Eject 错误路径已防止 smoke 模式弹模态框。
 
 ## 下一步

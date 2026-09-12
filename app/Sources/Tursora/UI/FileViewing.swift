@@ -20,6 +20,8 @@ protocol FileViewing: AnyObject {
     var onZoomGesture: ((Int) -> Void)? { get set }
 
     var contextMenu: NSMenu? { get set }
+    /// Archive locations allow navigation and copying out, never edits or drops in.
+    var isReadOnly: Bool { get set }
     var cutURLs: Set<URL> { get set }
     var selectedItems: [FileItem] { get }
     /// Targets of a context-menu action: the selection if the clicked item is

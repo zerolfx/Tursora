@@ -4,19 +4,27 @@ Historical entries record development dates and their smoke-test counts where av
 
 ## Unreleased — settings, native services and optional workspaces
 
+- Add a toolbar Split View toggle that follows the selected tab and active pane, plus sidebar Open in Other Pane using the existing split-navigation behavior. Sidebar commands retain the actual right-clicked place, fixing New Tab actions that lost their target after menu tracking.
+- Prevent a new pane's deferred initial load from replacing a location explicitly selected before that load runs; the initial navigation only proceeds while the navigation generation is zero.
+- Reuse existing Info and Summary windows for standardized URL variants of the same targets, avoiding duplicate windows from alternate path representations such as `/var` and `/private/var`.
 - Inset the two glass panes within the app icon so their tips have more room inside macOS's rounded mask, preserving the single full-bleed background.
+- Prevent server address-field focus loss or Cancel from starting a connection; only explicit Return / Connect submits, and editing clears stale validation errors.
+- Keep the list name column at least 180 pt wide so filenames remain readable in narrow split panes.
 - Fix the first list row becoming hidden under the column header after refresh or archive undo/redo; restore scroll positions relative to AppKit's native content top and preserve horizontal scrolling.
 - Add a native Settings window (⌘,), immediate filename-extension display preferences, and a configurable name-filter shortcut with conflict checks and reset.
-- Add two experiments, both disabled by default: a window-bottom SwiftTerm 1.15.0 PTY terminal (F4), and a separate read-only ZIP browser. Navigation updates only the terminal's manual restart destination; hiding/restarting ends its session. ZIP files open as temporary copies without archive writeback.
+- Add two experiments, both disabled by default: a window-bottom SwiftTerm 1.15.0 PTY terminal (F4), and read-only ZIP browsing in the current pane. Navigation updates only the terminal's manual restart destination; hiding/restarting ends its session. ZIP files open as temporary copies without archive writeback.
+- Replace the separate ZIP window with ordinary pane navigation: logical archive paths, Back / Forward / Up, tabs and splits, both views, grouping, sorting, name filtering, Quick Look, sharing and copy-only drag-out. Disable archive mutations and keep existing archive pages read-only when the experiment is turned off.
 - Add ZIP Compress / Extract with undo/redo, safe unique output names and isolated processing; normal ZIP Open still extracts when browsing is disabled.
 - Add Connect to Server (⌘K) through system NetFS, network-volume classification and Eject; no real server connection has been validated yet.
 - Fix grouping after Favorites navigation, align sidebar/content edges, stabilize the sidebar toggle, remove the duplicate title-bar path and passive filter scope row, and correct Favorites icon sizing.
 - Add the toolbar More menu and system sharing picker; remove file-tag functionality by design. Import from iPhone is also intentionally excluded.
 - Redesign the app mark as two glass panes forming an abstract tail fin, with one full-bleed icon background.
 - Expand the README and add a build-artifact workflow plus a separate manual Release workflow.
+- Rewrite the README with 13 feature screenshot groups from the packaged application. Every image has been saved and inspected; the server screenshot uses the final corrected form.
+- Require documentation and actual application screenshots to evolve with implementation, while keeping automated verification and computer-use evidence distinct.
 - Preserve exact file selections through appearance and external refreshes, including same-named files in expanded folders; Escape cancels inline rename in both views.
 - Rebuild stale icon-grid layouts when grouping changes; use the scroll viewport when verifying Info section widths.
-- Verification: 618 checks passed three consecutive full runs, including 13 new scroll/layout checks; the release bundle and signature passed, with resource and ZIP round-trip checks also verified previously. Packaged-app computer-use checks now cover Settings, Terminal, ZIP browsing with TextEdit, archives, sharing, toolbar layout and server-address validation; see `docs/research/computer-use-2026-09-12.md` for evidence and remaining limits.
+- Verification: final debug and release builds passed. Current packaged-app computer-use checks and all 13 screenshot groups are complete within [the recorded scope](docs/research/computer-use-2026-09-12-inline-zip.md). After correcting archive path remapping, 739 smoke checks passed three consecutive runs, each with exit status 0 and empty stderr. The latest release build 5 was rebuilt and passed strict codesign verification. [Older evidence](docs/research/computer-use-2026-09-12.md) describes the previous standalone ZIP window.
 
 ## 2026-09-12 — application icon and squashed baseline
 

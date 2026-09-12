@@ -90,7 +90,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             detail("Click the shortcut, then press a new combination with Command or Control. Filters names in the current folder."),
             shortcutMessage, separator(), heading("Experimental"),
             terminalCheckbox, detail("Show a terminal alongside your files. Off by default."),
-            zipCheckbox, detail("Open ZIP files in a read-only browser instead of extracting them. Off by default."),
+            zipCheckbox, detail("Browse ZIP files read-only in the current pane instead of extracting them. Off by default."),
         ]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical

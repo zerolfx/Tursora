@@ -14,7 +14,7 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 | **Get Info**（⌘I）/ Show Inspector（⌥⌘I）/ Get Summary Info（⌃⌘I） | ✅ 已做 | — | 见 PLAN 2.10。未做：Stationery pad、ACL、改 owner/group（要提权，无公开 API → 单独算 L）、Apply to enclosed items |
 | **Rename（多选 = 批量重命名对话框）** | 单选 ✅ 批量 ❌ | M | 替换文本 / 添加文本 / 格式三种模式；连锁改名（a→b 而 b 也在批里）要两遍临时名 |
 | **New Folder with Selection**（⌃⌘N） | ❌ | S | createDirectory + 现有 transfer；撤销要合成一个组 |
-| **Compress** / Compress with password | 普通 ZIP ✅；密码 ❌ | 密码 M | 压缩 / 解压支持重名保留、撤销重做；可选只读 ZIP 浏览默认关闭 |
+| **Compress** / Compress with password | 普通 ZIP ✅；密码 ❌ | 密码 M | 压缩 / 解压支持重名保留、撤销重做；可选当前 pane 只读 ZIP 浏览默认关闭（浏览交互参考 Windows） |
 | **Make Alias**（⌃⌘A）/ Show Original（⌘R） | ❌ | M | `URL.bookmarkData(options: .suitableForBookmarkFile)` + `writeBookmarkData`；⌘R 与我们的 Reload 冲突 |
 | Always Open With（⌥ + Open With） | ❌ | S | `setDefaultApplication(at:toOpen:)`（已在 Get Info 的 Change All 用上）；上下文菜单要保留备选项对 |
 | **Show Package Contents** | ❌ | S | 右键 .app 直接 navigate 进包目录 |
@@ -95,5 +95,5 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 - [x] ZIP Compress / Extract，重名保留、后台处理、撤销重做。密码与其他格式未实现。
 - [x] Connect to Server（⌘K）与系统挂载网络卷的浏览 / Eject；真实服务端互操作尚未实测。
 - [x] 基础设置窗口、扩展名显示开关、自定义名称过滤快捷键。
-- [x] 默认关闭的终端面板与 ZIP 只读浏览实验。
+- [x] 默认关闭的终端面板与当前 pane ZIP 只读浏览实验；归档支持复制 / 拖出、Quick Look 与分享，不支持写回。
 - Tags、Import from iPhone 为明确不做的产品边界。

@@ -4,10 +4,11 @@ import AppKit
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
 
     let places: PlacesModel
-    let outlineView = NSOutlineView()
+    let outlineView = SidebarOutlineView()
 
     var onSelectPlace: ((URL) -> Void)?
     var onOpenInNewTab: ((URL) -> Void)?
+    var onOpenInOtherPane: ((URL) -> Void)?
     /// Files dropped onto a place: (urls, destination folder, .move or .copy).
     var onDropFiles: (([URL], URL, NSDragOperation) -> Void)?
     private let contextMenu = NSMenu()
@@ -103,6 +104,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         outlineView.delegate = self
         contextMenu.delegate = self
         outlineView.menu = contextMenu
+        outlineView.contextMenuForRow = { [weak self] row in self?.contextMenu(forRow: row) }
         outlineView.registerForDraggedTypes([.fileURL, Self.placeType])
         outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
 
@@ -149,18 +151,28 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
     // MARK: - Context menu
 
-    private var clickedPlace: PlacesModel.Place? {
-        (outlineView.item(atRow: outlineView.clickedRow) as? PlaceNode)?.place
+    private var contextPlace: PlacesModel.Place?
+
+    private func contextMenu(forRow row: Int) -> NSMenu? {
+        contextPlace = row >= 0 ? (outlineView.item(atRow: row) as? PlaceNode)?.place : nil
+        menuNeedsUpdate(contextMenu)
+        return contextMenu.items.isEmpty ? nil : contextMenu
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        guard let place = clickedPlace else { return }
+        guard let place = contextPlace else { return }
         func add(_ title: String, _ action: Selector) {
-            let mi = NSMenuItem(title: title, action: action, keyEquivalent: ""); mi.target = self; menu.addItem(mi)
+            let mi = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            mi.target = self
+            // clickedRow is transient during menu tracking and model reloads.
+            // Every action keeps the place that was actually right-clicked.
+            mi.representedObject = place
+            menu.addItem(mi)
         }
         add("Open", #selector(ctxOpen(_:)))
         add("Open in New Tab", #selector(ctxOpenInNewTab(_:)))
+        add("Open in Other Pane", #selector(ctxOpenInOtherPane(_:)))
         add("Reveal in Finder", #selector(ctxReveal(_:)))
         if place.isRemovable {
             menu.addItem(.separator())
@@ -173,15 +185,31 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         }
     }
 
-    @objc private func ctxOpen(_ s: Any?) { if let p = clickedPlace { onSelectPlace?(p.url) } }
-    @objc private func ctxOpenInNewTab(_ s: Any?) { if let p = clickedPlace { onOpenInNewTab?(p.url) } }
-    @objc private func ctxReveal(_ s: Any?) {
-        if let p = clickedPlace { NSWorkspace.shared.activateFileViewerSelecting([p.url]) }
+    @objc private func ctxOpen(_ sender: NSMenuItem) {
+        if let place = sender.representedObject as? PlacesModel.Place { onSelectPlace?(place.url) }
     }
-    @objc private func ctxRemove(_ s: Any?) { if let p = clickedPlace { places.removeFavourite(p.url) } }
-    @objc private func ctxResetFavourites(_ s: Any?) { places.resetFavourites() }
-    @objc private func ctxEject(_ s: Any?) {
-        guard let p = clickedPlace else { return }
+    @objc private func ctxOpenInNewTab(_ sender: NSMenuItem) {
+        if let place = sender.representedObject as? PlacesModel.Place { onOpenInNewTab?(place.url) }
+    }
+    @objc private func ctxOpenInOtherPane(_ sender: NSMenuItem) {
+        if let place = sender.representedObject as? PlacesModel.Place { onOpenInOtherPane?(place.url) }
+    }
+    @objc private func ctxReveal(_ sender: NSMenuItem) {
+        if let place = sender.representedObject as? PlacesModel.Place {
+            NSWorkspace.shared.activateFileViewerSelecting([place.url])
+        }
+    }
+    @objc private func ctxRemove(_ sender: NSMenuItem) {
+        guard let place = sender.representedObject as? PlacesModel.Place, place.isRemovable else { return }
+        places.removeFavourite(place.url)
+    }
+    @objc private func ctxResetFavourites(_ sender: NSMenuItem) {
+        guard let place = sender.representedObject as? PlacesModel.Place,
+              place.isRemovable, places.isFavourite(place.url) else { return }
+        places.resetFavourites()
+    }
+    @objc private func ctxEject(_ sender: NSMenuItem) {
+        guard let p = sender.representedObject as? PlacesModel.Place, places.isEjectable(p.url) else { return }
         do { try NSWorkspace.shared.unmountAndEjectDevice(at: p.url) }
         catch {
             if SmokeTest.isRequested { print("Eject failed: \(error.localizedDescription)") }
@@ -344,5 +372,25 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         guard !isSyncingSelection,
               let node = outlineView.item(atRow: outlineView.selectedRow) as? PlaceNode else { return }
         onSelectPlace?(node.place.url)
+    }
+}
+
+/// A context click identifies its row without navigating there first. AppKit's
+/// clickedRow is not a persistent menu target, so capture the hit before tracking.
+final class SidebarOutlineView: NSOutlineView {
+    var contextMenuForRow: ((Int) -> NSMenu?)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        contextMenuForRow?(row(at: convert(event.locationInWindow, from: nil)))
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard let menu = menu(for: event) else { return }
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) { rightMouseDown(with: event) }
+        else { super.mouseDown(with: event) }
     }
 }

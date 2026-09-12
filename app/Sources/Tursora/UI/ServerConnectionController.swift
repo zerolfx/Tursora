@@ -1,7 +1,7 @@
 import AppKit
 
 /// A small address window; the system presents authentication and mounts.
-final class ServerConnectionController: NSWindowController, NSWindowDelegate {
+final class ServerConnectionController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
     private static let shared = ServerConnectionController()
 
     static func show(relativeTo parent: NSWindow?, onMount: @escaping (URL) -> Void) {
@@ -20,7 +20,7 @@ final class ServerConnectionController: NSWindowController, NSWindowDelegate {
     let addressField = NSTextField(string: "")
     let messageLabel = NSTextField(wrappingLabelWithString: "")
     let connectButton = NSButton(title: "Connect", target: nil, action: nil)
-    private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
+    let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
     private let progress = NSProgressIndicator()
     private let connection: ServerMounting
     private(set) var isConnecting = false
@@ -47,8 +47,10 @@ final class ServerConnectionController: NSWindowController, NSWindowDelegate {
         label.font = .systemFont(ofSize: 13, weight: .medium)
         addressField.placeholderString = "smb://server/share"
         addressField.setAccessibilityLabel("Server Address")
-        addressField.target = self
-        addressField.action = #selector(connect(_:))
+        // Ending field editing also happens on Cancel and window focus changes.
+        // Only an explicit Return or Connect button may start a network mount.
+        addressField.cell?.sendsActionOnEndEditing = false
+        addressField.delegate = self
         let help = NSTextField(wrappingLabelWithString:
             "Use SMB, NFS, WebDAV (https://), or legacy AFP. macOS handles sign-in; connected volumes appear in Locations.")
         help.font = .systemFont(ofSize: 12)
@@ -91,7 +93,8 @@ final class ServerConnectionController: NSWindowController, NSWindowDelegate {
     @objc func connect(_ sender: Any?) {
         guard !isConnecting else { return }
         let url: URL
-        do { url = try ServerConnection.validatedURL(addressField.stringValue) }
+        let address = addressField.currentEditor()?.string ?? addressField.stringValue
+        do { url = try ServerConnection.validatedURL(address) }
         catch { showError(error); return }
         generation += 1
         let currentGeneration = generation
@@ -111,6 +114,24 @@ final class ServerConnectionController: NSWindowController, NSWindowDelegate {
                 else { self.showError(error) }
             }
         }
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard control === addressField else { return false }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            connectButton.performClick(nil)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            cancelButton.performClick(nil)
+            return true
+        }
+        return false
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard notification.object as? NSTextField === addressField, !isConnecting else { return }
+        messageLabel.stringValue = ""
     }
 
     private func showError(_ error: Error) {

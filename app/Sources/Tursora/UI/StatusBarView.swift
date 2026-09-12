@@ -11,6 +11,7 @@ final class StatusBarView: NSView {
     let zoomSlider = NSSlider()
     var onZoomChanged: ((Int) -> Void)?
     private var busyCount = 0
+    private var isShowingArchiveStatus = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -51,7 +52,13 @@ final class StatusBarView: NSView {
         super.layout()
         spinner.frame = NSRect(x: bounds.width - 22, y: (bounds.height - 16) / 2, width: 16, height: 16)
         zoomSlider.frame = NSRect(x: bounds.width - 22 - 8 - 110, y: (bounds.height - 16) / 2, width: 110, height: 16)
-        label.frame = NSRect(x: 30, y: (bounds.height - 16) / 2, width: bounds.width - 60 - 120, height: 16)
+        // Preserve the read-only warning in narrow split panes. Zoom remains
+        // available from the menu and gestures when its slider cannot fit.
+        let compactArchive = isShowingArchiveStatus && bounds.width < 360
+        zoomSlider.isHidden = compactArchive
+        let leading: CGFloat = compactArchive ? 8 : 30
+        let reserved: CGFloat = compactArchive ? 38 : 180
+        label.frame = NSRect(x: leading, y: (bounds.height - 16) / 2, width: max(0, bounds.width - reserved), height: 16)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -60,7 +67,12 @@ final class StatusBarView: NSView {
         NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
     }
 
-    func update(itemCount: Int, totalCount: Int? = nil, selectedCount: Int, directory: URL?) {
+    var statusText: String { label.stringValue }
+
+    func update(itemCount: Int, totalCount: Int? = nil, selectedCount: Int, directory: URL?, archiveStatus: String? = nil) {
+        isShowingArchiveStatus = archiveStatus != nil
+        label.lineBreakMode = isShowingArchiveStatus ? .byTruncatingTail : .byTruncatingMiddle
+        needsLayout = true
         var parts: [String] = []
         if let totalCount, totalCount != itemCount {
             parts.append("\(itemCount) of \(totalCount) items")            // filtering
@@ -68,12 +80,16 @@ final class StatusBarView: NSView {
             parts.append(itemCount == 1 ? "1 item" : "\(itemCount) items")
         }
         if selectedCount > 0 { parts[0] = "\(selectedCount) of \(itemCount) selected" }
-        if let directory,
+        if archiveStatus == nil, let directory,
            let cap = try? directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
                 .volumeAvailableCapacityForImportantUsage {
             parts.append("\(ByteCountFormatter.string(fromByteCount: cap, countStyle: .file)) available")
         }
+        if let archiveStatus { parts.insert(archiveStatus, at: 0) }
         label.stringValue = parts.joined(separator: " — ")
+        label.toolTip = archiveStatus == nil ? nil
+            : "Read-only ZIP. Opened files are temporary copies kept until Tursora quits. Edits do not update the ZIP; use Save As to keep them."
+        toolTip = label.toolTip
     }
 
     /// Nested-safe: several operations may overlap.

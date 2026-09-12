@@ -39,7 +39,7 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         guard !urls.isEmpty else { return }
         if urls.count > 10 { showSummary(for: urls, relativeTo: parent); return }
         for url in urls {
-            if let existing = openWindows.first(where: { $0.mode == .item && $0.url == url }) {
+            if let existing = openWindows.first(where: { $0.mode == .item && $0.url.standardizedFileURL == url.standardizedFileURL }) {
                 existing.window?.makeKeyAndOrderFront(nil)
                 continue
             }
@@ -51,7 +51,7 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     static func showSummary(for urls: [URL], relativeTo parent: NSWindow?) {
         guard !urls.isEmpty else { return }
         if urls.count == 1 { show(for: urls, relativeTo: parent); return }
-        if let existing = openWindows.first(where: { $0.mode == .summary && $0.urls == urls }) {
+        if let existing = openWindows.first(where: { $0.mode == .summary && $0.urls.map(\.standardizedFileURL) == urls.map(\.standardizedFileURL) }) {
             existing.window?.makeKeyAndOrderFront(nil)
             return
         }
@@ -873,8 +873,11 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     /// The selection, or the folder itself when nothing is selected — Finder's rule.
     func sync(with browser: BrowserViewController, force: Bool = false) {
-        var targets = browser.fileView.selectedItems.map(\.url)
-        if targets.isEmpty, let current = browser.currentURL { targets = [current] }
+        if browser.isBrowsingArchive {
+            window?.orderOut(nil)
+            return
+        }
+        let targets = browser.infoTargets
         if SmokeTest.isRequested { print("   [info] sync targets=\(targets.map(\.lastPathComponent)) urls=\(urls.map(\.lastPathComponent)) force=\(force)") }
         guard !targets.isEmpty, force || targets != urls else { return }
         endEditing()                 // commits a typed name / comment to the item it belongs to

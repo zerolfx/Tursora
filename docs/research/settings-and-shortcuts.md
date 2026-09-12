@@ -11,7 +11,7 @@
 | 实验性终端面板 | 关 | `AppPreferences.experimentalTerminalEnabled` |
 | 实验性 ZIP 浏览 | 关 | `AppPreferences.experimentalZIPBrowsingEnabled` |
 
-`AppPreferences.Store` 使用 UserDefaults，实际变更后发布 `.tursoraPreferencesChanged`。设置窗口的勾选立即保存；消费者收到通知更新界面。扩展名开关只影响显示，不修改文件名或文件系统的隐藏扩展名标志。终端/ZIP 开关只控制功能入口，具体行为由各自消费者实现。
+`AppPreferences.Store` 使用 UserDefaults，实际变更后发布 `.tursoraPreferencesChanged`。设置窗口的勾选立即保存；消费者收到通知更新界面。扩展名开关只影响显示，不修改文件名或文件系统的隐藏扩展名标志。启用终端开关只开放入口，不启动 shell。ZIP 开关启用后，普通 Open 在当前 pane 浏览归档；关闭后，普通目录中新打开 ZIP 恢复解压，已准备的归档页与历史仍可只读导航和补全，不突然跳转或清除副本。设置说明明确写明 current pane；完整行为见 [归档浏览研究](archive-browsing.md)。
 
 ## 快捷键录制
 
@@ -37,3 +37,5 @@ strings /System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/Me
 ## 验证边界
 
 `SettingsSmokeTests.run()` 使用独立临时 UserDefaults domain 和 NotificationCenter，覆盖默认值、持久化、通知、冲突/无效绑定、重置、设置控件写入和刷新、录制事件与 Escape，以及窗口内布局。不打开设置窗口、不触发外部程序、终端或真实 ZIP 浏览。主流程的 `SmokeTest.preferencesIntegration` 另覆盖实际菜单绑定、实验开关入口、两种文件视图的扩展名显示与重命名真名；最终连续三轮及打包界面验证状态见 HANDOFF。
+
+同 pane ZIP 替换了早期独立窗口实现，当前导航与只读行为的 computer-use 结果见[本轮记录](computer-use-2026-09-12-inline-zip.md)；最终 739 项 smoke 已连续三轮通过。截图为两个实验均关闭的示例状态；收尾恢复用户原有偏好为扩展名开、⌘F、终端关、ZIP 浏览开，不改变新安装时两个实验默认关闭的规则。
