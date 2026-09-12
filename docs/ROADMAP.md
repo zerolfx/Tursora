@@ -27,7 +27,7 @@ Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私
 - 在有用户提供的服务器时验证 SMB / NFS / WebDAV / legacy AFP 的认证、读写和掉线；当前只验证系统挂载接口与无网络状态流转。
 - 既有功能提交的 GitHub Build 已成功；本轮推送后仍需检查新提交的托管构建与下载产物，手动 Release 发布 / 安装尚未验证。本地打包不能替代对应提交的实际 Actions 运行。
 - 实验性终端补充不同 shell、全屏程序、字体/主题与布局检查；目前没有自动目录同步，手动 Restart 会结束当前会话。
-- 本轮 CUA 已完成工具栏 / Favorites 分栏与新标签、补全、过滤、两种视图、Quick Look / Share、同 pane ZIP 导航与只读菜单、外部打开临时副本、跨 pane 复制及撤销、Keep Both 与撤销、终端基础命令、服务器表单修复复测；13 组截图已核对。快照路径重映射问题已修复，最终 739 项 smoke 连续三轮通过；release build 5 重建与 strict codesign 通过。ZIP 拖出手势、归档内 Quick Look / Share 和关闭开关后既有页的专项 CUA 仍可补充，见[本轮记录](research/computer-use-2026-09-12-inline-zip.md)。
+- 已完成检查统一见 [HANDOFF](HANDOFF.md) 与[实机记录](research/computer-use-2026-09-12-inline-zip.md)。ZIP 拖出手势、归档内 Quick Look / Share 和关闭开关后既有页的专项 CUA 仍可补充。
 - ZIP 浏览仍使用完整暂存，进一步评估大归档的空间与响应；密码归档、其他格式、原 ZIP 外部改变后的自动重载和归档写回未实现。
 
 ## 已知的小差距
