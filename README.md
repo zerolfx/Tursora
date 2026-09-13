@@ -35,14 +35,16 @@ Its goal is simple: **keep what feels familiar in Finder, then add the file-mana
 3. Drag **Tursora → Applications** in the installer window.
 4. Open **Tursora from Applications**. If macOS cannot verify the app, follow the [First launch instructions](#first-launch) for a trusted download.
 
-**Prefer Homebrew?** Install through this project’s tap:
+**Prefer Homebrew?** Run the first command with the **entire repository URL**, wait for it to succeed, then run the second:
 
 ```sh
 brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
 brew install --cask zerolfx/tursora/tursora
 ```
 
-The tap installs the published 0.2.0 DMG with its verified SHA-256. See [Homebrew details](#homebrew) for updates and uninstalling. **Existing 0.1.0 users need this manual upgrade once** to gain in-app updates.
+If an error says `zerolfx/homebrew-tursora` was not found, Homebrew used its default tap address. Run the first command above with the full URL before installing.
+
+The tap installs the published 0.2.0 DMG with its verified SHA-256. See [Homebrew details](#homebrew) for updates and uninstalling, or [troubleshooting](#homebrew-troubleshooting) for an `untrusted tap` error.
 
 ## Features
 
@@ -170,7 +172,7 @@ The features below are available in 0.2.0. See the [version history](CHANGELOG.m
 
 ## Terminal & ZIP
 
-Both features are **enabled by default** in 0.2.0. Change them in **Tursora → Settings…** (`⌘,`). Existing saved choices are preserved. In the historical 0.1.0 build, enable both features in Settings.
+Both features are **enabled by default** in 0.2.0. Change them in **Tursora → Settings…** (`⌘,`). Existing saved choices are preserved.
 
 <table>
   <thead>
@@ -233,18 +235,29 @@ Requires **macOS 14 or later**. Downloadable builds currently target **Apple Sil
 
 ### Homebrew
 
-The repository includes a Homebrew cask for the published **0.2.0** Apple Silicon DMG. Install it through this project's tap:
+The repository includes a Homebrew cask for the published **0.2.0** Apple Silicon DMG. First add the tap using the **full URL**; run the install command only after that succeeds:
 
 ```sh
 brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
 brew install --cask zerolfx/tursora/tursora
 ```
 
-The explicit repository URL is required on the first line. Update with `brew update` followed by `brew upgrade --cask --greedy zerolfx/tursora/tursora`; `--greedy` includes versions that also have the in-app updater. Uninstall with `brew uninstall --cask zerolfx/tursora/tursora`; your settings and workspace remain intact.
+The explicit repository URL is required on the first line. Without it, an untapped install looks for `zerolfx/homebrew-tursora`, which is not this repository. Update with `brew update` followed by `brew upgrade --cask --greedy zerolfx/tursora/tursora`; `--greedy` includes versions that also have the in-app updater. Uninstall with `brew uninstall --cask zerolfx/tursora/tursora`; your settings and workspace remain intact.
 
 This project maintains its own tap. An Apple Developer Program membership is not required to distribute it this way; **the downloaded app remains ad-hoc signed and not notarized**, and the [first-launch instructions](#first-launch) still apply. The cask keeps Homebrew's normal download quarantine and verifies the pinned SHA-256. Homebrew's official cask repository has separate [Gatekeeper acceptance requirements](https://docs.brew.sh/Acceptable-Casks#platform-compatibility-and-macos-security-protections).
 
 See [Homebrew maintenance and verification](docs/research/homebrew.md) for release checks and isolated installation results.
+
+#### Homebrew troubleshooting
+
+If Homebrew reports `untrusted tap` after the full-URL tap command succeeds, explicitly trust the Tursora cask and retry:
+
+```sh
+brew trust --cask zerolfx/tursora/tursora
+brew install --cask zerolfx/tursora/tursora
+```
+
+This grants trust to this cask only. Homebrew normally grants the same item-level trust when installing by its fully qualified name; see [Homebrew's Tap Trust documentation](https://docs.brew.sh/Tap-Trust).
 
 ### First launch
 
@@ -273,7 +286,7 @@ This recursively removes only the download-quarantine attribute from this app bu
 
 Version 0.2.0 adds **Tursora → Check for Updates…** and **Settings… → Updates**. Automatic checks are enabled by default and run daily; you can turn them off and still check manually. **Automatically download and install updates** is a separate option, disabled by default. When enabled, verified updates can install when you quit. Turning off automatic checks disables that control while preserving its saved choice; changing these options does not cancel an update already downloaded or scheduled to install on quit.
 
-**The original 0.1.0 release has no updater.** Install 0.2.0 manually once; subsequent stable releases can update through the app. The update feed, including the DMG’s update signature, is now published with 0.2.0. See [release verification and its scope](docs/research/release-0.2.0.md).
+Subsequent stable releases can update through the app. The update feed, including the DMG’s update signature, is now published with 0.2.0. See [release verification and its scope](docs/research/release-0.2.0.md).
 
 ### Build locally
 

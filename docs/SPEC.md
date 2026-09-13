@@ -297,17 +297,18 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 - 两个选项控制后续检查和自动更新策略，不取消已下载或已经安排退出安装的更新；保留 Sparkle 的既有会话语义。手动检查入口的可用性由 updater 当前状态决定，后台处理期间不能重复启动新检查。
 - Updates 显示最近检查时间或尚未检查；updater 配置启动失败时内联显示原因并禁用对应操作。未打包的 SPM 可执行文件与 smoke 模式完全不构造 Sparkle，不安排更新网络请求或更新弹窗。测试使用注入 driver 验证控件和状态。
 - 更新只跟随 GitHub 的最新正式 release；prerelease 不进入稳定通道。公开 HTTPS feed 位于最新 release 的 `appcast.xml`，其中 DMG 指向对应版本的固定资产 URL，下载内容经 Ed25519 签名校验后才提取应用安装。不发送可选系统 profile；应用仍是 ad-hoc 签名、未公证，更新签名不改变这个状态。
-- 原始 `0.1.0` 不含 updater，必须先手动下载一次含此功能的版本。实现、签名配置、实际发布和验证阶段分别记录于[软件更新研究](research/app-updates.md)；实现完成不等于稳定 feed 已上线。
+- 0.2.0 已包含 updater 并发布稳定 feed。实现、签名配置、实际发布和验证阶段分别记录于[软件更新研究](research/app-updates.md)与[正式发布记录](research/release-0.2.0.md)；检查到最新版本不等于完整安装 / 重启路径已实测。
 
 ## 21. 下载与安装
 
-- README 简介后、功能表前直接提供 0.2.0 安装步骤与 Homebrew 命令。网站首屏主按钮及导航中的“安装指南”是页内 `#installation` 跳转；“免费下载”单独指向真实最新稳定 release。安装区逐步说明下载 DMG、打开、拖入 Applications、从 Applications 启动，复用真实透明安装截图，并链接可信下载的首次启动说明。在 release 成功之前保留准备中 / 历史 0.1.0 ZIP 的真实状态，不链接不存在的新版资产。
-- 项目自己的 Homebrew tap 直接使用本仓库 `Casks/tursora.rb`。合入公开 `main` 后可 `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora`，再 `brew install --cask zerolfx/tursora/tursora`。固定已发布版本与 SHA-256；当前 cask 用真实 `0.1.0` ZIP。不需要为自有 tap 先购买 Apple 会员，但安装包仍未公证；保留下载隔离，不在 cask 中执行绕过命令。官方 `homebrew/cask` 接纳条件与自有 tap 分开，见[Homebrew 依据与实装验证](research/homebrew.md)。
+- README 简介后、功能表前直接提供 0.2.0 安装步骤与 Homebrew 命令。网站首屏主按钮及导航中的“安装指南”是页内 `#installation` 跳转；“免费下载”单独指向真实最新稳定 release。安装区逐步说明下载 DMG、打开、拖入 Applications、从 Applications 启动，复用真实透明安装截图，并链接可信下载的首次启动说明。当前提供已发布的 0.2.0 DMG，不链接不存在的新版资产。
+- 项目自己的 Homebrew tap 直接使用本仓库 `Casks/tursora.rb`。先完整执行 `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora`，成功后再 `brew install --cask zerolfx/tursora/tursora`。第一条显式 URL 不可省略；未安装 tap 时直接 install 会自动寻找默认 `zerolfx/homebrew-tursora`，其仓库不存在提示应先检查显式 tap 步骤。固定已发布版本与 SHA-256；当前 cask 用真实 `0.2.0` DMG，并标记 `auto_updates true`。不需要为自有 tap 先购买 Apple 会员，但安装包仍未公证；保留下载隔离，不在 cask 中执行绕过命令。官方 `homebrew/cask` 接纳条件与自有 tap 分开，见[Homebrew 依据与实装验证](research/homebrew.md)。
+- 默认 Homebrew 流程仍为显式 URL 的 tap、成功后再完整名称 install 两条命令；`untrusted tap` 的独立排错只授予 `brew trust --cask zerolfx/tursora/tursora`，再重试安装。网站简短提示并跳到 README 排错说明。这些安装说明修订不修改已发布应用版本 / build 或重新发布二进制。
 - README、研究记录和网站的 canonical 截图必须是实际窗口 PNG，原生圆角外侧透明且边缘带抗锯齿；确定性处理保护内部像素，不能生成或修饰 UI。网站构建检查整个图片目录，不能靠 CSS 覆盖白底，见[本轮截图审计](research/screenshot-audit-2026-09-13.md)。
 
-- 后续 release 直接提供 `Tursora-<version>-macOS-arm64.dmg` 与 SHA-256 校验文件，正式版另附更新 appcast。打开镜像后，窗口中左侧为 Tursora、右侧为 Applications，中间箭头指向目标；将应用拖入 Applications 完成安装。Applications 是 `/Applications` 的链接，没有额外安装脚本。
+- 当前及后续 release 直接提供 `Tursora-<version>-macOS-arm64.dmg` 与 SHA-256 校验文件，正式版另附更新 appcast。打开镜像后，窗口中左侧为 Tursora、右侧为 Applications，中间箭头指向目标；将应用拖入 Applications 完成安装。Applications 是 `/Applications` 的链接，没有额外安装脚本。
 - 镜像预设 640 × 280 窗口、128 px 图标，布局在构建时直接写入 Finder 元数据。用户正常拖拽应用时由 macOS 执行复制；不修改文件管理器的 ZIP 浏览或普通文件操作行为。
-- 原始 `0.1.0` 继续保留已发布 ZIP，不重写历史资产。网站和 README 在首个 DMG 发布前明确区分已发布 ZIP 与准备中的 DMG。
+- 已发布标签和资产保持不变；当前安装流程只说明正式 DMG 与 Homebrew 安装，不提供旧版迁移步骤。
 - 安装说明按下载、拖入 Applications、从 Applications 启动排列。当前 ad-hoc 且未公证，可信下载被系统以无法验证开发者为由阻止时，按 Apple 指引先尝试打开，再到 System Settings → Privacy & Security → Open Anyway 并确认 Open。README 另提供折叠终端备选，仅在确认官方来源及同版本 SHA-256 一致后，移除该应用包的 `com.apple.quarantine` 属性；不清空全部扩展属性，不赋予公证或修复损坏。损坏提示先重下核验，恶意软件警告不按普通隔离提示处理。网站仅提供简短步骤与 README 详情链接；不执行系统安全设置变更。
 - 本轮没有可用 Developer ID 签名身份，用户也确认尚无证书，因此维持 ad-hoc 签名。Apple Developer Program 资格、Developer ID 证书与公证凭据就绪后再单独接入并验证签名 / 公证；不以 DMG 外观或 Sparkle 签名代替 Apple 信任。Mac App Store 分发与其 sandbox 设计另行评估。
 

@@ -16,12 +16,29 @@ Homebrew 支持在普通 Git 仓库中放置 `Casks/`，双参数 `brew tap <nam
 - [update-homebrew.py](../../app/tools/update-homebrew.py) 从保存的 GitHub release JSON、同版本校验文件与已下载资产生成 cask。拒绝草稿、预发布、非稳定标签、非官方或可变地址、重名资产、冲突校验、字节/大小/digest 不符；不处理凭据、不联网、不自动提交或发布。`--auto-updates` 还要求同版公开 `appcast.xml`，并拒绝历史 `0.1.0`。
 - [Homebrew 工作流](../../.github/workflows/homebrew.yml) 在专用 macOS runner 验证 cask 安装与卸载，不启动应用，不改系统安全策略。原始 cask 的 main 工作流已成功；0.2.0 cask 的远端结果以对应提交的 [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) 为准，远端执行结果不能由本地测试代替。
 
-用户通过本仓库 tap 安装；此分支的 0.2.0 cask 随 follow-up 合入 main 后生效：
+0.2.0 cask 已随 [PR #9](https://github.com/zerolfx/Tursora/pull/9) 合入 main，其[真实安装检查](https://github.com/zerolfx/Tursora/actions/runs/34741008373)通过。按顺序执行，第一条必须带完整仓库 URL：
 
 ```sh
 brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
 brew install --cask zerolfx/tursora/tursora
 ```
+
+## 安装排错：仓库地址与单项信任
+
+2026-09-13 用户先报告找不到 `homebrew-tursora`，重试后报告 `untrusted tap`。没有收到完整原始命令 / 输出，不能断言用户具体省略了哪一步；以下是独立复现和已核对的 Homebrew 行为。
+
+单参数 `brew tap zerolfx/tursora`，或尚未 tap 时直接安装 fully-qualified cask，会按约定访问 `https://github.com/zerolfx/homebrew-tursora`。我们复用的真实仓库是 `https://github.com/zerolfx/Tursora`，必须先双参数 tap。即使 remote 正确，本地目录依然叫 `Library/Taps/zerolfx/homebrew-tursora`；仅看到 `Cloning into` 的目录名并不表示失败。[官方 tap 规则](https://docs.brew.sh/Taps)。
+
+`untrusted tap` 是 Homebrew 的第三方安装定义信任检查，与 Apple 公证无关。安装定义是可执行 Ruby；只信任需要的 cask，不扩大到整个 tap。如果完整安装命令仍报告此错误：
+
+```sh
+brew trust --cask zerolfx/tursora/tursora
+brew install --cask zerolfx/tursora/tursora
+```
+
+当前[官方说明](https://docs.brew.sh/Tap-Trust)规定 fully-qualified install 本身会信任指定项，因此常规安装保留两条命令；显式 `brew trust --cask` 作为遇到错误时的排错步骤，不要求关闭全局信任检查。用户自己决定信任其官方来源，没有替用户修改本机 Homebrew 信任设置。
+
+在自有隔离 Homebrew 6.0.22 中清除旧测试 tap 后，省略 URL 的 tap 实际失败并显示默认仓库不存在；双参数从公开仓库 clone 成功，remote 精确匹配，cask 解析为 0.2.0 和正式 SHA。随后用两个新的临时信任目录并明确启用信任检查：短名称安装的 dry run 复现 `untrusted tap`；单项 trust 后安装 dry run 成功。另一个空信任目录直接 fully-qualified install dry run 也成功；两份 JSON 均只有一个 cask、没有全 tap / formula / command 信任。本次不安装或启动应用，不修改用户 prefix 或信任文件。证据在 `/private/tmp/tursora-tap-diagnosis-3mrphmee/{result.json,trust-result.json}`；dry run 不替代前面的真实 DMG 安装 / 卸载记录。
 
 ## 新稳定版本的维护
 

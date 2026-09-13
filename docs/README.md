@@ -4,7 +4,7 @@
 |---|---|---|
 | you are picking the project up | [HANDOFF.md](HANDOFF.md) — state, what is verified and what is not, next steps | 中文 |
 | you need the intended behaviour of a feature | [SPEC.md](SPEC.md) — v1 spec, each section marked "对标 Dolphin / Finder" | 中文 |
-| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D56 | 中文 |
+| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D57 | 中文 |
 | you are changing code | [ARCHITECTURE.md](ARCHITECTURE.md) — object graph, per-file map, data flows, notifications, persistence, threading | English |
 | you are building, testing or releasing | [DEVELOPMENT.md](DEVELOPMENT.md) — toolchain, smoke test, conventions, AppKit pitfalls, release checklist | English |
 | you are editing or previewing the Chinese product page | [site/README.md](../site/README.md) — three workflows, canonical screenshots, Python static build and browser checks; [architecture](ARCHITECTURE.md#product-page) | English |

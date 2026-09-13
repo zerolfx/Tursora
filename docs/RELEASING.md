@@ -8,7 +8,7 @@ Sparkle 2.9.6 is pinned by SPM. The app embeds the public Ed25519 key from `app/
 
 Stable publication needs the repository Actions secret **`SPARKLE_PRIVATE_KEY`**. It was configured in `zerolfx/Tursora` with explicit maintainer authorization on 2026-09-13 at 00:48:20 Asia/Shanghai (`2026-09-12T16:48:20Z`). The existing Keychain key's derived public key matched the bundled resource before upload through stdin; the temporary mode-0600 export was removed, and GitHub's secret listing confirmed the name and update time. This supersedes the earlier automatic approval-review rejection. Current state is recorded in [the update research](research/app-updates.md). The workflow receives it only in the prerequisite and appcast-signing steps. Ordinary Build and Pages workflows do not need it; configuring the secret does not publish an update.
 
-The original `0.1.0` release has no updater or appcast and retains its historical ZIP download. Its users must manually install the first update-enabled release once. New releases provide a DMG directly: open it, then drag Tursora to Applications. The published 0.2.0 release provides its DMG, `appcast.xml` and `SHA256SUMS.txt`, establishing the stable feed. Adding code, configuring Pages, or setting the secret alone does not publish a release.
+Current releases provide a DMG directly: open it, then drag Tursora to Applications. The published 0.2.0 release provides its DMG, `appcast.xml` and `SHA256SUMS.txt`, establishing the stable feed. Adding code, configuring Pages, or setting the secret alone does not publish a release.
 
 The stable feed is `https://github.com/zerolfx/Tursora/releases/latest/download/appcast.xml`, independent of GitHub Pages. It contains one stable item with embedded release notes, an immutable versioned DMG URL, macOS/architecture requirements, exact byte length and the DMG's Ed25519 signature. The image is authenticated before Sparkle extracts the app. The XML itself is not signed and `SURequireSignedFeed` is not enabled. The app remains ad-hoc signed and not notarized.
 
@@ -70,7 +70,7 @@ gh release download v0.2.0 --repo zerolfx/Tursora \
 (cd "$release_dir" && shasum -a 256 -c SHA256SUMS.txt)
 ```
 
-Perform the mounted-app and feed checks below, including bundled MIT/third-party notices, and confirm `releases/latest/download/appcast.xml` serves the same feed bytes. The publication run verifies the archive signature separately from metadata. A controlled production-feed update is separate from the previous loopback test; the historical 0.1.0 executable cannot perform it because it has no updater.
+Perform the mounted-app and feed checks below, including bundled MIT/third-party notices, and confirm `releases/latest/download/appcast.xml` serves the same feed bytes. The publication run verifies the archive signature separately from metadata. A controlled production-feed update is separate from the previous loopback test.
 
 Only after the real release passes verification, generate its cask:
 
@@ -82,7 +82,7 @@ python3 app/tools/update-homebrew.py \
   --auto-updates --output Casks/tursora.rb
 ```
 
-Review the generated version, exact SHA and immutable asset URL, run the cask tool checks, then commit/merge the cask follow-up and verify its Homebrew workflow. Remove the prepared/unpublished wording from README and the product page only after publication succeeds, retain the 0.1.0 manual-upgrade note, and record Release / Homebrew / Pages URLs and scope in HANDOFF. Cask updates, Pages deployment and production update verification are independent steps; Release does not perform them automatically.
+Review the generated version, exact SHA and immutable asset URL, run the cask tool checks, then commit/merge the cask follow-up and verify its Homebrew workflow. Remove the prepared/unpublished wording from README and the product page only after publication succeeds, and record Release / Homebrew / Pages URLs and scope in HANDOFF. Cask updates, Pages deployment and production update verification are independent steps; Release does not perform them automatically.
 
 ## Verify the published result
 
@@ -103,6 +103,8 @@ Before 0.1.0, the changelog was a development log rather than a version history.
 
 ## Homebrew tap
 
-The repository itself is a tap via `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora`. `Casks/tursora.rb` tracks a real published stable application asset with a pinned SHA-256; the current follow-up tracks the published 0.2.0 DMG and sets `auto_updates true`. After publishing and verifying a new stable release, use `app/tools/update-homebrew.py` with its saved release JSON, SHA256SUMS and actual downloaded DMG, review the generated diff and merge it to main. Add `--auto-updates` only for a Sparkle-enabled release that has published its versioned appcast. The original 0.1.0 must not receive that flag. See [the exact maintenance commands and local verification](research/homebrew.md).
+The repository itself is a tap: first run `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora` with the full URL, wait for success, then run `brew install --cask zerolfx/tursora/tursora`. Without an installed custom tap, the fully qualified install automatically tries the default `https://github.com/zerolfx/homebrew-tursora`; a repository-not-found error for that URL is resolved by adding the explicit remote first. `Casks/tursora.rb` tracks a real published stable application asset with a pinned SHA-256; the current follow-up tracks the published 0.2.0 DMG and sets `auto_updates true`. After publishing and verifying a new stable release, use `app/tools/update-homebrew.py` with its saved release JSON, SHA256SUMS and actual downloaded DMG, review the generated diff and merge it to main. Add `--auto-updates` only for a Sparkle-enabled release that has published its versioned appcast. See [the exact maintenance commands and local verification](research/homebrew.md).
 
 The cask leaves Homebrew's quarantine in place and uses no post-install bypass. Its custom-tap installation does not require Developer ID membership, while official homebrew/cask acceptance has separate Gatekeeper rules. The Homebrew workflow validates this checkout's cask by installing/uninstalling into a temporary runner app directory. Publishing a release does not automatically update or publish the cask. The project MIT license must remain in the packaged app beside the third-party notices.
+
+Installation-instruction corrections do not require a new application release. Keep the published 0.2.0 bundle version, build metadata, tag and assets unchanged. For a reported `untrusted tap`, README troubleshooting uses `brew trust --cask zerolfx/tursora/tursora` and retries the fully qualified install; the normal two-command tap/install flow remains intact. Trust handling follows [Homebrew Tap Trust](https://docs.brew.sh/Tap-Trust).

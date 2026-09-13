@@ -28,7 +28,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 - A build-time transparency check for all canonical README/site screenshots and conservative measured-edge recovery for native rounded corners next to colored system indicators.
 - Workspace restoration on launch, enabled by default: reopen windows, ordered and named tabs, split panes, active locations and layout, and rerun existing search requests. General settings can disable restoration and clear the saved workspace; saving failures appear inline with a retry action. Navigation history, filters, selection, terminal sessions, transfers and undo are not restored.
 - Software updates through Sparkle, with a manual Check for Updates command and a dedicated Updates settings page. Daily automatic checks default on and can be disabled; automatic download and installation is a separate option that defaults off.
-- Signed update DMGs and a stable-release appcast carrying their signatures, published alongside release assets. The original 0.1.0 application requires one manual upgrade to gain the updater.
+- Signed update DMGs and a stable-release appcast carrying their signatures, published alongside release assets.
 - Direct DMG downloads with a two-icon Tursora → Applications installer window and arrow background; automated packaging checks the mounted app, signature and layout.
 - First-launch instructions for current unnotarized builds, with Apple's per-app approval steps and an optional quarantine command limited to trusted, checksum-verified downloads.
 - GitHub Pages deployment workflow for the Chinese product page, with pull-request validation and a public latest-release download link.
