@@ -1,55 +1,55 @@
-# 终端会话保留与终止确认
+# Keeping terminal sessions alive and confirming before termination
 
-> 0.2.1 已取代本文早期的目录跟随与终端栏布局：zsh 在安全提示符单向跟随浏览目录，顶部精简为一行，底部不再显示终端状态或可用容量。当前行为与本轮验证见[0.2.1 记录](terminal-navigation-0.2.1.md)；本文原有检查数、截图与操作记录保留其历史阶段，隐藏保留和终止前确认仍有效。
+> 0.2.1 has superseded the directory following and the terminal-bar layout described earlier in this document: zsh follows the browsed directory one way at a safe prompt, the top is trimmed to a single row, and the bottom no longer shows terminal status or available capacity. For the current behaviour and the verification of that stage, see [the 0.2.1 record](terminal-navigation-0.2.1.md); the check counts, screenshots and operation logs in this document remain the record of their own historical stage, while keeping a hidden session alive and confirming before termination are still in force.
 
-2026-09-13。基于定制阶段提交 `eeaea1c`，用户补充要求收起终端不结束 shell，退出有任务时先确认，并已授权完成后推送、合入和发布 0.2.0。本文记录该追加范围；实现 / 验证由主任务及终端 agent 完成，最终检查进度见文末。
+2026-09-13. Building on commit `eeaea1c` from the customisation stage, the user added the requirements that collapsing the terminal must not end the shell and that quitting with tasks running must confirm first, and authorised pushing, merging and releasing 0.2.0 once that was done. This document records that additional scope; the implementation and the verification were carried out by the main task and the terminal agent, and the final check status is at the end.
 
-## 确定的行为
+## Settled behaviour
 
-- 终端仍按窗口拥有，与该窗口所有标签和左右 pane 共用。首次展开才启动 PTY；工具栏、F4 / 用户自定义绑定和标题栏关闭按钮只隐藏视图，保留原 shell、输出、变量、当前目录及任务。重新显示不能重建进程或注入输入。
-- General 关闭终端入口会隐藏所有已有面板并保留会话，说明可重新启用后继续。即使入口关闭，退出仍检查这些隐藏终端；改变字体 / 颜色仍应用到它们。更改 shell 等到明确的新建会话或 Restart。
-- 文件浏览导航只改变后续 Start / Restart 目标，不向运行中 shell 注入 `cd`。在 ZIP 中使用原 ZIP 的父目录；重新显示保留 shell 自己的当前位置。
-- Restart、关闭所属窗口和退出应用才结束会话。检测到所拥有终端的前台、后台或已停止任务时先询问；无法确定活动状态时同样保守询问，默认按钮为 Cancel。
-- 取消 Restart / 关窗 / 退出后，保留 shell、输出与窗口。应用退出必须在设置 `isTerminating`、最终保存工作区和取消文件传输之前完成确认；取消不会让后续导航停存或误触发清理。接受后才依次保存逻辑状态、取消任务并等待所拥有 PTY 的回收。
-- 每个窗口关闭只结束自己的终端，应用退出汇总全部窗口。隐藏保留只在应用运行期间有效；不序列化 PTY、任务或终端布局，不在重启应用后重放命令。
+- The terminal is still owned per window and shared by all of that window's tabs and by the left and right panes. The PTY starts only on the first expansion; the toolbar, F4 or a user-defined binding, and the close button in the title bar only hide the view, keeping the same shell, output, variables, current directory and tasks. Showing it again must not rebuild the process or inject input.
+- Turning the terminal entry point off in General hides every existing panel and keeps the sessions, explaining that they can continue once it is re-enabled. Even with the entry point off, quitting still checks these hidden terminals, and a change of font or colour still applies to them. A change of shell waits for an explicit new session or a Restart.
+- Navigating in the file browser only changes the target of a later Start or Restart; it does not inject `cd` into a running shell. Inside a ZIP it uses the parent directory of the original ZIP; showing the panel again keeps the shell's own current location.
+- Only Restart, closing the owning window and quitting the application end a session. When a foreground, background or stopped task is detected in an owned terminal, the user is asked first; when the activity state cannot be determined, the same conservative question is asked, with Cancel as the default button.
+- Cancelling a Restart, a window close or a quit keeps the shell, the output and the window. On application quit the confirmation has to finish before `isTerminating` is set, before the final workspace save and before file transfers are cancelled; cancelling must not stop later navigation from being persisted or wrongly trigger cleanup. Only once the user accepts are the logical state saved, the tasks cancelled and the owned PTYs waited on for reaping, in that order.
+- Closing a window ends only that window's own terminal, while quitting the application aggregates across all windows. Keeping a hidden session alive lasts only while the application is running: the PTY, its tasks and the terminal layout are not serialised, and commands are not replayed after the application is restarted.
 
-## 进程检测与边界
+## Process detection and limits
 
-`Model/TerminalActivity.swift` 使用 macOS libproc 的 BSD 进程元数据与 `getsid`，查询同一会话及其后代。`TerminalActivitySnapshot` 分开记录任务和 `informationUnavailable`，后者同样要求确认。它不向 shell 发送 `jobs`、探测字符或控制序列，也不读取用户命令内容；隐藏面板不执行进程终止操作。
+`Model/TerminalActivity.swift` uses the BSD process metadata of macOS libproc together with `getsid` to query the same session and its descendants. `TerminalActivitySnapshot` records tasks and `informationUnavailable` separately, and the latter requires a confirmation just as much. It sends no `jobs`, no probe characters and no control sequences to the shell, and does not read the content of the user's commands; hiding a panel performs no process termination.
 
-- 已知 / 配置的空闲 shell 和僵尸不作为活动任务；已停止进程算任务。通过 `exec` 替换 shell 的非 shell 命令，即使继续使用原 shell PID，也纳入确认。
-- 身份由 PID 和进程出生时间组成，每次发送信号、调用 SwiftTerm terminate 或 `waitpid` 前重新核对，避免已结束进程的 PID 被复用后误伤 / 回收无关子进程。范围限定为当前拥有的会话与后代；其他窗口和无关终端不属于该范围。
-- 接受结束后，逐个向已捕获身份的拥有任务发 HUP / CONT，不整组盲发；关闭 PTY 后，150 ms 宽限期后只对仍存活且身份一致的拥有进程发 KILL。SwiftTerm terminate 自身会向 shell PID 发 SIGTERM，故仅在身份核实、直接子进程尚未被回收时同步调用；随后只回收匹配的直接 shell。重复 shutdown 共用完成屏障，`TerminalProcessLifecycle.whenAllStopped` 还等待已关闭窗口留下的在途终端清理，应用退出不能只遍历当前窗口。主线程不阻塞等待。
-- `read` 等只在 shell 内部执行的内建命令无法仅凭进程元数据区别于空闲 shell。真正脱离、改变会话并离开原祖先链的守护进程不属于拥有范围。检测依据进程身份 / 名称而非完整 shell 作业控制，不能承诺识别所有 shell 内部执行状态。
-- 完整枚举或相关元数据无法获得时保守询问；不把“无法读取”记为“没有任务”。
-- 本机受控子进程观察发现未回收僵尸的 `proc_pidinfo(PROC_PIDTBSDINFO)` / `getsid` 可报 ESRCH，而 `sysctl(KERN_PROC_PID)` 仍提供原出生时间、父 PID 与 SZOMB；实现以此作元数据回退，仍要求精确身份才回收。Restart 带 shutdown generation，清理期间被关窗 / 退出中断时不能重新生出 shell。
+- A known or configured idle shell, and zombies, do not count as active tasks; a stopped process does count as a task. A non-shell command that replaced the shell through `exec` is included in the confirmation even though it goes on using the original shell's PID.
+- Identity consists of the PID and the process's birth time, re-checked before every signal, every SwiftTerm terminate call and every `waitpid`, so that a PID reused after a process has already ended cannot cause an unrelated child to be hit or reaped. The scope is limited to the currently owned session and its descendants; other windows and unrelated terminals are outside it.
+- Once termination is accepted, HUP and CONT go one at a time to each owned task whose identity was captured, never blindly to the whole group; after the PTY is closed, a 150 ms grace period passes and KILL is sent only to owned processes that are still alive and whose identity still matches. SwiftTerm's terminate itself sends SIGTERM to the shell PID, so it is called synchronously only when the identity has been verified and the direct child has not yet been reaped; afterwards only the matching direct shell is reaped. Repeated shutdowns share a completion barrier, and `TerminalProcessLifecycle.whenAllStopped` also waits for in-flight terminal cleanup left behind by windows that have already closed, because quitting the application cannot simply iterate over the current windows. The main thread never blocks waiting.
+- Builtins that run entirely inside the shell, such as `read`, cannot be told apart from an idle shell by process metadata alone. A daemon that truly detaches, changes session and leaves the original ancestor chain is outside the owned scope. Detection is based on process identity and name rather than full shell job control, and cannot promise to recognise every state the shell is executing internally.
+- When a complete enumeration or the relevant metadata cannot be obtained, the question is asked conservatively; "cannot be read" is never recorded as "no tasks".
+- Observation of controlled child processes on this machine found that `proc_pidinfo(PROC_PIDTBSDINFO)` and `getsid` can report ESRCH for an unreaped zombie while `sysctl(KERN_PROC_PID)` still supplies the original birth time, the parent PID and SZOMB; the implementation uses that as its metadata fallback and still requires an exact identity before reaping. Restart carries a shutdown generation, so it cannot spawn a new shell when it is interrupted by a window close or a quit during cleanup.
 
-实现已经过独立复查；准确的自动化 / GUI 范围见文末。
+The implementation has been through an independent review; the exact automated and GUI scope is at the end of this document.
 
-## 右下角状态入口（已于 0.2.1 移除）
+## The bottom-right status entry point (removed in 0.2.1)
 
-本阶段曾把 `TerminalStatusPresentation` 合成的状态放在当前标签最右 pane 的 `StatusBarView`，并约每两秒轮询进程快照。0.2.1 明确取消了整个底部终端入口、图标、任务数与轮询，相关代码与 `TerminalStatusSmokeTests` 已删除；现状见[目录跟随记录](terminal-navigation-0.2.1.md)。退出 / 关窗 / Restart 前的任务确认不受影响，仍按下文「进程检测与边界」重新取即时快照。下文验证记录中的 footer / 窄栏检查属于 0.2.0 当时范围，不代表当前覆盖。
+This stage once put the status synthesised by `TerminalStatusPresentation` into the `StatusBarView` of the rightmost pane of the current tab, polling a process snapshot roughly every two seconds. 0.2.1 explicitly removed the whole bottom terminal entry point, its icon, the task count and the polling; that code and `TerminalStatusSmokeTests` have been deleted. For the current state, see [the directory-following record](terminal-navigation-0.2.1.md). Task confirmation before a quit, a window close or a Restart is unaffected and still takes a fresh immediate snapshot as described in "Process detection and limits". The footer and narrow-bar checks in the verification record below belong to the scope of 0.2.0 at the time and do not represent current coverage.
 
-## 验证记录
+## Verification record
 
-最终 debug / release 构建通过；本地 `0.2.0` DMG 构建通过，脚本已只读挂载检查应用签名、元数据、arm64、Applications symlink 和保存的安装布局。83 项 Python 发布工具测试通过。日志位于 `/private/tmp/tursora-terminal-session-qa/`：`package-0.2.0-final.out`、`dmg-0.2.0.out`、`tool-tests-final.out`。本地包不是已发布资产，发布后还需重新下载核验。
+The final debug and release builds passed; the local `0.2.0` DMG build passed, with the script mounting the image read-only to check the app's signature, its metadata, arm64, the Applications symlink and the saved installer layout. The 83 Python release-tooling tests passed. The logs are in `/private/tmp/tursora-terminal-session-qa/`: `package-0.2.0-final.out`, `dmg-0.2.0.out` and `tool-tests-final.out`. A local package is not a published asset; after release it still has to be downloaded again and re-checked.
 
-最终 **101 份 Swift 源码：3,329 项连续三轮通过**。`smoke-7` / `8` / `9` 分别用时 194.4 / 188.4 / 187.6 秒，均 exit 0、stderr 为空、源码未变。三份逐轮源码清单与当前文件及 `delivery-sources.json` 完全一致；旧 3,194 / 3,321 项与本轮诊断失败不计作这份源码的通过。新增检查覆盖进程归属、前台 / 后台 / 停止 / exec / EOF、PID 出生时间与僵尸回收、重复与全局清理屏障、取消退出后的工作区保存、异步 footer、窄栏及真实原生菜单焦点。
+The final result is **101 Swift sources: 3,329 checks passing three times in a row**. `smoke-7`, `8` and `9` took 194.4, 188.4 and 187.6 seconds respectively, each exiting 0, with empty stderr and with the sources unchanged. The per-run source listings from all three runs match the current files and `delivery-sources.json` exactly; the older counts of 3,194 and 3,321 checks, and the diagnostic failures of this stage, do not count as passes for these sources. The new checks cover process ownership; foreground, background, stopped, exec and EOF cases; PID birth time and zombie reaping; the repeated and the global cleanup barrier; the workspace save after a cancelled quit; the asynchronous footer; the narrow bar; and focus in a real native menu.
 
-诊断分别修正了僵尸 libproc 回退、原生菜单 key window 前提、macOS `/bin/sh` 实际名为 bash 的测试假设，以及受控交互 shell 的历史展开；不放宽进程身份检查。`smoke-6` 的文件树组合断言失败没有分项日志，不能精确归因到某个条件；复查发现测试把偏好文件写进监听目录，使全局请求计数可能受到真实文件事件刷新影响。现将该测试存储移到受控兄弟路径，等布局 / 选中目标就绪，并拆开正向 AX、精确请求历史和未展开子节点断言，增加请求路径 / generation 诊断；保留不枚举兄弟目录的严格要求，增加八项检查。后续只改了回归 fixture 和默认打包版本，下面的 GUI 功能代码一致。
+Diagnosis fixed, respectively, the libproc fallback for zombies, the key-window precondition for the native menu, the test assumption that macOS `/bin/sh` is really named bash, and history expansion in a controlled interactive shell; the process-identity check was not relaxed. The combined file-tree assertion that failed in `smoke-6` had no per-item log and cannot be attributed precisely to a single condition; review found that the test wrote its preferences file into the watched directory, so the global request count could be affected by refreshes from real file events. That test's storage has now been moved to a controlled sibling path, it waits for the layout and the selection target to be ready, and the positive AX assertion, the exact request history and the unexpanded-child assertion have been split apart, with request-path and generation diagnostics added; the strict requirement not to enumerate sibling directories is kept, and eight checks were added. Afterwards only the regression fixture and the default packaging version changed, so the GUI feature code below is identical.
 
-最终打包日志为 `package-delivery.out` / `dmg-delivery.out`；`tools/make-app.sh` 不带版本环境覆盖时实际生成 `0.2.0`。最终 83 项工具测试日志为 `tool-tests-delivery.out`。
+The final packaging logs are `package-delivery.out` and `dmg-delivery.out`; with no version environment override, `tools/make-app.sh` actually produces `0.2.0`. The final log of the 83 tooling tests is `tool-tests-delivery.out`.
 
-### 独立发布包实机检查
+### Hands-on checks on a separate release package
 
-使用 `/private/tmp/tursora-terminal-session-qa/Tursora Session QA.app`，只改副本 bundle id、自己的 workspace / view-properties 文件、进程外观与 `ZDOTDIR`，ad-hoc 重签。用户原应用与偏好未改，GUI 与完整 smoke 串行，共享验证锁仍由主任务持有。
+Using `/private/tmp/tursora-terminal-session-qa/Tursora Session QA.app`, only the copy's bundle id, its own workspace and view-properties files, the process appearance and `ZDOTDIR` were changed, and it was re-signed ad hoc. The user's own app and preferences were left untouched, the GUI work and the full smoke run were serialised, and the shared verification lock stayed held by the main task.
 
-- 新启动右下角 Terminal 的辅助功能明确“尚未启动 shell”；点击后创建真实 shell。
-- 受控 `sleep 600` 的 shell PID 为 55113、后台 PID 为 55145。状态显示 `Terminal · 1 task`。点击 footer 隐藏后按 ⌘Q，出现列出 sleep 的退出提示；按 Return 命中默认 Cancel，隐藏任务仍在。
-- 从 footer 重新展开后，在 General 关闭 Terminal panel，入口禁用、任务状态仍显示 hidden；重新启用并按 F4，保留原 shell、输出和两个 PID。新的实际输出记录了保留的 PID，截图 `terminal.jpg`。
-- Restart 的任务提示与实际窗口关闭按钮的提示均用默认 Cancel 取消。⌘W 在多标签时只关闭当前标签，窗口级终端继续存在；切换到保留标签后当前右 pane 仍显示同一状态。
-- 实际拖动到 560 × 740，再到 560 × 380；终端状态变为可点击图标，完整 AX / tooltip 保留进程数，文件状态与界面仍响应。用图标隐藏，再按 ⌘Q 并接受 Quit and Stop Tasks，应用退出；`ps` 精确核对 55113 / 55145 均不存在。
-- 仅把已退出的 QA 副本改成浅色后重开，恢复测试窗口的布局，初始状态没有 shell。展开后界面可读，输入 exit 后 footer 变为 Ended 并保留输出。正常退出并用精确路径 pgrep 确认 QA 已退出，再开始下一轮 smoke。
-- General 新说明和终端 footer 截图已真实重拍，原始 JPEG 在 `screenshots/settings.jpg` / `terminal.jpg`；`quit-hidden.jpg` 仅为本地证据。两张 canonical PNG 的透明处理、内部像素保护与明暗检查见[截图审计](screenshot-audit-2026-09-13.md)，不声称全部旧图本轮重拍。
+- On a fresh launch, the accessibility description of the bottom-right Terminal states clearly that no shell has been started yet; clicking it creates a real shell.
+- For a controlled `sleep 600`, the shell PID was 55113 and the background PID 55145. The status read `Terminal · 1 task`. After clicking the footer to hide it and pressing ⌘Q, a quit prompt listing sleep appeared; pressing Return hit the default Cancel, and the hidden task was still there.
+- After expanding it again from the footer, turning the Terminal panel off in General disabled the entry point while the task status still showed as hidden; re-enabling it and pressing F4 kept the same shell, its output and both PIDs. New real output recorded the surviving PIDs, in the screenshot `terminal.jpg`.
+- The task prompt from Restart and the prompt from the real window close button were both cancelled with the default Cancel. With several tabs open, ⌘W closed only the current tab and the window-level terminal went on existing; after switching to a surviving tab, the current right pane still showed the same status.
+- The window was actually dragged to 560 × 740 and then to 560 × 380; the terminal status became a clickable icon, the full AX description and tooltip kept the process count, and the file status and the interface stayed responsive. Hiding it with the icon, then pressing ⌘Q and accepting Quit and Stop Tasks, quit the application; `ps` confirmed precisely that neither 55113 nor 55145 existed any more.
+- Switching only the already-quit QA copy to a light appearance and reopening it restored the test window's layout, with no shell in the initial state. Once expanded, the interface was readable, and after typing exit the footer changed to Ended and kept the output. It was quit normally and pgrep with the exact path confirmed the QA copy had exited, before the next smoke run began.
+- The new explanation in General and the terminal footer were genuinely re-shot, with the original JPEGs at `screenshots/settings.jpg` and `terminal.jpg`; `quit-hidden.jpg` is local evidence only. For the transparency handling, the interior-pixel protection and the light/dark checks of the two canonical PNGs, see [the screenshot audit](screenshot-audit-2026-09-13.md); there is no claim that every older image was re-shot in this stage.
 
-网站新安装区已通过静态构建和桌面 / 390 px 浏览器检查，精确点击、弹窗与清理范围见[网站说明](../../site/README.md)。上述不包含正式 Release / 在线 appcast / Homebrew 新版本验证，发布后单独记录。
+The new installation section of the site has passed the static build and the desktop and 390 px browser checks; for the exact clicks, the lightbox and the cleanup scope, see [the site notes](../../site/README.md). None of the above includes verification of the official Release, the online appcast or a new Homebrew version; those will be recorded separately after release.

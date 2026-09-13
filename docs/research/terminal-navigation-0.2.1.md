@@ -1,40 +1,40 @@
-# 0.2.1：终端目录同步与界面简化
+# 0.2.1: terminal directory sync and a simpler interface
 
-2026-09-13。用户要求文件导航时同步终端目录，移除终端顶部的 Started in / Restart in 两行说明，去掉底部可用容量。用户最初提出右下角图标、动画与运行时长，随后明确取消整个终端状态栏入口；最终版本不保留这些内容。完成后发布 0.2.1，保留现有隐藏会话与退出任务确认。
+2026-09-13. The user asked for the terminal directory to follow file navigation, for the two Started in / Restart in lines at the top of the terminal to be removed, and for the free capacity at the bottom to go. The user first proposed an icon, an animation and a run time in the bottom-right corner, then explicitly cancelled the whole terminal status-bar entry point; the final version keeps none of it. Once that was done, 0.2.1 was released, keeping the existing hidden sessions and the quit-with-running-tasks confirmation.
 
-本文记录 0.2.1 的最终实现与本轮验证。[正式发布核验](release-0.2.1.md) 已完成；不能沿用 0.2.0 的 3 × 3,329 项当作本轮通过。
+This record covers the final implementation of 0.2.1 and the verification done for it. The [release verification](release-0.2.1.md) is complete; the 3 × 3,329 checks from 0.2.0 must not be carried over as a pass for this work.
 
-## Dolphin 依据与同步方式
+## Dolphin evidence and how the sync works
 
-本地 Dolphin 固定在 `5e457ee9e88aa6277fbf056cd5c32462c5318866`。其 [terminalpanel.cpp](https://github.com/KDE/dolphin/blob/5e457ee9e88aa6277fbf056cd5c32462c5318866/src/panels/terminal/terminalpanel.cpp) 的 `urlChanged()` 要求面板可见、启用同步且没有前台程序；`sendCdToTerminal()` 先发送 Ctrl-E / Ctrl-U 清空未提交命令，再发送转义后的 cd。它依赖 Konsole 的前台程序接口。
+The local Dolphin checkout is pinned at `5e457ee9e88aa6277fbf056cd5c32462c5318866`. In its [terminalpanel.cpp](https://github.com/KDE/dolphin/blob/5e457ee9e88aa6277fbf056cd5c32462c5318866/src/panels/terminal/terminalpanel.cpp), `urlChanged()` requires the panel to be visible, the sync to be enabled and no foreground program to be running; `sendCdToTerminal()` first sends Ctrl-E / Ctrl-U to clear any uncommitted command, then sends an escaped cd. It relies on Konsole's foreground-program interface.
 
-Tursora 的默认 zsh 使用私有请求文件和 FIFO。浏览器将最新路径按 NUL 分隔的数据写入请求，zsh 的 ZLE 文件描述符回调在空输入行时读取并执行内建 cd；命令、内建 read、续行或未提交输入期间不改终端输入，待后续安全的提示符处理最新请求。不会发送 Ctrl-C、清行按键、cd 文本或信号给运行中的程序。
+Tursora's default zsh uses a private request file and a FIFO. The browser writes the latest path into the request as NUL-separated data, and zsh's ZLE file-descriptor callback reads it on an empty input line and runs the cd builtin; during a command, a `read` builtin, a continuation line or uncommitted input the terminal input is left untouched, and the latest request is handled at the next safe prompt. No Ctrl-C, no line-clearing keystrokes, no cd text and no signal are ever sent to a running program.
 
-请求按每个保留会话隔离；导航、切换活动标签和 pane 使用当前浏览目录，ZIP 内使用原 ZIP 的父目录。隐藏时仍保留同步通道与 shell。终端内部 cd 不反向驱动文件浏览器；不做双向同步。只有新请求才跟随文件导航，不能在用户每次手动 cd 后强制跳回。
+Requests are isolated per retained session; navigation and switching the active tab or pane use the current browsing directory, and inside a ZIP the parent directory of the original ZIP is used. Hiding the terminal keeps both the sync channel and the shell. A cd typed inside the terminal does not drive the file browser in reverse; there is no two-way sync. Only a new request follows file navigation — it must not force a jump back every time the user cds manually.
 
-启动封装只临时接管该进程的 `.zshenv`，先恢复原有 ZDOTDIR，再读取用户的真实 `.zshenv`；其余启动文件由 zsh 正常读取。不会改用户 dotfiles。自动同步针对 zsh；其他自定义 shell 保留交互终端和手动重启能力，提示说明支持范围，不能宣称所有 shell 都已实现自动同步。
+The launch wrapper takes over only that process's `.zshenv`, and temporarily: it restores the original ZDOTDIR first, then sources the user's real `.zshenv`; zsh reads the remaining startup files as usual. User dotfiles are not modified. Automatic sync targets zsh; other custom shells keep the interactive terminal and the manual restart, and the tooltip states the supported scope — it must not claim that automatic sync is implemented for every shell.
 
-## 最终界面与生命周期
+## Final interface and lifecycle
 
-- 终端顶部改为一行紧凑操作栏，保留标题、开始 / 重启和隐藏操作；移除两行常驻目录文字。具体目录、等待同步或错误信息放在提示与辅助功能说明里。新截图必须显示实际最终界面。
-- 底部不显示任何终端图标、任务数、动画或计时；原先为终端状态运行的轮询与呈现代码也移除。使用工具栏、View 菜单和可自定义快捷键展开 / 收起。
-- 状态栏保留项目 / 选中数量、筛选、搜索和 ZIP 上下文、缩放与文件操作进度，移除可用磁盘容量与相应文件系统查询。
-- 隐藏及禁用入口仍保留原 shell、输出和任务。Restart、关窗和退出仍即时读取所拥有进程状态并确认，默认 Cancel；取消不结束任务。详细进程归属和清理边界沿用[生命周期记录](terminal-session-lifecycle.md)，不把取消 footer 理解成取消退出确认。
+- The top of the terminal becomes a single compact action bar keeping the title, the start / restart and the hide actions; the two permanent lines of directory text are removed. The concrete directory, a pending sync or an error message live in the tooltip and the accessibility description. New screenshots must show the actual final interface.
+- The bottom shows no terminal icon, task count, animation or timer; the polling and rendering code that used to run for the terminal status is removed as well. Expanding and collapsing go through the toolbar, the View menu and a customizable shortcut.
+- The status bar keeps the item / selection counts, the filter, the search and ZIP context, the zoom and the file-operation progress; the free disk capacity and the filesystem query behind it are removed.
+- Hiding the terminal, and removing its entry point, still keep the original shell, its output and its tasks. Restart, closing a window and quitting still read the state of the owned processes at that moment and ask for confirmation, defaulting to Cancel; cancelling does not end the tasks. Process ownership and the cleanup boundaries in detail follow the [lifecycle record](terminal-session-lifecycle.md); dropping the footer is not to be read as dropping the quit confirmation.
 
-## 验证进度
+## Verification progress
 
-受控 zsh PTY 原型已观察到空行立即跟随、未提交输入保留、read 收到实际用户回答后才同步、前台 sleep 完成后才同步。原型路径 `/private/tmp/tursora-zle-fifo-probe.py`；这是机制验证，不代表集成应用已经通过。
+A controlled zsh PTY prototype was observed to follow immediately on an empty line, to preserve uncommitted input, to sync only after `read` had received the real user answer, and to sync only after a foreground sleep had finished. The prototype lives at `/private/tmp/tursora-zle-fifo-probe.py`; this verifies the mechanism and does not establish that the integrated application passes.
 
-最终 102 份 Swift 源码连续通过三轮完整 smoke，每轮 3,435 项，分别耗时 175.1、172.9、173.8 秒，退出码均为 0，stderr 为空；每轮运行前后源码哈希一致。结果与逐文件哈希位于 `/private/tmp/tursora-0.2.1-qa-u1_phjba/smoke-{1,2,3}.json` 和对应 `-sources.json`。新增检查覆盖真实 PTY 的空行、前台命令、read、未提交输入、用户启动文件、失效回调和私有通道；状态栏测试覆盖两种文件视图、多标签、分栏、精确文案、缩放及窄宽度。原隐藏会话、暂停进程和退出取消验证仍保留。83 项发布工具测试通过。
+The final 102 Swift source files passed three consecutive full smoke runs, 3,435 checks each, taking 175.1, 172.9 and 173.8 seconds respectively, all with exit code 0 and empty stderr; the source hashes were identical before and after each run. The results and the per-file hashes are in `/private/tmp/tursora-0.2.1-qa-u1_phjba/smoke-{1,2,3}.json` and the matching `-sources.json`. The new checks cover an empty line on a real PTY, a foreground command, `read`, uncommitted input, user startup files, a stale callback and the private channel; the status-bar tests cover both file views, several tabs, a split, the exact wording, the zoom and a narrow width. The existing hidden-session, suspended-process and quit-cancel checks are still in place. 83 release-tool tests pass.
 
-`tools/make-app.sh` 生成 0.2.1 release 包；编译成功，保留原有非阻断编译警告。`make-dmg.sh 0.2.1` 验证了 Apple Silicon 应用、签名、更新元数据和应用 / Applications / 箭头背景布局。本地构建的 build number 来自构建时 HEAD，正式发布必须重新核对实际 Release 产物。
+`tools/make-app.sh` produces the 0.2.1 release bundle; it compiles successfully, with the existing non-blocking compiler warnings still present. `make-dmg.sh 0.2.1` verified the Apple Silicon application, the signature, the update metadata and the app / Applications / arrow background layout. The build number of a local build comes from HEAD at build time, so the actual Release artifact must be checked again for the official release.
 
-实机使用独立 bundle ID `com.tursora.terminalsyncqa.s0913`，工作区和目录属性文件重定向到同一 QA 目录，使用独立 ZDOTDIR；未操作生产应用或改用户启动文件。前台 `sleep 30` 执行期间隐藏终端，文件窗格从 Seabreeze 导航到 Source，再展开时显示等待空提示符的同步说明。执行中的第二次 pwd 仍输出 Seabreeze；命令结束后新 pwd 输出 Source，前后 shell PID 均为 68154。任务隐藏时退出显示 sleep 的确认，默认 Cancel；取消后命令继续完成。空闲导航与 ZIP 浏览也更新终端目录，ZIP 使用原归档父目录。560 × 380 窄窗口仍保留紧凑终端控制、文件计数与 ZIP 上下文，没有终端 footer 或可用容量。
+On a real machine a separate bundle ID `com.tursora.terminalsyncqa.s0913` was used, with the workspace and directory-properties files redirected into the same QA directory and a separate ZDOTDIR; the production application was not operated and no user startup file was changed. While a foreground `sleep 30` was running the terminal was hidden, the file pane navigated from Seabreeze to Source, and on expanding it again the sync description said it was waiting for an empty prompt. A second pwd during execution still printed Seabreeze; after the command finished a new pwd printed Source, with the shell PID 68154 both before and after. Quitting while the task was hidden showed the confirmation for the sleep, defaulting to Cancel; after cancelling, the command ran to completion. Idle navigation and ZIP browsing also update the terminal directory, a ZIP using the parent directory of the original archive. A narrow 560 × 380 window still keeps the compact terminal controls, the file count and the ZIP context, with no terminal footer and no free capacity.
 
-界面自动化最初发生超时，恢复后检查实际状态再继续。首次键盘模拟遗漏了 shell 标点，该输入不作为验证证据；后续使用检查过的完整粘贴命令完成上述验证。`hidden-continuity.jpg` 保存实际输出。四张正式截图另行从干净的实际应用状态采集，鼠标移出窗口后检查无鼠标、悬浮提示或选择痕迹。这些实机检查不等同于生产 Sparkle 更新或独立标准用户安装测试。
+The UI automation timed out at first; after recovering, the actual state was checked before continuing. The first keyboard simulation dropped shell punctuation, so that input does not count as verification evidence; the verification above was then completed with a full, checked pasted command. `hidden-continuity.jpg` holds the actual output. The four release screenshots were captured separately from a clean real application state, with the mouse moved out of the window and then checked for any cursor, tooltip or selection artifacts. These packaged-app checks are not equivalent to a production Sparkle update or to a separate standard-user installation test.
 
-## 截图与双语网站
+## Screenshots and the bilingual site
 
-四张 1100 × 740 实机图已替换 `terminal.png`、`split-panes.png`、`path-navigation.png`、`zip-browsing.png`。透明处理分别只修改 850 / 837 / 837 / 837 个边缘像素，内部保护像素逐字节一致，均无边缘回退。亮暗背景、四角放大检查通过；全部 29 张通过 alpha 门禁，其余 25 张字节不变。完整统计和前后哈希在 `/private/tmp/tursora-021-screenshots-ouuu25vr/verification.json`，参见[截图说明](../images/README.md)。
+Four 1100 × 740 packaged-app images have replaced `terminal.png`, `split-panes.png`, `path-navigation.png` and `zip-browsing.png`. The transparency pass modified only 850 / 837 / 837 / 837 edge pixels respectively; the protected interior pixels are byte-for-byte identical and none of them fell back to an edge. Light and dark backgrounds and a zoomed check of all four corners passed; all 29 images pass the alpha gate, and the other 25 are unchanged byte for byte. The full statistics and the before/after hashes are in `/private/tmp/tursora-021-screenshots-ouuu25vr/verification.json`, see the [screenshot notes](../images/README.md).
 
-网站默认英文，中文使用 `zh.html`，普通语言链接双向切换；应用界面仍为英文。最终构建包含 2 种语言、5 份共用资源、90 个有效引用、约 1,653 KiB，29 张截图通过透明检查。1200 × 850 和 390 × 844 浏览器检查覆盖两种语言、安装跳转、ZIP 标签、翻译后的图片查看器及 Escape 关闭后焦点恢复，无横向溢出。更换截图后发现旧资源缓存，使用新的本地地址复核实际 1100 × 740 图片与查看器，未把缓存画面当作新版验证。证据 `/private/tmp/tursora-0.2.1-qa-u1_phjba/browser-qa.json`；临时窗口、viewport 和服务器已清理。该阶段为本地浏览器验证，线上部署须按实际 commit 另行核对。
+The site defaults to English, Chinese lives at `zh.html`, and plain language links switch both ways; the application interface stays English. The final build contains 2 languages, 5 shared assets, 90 valid references and about 1,653 KiB, with 29 screenshots passing the transparency check. Browser checks at 1200 × 850 and 390 × 844 covered both languages, the jump to installation, the ZIP tab, the translated image viewer and focus returning after Escape closes it, with no horizontal overflow. After the screenshots were swapped an old asset cache turned up; the actual 1100 × 740 images and the viewer were re-checked at a fresh local address, so no cached view was taken as verification of the new version. Evidence: `/private/tmp/tursora-0.2.1-qa-u1_phjba/browser-qa.json`; the temporary window, viewport and server have been cleaned up. This stage is local browser verification; the deployed site must be checked separately against the actual commit.

@@ -1,56 +1,56 @@
-# 工作区会话恢复（2026-09-13）
+# Workspace session restore (2026-09-13)
 
-## 产品范围
+## Product scope
 
-用户将退出后失去双窗格与多标签列为日常使用的关键障碍，本轮优先实现启动恢复。此功能是 Tursora 的产品选择，没有宣称逐项复制 Finder 或 Dolphin 的会话语义。
+Users named the loss of split panes and multiple tabs after quitting as a key obstacle to daily use, so this round implements restore-on-launch first. The feature is a Tursora product choice; it makes no claim to copy Finder's or Dolphin's session semantics item by item.
 
-Settings → General → Startup 的 **Reopen windows and tabs on launch** 默认开启。重新启动恢复浏览窗口、窗口几何与最小化、侧栏宽度与折叠、标签顺序与当前标签、自定义名称、每标签一至两个 pane、活动侧和分栏比例。普通目录的模式、排序、分组和缩放仍由既有每目录视图库读取。
+**Reopen windows and tabs on launch** under Settings → General → Startup is on by default. A restart restores browser windows, window geometry and minimised state, sidebar width and collapse, tab order and the current tab, custom names, the one or two panes per tab, the active side and the split ratio. Mode, sorting, grouping and zoom for ordinary directories are still read from the existing per-directory view store.
 
-已经执行的搜索保存条件并重新查询，结果以当前文件为准。ZIP 保存原归档加内部目录的逻辑路径，重新启动重新准备只读内容；不能保存已提取临时目录作为工作位置。关闭 ZIP 实验选项时，能识别为真实归档的位置退回归档父目录；离线位置保留原路径，不根据 `.zip` 后缀猜测，因为它也可能是普通目录。
+A search that has already run saves its criteria and is re-run, so the results reflect the files as they are now. A ZIP saves the logical path of the original archive plus the directory inside it, and re-prepares the read-only content on restart; the already extracted temporary directory cannot be saved as a working location. When the experimental ZIP option is off, a location that can be recognised as a real archive falls back to the archive's parent directory; an offline location keeps its original path and is not guessed from the `.zip` suffix, because it may equally be an ordinary directory.
 
-第一版不保存过滤文本、选区、滚动、导航历史、已关闭标签、终端进程 / 面板、传输任务或撤销栈。关闭的窗口和标签不复活；退出时没有浏览窗口则下次打开 Home。失效或未挂载位置保留路径并沿用内联错误，允许之后刷新或导航，不静默替换为 Home，也不自动挂载服务器。
+The first version does not save filter text, selection, scroll position, navigation history, closed tabs, terminal processes / panels, transfer tasks or the undo stack. Closed windows and tabs are not resurrected; if there is no browser window at quit, the next launch opens Home. A location that is invalid or not mounted keeps its path and uses the existing inline error, so it can be refreshed or navigated away from later; it is not silently replaced with Home, and servers are not mounted automatically.
 
-## 存储与生命周期
+## Storage and lifecycle
 
-- `WorkspaceSessionStore` 在 `~/Library/Application Support/Tursora/WorkspaceSession.json` 保存版本 1 JSON；不往浏览目录写任何文件。
-- 有效变动防抖 0.4 秒保存；退出同步保存最终快照，随后才清理 ZIP 临时内容、终端和撤销日志。
-- 同目录暂存文件先以 0600 权限创建，写入并同步后原子 rename。错误保留旧文件；设置显示错误和重试动作。
-- 最多 16 个窗口、每窗口 32 个标签、每标签两个 pane，单文件最多 2 MiB。读取逐项丢弃无效结构并修正选中位置。当前工作区超过窗口 / 标签容量时保存报错并保留旧文件，不能静默截断。
-- 非本地 URL、凭据、NUL 路径和无效几何被拒绝；路径存在性留给异步浏览，避免把临时离线当作永久删除。
-- 损坏、未知版本或读取失败的文件保留原字节；启动和退出不能自动覆盖。用户点击 Retry Saving Workspace 或关闭后重开恢复选项，才用当前工作区重新保存。
-- 关闭恢复选项立即清理保存内容并停止自动保存；重新开启保存当前窗口，不立即替换当前布局。清理失败也有内联重试。
-- 启动前收到明确打开目录请求时仍恢复保存内容，并将明确请求的窗口置前。窗口位置根据当前显示器可用区域约束，移除的显示器不会让恢复窗口留在屏幕外。
+- `WorkspaceSessionStore` saves version 1 JSON at `~/Library/Application Support/Tursora/WorkspaceSession.json`; it writes no files into browsed directories.
+- Meaningful changes are saved with a 0.4 second debounce; quitting saves the final snapshot synchronously, and only afterwards cleans up the ZIP temporary content, terminals and the undo log.
+- A staging file in the same directory is created with 0600 permissions first, written and synced, then atomically renamed. On error the old file is kept; Settings shows the error and a retry action.
+- At most 16 windows, 32 tabs per window and two panes per tab, with a maximum of 2 MiB per file. Reading discards invalid structures one by one and corrects the selected position. When the current workspace exceeds the window / tab capacity, the save reports an error and keeps the old file; it must not truncate silently.
+- Non-local URLs, credentials, NUL paths and invalid geometry are rejected; whether a path exists is left to asynchronous browsing, so a temporary offline state is not taken for permanent deletion.
+- A file that is corrupt, of an unknown version, or that fails to read keeps its original bytes; launch and quit must not overwrite it automatically. Only when the user clicks Retry Saving Workspace, or turns the restore option off and on again, is it re-saved from the current workspace.
+- Turning the restore option off immediately clears the saved content and stops auto-saving; turning it back on saves the current windows and does not replace the current layout on the spot. A failed cleanup also gets an inline retry.
+- When an explicit request to open a directory arrives before launch, the saved content is still restored and the explicitly requested window is brought to the front. Window positions are constrained to the visible area of the current displays, so a display that has been removed cannot leave a restored window off-screen.
 
-## 侧栏宽度诊断
+## Sidebar width diagnosis
 
-诊断第 4 轮确认窗口为 1000 × 640，测试找到实际侧栏 `NSSplitView` 并调用 `setPosition(245, ofDividerAt: 0)` 后再布局，侧栏仍回到 160 pt；不是窗口过窄。早先测试直接将 `sidebar.view.superview` 当作 split 的层级假设也已更正。
+Round 4 of the diagnosis confirmed a 1000 × 640 window: the test found the real sidebar `NSSplitView`, called `setPosition(245, ofDividerAt: 0)` and laid out again, and the sidebar still went back to 160 pt, so the window was not too narrow. The earlier test's hierarchy assumption, that `sidebar.view.superview` is the split view, has also been corrected.
 
-本机 SDK 证据位于 `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/AppKit.framework/Headers/NSSplitView.h`：第 79 行说明 `setPosition` 按用户拖动同样受约束；第 83–86 行说明 holding priority 应低于 `NSLayoutPriorityDragThatCannotResizeWindow`（490），较低优先级的 pane 先吸收窗口尺寸变化。`NSSplitViewItem.h` 第 115–116 行确认 item 的同名属性控制宽度保持优先级；默认值为 250。
+The SDK evidence on this machine is at `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/AppKit.framework/Headers/NSSplitView.h`: line 79 states that `setPosition` is constrained in the same way as a user drag; lines 83–86 state that a holding priority should be lower than `NSLayoutPriorityDragThatCannotResizeWindow` (490), and that the pane with the lower priority absorbs window size changes first. `NSSplitViewItem.h` lines 115–116 confirm that the item's property of the same name controls the width-holding priority; the default value is 250.
 
-原侧栏配置为 `.defaultHigh`（750），高于拖动优先级。生产修复改为 **260**，仍高于内容 pane 默认的 **250**，低于拖动的 **490**；不添加固定宽度约束，保持用户调整与收起 / 展开能力。修复已随最终三轮通过；打包应用真实拖动从 190 调到 245 点，重新启动仍为 245 点，见下方实机记录。
+The sidebar was originally configured as `.defaultHigh` (750), above the drag priority. The production fix changes it to **260**, still above the content pane's default of **250** and below the drag priority of **490**; no fixed width constraint is added, so the user keeps the ability to resize and to collapse / expand. The fix passed together with the final three rounds; in the packaged app a real drag moved the sidebar from 190 to 245 points, and it was still 245 points after a restart — see the on-machine record below.
 
-## 验证边界
+## Verification boundaries
 
-模型和存储检查覆盖 JSON round trip、逐条损坏、容量、选择修正、权限、原子发布失败与重试、未知版本和旧字节保护。UI / 生命周期检查覆盖两种文件视图、后台标签、窄到宽分栏、搜索重跑、真实 ZIP 重新准备、失效路径与开关、立即退出保存和显式启动请求。
+The model and storage checks cover the JSON round trip, per-entry corruption, capacity, selection correction, permissions, atomic-publish failure and retry, unknown versions and original-byte protection. The UI / lifecycle checks cover both file views, background tabs, narrow-to-wide splits, re-running a search, re-preparing a real ZIP, invalid paths and the toggle, saving on immediate quit, and explicit launch requests.
 
-最终 81 份 Swift 源码 **2,418 项 smoke 连续三轮通过**，每轮 exit 0、stderr 为空，运行前后源码哈希一致。测试修正了侧栏原生祖先层级、固定窗口宽度与 macOS `/var` / `/private/var` 等价位置比较；真实侧栏优先级修复见下文。
+The final 81 Swift source files **passed 2,418 smoke checks three times in a row**, each round with exit 0 and empty stderr, and with identical source hashes before and after the run. The tests corrected the sidebar's native ancestor hierarchy, a fixed window width, and location comparison for the macOS `/var` / `/private/var` equivalence; for the real sidebar priority fix, see below.
 
-审阅另外修复了 ZIP 导航失败后保存位置没有回到仍在显示的目录、Clear 搜索未触发自动保存，以及关闭恢复后清理失败在退出时未重试。三条均加入了真实路径回归；上述路径均随最终三轮通过。
+Review additionally fixed three things: after a failed ZIP navigation the saved location did not go back to the directory still on screen; clearing a search did not trigger an auto-save; and a failed cleanup after turning restore off was not retried at quit. All three gained real-path regression checks, and all of these paths passed with the final three rounds.
 
-## 发布包与真实重启
+## Release bundle and a real restart
 
-debug / release 构建、strict codesign 和 Info.plist lint 通过。测试副本使用独立 bundle identifier `com.tursora.sessionqa.s0913`、会话文件及每目录视图库；产品 bundle identifier 保持 `com.tursora.Tursora`。两包机器码 `__TEXT.__text` 哈希一致，重新签名造成的完整文件差异不误记成字节一致。QA 关闭 Sparkle 自动检查，不接触生产偏好或会话文件。
+The debug / release builds, strict codesign and the Info.plist lint all passed. The test copy uses its own bundle identifier `com.tursora.sessionqa.s0913`, its own session file and its own per-directory view store; the product bundle identifier stays `com.tursora.Tursora`. The machine-code `__TEXT.__text` hashes of the two bundles are identical, so the whole-file difference caused by re-signing is not misrecorded as byte-for-byte identity. QA turned off Sparkle's automatic check and touched neither production preferences nor the production session file.
 
-通过真实界面从一个演示目录建立 2 个窗口：主窗口含 Daily work / Inbox / Archive 三标签，Daily work 左侧 Design 为列表、右侧 Assets 为图标且活动；真实拖动侧栏到 245 点、双 pane 比例到 0.5738569753810082，第二个 Archive 窗口最小化。正常 ⌘Q 后重新启动，标签名与顺序、所选标签、活动右侧、两种视图、比例、侧栏、窗口位置 / 大小及一个最小化窗口恢复。切换标签后再次自动保存，完整 JSON 与首次退出快照相同。
+Two windows were built through the real interface from one demo directory: the main window holds the three tabs Daily work / Inbox / Archive, where Daily work has Design on the left in the list view and Assets on the right in the icon view and active; the sidebar was really dragged to 245 points and the two-pane ratio to 0.5738569753810082, and the second Archive window was minimised. After a normal ⌘Q and a relaunch, the tab names and order, the selected tab, the active right side, both views, the ratio, the sidebar, the window positions / sizes and the one minimised window were all restored. Switching tabs auto-saved again, and the complete JSON was identical to the snapshot from the first quit.
 
-Settings → General 的开关实际取消后文件立即消失；正常退出再启动只打开 Home 的单标签窗口，设置仍关闭。导航到演示 Design 后重新开启，保存的是当前单窗口，未复活先前布局。三次 QA 进程均正常退出，验证锁已释放。
+When the Settings → General toggle was actually turned off, the file disappeared immediately; after a normal quit the next launch opened only a single-tab window at Home, with the setting still off. Turning it back on after navigating to the demo Design saved the current single window and did not resurrect the earlier layout. All three QA processes exited normally and the verification lock was released.
 
-真实截图：[恢复后的工作区](../images/features/workspace-restored.png)、[General 启动选项](../images/features/settings.png)。原生捕获是 JPEG，使用 `sips` 转成真正 PNG并重新目视检查，保留原始外沿、系统共享指示与鼠标位置；未生成或修饰 UI 像素。窗口分别为 1100 × 712 和 540 × 737。
+Real screenshots: [the restored workspace](../images/features/workspace-restored.png), [the General startup options](../images/features/settings.png). The native capture is JPEG, converted to a true PNG with `sips` and visually re-checked, keeping the original outer edges, the system sharing indicator and the mouse position; no UI pixels were generated or retouched. The windows are 1100 × 712 and 540 × 737 respectively.
 
-自动化覆盖失效目录、ZIP 重提取、坏文件和未知版本、退出清理失败等；本轮实机范围是本地演示目录与重启设置，没有将模拟离线路径或屏幕几何测试记成真实外接卷 / 多显示器实测。未发布新 release。
+The automation covers invalid directories, ZIP re-extraction, bad files and unknown versions, cleanup failure at quit and so on; the on-machine scope this round was the local demo directory and the restart setting, and simulated offline paths or screen-geometry tests are not recorded as real measurements on an external volume / multiple displays. No new release was published.
 
-证据目录：
+Evidence files:
 
-- `/private/tmp/tursora-session-verification/final-smoke-{1,2,3}.{out,err}`、`final-results.json`、`final-source-hashes.json`；每轮 2,418 项。
-- `/private/tmp/tursora-session-verification/package-final.log`；发布包构建。
-- `/private/tmp/tursora-session-e2e/after-first-quit.json`、`after-restored-interaction.json`、`ui-results.json`、`bundle-evidence.json`，原始截图与 AX 文本同目录保留；QA 文件不提交。
+- `/private/tmp/tursora-session-verification/final-smoke-{1,2,3}.{out,err}`, `final-results.json`, `final-source-hashes.json`; 2,418 checks per round.
+- `/private/tmp/tursora-session-verification/package-final.log`; the release bundle build.
+- `/private/tmp/tursora-session-e2e/after-first-quit.json`, `after-restored-interaction.json`, `ui-results.json`, `bundle-evidence.json`, with the original screenshots and AX text kept in the same directory; the QA files are not committed.

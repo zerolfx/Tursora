@@ -1,42 +1,42 @@
-# Finder 分组标签 —— 来自 Finder 自己的字符串表
+# Finder group labels — from Finder's own string tables
 
-Finder 没有源码，但它的本地化字符串表在本机：
+Finder has no source, but its localization string tables are on this machine:
 `/System/Library/CoreServices/Finder.app/Contents/Resources/en.lproj/LocalizableMerged.strings`
-（以及同目录的 `.loctable`）。分组用的键都带 `GROUP_` / `GV` 前缀。摘录（macOS 26.5）：
+(and the `.loctable` files in the same directory). The keys used for grouping all carry a `GROUP_` / `GV` prefix. Extracts (macOS 26.5):
 
-## 日期（四个日期键共用）
+## Dates (shared by the four date keys)
 
-| 键 | 值 |
+| Key | Value |
 |---|---|
 | `GROUP_TODAY` | Today |
 | `GROUP_YESTERDAY` | Yesterday |
 | `GROUP_PREVIOUS7DAYS` | Previous ^0 Days |
 | `GROUP_PREVIOUS30DAYS` | Previous ^0 Days |
-| `GROUP_EARLIER` | Earlier（用途待确认；我们对更早的日期用月名/年份） |
-| `GROUP_FUTURE` | **No Date**（未来时间戳归此组，不进 Today） |
+| `GROUP_EARLIER` | Earlier (its use is still to be confirmed; we use month names/years for older dates) |
+| `GROUP_FUTURE` | **No Date** (future timestamps fall into this group, not into Today) |
 
-## 种类（Kind）
+## Kind
 
 `GROUP_APPLICATIONS` Applications · `GROUP_DOCUMENTS` Documents · `GROUP_DIRECTORIES` Folders · `GROUP_IMAGES` Images · `GROUP_MOVIES` Movies · `GROUP_MUSIC` Music · `GROUP_PDF` PDF Documents · `GROUP_PRESENTATIONS` Presentations · `GROUP_SPREADSHEETS` Spreadsheets · `GROUP_TEXT` Text · `GROUP_SOURCE` Source code · `GROUP_HTML` HTML · `GROUP_APPLESCRIPT` AppleScript · `GROUP_FONTS` Fonts · `GROUP_CONTACT` Contacts · `GROUP_EMAIL` Mail Messages · `GROUP_BOOKMARKS` Webpages · `GROUP_FAXES` Faxes · `GROUP_EVENT_TODO` Events & To Do Items · `GROUP_RSS_ARTICLES` News Articles · `GROUP_SYSTEM_PREFS` System Settings · `GROUP_OTHER_DOCUMENTS` Other Documents · `GROUP_OTHER` Other
 
-要点：**没有 Archives / Disk Images 组**（压缩包归 Other）；纯文本是 **Text**；代码是 **Source code**。这套类别和 Spotlight 经典的 kind 分组一致。组的顺序字符串表看不出来；我们按名称排序、不把 Folders 置顶。
+Key points: **there is no Archives / Disk Images group** (archives go to Other); plain text is **Text**; code is **Source code**. This set of categories matches Spotlight's classic kind grouping. The order of the groups cannot be read out of the string table; we sort by name and do not put Folders first.
 
-## 大小
+## Sizes
 
-| 键 | 值 |
+| Key | Value |
 |---|---|
 | `GV10` | Under ^0 |
 | `GV11` | From ^0 to ^1 |
 | `SP24`/`SP25`/`SP26`/`SP28` | GB / MB / KB / bytes |
 
-分桶边界字符串表看不出来；按格式推断为十进制数量级：Under 1 KB、From 1 KB to 10 KB、From 10 KB to 100 KB、From 100 KB to 1 MB、…（1000 进制，与 Finder 显示大小一致）。
+The bucket boundaries cannot be read out of the string table; from the format they are inferred to be decimal orders of magnitude: Under 1 KB, From 1 KB to 10 KB, From 10 KB to 100 KB, From 100 KB to 1 MB, … (base 1000, matching the sizes Finder displays).
 
-## 标签 / 其他
+## Tags / other
 
 `GV12` No Tags · `GV7` Other · `GV6` Show Less · `GV_ALL_V1` Show All (^0)
 
-## 未在字符串表中找到（仍是推断）
+## Not found in the string table (still inferred)
 
-- Application 分组里"无默认应用"的标签（我们用 "No Application"）。
-- 种类组的排序。
-- Date Last Opened 用文件访问时间近似 Spotlight 的 last-used。
+- The label for "no default application" in the Application grouping (we use "No Application").
+- The ordering of the kind groups.
+- Date Last Opened uses the file access time as an approximation of Spotlight's last-used.

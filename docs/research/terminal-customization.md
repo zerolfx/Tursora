@@ -1,53 +1,53 @@
-# 终端设置与 Rascal 源码对照
+# Terminal Settings Compared with the Rascal Source
 
-> 0.2.1 已取代本文早期的目录跟随与终端栏布局：zsh 在安全提示符单向跟随浏览目录，顶部精简为一行，底部不再显示终端状态或可用容量。当前行为与本轮验证见[0.2.1 记录](terminal-navigation-0.2.1.md)；本文原有检查数、截图与操作记录保留其历史阶段，隐藏保留和终止前确认仍有效。
+> 0.2.1 has superseded the directory following and terminal bar layout described earlier in this document: zsh follows the browsing directory one way at a safe prompt, the top row is trimmed to a single line, and the bottom no longer shows terminal status or available capacity. For the current behaviour and its verification see the [0.2.1 record](terminal-navigation-0.2.1.md); the check counts, screenshots and operation records already in this document stand for their own historical stage, and retention while hidden and confirmation before termination still apply.
 
-2026-09-13。Tursora 定制阶段基线 `b58c1ce`，提交 `eeaea1c`；后续用户要求隐藏保留会话，本页当前行为已同步该范围，新增验证以[会话生命周期](terminal-session-lifecycle.md)为准。本记录区分源码事实、实现后的行为与实测结果。
+2026-09-13. The Tursora customization stage has baseline `b58c1ce` and commit `eeaea1c`; the user later asked for hidden sessions to be kept, and the current behaviour on this page has been brought in line with that scope, with the new verification covered by [session lifecycle](terminal-session-lifecycle.md). This record separates source-code facts, behaviour after implementation, and measured results.
 
-## 本轮终端设置
+## Terminal Settings in This Round
 
-Settings 增加独立 Terminal 页，设置保存在应用 UserDefaults 的 `terminalPreferences.v1`。所有窗口共用设置，终端进程仍由各自窗口持有。
+Settings gains its own Terminal page, and the settings are stored in the app's UserDefaults under `terminalPreferences.v1`. All windows share the settings, while the terminal processes are still held by their own window.
 
-- Shell：默认读取系统账户的 login shell，获取失败仍按原规则后备 `/bin/zsh`。可选择 Custom Shell 并输入完整可执行文件路径；点击 Apply Shell 或在路径框按 Return 保存。拒绝相对路径、控制字符、目录、不可执行文件和不存在的文件；不提供命令参数输入。路径中合法的空格、引号、分号和 `$` 当作文件名，不拼接进 shell 代码。
-- 保存 custom shell 时验证，真正启动时再次验证。若文件后来消失，显示内联失败和 Settings → Terminal 提示，保留用户选择以便修正；不会悄悄换到另一种 shell。shell 变更只作用于下次新建会话 / Start / Restart，重新显示已有会话不结束或替换当前进程。
-- 字体：System Monospaced 或本机已安装的等宽字体，8–36 pt；文本框按 Return、Tab / 移开焦点或步进器提交。字体被卸载后使用系统等宽字体，保留其他偏好。修改字号不会抹掉尚未 Apply 的 shell 路径或颜色草稿。
-- 颜色：Follow Appearance、Dark、Light、Custom。自定义文字与背景使用六位 sRGB `#RRGGBB`，同时提交且不接受部分无效输入。跟随外观按终端所在窗口的实际外观解析；固定主题不受系统亮暗切换影响。程序自己的 ANSI 颜色仍由程序指定。
-- 字体、默认前景 / 背景和光标颜色立即更新已打开的终端，不重建 PTY，也不发送任何命令。只修改 shell 时不重新赋字体，避免 SwiftTerm 的字体 setter 清除选区。Restore Terminal Defaults 重置这一页的设置。
+- Shell: by default the login shell of the system account is read, and if that lookup fails the original rule still falls back to `/bin/zsh`. Custom Shell can be selected with a full executable path entered; click Apply Shell or press Return in the path field to save. Relative paths, control characters, directories, non-executable files and files that do not exist are rejected; there is no field for command arguments. Spaces, quotes, semicolons and `$` that are legal in a path are treated as part of the file name and are not spliced into shell code.
+- The custom shell is validated when it is saved and validated again when it is actually launched. If the file later disappears, an inline failure and a Settings → Terminal hint are shown and the user's choice is kept so it can be corrected; it never quietly switches to another shell. A shell change only applies to the next new session / Start / Restart; showing an existing session again does not end or replace the current process.
+- Font: System Monospaced or a monospaced font installed on this machine, 8–36 pt; the text field commits on Return, on Tab / moving focus away, or from the stepper. If the font is uninstalled, the system monospaced font is used and the other preferences are kept. Changing the size does not wipe out a shell path or colour draft that has not been applied yet.
+- Colours: Follow Appearance, Dark, Light, Custom. A custom text and background colour use six-digit sRGB `#RRGGBB`, are committed together, and partially invalid input is not accepted. Follow Appearance resolves against the actual appearance of the window the terminal sits in; a fixed theme is unaffected by the system switching between light and dark. ANSI colours that the program chooses itself are still specified by the program.
+- Font, the default foreground / background and the cursor colour update an already open terminal immediately, without rebuilding the PTY and without sending any command. Changing only the shell does not reassign the font, which avoids SwiftTerm's font setter clearing the selection. Restore Terminal Defaults resets the settings on this page.
 
-本轮保留上一阶段的状态语义：Started in 是启动目录，Shell folder 只有当前实例发来有效本地 OSC 7 时才显示；浏览导航只改变下次 Start / Restart 的目标，不自动发送 `cd`。自然退出保留输出；设置变更不把 ended 状态变回 running。
+This round keeps the status semantics of the previous stage: Started in is the launch directory, and Shell folder is shown only when the current instance sends a valid local OSC 7; browsing only changes the target of the next Start / Restart and does not send `cd` automatically. A natural exit keeps the output; a settings change does not turn an ended state back into running.
 
-## Tursora 当前实现
+## Tursora's Current Implementation
 
-`TerminalPanelController` 嵌入 SwiftTerm 1.15.0 的 `LocalProcessTerminalView`。固定依赖提交为 `dd2fb8ac5b861e7bf617c872895e338f38165648`：
+`TerminalPanelController` embeds SwiftTerm 1.15.0's `LocalProcessTerminalView`. The dependency is pinned to commit `dd2fb8ac5b861e7bf617c872895e338f38165648`:
 
-- [AppKit 终端视图](https://github.com/migueldeicaza/SwiftTerm/blob/dd2fb8ac5b861e7bf617c872895e338f38165648/Sources/SwiftTerm/Mac/MacLocalTerminalView.swift)连接终端模拟器与本地进程，处理输入、控制序列、窗口列数 / 行数以及输出。
-- [LocalProcess](https://github.com/migueldeicaza/SwiftTerm/blob/dd2fb8ac5b861e7bf617c872895e338f38165648/Sources/SwiftTerm/LocalProcess.swift)走 `forkpty` 后端（Subprocess 分支被条件编译关闭），使用 DispatchIO 和退出监听。每个曾启动终端的窗口持有一个交互式登录 shell，隐藏面板时继续保留。
-- [MacTerminalView](https://github.com/migueldeicaza/SwiftTerm/blob/dd2fb8ac5b861e7bf617c872895e338f38165648/Sources/SwiftTerm/Mac/MacTerminalView.swift)提供 CoreGraphics / CoreText 默认渲染。Metal 是明确选择的实验路径；Tursora 未启用它。
-- 启动固定 `/bin/sh` 包装脚本，先验证切换目录成功，再以独立 argv 中的路径 `exec` 用户 shell 并传 `-il`。环境设置 `TERM=xterm-256color`、`COLORTERM=truecolor` 与 `TERM_PROGRAM=Tursora`。
-- 首次展开才创建进程；收起或禁用入口保留窗口拥有的 PTY 与输出，再显示继续同一会话。Restart、关闭窗口或退出才结束；前台 / 后台 / 已停止任务和未知活动状态先确认，默认 Cancel。自然退出后输出保留，Start 新建会话。终端会话不属于工作区持久化范围；生命周期实现与检测边界见[追加记录](terminal-session-lifecycle.md)。
+- [The AppKit terminal view](https://github.com/migueldeicaza/SwiftTerm/blob/dd2fb8ac5b861e7bf617c872895e338f38165648/Sources/SwiftTerm/Mac/MacLocalTerminalView.swift) connects the terminal emulator to the local process, handling input, control sequences, window columns / rows and output.
+- [LocalProcess](https://github.com/migueldeicaza/SwiftTerm/blob/dd2fb8ac5b861e7bf617c872895e338f38165648/Sources/SwiftTerm/LocalProcess.swift) goes through the `forkpty` backend (the Subprocess branch is turned off by conditional compilation), using DispatchIO and exit monitoring. Every window that has ever started a terminal holds one interactive login shell, which is kept when the panel is hidden.
+- [MacTerminalView](https://github.com/migueldeicaza/SwiftTerm/blob/dd2fb8ac5b861e7bf617c872895e338f38165648/Sources/SwiftTerm/Mac/MacTerminalView.swift) provides the default CoreGraphics / CoreText rendering. Metal is an explicitly chosen experimental path; Tursora does not enable it.
+- Startup goes through a fixed `/bin/sh` wrapper script, which first verifies that the directory change succeeded and then `exec`s the user's shell by the path held in a separate argv entry, passing `-il`. The environment sets `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Tursora`.
+- The process is created only on the first expand; collapsing it or disabling the entry point keeps the window-owned PTY and its output, and showing it again continues the same session. Only Restart, closing the window or quitting ends it; foreground / background / stopped jobs and an unknown activity state are confirmed first, defaulting to Cancel. After a natural exit the output is kept and Start creates a new session. Terminal sessions are not part of workspace persistence; for the lifecycle implementation and the limits of detection see the [follow-up record](terminal-session-lifecycle.md).
 
-## Rascal 的实际做法
+## What Rascal Actually Does
 
-读取官方公开仓库的精确提交 [108c1c56609573da00fd2e947e63bcfc21a6b7de](https://github.com/chang-07/rascal/tree/108c1c56609573da00fd2e947e63bcfc21a6b7de)，临时 checkout 只用于读源码，未构建或运行。
+Read from the exact commit [108c1c56609573da00fd2e947e63bcfc21a6b7de](https://github.com/chang-07/rascal/tree/108c1c56609573da00fd2e947e63bcfc21a6b7de) of the official public repository; the temporary checkout was only used to read the source, not to build or run it.
 
-| 方面 | Tursora | 该提交的 Rascal |
+| Aspect | Tursora | Rascal at that commit |
 |---|---|---|
-| 输出视图 | SwiftTerm 终端模拟器 | `NSTextView` 追加文本，另有 `NSTextField` 输入框 |
-| 子进程与输入 | 持续交互 shell、真正 PTY、键盘直接进入终端 | 每次 Return 创建一个 Foundation `Process`，shell 参数 `-l -c <本次命令>`；stdout / stderr 分别用 Pipe，没有 PTY |
-| 命令之间的状态 | shell 自然保留变量、函数及交互状态 | 每条命令的新 shell 不保留上条 shell 的状态；历史列表由视图自己记录 |
-| `cd` | shell 自己解析 | Swift 特判以 `cd ` 开头的字符串，修改视图的 `cwd`，不是 shell 的完整语法解析 |
-| 文件浏览与 cwd | 浏览只更新重新启动目标；有效 OSC 7 仅更新状态显示 | pane 导航时更新可见 drawer 的 `cwd`，后续新命令从此目录启动；drawer 的 `cd` 只改自己的 `cwd` |
-| 收起 / 关闭 | 收起保留原 PTY / shell；关窗、退出与 Restart 对活动或未知任务先确认，接受后回收 | 收起后 `terminateRunning()` 对当前 `Process` 调用 `terminate()`；view deinit 同样处理 |
-| 设置与渲染 | 本轮新增独立字体和配色设置，默认渲染为 CoreGraphics | shell 可选，自定义无效值回退 `/bin/zsh`；文字写入时固定系统等宽 12 pt，背景 / 输入颜色跟随整个应用主题 |
+| Output view | SwiftTerm terminal emulator | `NSTextView` with appended text, plus an `NSTextField` input box |
+| Subprocess and input | A continuous interactive shell, a real PTY, keyboard input going straight into the terminal | Every Return creates one Foundation `Process` with the shell arguments `-l -c <this command>`; stdout / stderr each use a Pipe, with no PTY |
+| State between commands | The shell naturally keeps variables, functions and interactive state | Each command's new shell keeps nothing from the previous shell; the history list is recorded by the view itself |
+| `cd` | Resolved by the shell itself | Swift special-cases strings starting with `cd ` and changes the view's `cwd`, which is not a full parse of the shell's syntax |
+| File browsing and cwd | Browsing only updates the restart target; a valid OSC 7 only updates the status display | Navigating the pane updates the `cwd` of the visible drawer, and later new commands start from that directory; the drawer's `cd` only changes its own `cwd` |
+| Collapse / close | Collapsing keeps the original PTY / shell; closing the window, quitting and Restart confirm first for active or unknown jobs and reclaim once accepted | Collapsing calls `terminateRunning()`, which calls `terminate()` on the current `Process`; view deinit does the same |
+| Settings and rendering | This round adds its own font and colour settings, with CoreGraphics as the default renderer | The shell is selectable and an invalid custom value falls back to `/bin/zsh`; text is written with a fixed system monospaced 12 pt, and the background / input colours follow the whole app's theme |
 
-源码锚点：[输入与输出控件](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/TerminalDrawerView.swift#L8)、[`cd` 和每命令 Process / Pipe](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/TerminalDrawerView.swift#L127)、[主题与退出](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/TerminalDrawerView.swift#L211)、[收起 drawer](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/PaneController.swift#L128)、[浏览导航更新 cwd](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/PaneController.swift#L1033)、[shell 偏好读取](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/Model/Settings.swift#L269)。
+Source anchors: [input and output controls](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/TerminalDrawerView.swift#L8), [`cd` and the per-command Process / Pipe](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/TerminalDrawerView.swift#L127), [theme and exit](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/TerminalDrawerView.swift#L211), [collapsing the drawer](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/PaneController.swift#L128), [browsing navigation updating cwd](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/UI/PaneController.swift#L1033), [reading the shell preference](https://github.com/chang-07/rascal/blob/108c1c56609573da00fd2e947e63bcfc21a6b7de/Sources/FinderTwo/Model/Settings.swift#L269).
 
-由这些源码推断：Rascal 此实现适合 `git status`、`ls`、构建等一次性命令；Tursora 的基础设施更适合需要终端控制序列、持续 shell 状态和交互输入的程序。这个结论来自架构，不等于已经对所有 TUI、吞吐量、Unicode 或终端兼容性做了横评。本轮没有运行 Rascal，也不把官网的“inline terminal”当成真实 PTY 证据。
+Inferred from that source: this implementation of Rascal suits one-off commands such as `git status`, `ls` and builds; Tursora's infrastructure is a better fit for programs that need terminal control sequences, persistent shell state and interactive input. That conclusion comes from the architecture and does not mean a full comparison has been made across all TUIs, throughput, Unicode or terminal compatibility. Rascal was not run in this round, and the "inline terminal" on its website is not taken as evidence of a real PTY.
 
-## 定制阶段验证（`eeaea1c`，不覆盖追加生命周期）
+## Customization Stage Verification (`eeaea1c`, not covering the follow-up lifecycle)
 
-新增 `TerminalPreferencesSmokeTests`：隔离的 UserDefaults round-trip / 无效配置 / shell 路径 / 颜色 / 字体；两份 Settings 页真实 action dispatch 和 540 pt 页面几何；真实字号 field editor 输入后 Tab 提交，以及未提交 shell / 配色草稿保留；临时可执行脚本路径含引号、分号与 `$`，通过生产 launch configuration 启动真实 PTY；保留尚未提交输入时热更新字体 / 颜色；下一次 shell 选择、可执行文件消失与回收。测试脚本只执行 `/bin/sh -f -i`，临时 HOME、禁用 ENV，不读取用户 shell rc。
+`TerminalPreferencesSmokeTests` is new: isolated UserDefaults round-trip / invalid configuration / shell path / colours / font; real action dispatch on two Settings pages and the 540 pt page geometry; real font-size entry through the field editor committed with Tab, and shell / colour drafts that have not been committed being kept; a temporary executable script path containing quotes, semicolons and `$` launching a real PTY through the production launch configuration; hot-updating the font / colours while uncommitted input is kept; the next shell selection, the executable disappearing, and reclamation. The test script only runs `/bin/sh -f -i`, with a temporary HOME and ENV disabled, and does not read the user's shell rc.
 
-主任务已完成隔离打包应用实测：工具栏打开 / 收起与选中状态、F6 在文件区和终端内切换；多个命令间保留变量；字体与背景立即更新且输出保留；自定义 `/bin/bash` 在新会话生效，无效路径显示内联错误。字号输入 16 后按 Tab，stepper、预览及保存值同步，再恢复截图用 14。实际最小 560 × 380 窗口修复后终端按钮仍可见并能切换，返回 1100 × 740 正常；QA 副本浅色重开后 Terminal Settings 的路径、字体和颜色控件可读，恢复工作区未自动创建 shell。
+The main task has completed isolated measurements on the packaged app: opening / collapsing from the toolbar and its selected state, F6 switching between the file area and the terminal; variables kept across several commands; the font and background updating immediately with the output kept; a custom `/bin/bash` taking effect in a new session, and an invalid path showing an inline error. After typing a size of 16 and pressing Tab, the stepper, the preview and the saved value stayed in sync, and 14 was restored for the screenshots. After the fix, the terminal button is still visible and can be toggled at the real minimum window size of 560 × 380, and returning to 1100 × 740 works; after the QA copy was reopened in light mode, the path, font and colour controls in Terminal Settings were legible, and restoring the workspace did not create a shell automatically.
 
-真实 Terminal / Terminal Settings 截图及其透明外沿已核对，内部保护像素不变；具体隔离、操作与阶段见[整合记录](customization-integration.md)和[截图审计](screenshot-audit-2026-09-13.md)。最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过（`smoke-7` / `8` / `9`），均 exit 0、stderr 为空、源码未变；交付 app / DMG 构建及签名、包内容和安装布局检查通过，精确清单见[定制功能整合记录](customization-integration.md)。生产终端偏好未改，未发布本轮新版本。
+The real Terminal / Terminal Settings screenshots and their transparent outer edges have been checked, with the protected interior pixels unchanged; for the exact isolation, operations and stages see the [integration record](customization-integration.md) and the [screenshot audit](screenshot-audit-2026-09-13.md). The final 3,194 smoke checks over 95 Swift source files passed three times in a row (`smoke-7` / `8` / `9`), each exit 0 with empty stderr and unchanged sources; the delivered app / DMG build with its signing, the bundle contents and the installation layout passed their checks, with the exact manifest in the [customization integration record](customization-integration.md). Production terminal preferences were not changed, and no new release was published in this round.

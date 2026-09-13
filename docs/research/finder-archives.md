@@ -1,10 +1,10 @@
-# Finder 压缩与解压对照（2026-09-12）
+# Compress and extract, compared with Finder (2026-09-12)
 
-实机：macOS 26.3（25D125）。范围是普通 ZIP 压缩与解压；密码、Apple Archive、CPIO、分卷包不在本次实现中。
+On a real machine: macOS 26.3 (25D125). The scope is ordinary ZIP compression and extraction; passwords, Apple Archive, CPIO and split archives are not part of this implementation.
 
-## Finder 本机资源证据
+## Evidence from Finder's own resources on this machine
 
-提取命令：
+Extraction commands:
 
 ```sh
 strings /System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/MenuBar.nib
@@ -12,11 +12,11 @@ plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resou
 plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resources/en.lproj/Localizable.strings
 ```
 
-`MenuBar.nib` 中有 `Compress` → `cmdArchive:`；还有单独的密码压缩命令，本次不实现。
+`MenuBar.nib` has `Compress` → `cmdArchive:`; there is also a separate password-protected compression command, which is not implemented here.
 
-`LocalizableMerged.strings`：
+`LocalizableMerged.strings`:
 
-| Key | 英文值 |
+| Key | English value |
 | --- | --- |
 | `N168_V1` | `Compress` |
 | `N168_V2` | `Compress “^1”` |
@@ -27,20 +27,20 @@ plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resou
 | `CO4` | `CPIO archive` |
 | `CO5` | `CPGZ archive` |
 
-Apple 的[压缩与解压说明](https://support.apple.com/en-ie/guide/mac-help/mchlp2528/mac)描述了右键压缩、单项名称加 `.zip`、多项 `Archive.zip`，以及双击 ZIP 解压。Tursora 的显式 `Extract` 菜单是为了让应用内操作可发现；未从上述 Finder 资源提取到对应菜单文案，不宣称这是 Finder 的同名菜单。
+Apple's [guide to compressing and uncompressing](https://support.apple.com/en-ie/guide/mac-help/mchlp2528/mac) describes right-click compression, `.zip` appended to a single item's name, `Archive.zip` for several items, and double-clicking a ZIP to uncompress it. Tursora's explicit `Extract` menu exists to make the operation discoverable inside the app; no corresponding menu wording was extracted from the Finder resources above, so it is not claimed to be a Finder menu of the same name.
 
-## 系统工具证据与实现边界
+## Evidence from the system tools, and implementation limits
 
-本机 `man ditto` 的示例明确用 `-c -k --sequesterRsrc --keepParent` 对照 Finder 压缩。Tursora 先将选择项复制到独占工作目录，再对工作目录内容使用 `-c -k --rsrc --sequesterRsrc`，因此 ZIP 根目录直接包含所选项，不额外套一层临时目录。
+The examples in `man ditto` on this machine explicitly use `-c -k --sequesterRsrc --keepParent` to match Finder's compression. Tursora first copies the selected items into an exclusive working directory and then runs `-c -k --rsrc --sequesterRsrc` on the contents of that working directory, so the root of the ZIP contains the selected items directly, with no extra layer of temporary directory around them.
 
-本机 `/usr/bin/tar --version`：`bsdtar 3.5.3 - libarchive 3.7.4`。`man bsdtar` 的 `SECURITY` 和 `-P` 段说明：默认去掉绝对路径的开头斜线、拒绝含 `..` 的条目、拒绝经中间符号链接写入其他目录。实现不使用关闭这些保护的 `-P` 或 `-U`。解压根目录始终全新；失败时丢弃整棵工作树，不将部分结果合并到用户目录。
+`/usr/bin/tar --version` on this machine: `bsdtar 3.5.3 - libarchive 3.7.4`. The `SECURITY` and `-P` sections of `man bsdtar` state that by default it strips the leading slash from absolute paths, rejects entries containing `..`, and refuses to write into another directory through an intermediate symbolic link. The implementation does not use `-P` or `-U`, which would turn those protections off. The extraction root is always brand new; on failure the whole working tree is discarded and no partial result is merged into a user directory.
 
-`--no-same-owner`、`--no-same-permissions`、`--no-acls`、`--no-fflags` 限制所有者和权限恢复；`--mac-metadata` 保留 ZIP 的 AppleDouble 资源叉。实机对照证实：只传 `--xattrs` 不能恢复资源叉，必须有 `--mac-metadata`。已用带资源叉和执行权限的文件完成往返验证。下载 ZIP 的 quarantine 会额外传递给解压产物，遍历及设置属性不跟随符号链接。
+`--no-same-owner`, `--no-same-permissions`, `--no-acls` and `--no-fflags` restrict the restoration of ownership and permissions; `--mac-metadata` preserves the AppleDouble resource fork in a ZIP. A comparison on a real machine confirmed that passing `--xattrs` alone does not restore the resource fork — `--mac-metadata` is required. A round trip has been verified with a file that carries both a resource fork and the execute permission. The quarantine on a downloaded ZIP is also propagated to the extracted products, and walking the tree and setting attributes do not follow symbolic links.
 
-标准输入为 `/dev/null` **不足以**阻止密码询问：工具可能打开 `/dev/tty`。[libarchive 的 `tar/read.c`](https://raw.githubusercontent.com/libarchive/libarchive/master/tar/read.c) 在提供 `--passphrase` 时不安装交互回调。实现传入随机值，让加密包无提示失败；没有密码输入或密码保存功能。
+Standard input set to `/dev/null` is **not enough** to prevent a password prompt: the tool may open `/dev/tty`. [libarchive's `tar/read.c`](https://raw.githubusercontent.com/libarchive/libarchive/master/tar/read.c) does not install the interactive callback when `--passphrase` is supplied. The implementation passes a random value so that an encrypted archive fails without a prompt; there is no password entry and no password storage.
 
-只有工具成功结束后才发布结果。单一根项目直接落到目标目录；多个根项目放入压缩包名称对应的文件夹。碰撞按已有项目的数字后缀规则递增；`renamex_np(RENAME_EXCL)` 同时保证原子发布与不覆盖，包含并发请求及悬空符号链接。该发布/碰撞策略是 Tursora 的明确选择，不把尚未逐项实测的 Finder 边界当作证据。
+The result is published only after the tool finishes successfully. A single root item lands directly in the target directory; several root items go into a folder named after the archive. Collisions increment by the numeric-suffix rule used for existing items; `renamex_np(RENAME_EXCL)` provides both atomic publication and non-overwriting, including for concurrent requests and dangling symbolic links. This publication / collision policy is a deliberate Tursora choice; Finder boundaries that have not been measured case by case are not treated as evidence.
 
-## 自动验证
+## Automated verification
 
-`ArchiveSmokeTests.run(completion:)` 为主 smoke suite 提供独立的 31 项模型检查：单项/多项/文件夹往返、空格/Unicode/开头短横线、同名文件/目录/悬空链接、并发发布、相对符号链接、资源叉、执行权限、quarantine、损坏/加密/空包失败、父路径与符号链接逃逸、错误后的清理和原文件保留。所有成功及失败回调另断言运行在主线程。UI 路径由主 smoke suite 覆盖。
+`ArchiveSmokeTests.run(completion:)` contributes 31 separate model checks to the main smoke suite: round trips for a single item/several items/a folder, spaces/Unicode/a leading hyphen, an existing file/directory/dangling link of the same name, concurrent publication, relative symbolic links, resource forks, the execute permission, quarantine, failures on a corrupt/encrypted/empty archive, escapes through a parent path and through a symbolic link, and cleanup after an error with the original files preserved. Every success and failure callback additionally asserts that it runs on the main thread. The UI path is covered by the main smoke suite.

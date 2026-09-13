@@ -1,43 +1,43 @@
-# 0.2.0 正式发布核验
+# 0.2.0 Official Release Verification
 
-> 历史发布记录。当前稳定版为 [0.2.1](release-0.2.1.md)；下文保留当时 0.2.0 发布的实际证据。
+> A historical release record. The current stable version is [0.2.1](release-0.2.1.md); what follows keeps the actual evidence from the 0.2.0 release at the time.
 
-2026-09-13。[Tursora 0.2.0](https://github.com/zerolfx/Tursora/releases/tag/v0.2.0) 已发布为最新稳定版，非 draft / prerelease。用户已授权完成这些功能后推送、合入与发布，原 0.1.0 标签及资产未修改。
+2026-09-13. [Tursora 0.2.0](https://github.com/zerolfx/Tursora/releases/tag/v0.2.0) has been published as the latest stable version, not a draft / prerelease. The user authorized the push, the merge and the release once these features were finished, and the original 0.1.0 tag and its assets were not modified.
 
-## 源码与流水线
+## Source and Pipeline
 
-[PR #8](https://github.com/zerolfx/Tursora/pull/8) 已合入，main、`v0.2.0` 及 Release checkout 精确对应 `3ca4ab9ffd43555e4c4118e5504eb6d39e6dc034`。Git 作者与提交者均为 `zerol <20219056+zerolfx@users.noreply.github.com>`；普通 fast-forward 推送，没有重写历史。
+[PR #8](https://github.com/zerolfx/Tursora/pull/8) has been merged, and main, `v0.2.0` and the Release checkout correspond exactly to `3ca4ab9ffd43555e4c4118e5504eb6d39e6dc034`. The Git author and committer are both `zerol <20219056+zerolfx@users.noreply.github.com>`; this was an ordinary fast-forward push with no history rewriting.
 
-- 最终 101 份 Swift 源码的 3,329 项 smoke 连续三轮通过，逐轮 / 当前哈希一致，stderr 均为空；83 项工具测试、最终 release / DMG 构建及实机功能验证通过。具体范围见[终端生命周期](terminal-session-lifecycle.md)；发布后的 cask / 文档修订不改变这些 Swift 源码。
-- main 的 [Build](https://github.com/zerolfx/Tursora/actions/runs/34739716326)、[Homebrew](https://github.com/zerolfx/Tursora/actions/runs/34739716318)、[Pages 部署](https://github.com/zerolfx/Tursora/actions/runs/34739716315) 均通过后才启动 Release。该阶段 Homebrew 验证的仍是当时 cask 固定的 0.1.0。
-- [Release](https://github.com/zerolfx/Tursora/actions/runs/34739914582) 成功；`v0.2.0` 是直接指向上述提交的 tag，发布时刻 `2026-09-13T05:21:13Z`。短版本 `0.2.0`，build `1789275959` 为提交的 Unix committer timestamp。
+- The final 3,329 smoke checks over 101 Swift source files passed three times in a row, with the per-round and current hashes matching and stderr empty each time; 83 tool tests, the final release / DMG build and functional verification on a real machine passed. For the exact scope see [terminal session lifecycle](terminal-session-lifecycle.md); the cask / documentation revisions made after the release do not change those Swift sources.
+- Release was only started after [Build](https://github.com/zerolfx/Tursora/actions/runs/34739716326), [Homebrew](https://github.com/zerolfx/Tursora/actions/runs/34739716318) and [Pages deployment](https://github.com/zerolfx/Tursora/actions/runs/34739716315) on main had all passed. At that stage Homebrew was still verifying the 0.1.0 the cask was pinned to at the time.
+- [Release](https://github.com/zerolfx/Tursora/actions/runs/34739914582) succeeded; `v0.2.0` is a tag pointing directly at the commit above, published at `2026-09-13T05:21:13Z`. The short version is `0.2.0`, and build `1789275959` is the commit's Unix committer timestamp.
 
-## 公开资产与签名
+## Public Assets and Signing
 
-实际使用 `gh release download` 下载三份正式资产到 `/private/tmp/tursora-release-0.2.0-verified`，不是使用本地试包。结果与 SHA256SUMS、GitHub asset size / digest 相符，校验文件本身也与 API digest 相符。
+The three official assets were actually downloaded with `gh release download` into `/private/tmp/tursora-release-0.2.0-verified`, rather than a locally built package being used. The results match SHA256SUMS and the GitHub asset size / digest, and the checksum file itself also matches the API digest.
 
-| 资产 | 字节 | SHA-256 |
+| Asset | Bytes | SHA-256 |
 |---|---:|---|
 | `Tursora-0.2.0-macOS-arm64.dmg` | 5,794,277 | `2593f312772b6d7ee6a885c8017ce43b31d094fc2744f764e76e027178d1aef7` |
 | `appcast.xml` | 5,787 | `2c96395442c61bb985d361189472dbef34f56bfdf683db328218222d41f037d4` |
 | `SHA256SUMS.txt` | 174 | `03185719aaa44ed9d310ae834303f9bb8499a28aa7bb9a4bddb42af4da708c88` |
 
-只读挂载后确认：应用版本 / build / bundle id、arm64、`codesign --verify --deep --strict`、包内 MIT / SwiftTerm / Sparkle 许可证和图标，Applications symlink、安装背景许可证及保存的两图标 / 箭头 / 640 × 280 布局均通过。根 MIT 文本与源码逐字节相同。镜像已卸载。
+After mounting the image read-only, the following were confirmed: the app version / build / bundle id, arm64, `codesign --verify --deep --strict`, the MIT / SwiftTerm / Sparkle licences and the icons inside the bundle, the Applications symlink, the installation background licence and the saved two-icon / arrow / 640 × 280 layout all passed. The MIT text at the root is byte for byte identical to the one in the source. The image has been unmounted.
 
-`verify-bundle` 和 `verify-appcast` 核验元数据；另用 CryptoKit 的 Ed25519 公钥验证对下载的完整 DMG 检查签名，避免把“元数据字段正确”混作密码学验证。本地验证只读取项目公钥，没有导出或读取私钥。实际 `releases/latest/download/appcast.xml` 与版本化下载的 appcast 字节一致。
+`verify-bundle` and `verify-appcast` check the metadata; separately, the signature over the complete downloaded DMG was checked with CryptoKit's Ed25519 public key, so that "the metadata fields are correct" is not mistaken for cryptographic verification. Local verification only reads the project's public key and did not export or read the private key. The actual `releases/latest/download/appcast.xml` is byte-identical to the versioned appcast download.
 
-这仍是 ad-hoc 签名、未 Apple 公证的直接分发应用。Sparkle 更新签名和 SHA-256 不代表 Developer ID / Gatekeeper 公证；首次安装按 README 指引操作。
+This is still an ad-hoc signed app distributed directly and not notarized by Apple. The Sparkle update signature and the SHA-256 do not amount to Developer ID / Gatekeeper notarization; for the first launch, follow the instructions in the README.
 
-## 正式包启动与线上更新检查
+## Launching the Official Package and the Live Update Check
 
-从已核验镜像复制应用，先验证原包，再仅修改测试副本的名称、bundle id、自动检查默认值和测试专用环境，并 ad-hoc 重签。使用 `com.tursora.releaseqa020.s0913` 与自己的 workspace / view-properties 文件，避免改用户原应用和偏好；保留原生产 feed URL / 公钥 / 版本 / build。
+The app was copied from the verified image; the original bundle was verified first, then only the test copy's name, bundle id, automatic-check default and test-only environment were modified and it was re-signed ad hoc. It used `com.tursora.releaseqa020.s0913` with its own workspace / view-properties files, so the user's own app and preferences were left alone; the production feed URL / public key / version / build were kept.
 
-实机启动成功，About 显示 `0.2.0 (1789275959)`，右下角初始 Terminal 明确没有启动 shell。Settings → Updates → Check for Updates 实际访问生产源，提示 **You’re up to date!**，确认 0.2.0 是当前最新版本。证据为 `live-update-check.jpg`，随后正常退出，精确进程路径查询确认测试副本已退出。
+It launched successfully on a real machine, About showed `0.2.0 (1789275959)`, and the initial Terminal in the bottom right had clearly not started a shell. Settings → Updates → Check for Updates actually reached the production source and reported **You’re up to date!**, confirming that 0.2.0 is the current latest version. The evidence is `live-update-check.jpg`; the app then quit normally, and an exact process path query confirmed that the test copy had exited.
 
-本次没有把同一用户下的旧正式 bundle id 应用交给生产 installer 替换 / 自动重启：本机仍有用户应用运行，Sparkle 替换后按标准路径重启不会继承旧副本的临时隔离配置。受控 Foundation 探测还确认 `CFFIXED_USER_HOME` 仅改变 home 路径 API，不能隔离 UserDefaults，新的进程仍访问真实偏好目录；专用 QA 域与文件已清理，正式偏好未动。实际旧版本下载 / 安装 / 自动重启仍沿用此前**一次性 QA key + loopback** 的独立成功记录，不将其宣称为本次生产源端到端安装验证。
+This time no app with the old official bundle id under the same user was handed to the production installer for replacement / automatic restart: the user's app is still running on this machine, and after a Sparkle replacement the standard restart path would not inherit the temporary isolation configuration of the old copy. A controlled Foundation probe also confirmed that `CFFIXED_USER_HOME` only changes the home path APIs and cannot isolate UserDefaults, so a new process still reaches the real preferences directory; the dedicated QA domain and its files have been cleaned up and the official preferences were untouched. Actually downloading / installing an older version and restarting automatically still rests on the earlier separate successful record using a **one-off QA key + loopback**, and that is not claimed as end-to-end installation verification against the production source this time.
 
-## 安装入口与后续核验
+## Installation Entry Point and Follow-up Checks
 
-README 安装段已前置，网站导航和首屏“安装指南”跳 `#installation`。新布局在桌面 / 390 px、安装图弹窗及 Escape 焦点恢复中通过；main 第一次部署的 8 个文件均 HTTP 200 且与本地构建逐字节相同。全部 29 张 canonical 图片透明圆角检查通过，General / Terminal 已更新，见[截图审计](screenshot-audit-2026-09-13.md)。
+The installation section of the README has been moved to the front, and the site navigation and the "Install guide" in the hero jump to `#installation`. The new layout passed on desktop / at 390 px, in the installation image lightbox and in the Escape focus restore; all 8 files of main's first deployment returned HTTP 200 and were byte for byte identical to the local build. All 29 canonical images passed the transparent rounded corner check, and General / Terminal have been updated; see the [screenshot audit](screenshot-audit-2026-09-13.md).
 
-公开 0.2.0 资产通过核验后才生成 cask，启用 `auto_updates true`，隔离 Homebrew 实际安装 / 卸载及最终文案和 Pages 部署另见 [Homebrew 记录](homebrew.md)与 [Pages 记录](github-pages.md)。这些步骤与 Release 分开核实，后续提交不会移动已发布标签。
+The cask was generated only after the public 0.2.0 assets had passed verification, with `auto_updates true` enabled; the isolated actual Homebrew install / uninstall, the final wording and the Pages deployment are covered separately in the [Homebrew record](homebrew.md) and the [Pages record](github-pages.md). Those steps were verified separately from the Release, and later commits will not move a published tag.

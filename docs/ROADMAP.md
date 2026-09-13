@@ -1,86 +1,86 @@
 # Roadmap
 
-v1（纯本地）的功能已经齐了：地址栏、标签页、分栏、两种视图与缩放预览、文件操作与撤销、过滤、分组、Get Info。
-新增功能已扩展到 ZIP 压缩 / 解压、系统分享、系统服务器挂载与设置，以及每目录视图记忆 / 统一默认、可控制的文件操作任务、递归和保存搜索；终端面板和当前 pane 的 ZIP 只读浏览默认启用，可在设置中关闭。三项新功能的组合验证状态见 [PR 整合记录](research/pr-integration-2026-09-12.md)。接下来按"用户最常碰到、成本最低"排。难度尺度（S ≤ 半天 / M 1–2 天 / L 3–5 天 / XL > 1 周）与每项的依据见两份差距清单：
+The v1 feature set (purely local) is complete: address bar, tabs, split panes, two views with zoom preview, file operations with undo, filtering, grouping, Get Info.
+Newer work extends that to ZIP compression / extraction, system sharing, mounting system servers with the matching settings, plus per-directory view memory / a unified default, controllable file-operation tasks, and recursive and saved search; the terminal panel and read-only ZIP browsing in the current pane are enabled by default and can be turned off in Settings. The combined verification status of the three new features is in the [PR integration record](research/pr-integration-2026-09-12.md). What follows is ordered by "what users hit most often, at the lowest cost". The cost scale (S ≤ half a day / M 1–2 days / L 3–5 days / XL > 1 week) and the basis for each item are in the two gap lists:
 
-分栏独立地址栏、双侧标签标题与标签右键操作的实现及验证状态见[专项记录](research/pane-paths-and-tab-actions.md)；合并窗口和单独弹出 pane 仍留待后续。
+Implementation and verification status for per-pane address bars, tab titles on both sides and tab context-menu actions are in a [dedicated record](research/pane-paths-and-tab-actions.md); merging windows and popping a pane out on its own are still left for later.
 
-- [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) — 对照 Finder 菜单 nib 逐项
-- [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md) — 对照 Dolphin 注册的 action / 面板 / 设置
+- [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) — item by item against Finder's menu nib
+- [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md) — against the actions / panels / settings Dolphin registers
 
-## 已完成阶段：0.2.1 目录跟随与界面简化
+## Completed stage: 0.2.1 directory following and a simplified interface
 
-- [x] zsh 通过私有请求 / FIFO 在空的主提示符跟随当前活动 pane；正在执行的程序、read、续行和未提交输入不被打断，隐藏时保留会话与同步通道。其他 shell 仍手动 Restart，不做反向同步。
-- [x] 终端顶部改为一行操作栏；移除底部所有终端状态、图标、动画、计时和轮询，同时移除状态栏可用容量及查询，保留项目 / 选中计数、筛选、搜索、ZIP、缩放与文件操作进度。
-- [x] 网站默认英文，独立中文页面通过普通链接切换；两页共享截图、安装步骤与交互，应用界面仍为英文。
-- [x] 102 份源码连续三轮 3,435 项通过，打包应用、目录跟随、隐藏任务和退出取消实测通过；0.2.1 已发布，实际下载文件及生产更新检查见[正式发布核验](research/release-0.2.1.md)。
-- 上述勾选表示实现范围；本轮完整 smoke、打包实机、截图和发布进度见[0.2.1 记录](research/terminal-navigation-0.2.1.md)，双语网站的静态 / 浏览 / 部署范围见[站点说明](../site/README.md)，不复用旧版检查数。
+- [x] Through a private request / FIFO, zsh follows the currently active pane at an empty primary prompt; a running program, read, a line continuation and uncommitted input are never interrupted, and hiding the panel keeps both the session and the sync channel. Other shells still need a manual Restart, and there is no reverse sync.
+- [x] The top of the terminal became a single-row action bar; every terminal status, icon, animation, timer and poll at the bottom was removed, along with the status bar's available capacity and the query behind it, keeping the item / selection counts, filtering, search, ZIP, zoom and file-operation progress.
+- [x] The website defaults to English, with a separate Chinese page reached through an ordinary link; the two pages share screenshots, installation steps and interactions, and the app's interface is still English.
+- [x] 102 source files passed 3,435 checks on three consecutive runs, and the packaged app, directory following, hidden tasks and cancelling a quit were verified hands-on; 0.2.1 is released, and the actually downloaded files plus the production update check are in the [release verification](research/release-0.2.1.md).
+- The ticks above mark implementation scope; this round's full smoke run, hands-on testing of the package, screenshots and release progress are in the [0.2.1 record](research/terminal-navigation-0.2.1.md), and the static / browser / deployment scope of the bilingual site is in the [site notes](../site/README.md); check counts from older versions are not reused.
 
-## 已完成阶段：终端会话与 0.2.0 发布
+## Completed stage: terminal sessions and the 0.2.0 release
 
-- [x] 收起 / 禁用入口保留窗口终端；退出、关窗与 Restart 对任务确认，取消退出保留传输与工作区。该阶段的右下角状态及轮询已由 0.2.1 移除；会话保留与确认继续有效。101 份源码 3,329 项 smoke 连续三轮及实机验证通过，见[生命周期记录](research/terminal-session-lifecycle.md)。
-- [x] 新增源码三轮 smoke、打包实测与 General / Terminal 真实截图完成；0.2.0 正式发布，重新下载资产、签名与布局核验通过，见[发布记录](research/release-0.2.0.md)。
-- [x] 0.2.0 cask 与安装文案 follow-up 已准备，隔离安装 / 卸载、网站构建及引用检查通过。此项勾选为合入前本地范围，线上提交状态见 [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml)、[Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 和对应 PR；生产 feed 的旧版下载 / 安装 / 重启仍单独记录。
+- [x] Collapsing or disabling the entry point keeps the window's terminal alive; quitting, closing the window and Restart all confirm running tasks, and cancelling a quit preserves transfers and the workspace. The bottom-right status and its polling from that stage were removed in 0.2.1; session retention and the confirmations remain in effect. 101 source files passed 3,329 smoke checks on three consecutive runs plus hands-on verification, see the [lifecycle record](research/terminal-session-lifecycle.md).
+- [x] Three smoke runs over the new sources, hands-on testing of the package and real General / Terminal screenshots are done; 0.2.0 is released, and re-downloading the assets plus the signature and layout verification passed, see the [release record](research/release-0.2.0.md).
+- [x] The 0.2.0 cask and the installation-copy follow-up are prepared, and isolated install / uninstall, the site build and the reference check all passed. This tick covers the local scope before merging; the state of the upstream submissions is in [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml), [Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) and the matching PRs; downloading, installing and restarting the older version from the production feed is still recorded separately.
 
-- [x] 终端入口与 ZIP 浏览默认启用，保留开关；ZIP 准备可取消、失败可重试，终端目录 / 结束状态在该阶段得到补充，见[历史记录](research/default-features-polish.md)；当前紧凑标题栏与目录同步见页首 0.2.1 范围。
+- [x] The terminal entry point and ZIP browsing are enabled by default, with the switches kept; ZIP preparation can be cancelled and a failure retried, and the terminal's directory / exit status were filled in during that stage, see the [historical record](research/default-features-polish.md); today's compact title bar and directory sync are covered by the 0.2.1 scope at the top of this page.
 
-## 已完成阶段：操作定制与目录导航
+## Completed stage: action customization and directory navigation
 
-- [x] 所有应用命令快捷键可搜索、录制、清除与重置，保留原生文本 / shell 控制；[范围与验证](research/custom-shortcuts.md)。
-- [x] 终端 Shell、等宽字体 / 字号、外观和自定义文本 / 背景色；工具栏直接展开 / 收起；[实现与边界](research/terminal-customization.md)。
-- [x] Places 下方独立 Folders 目录树，活动 pane 跟随、后台单层读取和会话布局记忆；[Dolphin 依据](research/folder-tree.md)。
-- [x] MIT 许可与免费开源说明、自有 Homebrew cask 及安装 / 卸载本地验证；原始 0.1.0 cask 已随 main 发布，0.2.0 跟进见上方。
-- [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG 检查、打包应用实机与全部 29 张截图透明化通过；[定制功能整合记录](research/customization-integration.md)记录范围，远端 CI / 发布仍单独处理。
+- [x] Shortcuts for every app command can be searched, recorded, cleared and reset, while the native text / shell controls are preserved; [scope and verification](research/custom-shortcuts.md).
+- [x] Terminal shell, monospaced font / size, appearance and custom text / background colors; expanding and collapsing straight from the toolbar; [implementation and limits](research/terminal-customization.md).
+- [x] A separate Folders directory tree below Places, following the active pane, reading a single level in the background and remembering the session's layout; [Dolphin evidence](research/folder-tree.md).
+- [x] The MIT license and the free, open-source wording, our own Homebrew cask, and local install / uninstall verification; the original 0.1.0 cask shipped with main, and the 0.2.0 follow-up is above.
+- [x] The final 95 Swift source files passed 3,194 smoke checks on three consecutive runs, and the delivered app / DMG checks, hands-on use of the packaged app and the transparency pass over all 29 screenshots passed; the [customization integration record](research/customization-integration.md) records the scope, while remote CI / release are still handled separately.
 
-## 已完成：工作连续性
+## Completed: work continuity
 
-按用户反馈，会话恢复已排到小功能补齐之前。本轮已实现默认恢复窗口、多标签与双 pane 工作区，保留活动位置、名称、分栏比例、侧栏和窗口布局；Settings 可关闭并清除保存。已执行搜索重新查询，缺失目录保留原路径，不重放终端、传输或撤销操作。**本轮构建、2,418 项 smoke 连续三轮及打包应用真实退出 / 重启验证已完成**，精确范围统一见[会话恢复记录](research/workspace-sessions.md)。后续是否扩展选区 / 滚动、导航历史与关闭页记忆应独立评估，不计入本轮完成范围。
+Following user feedback, session restore was moved ahead of filling in the smaller features. This round restores windows, multiple tabs and two-pane workspaces by default, preserving the active location, names, split ratio, sidebar and window layout; Settings can turn it off and clear what was saved. An executed search is re-run, a missing directory keeps its original path, and terminals, transfers and undo operations are not replayed. **This round's build, 2,418 smoke checks on three consecutive runs and a real quit / restart of the packaged app are all verified**, and the exact scope is collected in the [session restore record](research/workspace-sessions.md). Whether to extend this to selection / scroll position, navigation history and remembering closed tabs should be assessed separately and is not part of what this round completed.
 
-## 下一批（S，各不到半天）
+## Next batch (S, under half a day each)
 
-Deselect All、Move Items Here（⌥⌘V）、Copy as Pathname 快捷键对齐、New Folder with Selection、Show Package Contents、Always Open With、Print、Slideshow、Eject All、Go 菜单的标准文件夹快捷键、Cycle Through Windows、Services 菜单、Finder 别名解析、反选、在终端中打开。
+Deselect All, Move Items Here (⌥⌘V), aligning the Copy as Pathname shortcut, New Folder with Selection, Show Package Contents, Always Open With, Print, Slideshow, Eject All, the standard folder shortcuts in the Go menu, Cycle Through Windows, the Services menu, Finder alias resolution, invert selection, open in Terminal.
 
-## 之后（M）
+## After that (M)
 
-批量重命名、Make Alias / Show Original、Recent Folders、右侧预览栏（复用 Get Info 的 FileInfo）、Customize Toolbar、Toolbar / Path Bar / Status Bar / Tab Bar 开关、Show All Tabs、Move Tab to New Window / Merge、spring-loaded folders、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、Finder 默认快捷键预设（现有命令已可逐项自定义）、最近关闭的标签列表、附加信息列、文件夹项目数 / 递归大小列。
+Batch rename, Make Alias / Show Original, Recent Folders, a preview pane on the right (reusing Get Info's FileInfo), Customize Toolbar, Toolbar / Path Bar / Status Bar / Tab Bar switches, Show All Tabs, Move Tab to New Window / Merge, spring-loaded folders, the warning when changing an extension, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (individual commands can already be customized one by one), a list of recently closed tabs, additional information columns, folder item-count / recursive-size columns.
 
-## 大件（L）
+## Big items (L)
 
-Column 视图、Gallery 视图、更完整的偏好设置（确认策略等）、图标自由摆放、废纸篓视图（需要 Full Disk Access）、Quick Actions、中文本地化、面板任意停靠 / 浮动、服务器历史 / 发现 / 重连、终端多会话与会话恢复。每目录视图属性的核心持久化已实现；完整 Show View Options 对话框、列布局持久化和递归应用仍待做。
+Column view, Gallery view, fuller preferences (confirmation policy and so on), free icon placement, a Trash view (needs Full Disk Access), Quick Actions, Chinese localization, docking / floating panels anywhere, server history / discovery / reconnect, multiple terminal sessions and terminal session restore. The core persistence of per-directory view attributes is implemented; the full Show View Options dialog, persisting the column layout and applying recursively are still to do.
 
-## 不做 / 等公开 API
+## Not doing / waiting for a public API
 
-Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私有存储）、Finder `.savedSearch` 互通（已有应用内保存搜索）、FinderSync 角标（只有 iCloud 公开）、桌面、选择模式。
+Tags, Import from iPhone (explicitly excluded by the product design); Customize Folder (private storage), Finder `.savedSearch` interchange (in-app saved searches already exist), FinderSync badges (only iCloud is public), the desktop, selection mode.
 
-## 新功能的后续验证
+## Follow-up verification for the new features
 
-- 复制 / 移动 / Duplicate 的逐任务进度、暂停 / 继续 / 取消已实现；专项自动化与实机记录见[文件操作任务](research/file-operation-tasks.md)。跨卷故障分支可注入验证，真实独立卷和真实服务器专项实测应分别记录；ZIP 压缩 / 解压工具取消、崩溃后任务恢复、废纸篓 / 删除任务化仍未实现。
-- 每目录视图属性使用应用私有路径库；原独立分支同步 `ae5e47a` 后的三轮 smoke、打包签名与实机证据见[目录视图验证记录](research/computer-use-2026-09-12-directory-views.md)，三功能组合不能复用该检查数。后续项包括递归应用子目录、列布局与逻辑页专用属性；如需目录改名 / 移动后跟随或跨挂载点恢复，应独立评估卷身份与 bookmark，不将本次路径键行为暗改为 inode 跟随。会话恢复使用独立库，本轮验证见页首。
+- Per-task progress and pause / resume / cancel for copy / move / Duplicate are implemented; the dedicated automation and hands-on records are in [file operation tasks](research/file-operation-tasks.md). The cross-volume failure branch can be verified by injection, while dedicated hands-on tests on a real separate volume and a real server should each be recorded separately; cancelling the ZIP compression / extraction tools, recovering tasks after a crash, and turning Trash / delete into tasks are still not implemented.
+- Per-directory view attributes use an app-private, path-keyed store; the three smoke runs, the package signing and the hands-on evidence produced after the standalone branch synced `ae5e47a` are in the [directory view verification record](research/computer-use-2026-09-12-directory-views.md), and the combination of the three features cannot reuse that check count. Later items include applying recursively to subdirectories, the column layout and attributes specific to logical pages; following a directory after a rename / move, or restoring across mount points, would require volume identity and bookmarks to be assessed separately, rather than quietly turning this path-keyed behaviour into inode following. Session restore uses its own store, and this round's verification is at the top of this page.
 
-- 在有用户提供的服务器时验证 SMB / NFS / WebDAV / legacy AFP 的认证、读写和掉线；当前只验证系统挂载接口与无网络状态流转。
-- [0.1.0](https://github.com/zerolfx/Tursora/releases/tag/v0.1.0) 已发布；其 ZIP 校验和、签名、版本、架构与隔离安装验证见 [Homebrew 历史记录](research/homebrew.md#初始-010-cask-的本地验证历史)。下载产物在其他机器上的首次安装 / 启动仍待验证；本地同源打包实测不替代该检查。
-- GitHub Actions 本轮成功，但 checkout / upload-artifact 的 v4 版本出现 Node 20 运行时弃用提示；后续单独升级 action 并验证构建与发布流程。
-- 终端 Shell / 字体 / 配色设置已实现；后续继续覆盖更多第三方 shell、全屏程序、真实多显示器布局和长时间运行。zsh 已实现安全提示符下单向跟随文件导航，其他 shell 自动同步与双向同步仍未实现；实现与本轮验证见[0.2.1 记录](research/terminal-navigation-0.2.1.md)。隐藏保留及 Restart 任务确认见[生命周期记录](research/terminal-session-lifecycle.md)。
-- Ghostty 已作官方源码调查，留作 0.2.0 之后的独立原型：比较中文输入、复杂 TUI、滚动 / 重绘、CPU / 内存与现有 SwiftTerm（及其可选实验 Metal 路径）。公开 VT 库不包含绘制，完整 Metal 接口仍标为内部，不能当作稳定 Swift 控件直接替换；[证据与范围](research/ghostty-embedding.md)。
-- 按[文档索引](README.md)查找对应版本和功能的验证记录；ZIP 早期操作证据见[历史实机记录](research/computer-use-2026-09-12-inline-zip.md)；历史结果不替代本次合并后的检查。ZIP 拖出手势、归档内 Quick Look / Share 和关闭开关后既有页的专项 CUA 仍可补充。
-- ZIP 浏览仍使用完整暂存，进一步评估大归档的空间与响应；密码归档、其他格式、原 ZIP 外部改变后的自动重载和归档写回未实现。
+- When a user provides a server, verify authentication, read / write and disconnection for SMB / NFS / WebDAV / legacy AFP; so far only the system mount interface and the state transitions without a network have been verified.
+- [0.1.0](https://github.com/zerolfx/Tursora/releases/tag/v0.1.0) is released; its ZIP checksum, signature, version, architecture and isolated-install verification are in the [Homebrew history](research/homebrew.md#local-verification-of-the-initial-010-cask-historical). A first install / launch of the downloaded artifact on another machine is still unverified; hands-on testing of a locally built package from the same source does not replace that check.
+- GitHub Actions succeeded this round, but the v4 versions of checkout / upload-artifact produced a Node 20 runtime deprecation notice; upgrading those actions and verifying the build and release flow is a separate follow-up.
+- The terminal's shell / font / color settings are implemented; further coverage of more third-party shells, full-screen programs, real multi-display layouts and long-running use is still to come. zsh already follows file navigation one way at a safe prompt, while automatic sync for other shells and two-way sync are still not implemented; the implementation and this round's verification are in the [0.2.1 record](research/terminal-navigation-0.2.1.md). Retention while hidden and the Restart task confirmation are in the [lifecycle record](research/terminal-session-lifecycle.md).
+- Ghostty has been investigated from its official source and is left as a separate prototype for after 0.2.0: comparing Chinese input, complex TUIs, scrolling / redraw, and CPU / memory against the current SwiftTerm (and its optional experimental Metal path). The public VT library does not include drawing, the full Metal interface is still marked internal, and it cannot be dropped in as a stable Swift control; [evidence and scope](research/ghostty-embedding.md).
+- Use the [documentation index](README.md) to find the verification record for a given version and feature; the early ZIP interaction evidence is in the [historical hands-on record](research/computer-use-2026-09-12-inline-zip.md); historical results do not replace the checks after this merge. Dedicated CUA passes for the drag-out-of-archive gesture, Quick Look / Share inside an archive, and existing pages after the switch is turned off can still be added.
+- ZIP browsing still stages the whole archive; the space and responsiveness for large archives need further assessment. Password-protected archives, other formats, reloading automatically after the original ZIP changes externally, and writing back into an archive are not implemented.
 
-## 已知的小差距
+## Known small gaps
 
-- Settings 窗口中按 ⌘W 未关闭窗口，需补窗口级关闭命令与对应回归；2026-09-12 本轮 CUA 发现。
+- ⌘W does not close the Settings window; a window-level close command and a matching regression check still need to be added; found during this round's CUA pass on 2026-09-12.
 
-- smoke test 在极窄分栏 / 超大图标档位时会输出 collection-view item width 超过可用宽度的布局警告；需补专项视觉检查及布局回归（2026-09-12）。
+- With a very narrow split or the largest icon size, the smoke test emits a layout warning that the collection-view item width exceeds the available width; a dedicated visual check and a layout regression check still need to be added (2026-09-12).
 
-- 列表与图标视图的 Return/Enter 分支 `case 36, 76 where plain` 产生编译警告：`plain` 仅限制 Enter；带修饰键的 Return 路径需另行补回归检查（2026-09-12 构建时发现）。
-- 浏览 pane 在**外部**改名后选择会丢（Info 窗口能按 inode 跟上，pane 还不能）。
-- 文件夹大小在 Info 窗口里不随内容变化实时更新（避免 FSEvents 风暴）。
-- 分组的 Size 桶边界、Kind 组顺序仍是推断。
+- The Return/Enter branch `case 36, 76 where plain` in the list and icon views produces a compiler warning: `plain` only constrains Enter; the Return path with modifier keys needs its own regression check (found during a build on 2026-09-12).
+- A browser pane loses the selection after an **external** rename (the Info window can follow by inode, a pane cannot yet).
+- Folder size in the Info window does not update live as the contents change (to avoid an FSEvents storm).
+- The Size bucket boundaries and the Kind group order used by grouping are still inferred.
 
-## 搜索后续边界
+## Search limits and follow-ups
 
-- 已实现独立递归名称搜索、Spotlight 正文、类型 / 日期 AND 条件及持久化保存搜索。见 [研究与验证](research/search.md)。
-- 后续再评估更多范围和实时结果增量；Finder `.savedSearch` 互通、ZIP 内搜索、评分 / 标签不在本轮。未索引正文仍依赖用户的系统索引设置，应用不自建全文索引。单次结果与 Spotlight 候选均有 50,000 项上限；真实正向正文命中尚待单独验证。
+- Standalone recursive name search, Spotlight content search, AND conditions on type / date, and persisted saved searches are implemented. See [research and verification](research/search.md).
+- Broader scopes and incremental live results will be assessed later; Finder `.savedSearch` interchange, searching inside ZIPs, and ratings / tags are out of scope for this round. Unindexed content still depends on the user's system indexing settings, and the app does not build its own full-text index. Both a single result set and the Spotlight candidates are capped at 50,000 items; a real positive content-search hit is still to be verified separately.
 
-- 后续评估显式同时选择符号链接与 `link/child` 时，移动 / 删除的源顺序：链接先移走会使后代路径失效。搜索不遍历链接，因此本轮搜索结果不会产生这种组合；普通展开视图或剪贴板仍可能出现。
+- Still to assess: the order of the sources when moving / deleting with a symbolic link and `link/child` both explicitly selected, since moving the link first invalidates the descendant path. Search does not traverse links, so this round's search results cannot produce that combination; an ordinary expanded view or the clipboard still can.
 
-- Folders 在 Home 根下按目录实际拼写定位；手动输入有效但大小写不同的路径时，文件浏览正常，树选中跟随仍需按卷的真实文件身份处理，不能简单把所有路径转成小写。
+- Folders locates entries under the Home root by a directory's actual spelling; when a valid path is typed in with different casing, file browsing works, but making the tree selection follow still requires handling the volume's real file identity, and cannot simply lower-case every path.

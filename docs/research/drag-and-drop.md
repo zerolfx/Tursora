@@ -1,18 +1,18 @@
-# 拖放行为：弹簧文件夹、面包屑投放、⌘ 强制移动
+# Drag and drop: spring-loaded folders, breadcrumb drops, ⌘ force move
 
-本记录覆盖三项 Finder 拖放行为在 Tursora 中的落地：**弹簧加载文件夹**（spring-loaded folders）、**面包屑分段作为投放目标**、**⌘ 拖拽强制移动**。共享投放规则仍然是 `FileOperations.dropOperation(for:into:sourceMask:)`；本次只新增 ⌘ 分支，其余判定未改。
+This record covers how three Finder drag-and-drop behaviours landed in Tursora: **spring-loaded folders**, **breadcrumb segments as drop targets**, and **⌘-drag force move**. The shared drop rule is still `FileOperations.dropOperation(for:into:sourceMask:)`; only the ⌘ branch is new this time, and the rest of the decision is unchanged.
 
-相关代码：`app/Sources/Tursora/Model/DragAndDrop.swift`、`app/Sources/Tursora/UI/SpringLoading.swift`、`app/Sources/Tursora/UI/BreadcrumbBar.swift`、`app/Sources/Tursora/DragAndDropSmokeTests.swift`。
+Related code: `app/Sources/Tursora/Model/DragAndDrop.swift`, `app/Sources/Tursora/UI/SpringLoading.swift`, `app/Sources/Tursora/UI/BreadcrumbBar.swift`, `app/Sources/Tursora/DragAndDropSmokeTests.swift`.
 
 ---
 
-## 1. 取证（本机实际读取）
+## 1. Evidence (actually read on this machine)
 
-### 1.1 AppKit 头文件 —— `NSDragOperation` 与弹簧加载协议
+### 1.1 AppKit headers — `NSDragOperation` and the spring-loading protocol
 
-来源：`/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/AppKit.framework/Headers/NSDragging.h`（Xcode Command Line Tools，macOS 26 SDK）。
+Source: `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/AppKit.framework/Headers/NSDragging.h` (Xcode Command Line Tools, macOS 26 SDK).
 
-**已观测**（第 25–33 行）：
+**Observed** (lines 25–33):
 
 ```
 NSDragOperationNone    = 0,
@@ -24,15 +24,15 @@ NSDragOperationMove    = 16,
 NSDragOperationDelete  = 32,
 ```
 
-**已观测**（第 165–198 行）：`NSSpringLoadingOptions`（`NSSpringLoadingDisabled` / `NSSpringLoadingEnabled` / `NSSpringLoadingContinuousActivation` / `NSSpringLoadingNoHover`，macOS 10.11+）与 `NSSpringLoadingDestination` 协议：必需方法 `springLoadingActivated:draggingInfo:`、`springLoadingHighlightChanged:`，可选 `springLoadingEntered:` / `springLoadingUpdated:` / `springLoadingExited:` / `draggingEnded:`。头文件对 `NSSpringLoadingEnabled` 的注释原文说明激活方式是「Force Click release and hover timeout **depending on user preferences**」——**计时器属于系统，应用不实现它**。
+**Observed** (lines 165–198): `NSSpringLoadingOptions` (`NSSpringLoadingDisabled` / `NSSpringLoadingEnabled` / `NSSpringLoadingContinuousActivation` / `NSSpringLoadingNoHover`, macOS 10.11+) and the `NSSpringLoadingDestination` protocol: the required methods `springLoadingActivated:draggingInfo:` and `springLoadingHighlightChanged:`, the optional `springLoadingEntered:` / `springLoadingUpdated:` / `springLoadingExited:` / `draggingEnded:`. The header's own comment on `NSSpringLoadingEnabled` says that activation happens by "Force Click release and hover timeout **depending on user preferences**" — **the timer belongs to the system; the application does not implement it**.
 
-**已观测的空缺（重要）**：该头文件**没有**记录「修饰键 → 掩码收窄」的映射。全文与修饰键有关的只有 `ignoreModifierKeysForDraggingSession:`（第 159 行）和一条已废弃的 `ignoreModifierKeysWhileDragging`（第 207 行）；`draggingSourceOperationMask`（第 72 行）只被描述为「拖拽源的操作掩码」。在 `NSDragging.h` 与 `NSPasteboard.h` 中检索 `option key` / `command key` / `control key` / `modifier` 均无映射说明。
+**An observed gap (important)**: this header does **not** document any "modifier key → mask narrowing" mapping. The only modifier-related items in the whole file are `ignoreModifierKeysForDraggingSession:` (line 159) and a deprecated `ignoreModifierKeysWhileDragging` (line 207); `draggingSourceOperationMask` (line 72) is described only as the operation mask of the drag source. Searching `NSDragging.h` and `NSPasteboard.h` for `option key`, `command key`, `control key` and `modifier` produced no description of the mapping.
 
-**推断（未能由本机头文件证实）**：⌥ → `.copy`、⌃ → `.link`、⌘ → `.generic` 是 AppKit 运行期行为（Apple *Drag and Drop Programming Topics* 的长期约定），本次按此实现。落地方式是**只放宽拖拽源的供给**而不猜测收窄逻辑：源掩码加入 `.generic`，目的地读回 `NSDraggingInfo.draggingSourceOperationMask`，若正好等于 `.generic` 即判定为 ⌘。若某个 macOS 版本的实际映射不同，表现是「⌘ 拖拽退化为普通拖拽」，而不是错误的文件操作——这是有意选择的失败方向。无头运行无法产生真实修饰键拖拽，因此本条**只有规则级验证，没有真实 ⌘ 拖拽的自动化证据**。
+**Inferred (could not be confirmed from the headers on this machine)**: that ⌥ → `.copy`, ⌃ → `.link` and ⌘ → `.generic` is AppKit runtime behaviour (the long-standing convention from Apple's *Drag and Drop Programming Topics*), and the implementation follows it. It does so by **only widening what the drag source offers** rather than guessing the narrowing logic: `.generic` is added to the source mask, the destination reads `NSDraggingInfo.draggingSourceOperationMask` back, and a mask exactly equal to `.generic` is taken to mean ⌘. If the real mapping differs on some macOS version, the result is that a ⌘ drag degrades into an ordinary drag rather than the wrong file operation — a deliberately chosen direction in which to fail. A headless run cannot produce a real modifier-key drag, so this item has **rule-level verification only, with no automated evidence from a real ⌘ drag**.
 
-### 1.2 Finder 的弹簧加载
+### 1.2 Spring loading in Finder
 
-命令与输出（本机）：
+Commands and output (on this machine):
 
 ```
 $ strings -a /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder | grep -i spring | sort -u
@@ -59,13 +59,13 @@ $ defaults read -g com.apple.springing.enabled   → 1
 $ defaults read -g com.apple.springing.delay     → 0.5
 ```
 
-**已观测结论**：Finder 自己就采用 `NSSpringLoadingDestination`；开关与延迟存放在全局域 `com.apple.springing.enabled` / `com.apple.springing.delay`（本机为开启、0.5 秒）。因此 Tursora **不自建计时器**，只声明目的地，延迟与开关由系统统一决定；Tursora 的 `DragAndDrop.systemSpringLoadingDelay` 只读取该键用于诊断与冒烟记录。
+**Observed conclusion**: Finder itself uses `NSSpringLoadingDestination`; the switch and the delay live in the global domain as `com.apple.springing.enabled` and `com.apple.springing.delay` (enabled and 0.5 seconds on this machine). Tursora therefore **builds no timer of its own** and only declares the destination, leaving the delay and the switch to be decided uniformly by the system; Tursora's `DragAndDrop.systemSpringLoadingDelay` only reads that key, for diagnostics and for the smoke-test record.
 
-**已观测**：`_springRememberedTargetPath`、`_springCloseWhenDragLeavesWindow` 等符号说明 Finder 会在拖拽离开后回滚它弹开的窗口。**Tursora 未实现回滚**（见 §4 边界）。
+**Observed**: symbols such as `_springRememberedTargetPath` and `_springCloseWhenDragLeavesWindow` show that Finder rolls back the windows it sprang open once the drag has left. **Tursora does not implement that rollback** (see the limits in §4).
 
-**文案取证**：`Base.lproj/*.nib` 与 `en.lproj/Localizable.strings`、`LocalizableMerged.strings` 中检索 `spring` 均无命中（`strings -a .../Base.lproj/PreferencesWindow.nib | grep -i spring` 无结果）。本次实现**没有新增任何用户可见文案、菜单项或对话框**，因此不存在需要对标 Finder 措辞的地方；上文标题中的「弹簧文件夹」只是本记录的中文说法，不出现在界面上。
+**Wording evidence**: searching `Base.lproj/*.nib`, `en.lproj/Localizable.strings` and `LocalizableMerged.strings` for `spring` produced no hits (`strings -a .../Base.lproj/PreferencesWindow.nib | grep -i spring` returned nothing). This implementation **adds no user-visible wording, menu item or dialog at all**, so there is nothing here whose phrasing would have to match Finder's; "spring-loaded folders" in the title above is only this record's own shorthand and does not appear in the interface.
 
-### 1.3 Finder 的路径栏（面包屑）
+### 1.3 Finder's path bar (breadcrumbs)
 
 ```
 $ strings -a /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder | grep -i pathbar | sort -u
@@ -77,67 +77,67 @@ ShowPathbar / ShowEphemeralPathBar / PathBarRootAtHome / SingleClickPathBarRetar
 ...
 ```
 
-**已观测**：Finder 的路径栏建立在 `NSPathControl` 之上（`pathControlSingleClick:`、`pathSelect:didSelectNode:`）。`NSPathControl.h` 第 34 行与第 105–116 行记录了它的投放支持：可编辑时接受拖入，`pathControl:validateDrop:` / `pathControl:acceptDrop:` 可自定义。
+**Observed**: Finder's path bar is built on `NSPathControl` (`pathControlSingleClick:`, `pathSelect:didSelectNode:`). Line 34 and lines 105–116 of `NSPathControl.h` document its drop support: it accepts drops when editable, and `pathControl:validateDrop:` / `pathControl:acceptDrop:` allow customisation.
 
-**推断**：`NSPathControl` 的默认投放语义是「改变控件的值」，而**「把文件拖到某一段就把文件搬进那个文件夹」是 Finder 自己的行为**，无法从上述符号直接证实；本记录在无屏幕访问的条件下写成，未做 Finder 的人工对照观察。Tursora 采用的语义是「与列表/网格/侧栏/文件夹树/标签条完全相同的共享规则，目标是该分段所指的文件夹」——这是与本项目既有规则一致的选择，而不是对 Finder 的复刻声明。
-
----
-
-## 2. 已实现的行为
-
-### 2.1 ⌘ 强制移动
-
-`FileOperations.dropOperation` 的判定顺序（只新增第 4 步）：
-
-1. 空拖拽 → 拒绝。
-2. 目标就是被拖对象之一 → 拒绝。
-3. `sourceMask == .copy`（⌥）→ 复制，**始终**。
-4. 拖入自己所在的文件夹 → 拒绝。
-5. **`sourceMask == .generic`（⌘）→ 移动，跨卷也移动。**（新增）
-6. 同卷移动 / 跨卷复制。
-
-拖拽源掩码集中在 `DragAndDrop.sourceMask(readOnly:local:)`：可写来源本地 `[.copy, .move, .generic]`、外部 `[.copy, .move, .link, .generic]`；只读来源（ZIP 条目）仍然只给 `.copy`，因此 ⌘/⌃ 在只读来源上收窄为空掩码、投放被拒——归档内容可以拷出但不可移动，这一条未变。
-
-`DragAndDrop.validationOperation(_:sourceMask:)`：AppKit 把 ⌘ 拖拽的掩码收窄为 `.generic`，验证方法必须回答在该掩码之内，否则目的地会停止接受；因此规则判定为 `.move` 时对 AppKit 回答 `.generic`。实际执行不受影响——`BrowserViewController.dropFiles` 把一切非 `.copy` 的操作当作移动。两个文件视图与文件夹树的 `validateDrop` 都改为经过这一层；`acceptDrop` 仍然直接用共享规则，传给 `onDropFiles` 的仍是 `.move`。
-
-### 2.2 弹簧加载文件夹
-
-- `FileOutlineView`、`FileCollectionView`、`SidebarOutlineView`（侧栏与文件夹树共用）以扩展方式声明 `NSSpringLoadingDestination`，不新增存储属性：视图通过自己的 `dataSource` / `delegate` 找到所属控制器（`SpringLoadingHost`）。
-- 视图**只负责报告**：把指针位置、拖拽的 URL 和收窄后的掩码交给控制器；导航由控制器完成。**视图不触碰文件系统**，弹簧加载本身不移动/复制任何东西。
-- 判定 `DragAndDrop.canSpringLoad(into:isNavigable:isReadOnly:urls:sourceMask:)`：只在「投放会被接受」的地方弹开，并且额外排除文件、只读面板、归档位置、被拖对象自身、以及被拖对象已经在的那个文件夹（⌥ 拖拽也排除——共享规则对 ⌥ 会回答 `.copy`，但那不是用户要求的导航）。
-- 各目的地的动作：列表 / 网格 → 面板导航进该文件夹；Places 侧栏 → 选中该位置（`onSpringLoad` 由 `MainWindowController` 接到 `browser.navigate`）；文件夹树 → **就地展开节点**，面板不导航。
-- 现有投放校验完全未改。
-- 无头测试入口：`activateSpringLoading(atRow:urls:sourceMask:)`（列表/侧栏/文件夹树）与 `activateSpringLoading(at:urls:sourceMask:)`（网格，按 `IndexPath`），即 AppKit 计时器到点后会走的同一条路径。
-
-### 2.3 面包屑投放
-
-`BreadcrumbBar` 注册 `.fileURL`，每个**可见**分段是一个投放目标：
-
-- `segmentIndex(at:)` 只命中未折叠的分段按钮；`…` 溢出菜单里的隐藏分段**不是**目标（本次范围之外）。
-- `dropOperation(for:atSegment:sourceMask:)` 用共享规则针对该分段的 URL 判定，并拒绝归档位置与编辑态（路径输入框展开时整条栏不接受投放）。
-- `performDrop(urls:sourceMask:onSegment:)` 调用 `onDropFiles`，由 `BrowserViewController` 接到既有的 `dropFiles(_:to:op:)`——撤销、`DirectoryChanges.post`、冲突处理、传输任务全部沿用既有路径。
-- 悬停时该分段高亮（一层 `selectedContentBackgroundColor` 的半透明底），拖拽离开或结束即清除。
+**Inferred**: the default drop semantics of `NSPathControl` are "change the control's value", whereas **"dropping files on a segment moves them into that folder" is Finder's own behaviour**, which cannot be confirmed directly from the symbols above; this record was written without screen access, and no manual side-by-side observation of Finder was made. The semantics Tursora adopts are "exactly the same shared rule as the list, the grid, the sidebar, the folder tree and the tab bar, with the folder the segment points at as the target" — a choice consistent with this project's existing rules, not a claim to reproduce Finder.
 
 ---
 
-## 3. 验证
+## 2. Implemented behaviour
 
-`DragAndDropSmokeTests`（`checkPrefix = "drag and drop: "`）：
+### 2.1 ⌘ force move
 
-- **纯规则**：源掩码（可写/只读、本地/外部、⌘ 在只读来源上收窄为空）；`validationOperation` 的四种情形；`dropOperation` 的同卷移动、跨卷复制、⌥ 复制、⌘ 同卷移动、⌘ 跨卷移动、⌘ 仍拒绝自身与自己所在文件夹、空拖拽拒绝。跨卷用「不存在的目标路径」作替身——它没有卷标识符，`sameVolume` 因此为假，无需挂载任何卷。
-- **纯弹簧规则**：文件不弹、自身不弹、自己所在文件夹不弹（普通与 ⌥ 两种掩码）、只读不弹、拖拽结束（URL 为空）不弹、无目标不弹；`springLoadingOptions` 与 `canSpringLoad` 一致；系统延迟键可读。
-- **面包屑**（details 与 icons 两种视图、带分屏与分组）：末段是当前目录、前一段是父目录；拖入父段为移动、⌥ 为复制、⌘ 为移动、拖到自己所在的那段被拒、空白处被拒、空拖拽被拒；按钮命中测试；编辑态整条栏拒绝；真实投放后文件确实搬到父目录。
-- **弹簧加载 UI**（details 与 icons、带分屏与分组）：文件行/图标不弹、已在该文件夹的拖拽不弹、拖拽结束不弹、越界行/索引不弹、分组标题行不弹、只读面板不弹；悬停文件夹弹开一次且只弹一次，面板导航进去，分屏另一侧不动，且没有任何文件被移动。
-- **侧栏与文件夹树**：分区标题不弹、拖拽结束不弹、悬停收藏项弹开并报告该位置；文件夹树节点就地展开且面板不导航；两者都不移动文件。收藏顺序在套件结束时还原。
+The decision order in `FileOperations.dropOperation` (only step 4 is new):
 
-夹具目录为 `$TMPDIR/tursora-drag-drop-<UUID>`，用后删除；不读取也不改写用户的真实文件或偏好（`favouritesOrder` 保存后还原）。
+1. An empty drag → reject.
+2. The target is one of the dragged items → reject.
+3. `sourceMask == .copy` (⌥) → copy, **always**.
+4. Dropping into the folder the items are already in → reject.
+5. **`sourceMask == .generic` (⌘) → move, across volumes as well.** (new)
+6. Same-volume move / cross-volume copy.
+
+The drag source masks are centralised in `DragAndDrop.sourceMask(readOnly:local:)`: a writable local source gets `[.copy, .move, .generic]` and an external one `[.copy, .move, .link, .generic]`; a read-only source (a ZIP entry) still gets only `.copy`, so on a read-only source ⌘ and ⌃ narrow to an empty mask and the drop is rejected — archive contents can be copied out but not moved, which is unchanged.
+
+`DragAndDrop.validationOperation(_:sourceMask:)`: AppKit narrows the mask of a ⌘ drag to `.generic`, and the validation method has to answer within that mask or the destination stops accepting; so when the rule decides `.move`, the answer given to AppKit is `.generic`. Execution is unaffected — `BrowserViewController.dropFiles` treats every operation that is not `.copy` as a move. `validateDrop` in both file views and in the folder tree now goes through this layer; `acceptDrop` still uses the shared rule directly, and what is passed to `onDropFiles` is still `.move`.
+
+### 2.2 Spring-loaded folders
+
+- `FileOutlineView`, `FileCollectionView` and `SidebarOutlineView` (shared by the sidebar and the folder tree) declare `NSSpringLoadingDestination` in an extension, adding no stored properties: each view finds its owning controller (`SpringLoadingHost`) through its own `dataSource` or `delegate`.
+- The views **only report**: they hand the pointer location, the dragged URLs and the narrowed mask to the controller, and the controller does the navigating. **The views never touch the filesystem**, and spring loading itself moves or copies nothing.
+- The decision is `DragAndDrop.canSpringLoad(into:isNavigable:isReadOnly:urls:sourceMask:)`: it springs open only where a drop would be accepted, and additionally excludes files, read-only panes, archive locations, the dragged items themselves, and the folder the dragged items are already in (⌥ drags are excluded there too — the shared rule answers `.copy` for ⌥, but that is not the navigation the user asked for).
+- What each destination does: list and grid → the pane navigates into that folder; the Places sidebar → that place is selected (`onSpringLoad` is wired by `MainWindowController` to `browser.navigate`); the folder tree → **the node expands in place** and the pane does not navigate.
+- The existing drop validation is entirely unchanged.
+- Headless test entry points: `activateSpringLoading(atRow:urls:sourceMask:)` (list, sidebar, folder tree) and `activateSpringLoading(at:urls:sourceMask:)` (grid, by `IndexPath`) — the same path AppKit takes once its timer fires.
+
+### 2.3 Breadcrumb drops
+
+`BreadcrumbBar` registers `.fileURL`, and every **visible** segment is a drop target:
+
+- `segmentIndex(at:)` only hits segment buttons that are not collapsed; segments hidden in the `…` overflow menu are **not** targets (out of scope this time).
+- `dropOperation(for:atSegment:sourceMask:)` applies the shared rule to that segment's URL, and rejects archive locations and the editing state (while the path text field is open, the whole bar accepts no drops).
+- `performDrop(urls:sourceMask:onSegment:)` calls `onDropFiles`, which `BrowserViewController` wires to the existing `dropFiles(_:to:op:)` — undo, `DirectoryChanges.post`, conflict handling and transfer tasks all follow the existing path.
+- While hovered, the segment is highlighted (a translucent layer of `selectedContentBackgroundColor` behind it), and the highlight clears as soon as the drag leaves or ends.
 
 ---
 
-## 4. 边界与未做
+## 3. Verification
 
-- **⌘/⌥/⌃ 的真实修饰键拖拽没有自动化证据**：无头运行不能产生真实拖拽会话，只能验证规则与掩码。本机头文件也没有记录该映射（§1.1）。
-- **溢出菜单里的隐藏面包屑分段不是投放目标**，按任务范围有意排除。
-- **不做 Finder 的「弹开后回滚」**：Finder 会记住弹开前的窗口与视图并在拖拽离开后还原（`_springRememberedTargetPath` 等）；Tursora 弹开后就停在那里。
-- **Force Click 激活未验证**：`NSSpringLoadingEnabled` 同时支持 hover 与 Force Click，本次未设 `NSSpringLoadingContinuousActivation`，也没有触控板压感的自动化验证。
-- **没有计算机使用（截图/人工对照）证据**：本记录全部来自本机的二进制/头文件/`defaults` 读取与冒烟测试，没有对 Finder 或打包后的 Tursora 做视觉观察。
+`DragAndDropSmokeTests` (`checkPrefix = "drag and drop: "`):
+
+- **Pure rules**: the source masks (writable / read-only, local / external, ⌘ narrowing to empty on a read-only source); the four cases of `validationOperation`; and, for `dropOperation`, same-volume move, cross-volume copy, ⌥ copy, ⌘ same-volume move, ⌘ cross-volume move, ⌘ still rejecting the items themselves and the folder they are already in, and an empty drag rejected. The cross-volume case uses a non-existent target path as a stand-in — it has no volume identifier, so `sameVolume` is false and no volume has to be mounted.
+- **Pure spring rules**: no spring for a file, for the items themselves, or for the folder they are already in (with both the ordinary and the ⌥ mask); no spring for a read-only location, for the end of a drag (empty URLs), or with no target; `springLoadingOptions` agrees with `canSpringLoad`; the system delay key is readable.
+- **Breadcrumbs** (in both the details and the icons view, with split panes and grouping): the last segment is the current directory and the one before it is the parent; a drop on the parent segment is a move, ⌥ is a copy, ⌘ is a move, a drop on the segment the items are already in is rejected, a drop on empty space is rejected, and an empty drag is rejected; button hit-testing; the whole bar rejecting drops in the editing state; and, after a real drop, the file really did move to the parent directory.
+- **Spring-loading UI** (details and icons, with split panes and grouping): no spring on a file row or icon, no spring for a drag already in that folder, no spring at the end of a drag, no spring for an out-of-range row or index, no spring on a group header row, no spring in a read-only pane; hovering a folder springs it open once and only once, the pane navigates into it, the other side of the split does not move, and no file is moved.
+- **Sidebar and folder tree**: no spring on a section header, no spring at the end of a drag, and hovering a favourite springs it open and reports that location; a folder-tree node expands in place and the pane does not navigate; neither moves any file. The favourites order is restored when the suite finishes.
+
+The fixture directory is `$TMPDIR/tursora-drag-drop-<UUID>`, deleted after use; the user's real files and preferences are neither read nor rewritten (`favouritesOrder` is saved and then restored).
+
+---
+
+## 4. Limits and what was not done
+
+- **There is no automated evidence for real ⌘/⌥/⌃ modifier-key drags**: a headless run cannot produce a real dragging session, so only the rules and the masks can be verified. The headers on this machine do not document that mapping either (§1.1).
+- **Breadcrumb segments hidden in the overflow menu are not drop targets**, deliberately excluded by the scope of the task.
+- **Finder's "roll back after springing open" is not implemented**: Finder remembers the window and the view from before it sprang open and restores them once the drag leaves (`_springRememberedTargetPath` and the like); Tursora stays where it sprang to.
+- **Force Click activation is not verified**: `NSSpringLoadingEnabled` supports both hover and Force Click; `NSSpringLoadingContinuousActivation` was not set this time, and there is no automated verification of trackpad pressure.
+- **There is no computer-use evidence (screenshots or manual side-by-side comparison)**: everything in this record comes from reading binaries, headers and `defaults` on this machine, plus the smoke tests; no visual observation was made of Finder or of the packaged Tursora.

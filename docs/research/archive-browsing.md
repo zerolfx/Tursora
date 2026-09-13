@@ -1,39 +1,39 @@
-# 当前 pane 的 ZIP 浏览实验（2026-09-12）
+# The Current-Pane ZIP Browsing Experiment (2026-09-12)
 
-> 下文保留 2026-09-12 初版与验证记录；2026-09-13 起两项功能默认启用，开关保留，新增取消 / 重试及终端状态打磨见[后续记录](default-features-polish.md)。
+> What follows keeps the first version and the verification record from 2026-09-12; since 2026-09-13 the two features are enabled by default with the toggles kept, and the new cancel / retry and the terminal status polish are in the [follow-up record](default-features-polish.md).
 
-用户希望借鉴 Windows Explorer：打开 ZIP 后按目录层级浏览，并直接打开其中的文件。实验仍默认关闭；启用后，普通目录的 Open / 双击在当前 pane 进入 ZIP，不再建立另一种独立浏览窗口。
+The user wanted to borrow from Windows Explorer: once a ZIP is open, browse it by directory level and open the files inside directly. The experiment is still off by default; once it is enabled, Open / double-click on a ZIP in a normal directory enters it in the current pane instead of creating another kind of separate browsing window.
 
-## 参考与取舍
+## References and Trade-offs
 
-Microsoft 的[ZIP 与解压说明](https://support.microsoft.com/en-us/windows/experience/storage-filemanagement/zip-and-unzip-files)说明可以打开压缩文件夹查看内容，并将项目拖到其他位置取出。本实验借鉴这种目录式浏览与拖出复制；不声称实现 Windows 的完整归档写入能力，也不把 ZIP 浏览说成 Finder 的默认打开行为。
+Microsoft's [note on ZIP and unzipping](https://support.microsoft.com/en-us/windows/experience/storage-filemanagement/zip-and-unzip-files) explains that a compressed folder can be opened to view its contents, and that items can be dragged elsewhere to take them out. This experiment borrows that directory-style browsing and drag-out copying; it does not claim to implement Windows' full archive writing capability, and it does not present ZIP browsing as Finder's default open behaviour.
 
-归档内容使用现有 BrowserViewController、DirectoryModel 与列表 / 图标视图，保留分组、排序、缩放、名称过滤、标签与分栏。状态栏仅增加 `ZIP · Read-only`；tooltip 解释临时副本和 Save As，没有额外范围栏、独立窗口或 Extract All 按钮。显式 Extract 仍用于在普通目录选中的 ZIP。
+Archive content uses the existing BrowserViewController, DirectoryModel and the list / icon views, keeping grouping, sorting, zoom, name filtering, tabs and split panes. The status bar only adds `ZIP · Read-only`; a tooltip explains the temporary copy and Save As, and there is no extra scope bar, separate window or Extract All button. An explicit Extract is still used for a ZIP selected in a normal directory.
 
-首次进入时，后台将整个 ZIP 解压到权限为 `0700` 的独占临时目录；不是按条目读取的虚拟文件系统。该选择复用安全解压路径，多文件文档和应用包也能找到同目录依赖；代价是大 ZIP 初次打开需要完整解压的时间和磁盘空间。没有启用实验、没有打开 ZIP 时不会做这些工作。归档原始根结构保留：不省去单个顶层文件夹，不额外包装多个顶层项目，空 ZIP 显示空目录。
+On first entry the whole ZIP is expanded in the background into an exclusive temporary directory with permissions `0700`; this is not a virtual filesystem that reads entry by entry. That choice reuses the safe extraction path, and multi-file documents and application bundles can still find their dependencies in the same directory; the cost is the time and disk space a full extraction takes the first time a large ZIP is opened. None of this work happens when the experiment is not enabled and no ZIP has been opened. The archive's original root structure is preserved: a single top-level folder is not elided, multiple top-level items are not wrapped in anything extra, and an empty ZIP shows an empty directory.
 
-## 逻辑导航与只读边界
+## Logical Navigation and the Read-only Boundary
 
-`ArchiveWorkspace` 为同一 ZIP 共用并保留 `ArchiveBrowsingSession`。`ArchiveFileProvider` 将临时目录条目映射成原 ZIP 路径下的逻辑 file URL，例如 `/Downloads/Sample.zip/Notes/readme.txt`；这些 URL 是应用内位置，不表示磁盘上存在同名目录。`FileItem.url` 用于导航与身份，读取内容时才解析到安全的临时副本。
+`ArchiveWorkspace` shares and retains an `ArchiveBrowsingSession` for the same ZIP. `ArchiveFileProvider` maps temporary-directory entries to logical file URLs under the original ZIP path, for example `/Downloads/Sample.zip/Notes/readme.txt`; those URLs are locations inside the app and do not mean that a directory of the same name exists on disk. `FileItem.url` is used for navigation and identity, and is resolved to the safe temporary copy only when content is read.
 
-地址栏、面包屑、历史菜单、标签与分栏始终使用逻辑路径。⌘L 可以输入 ZIP 根或内部目录；尚未准备的归档先在后台准备，再确认目标是目录，输入普通文件不会启动外部应用。已准备目录的补全与子目录菜单使用同一安全条目模型。Back / Forward 可以跨越 ZIP 和普通目录；ZIP 根的 Up 返回原 ZIP 所在目录并选中 ZIP。进入内部子目录仍沿用普通目录的过滤清空规则。
+The address bar, breadcrumbs, the history menu, tabs and split panes always use the logical path. ⌘L accepts the ZIP root or an internal directory; an archive that is not prepared yet is prepared in the background first, then the target is confirmed to be a directory, and entering a normal file does not launch an external app. Completion and the subdirectory menu for an already prepared directory use the same safe entry model. Back / Forward can cross between a ZIP and normal directories; Up at the ZIP root returns to the directory containing the original ZIP and selects the ZIP. Entering an internal subdirectory still follows the normal directory's rule for clearing the filter.
 
-所有归档页保持只读。禁用新建、重命名、剪切、粘贴、拖入、删除、Duplicate、内部 Compress / Extract、移动到另一 pane，以及可修改文件的 Get Info / Inspector。复制到普通目录与拖出仅执行 copy；Quick Look、Share、缩略图与显式 Open 读取经校验的临时副本。准备、列目录和选择项目不会调用外部打开器。普通文件的双击或 Open（⌘↓）才交给默认应用；Return 保留普通文件视图的改名含义，在只读归档内不执行改名。
+Every archive page stays read-only. New, rename, cut, paste, drag-in, delete, Duplicate, internal Compress / Extract, moving to the other pane, and the Get Info / Inspector fields that could modify a file are all disabled. Copying to a normal directory and dragging out only perform a copy; Quick Look, Share, thumbnails and an explicit Open read the validated temporary copy. Preparing, listing a directory and selecting an item never invoke an external opener. Only a double-click or Open (⌘↓) on a normal file hands it to the default app; Return keeps the rename meaning it has in the normal file view and does not rename anything inside a read-only archive.
 
-窗口的 represented URL 使用原 ZIP；终端的启动 / Restart 目标使用原 ZIP 所在目录，不能把临时快照当作工作目录。关闭实验开关不打断已有只读页、历史和补全；普通目录中新打开 ZIP 恢复默认 Extract。
+The window's represented URL uses the original ZIP; the terminal's Start / Restart target uses the directory containing the original ZIP, because the temporary snapshot must not be treated as a working directory. Turning the experiment's toggle off does not interrupt existing read-only pages, history or completion; a ZIP newly opened in a normal directory goes back to the default Extract.
 
-## 路径、生命周期与文件保护
+## Paths, Lifecycle and File Protection
 
-解压继续使用 [Finder 归档研究](finder-archives.md) 中的安全路径，包括 libarchive 路径保护、无密码询问、资源叉恢复及下载 quarantine 传递。导航与内容读取同时检查词法路径和解析符号链接后的路径，按完整路径组件判断包含关系；使用时再次校验，防止外部编辑器将副本替换成越界链接。指向归档外部的符号链接可以显示名称，但不能读取目标元数据、导航或传给外部打开器。
+Extraction continues to use the safe path from the [Finder archive research](finder-archives.md), including libarchive path protection, no password prompt, resource fork restoration and download quarantine propagation. Navigation and content reading check both the lexical path and the path with symbolic links resolved, judging containment by whole path components; they are validated again at the moment of use, to stop an external editor replacing the copy with a link that points out of bounds. A symbolic link pointing outside the archive can show its name, but its target's metadata cannot be read, navigated to, or handed to an external opener.
 
-离开归档、关闭标签页或窗口都不删除副本，以免外部应用丢失正在使用的文件。Tursora 正常退出时清理准备中与已完成会话的自有目录；退出后才完成的准备结果也会丢弃和清理。临时目录记录创建时的文件 ID，清理前确认仍是原来的自有目录；删除内部符号链接时不跟随其指向。
+Leaving the archive, closing the tab or closing the window do not delete the copy, so that an external app does not lose the file it is using. When Tursora quits normally it cleans up the directories it owns for sessions that are still being prepared as well as finished ones; a preparation that only finishes after the quit is discarded and cleaned up too. The temporary directory records the file ID it had when it was created, and before cleanup it is confirmed to still be the same directory the app owns; internal symbolic links are not followed when they are deleted.
 
-外部应用可能修改临时副本，但没有重新压缩或写回源 ZIP 的路径。需要保留修改必须 Save As 到普通目录。崩溃或强制终止后的临时目录由系统临时文件生命周期管理，不提供编辑恢复功能。
+An external app may modify the temporary copy, but there is no path that recompresses it or writes it back to the source ZIP. Keeping a modification requires Save As into a normal directory. A temporary directory left behind by a crash or a forced termination is governed by the system's temporary-file lifecycle, and no edit recovery is offered.
 
-## 验证状态与限制
+## Verification Status and Limits
 
-后续默认开启、取消与恢复的验证范围见[功能完善记录](default-features-polish.md)；同 pane 导航、只读菜单、外部打开副本、复制与撤销的操作证据见[实机记录](computer-use-2026-09-12-inline-zip.md)。该记录分别列出自动化覆盖和未逐项实测的交互，本文只维护行为与实现边界。
+For the scope of the later verification of enabling by default, cancelling and restoring see the [feature polish record](default-features-polish.md); for the operational evidence of same-pane navigation, the read-only menu, opening a copy externally, copying and undo see the [packaged-app record](computer-use-2026-09-12-inline-zip.md). That record lists automated coverage separately from the interactions that were not measured one by one; this document only maintains behaviour and implementation boundaries.
 
-**历史证据：旧独立窗口实现。** 2026-09-12 曾在打包应用中检查独立 ZIP 窗口布局、原始根结构、嵌套目录和 Back / Up；Return 将文本交给 TextEdit，确认读取临时副本，关闭 ZIP 窗口后副本仍可读。旧窗口的只读 / Save As 说明、关闭实验后恢复解压也已检查。详见[实机检查记录](computer-use-2026-09-12.md)。这些结果说明旧实现当时的行为，不能视为当前 pane 导航与菜单已通过实测。
+**Historical evidence: the old separate-window implementation.** On 2026-09-12 the separate ZIP window's layout, original root structure, nested directories and Back / Up were checked in the packaged app; Return handed text to TextEdit, confirming that the temporary copy was read, and the copy was still readable after the ZIP window was closed. The old window's read-only / Save As wording and the return to extraction after the experiment was turned off were checked as well. See the [packaged-app check record](computer-use-2026-09-12.md) for the detail. These results describe how the old implementation behaved at the time and cannot be taken as the current pane navigation and menus having passed a test on a real machine.
 
-当前不支持归档写回、密码、其他压缩格式、递归 / 内容搜索或原 ZIP 外部改变后的自动重载。普通 Open 将归档内嵌套 ZIP 作为文件交给系统关联应用，不自动递归进入另一个归档。当前目录名称过滤、拖出复制和 Quick Look 已纳入同 pane 实现，不能再列为未实现项。
+There is currently no support for writing back to an archive, for passwords, for other compression formats, for recursive / content search, or for automatic reload after the original ZIP changes externally. A plain Open hands a nested ZIP inside an archive to the system's associated app as a file and does not recurse into another archive automatically. Name filtering in the current directory, drag-out copying and Quick Look are part of the same-pane implementation and can no longer be listed as not implemented.

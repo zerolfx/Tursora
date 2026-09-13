@@ -1,28 +1,28 @@
-# 应用图标的方形边缘
+# The square edge on the app icon
 
-用户截图显示应用图标带着突兀的方形外沿；本地旧 PNG / ICNS 的外角也是不透明像素。这是本轮修复的直接依据。旧提示词把背景画满方形画布，并假设系统会再裁圆角；这不能作为当前手工打包 `.icns` 的交付规则。
+A screenshot from the user shows the app icon with an abrupt square outer edge; the outer corners of the older local PNG / ICNS are opaque pixels too. That is the direct basis for this round's fix. The old prompt filled the whole square canvas with background and assumed the system would clip the rounded corners afterwards; that cannot serve as the delivery rule for the `.icns` we currently package by hand.
 
-## 管线与修复
+## The pipeline and the fix
 
-Tursora 使用 `CFBundleIconFile` 指向打包的 `AppIcon.icns`。Apple 的 [Icon Composer 文档](https://developer.apple.com/documentation/Xcode/creating-your-app-icon-using-icon-composer) 描述分层图形加入 Icon Composer / Xcode、由该管线生成各平台与外观资源的流程。该文档中的自动裁切说明适用于其所述流程；本应用没有采用该管线，不能据此推断手工交付的不透明 `.icns` 会自动得到同样处理。
+Tursora uses `CFBundleIconFile` to point at the packaged `AppIcon.icns`. Apple's [Icon Composer documentation](https://developer.apple.com/documentation/Xcode/creating-your-app-icon-using-icon-composer) describes the flow in which layered artwork is brought into Icon Composer / Xcode and that pipeline generates the assets for each platform and appearance. The automatic clipping described there applies to the flow it describes; this app does not use that pipeline, so it cannot be inferred from it that an opaque `.icns` delivered by hand would automatically get the same treatment.
 
-本轮保留原双窗格尾鳍图案与渐变，改为可重复的导出：
+This round keeps the original two-pane fin motif and gradient and moves to a repeatable export:
 
-- `app/Resources/AppIcon-artwork.png` 保存原方形画稿，前景比例和位置不变。
-- `app/tools/render-icon.swift` 用 CoreGraphics 在透明的 1024 × 1024 画布上裁出一个圆角底板：矩形原点 `(80, 80)`，宽高均为 `864`，范围到 `(944, 944)`，两个圆角半径均为 `192`。图案仍按整个 1024 × 1024 画布绘制，只裁外部背景；无新增描边、阴影或第二层底板。
-- 生成的 `app/Resources/AppIcon.png` 带透明外边距、透明角区和抗锯齿边界。上述尺寸是本应用的导出选择，不宣称等于 Apple 的系统遮罩曲线。
-- `app/tools/make-icon.sh` 先重新导出 PNG，再用 `sips` / `iconutil` 生成 16–1024 px 图标族。`make-app.sh` 在 Swift 构建前调用它，每次打包都从原画重新生成资源，再复制生成后的 `AppIcon.icns`；README 和产品页使用同一份透明 PNG。
-- 产品页的品牌、首屏和下载区图标移除矩形 CSS 边框、`box-shadow` 与 `border-radius`，改用跟随 PNG alpha 的 `drop-shadow`，避免透明导出又被网页样式套上方形外框。
+- `app/Resources/AppIcon-artwork.png` holds the original square artwork, with the foreground's proportion and position unchanged.
+- `app/tools/render-icon.swift` uses CoreGraphics to clip a rounded base plate out of a transparent 1024 × 1024 canvas: the rectangle's origin is `(80, 80)`, its width and height are both `864`, it extends to `(944, 944)`, and both corner radii are `192`. The artwork is still drawn across the whole 1024 × 1024 canvas and only the background outside it is clipped; no stroke, shadow or second base layer was added.
+- The generated `app/Resources/AppIcon.png` has a transparent outer margin, transparent corner regions and an anti-aliased boundary. The dimensions above are this app's export choice and are not claimed to equal Apple's system mask curve.
+- `app/tools/make-icon.sh` re-exports the PNG first, then uses `sips` / `iconutil` to produce the 16–1024 px icon family. `make-app.sh` calls it before the Swift build, so every packaging run regenerates the assets from the artwork and then copies the generated `AppIcon.icns`; the README and the product page use the same transparent PNG.
+- The brand, hero and download icons on the product page dropped their rectangular CSS border, `box-shadow` and `border-radius` in favour of a `drop-shadow` that follows the PNG's alpha, so that a transparent export is not given a square frame again by the page's styling.
 
-修复过程中曾尝试两次图像生成编辑，但输出的 alpha 边缘有残留，均未采用或加入发布资源。最终资源由保存的原画与确定的裁切几何生成。历史提示词保留在 `app/Resources/icon-prompt.txt`，已明确标记过时的自动遮罩假设。
+Two image-generation edits were tried during the fix, but their output left residue along the alpha edge; neither was adopted or added to the release assets. The final assets are generated from the saved artwork and the fixed clipping geometry. The historical prompt is kept in `app/Resources/icon-prompt.txt`, with its outdated automatic-mask assumption clearly marked.
 
-## 验证状态
+## Verification status
 
-- 已完成：定位用户截图与旧图标的不透明边角问题；核对当前导出脚本和打包路径。
-- 最终站点静态构建已通过：5 个资源、36 个引用；桌面 1280 × 720 与窄屏 390 × 844 已观察图标，无额外方框。更新应用截图后再次检查页面与图片弹窗：图片比例正确，关闭后焦点返回，窄屏无横向溢出。
-- 已实现回归：`IconAssetsSmokeTests` 解码实际 PNG / ICNS，归一化像素布局后检查 1024 px 尺寸、整圈透明外沿、四角透明、主体不透明及内缩范围、部分 alpha 边缘，并逐个检查 ICNS 表示的透明角、中心和尺寸覆盖。检查不依赖原位 bitmap 字节顺序，也不将具体半径作为产品不可变常量。
-- 完整 smoke：**1,500 项连续三轮通过**，均 exit 0、stderr 为空。日志位于 `/private/tmp/tursora-pane-tabs-verification/final/smoke-{1,2,3}.{out,err}`；测试后源码哈希未改变。
-- 最终 release 构建成功，strict codesign、Info.plist lint 与嵌入 ICNS 一致性检查通过。ICNS SHA-256：`4a3b178240c5c5559ddb59793ab1e27a8c5ab5f0775ace3aa380bfaef621b7b4`。
-- 实机：在已打包应用中打开其 `app/build` 目录，以图标视图显示 `Tursora.app`，实际系统图标读取路径呈现透明外沿和顺滑圆角，无旧方形边框。该观察验证当前发布包图标，不等同于验证其他已安装副本或 Dock 的历史缓存。测试应用已退出，偏好与目录视图库已恢复，共享验证锁已释放。
+- Done: locating the opaque corner problem in the user's screenshot and in the old icon; checking the current export script and packaging path.
+- The final static site build passed: 5 assets, 36 references; the icon was observed at 1280 × 720 on the desktop and at 390 × 844 on a narrow screen, with no extra square frame. After the app screenshots were updated, the page and the image lightbox were checked again: the image proportions are correct, focus returns after closing, and there is no horizontal overflow on a narrow screen.
+- Regressions implemented: `IconAssetsSmokeTests` decodes the actual PNG / ICNS and, after normalising the pixel layout, checks the 1024 px dimensions, a transparent outer margin all the way round, transparent corners, an opaque body and its inset extent, and the partial-alpha edge; it also checks each ICNS representation for transparent corners, its centre and its size coverage. The checks do not depend on the in-place bitmap byte order, and they do not treat any particular radius as an immutable product constant.
+- Full smoke run: **1,500 checks passing three rounds in a row**, all exit 0 with empty stderr. The logs are at `/private/tmp/tursora-pane-tabs-verification/final/smoke-{1,2,3}.{out,err}`; the source hashes were unchanged after the tests.
+- The final release build succeeded, and strict codesign, the Info.plist lint and the consistency check on the embedded ICNS all passed. ICNS SHA-256: `4a3b178240c5c5559ddb59793ab1e27a8c5ab5f0775ace3aa380bfaef621b7b4`.
+- On a real machine: opening the app's own `app/build` directory in the packaged app and showing `Tursora.app` in icon view, the path the system actually reads the icon from renders a transparent outer edge and smooth rounded corners, with no old square frame. This observation verifies the icon in the current release package; it does not amount to verifying other installed copies or the Dock's historical cache. The test app has exited, preferences and the directory view store have been restored, and the shared verification lock has been released.
 
-![打包应用实际加载的圆角透明图标](../images/features/app-icon-edges.png)
+![The rounded, transparent icon the packaged app actually loads](../images/features/app-icon-edges.png)

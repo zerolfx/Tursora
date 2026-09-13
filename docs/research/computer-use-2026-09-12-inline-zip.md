@@ -1,73 +1,73 @@
-# 当前 pane ZIP 与分栏界面实机检查（2026-09-12）
+# Packaged-app check of ZIP in the current pane and the split interface (2026-09-12)
 
-本轮通过 computer use 操作实际打包的 `app/build/Tursora.app`，前半轮使用 bundle build 5，服务器表单修复后重新构建 debug / release，并以修正版复测该表单、替换截图。使用演示项目和深色外观；记录只包含实际操作结果，不以截图文件存在、AX 树或 smoke 代替视觉检查。早期独立 ZIP 窗口的结果保留在[上一份记录](computer-use-2026-09-12.md)，不作为本轮同 pane 流程的证据。
+This round drove the actually packaged `app/build/Tursora.app` through computer use. The first half used bundle build 5; after the server form was fixed, debug / release were rebuilt and that form was retested with the corrected version and its screenshot replaced. A demo project and the dark appearance were used; the record contains only the results of real operations, and never substitutes the existence of a screenshot file, the AX tree or the smoke test for a visual check. The results for the earlier standalone ZIP window stay in the [previous record](computer-use-2026-09-12.md) and are not evidence for this round's same-pane flow.
 
-## 已观察的界面与交互
+## Interface and interactions observed
 
-| 检查 | 实际观察 | 已保存截图 |
+| Check | Actually observed | Screenshot saved |
 |---|---|---|
-| 工具栏分栏 | 分栏按钮可操作，当前界面显示并排 pane | [split-panes.png](../images/features/split-panes.png) |
-| Favorites 的另一 pane | 右键 Open in Other Pane 创建分栏，原 pane 保留原目录 | [favorites.png](../images/features/favorites.png) |
-| Favorites 的新标签 | Open in New Tab 创建第三个标签，进入右键地点 | 同上；菜单截图本身不证明后续导航 |
-| 窄分栏名称列 | 名称列最小宽度改为 180 pt 后，窄 pane 的文件名可读；对应 smoke 检查已纳入最终连续三轮通过 | [split-panes.png](../images/features/split-panes.png) |
-| 地址补全 | 输入路径时真实弹窗显示 Design / DesignArchive 候选 | [path-navigation.png](../images/features/path-navigation.png) |
-| 名称过滤 | `*.png` 只过滤活动 pane，另一 pane 内容保留 | [name-filter.png](../images/features/name-filter.png) |
-| 列表 / 图标与分组 | 两种视图和 Kind 分组已操作并观察 | [views-and-groups.png](../images/features/views-and-groups.png) |
-| Quick Look | 文本文件可显示预览内容 | [quick-look.png](../images/features/quick-look.png) |
-| 系统分享 | Share picker 实际出现；没有执行发送 | [share.png](../images/features/share.png) |
-| 设置示例状态 | 截图中两个实验开关均关闭；这不是本轮结束时用户的原始 ZIP 偏好 | [settings.png](../images/features/settings.png) |
-| ZIP 进入与导航 | ⌘↓ 在当前 pane 进入 ZIP 根，保留原始根结构；双击 Documents 进入内部目录。Up 回根并选中 Documents，再 Up 退出 ZIP 并选中原 ZIP；Back / Forward 无路径错误 | [zip-browsing.png](../images/features/zip-browsing.png) |
-| ZIP 只读菜单 | More 中 New Folder、Get Info、Rename、Duplicate、Compress、Extract、Paste、Trash 均禁用 | 同上 |
-| ZIP 文件打开 | Open 将 ReleaseNotes 文本交给 TextEdit，显示演示内容及私有临时快照 URL | 临时路径只在外部编辑器中出现，不作为 pane 的导航路径 |
-| ZIP 复制与撤销 | ⇧⌘C 将 167 字节的文件复制到普通 Delivery pane，⌘Z 移除复制产物 | 操作结果已核对；截图不代替字节结果 |
-| 文件冲突 | Keep Both 创建 153 字节的 README 编号副本，原有 63 字节文件保留；⌘Z 移除副本 | [file-operations.png](../images/features/file-operations.png) |
-| Compress / Extract 展示 | 相关界面截图已保存并检查；早期版本的完整压缩 / 解压往返操作保留在旧记录 | [compress-extract.png](../images/features/compress-extract.png) |
-| 终端 | F4 打开 zsh，pwd / ls 显示同一演示项目；结束后关闭终端并恢复实验关闭 | [terminal.png](../images/features/terminal.png) |
-| 修复后的服务器表单 | 有效 SMB 地址按 Tab 不启动连接；Cancel 关闭，重新打开仍可编辑且无 spinner；ftp 地址按 Return 显示协议错误，改为有效地址清除错误；Escape 关闭 | [connect-server.png](../images/features/connect-server.png)，已替换为最终修正版 |
+| Toolbar split | The split button works, and the interface shows side-by-side panes | [split-panes.png](../images/features/split-panes.png) |
+| The other pane from Favorites | Open in Other Pane in the context menu creates a split, and the original pane keeps its directory | [favorites.png](../images/features/favorites.png) |
+| A new tab from Favorites | Open in New Tab creates a third tab and opens the right-clicked place | Same as above; the menu screenshot by itself does not prove the navigation that followed |
+| Name column in a narrow split | With the name column's minimum width changed to 180 pt, file names are readable in a narrow pane; the matching smoke check is included in the final three consecutive passes | [split-panes.png](../images/features/split-panes.png) |
+| Path completion | Typing a path really does pop up the Design / DesignArchive candidates | [path-navigation.png](../images/features/path-navigation.png) |
+| Name filter | `*.png` filters only the active pane; the other pane keeps its contents | [name-filter.png](../images/features/name-filter.png) |
+| List / icon views and grouping | Both views and Kind grouping were driven and observed | [views-and-groups.png](../images/features/views-and-groups.png) |
+| Quick Look | A text file shows its preview content | [quick-look.png](../images/features/quick-look.png) |
+| System share | The Share picker really appeared; nothing was sent | [share.png](../images/features/share.png) |
+| Settings shown in the example | Both experiment switches are off in the screenshot; this is not the user's original ZIP preference at the end of this round | [settings.png](../images/features/settings.png) |
+| Entering and navigating a ZIP | ⌘↓ enters the ZIP root in the current pane and keeps the original root structure; double-clicking Documents enters the inner directory. Up returns to the root with Documents selected, and Up again leaves the ZIP with the original ZIP selected; Back / Forward produce no path errors | [zip-browsing.png](../images/features/zip-browsing.png) |
+| ZIP read-only menu | In More, New Folder, Get Info, Rename, Duplicate, Compress, Extract, Paste and Trash are all disabled | Same as above |
+| Opening a file in a ZIP | Open hands the ReleaseNotes text to TextEdit, which shows the demo content and the private temporary snapshot URL | The temporary path appears only in the external editor and is not a navigation path of the pane |
+| Copying out of a ZIP and undo | ⇧⌘C copies the 167-byte file into an ordinary Delivery pane, and ⌘Z removes the copy | The result of the operation was checked; a screenshot is no substitute for the byte result |
+| File conflict | Keep Both creates a numbered copy of README at 153 bytes and the existing 63-byte file is kept; ⌘Z removes the copy | [file-operations.png](../images/features/file-operations.png) |
+| Compress / Extract display | The screenshots of these interfaces were saved and checked; the full compress / extract round trip of the earlier version stays in the old record | [compress-extract.png](../images/features/compress-extract.png) |
+| Terminal | F4 opens zsh, and pwd / ls show the same demo project; afterwards the terminal was closed and the experiment restored to off | [terminal.png](../images/features/terminal.png) |
+| The server form after the fix | A valid SMB address does not start a connection on Tab; Cancel closes the form, and reopening it is still editable with no spinner; an ftp address submitted with Return shows a protocol error, and changing it to a valid address clears the error; Escape closes | [connect-server.png](../images/features/connect-server.png), replaced with the final corrected version |
 
-## 本轮发现与处理状态
+## Findings this round and how they were handled
 
-- 新建 pane 的延迟初始导航可能覆盖随后明确选中的地点。实现已增加 `navigationGeneration == 0` 条件；与窗口、侧栏和标签相关的回归已随最终 smoke 连续通过。
-- 窄分栏的名称列被其他列挤窄；设置名称列最小宽度为 180 pt，build 5 已观察到名称可读。自动化几何检查已随最终 smoke 连续通过。
-- 服务器地址框原先会在失焦时执行 action，点击 Cancel 也可能启动挂载。现已限制为明确提交，并完成上表所列修正版 CUA：Tab / Cancel 不连接，重新打开状态正常，Return 触发协议校验，编辑可清错，Escape 关闭。新增专门回归检查已通过最终三轮；本次没有验证真实服务器认证或挂载成功。
-- ZIP 临时快照别名检查曾暴露路径重映射问题，已修复；相应回归纳入最终连续三轮通过，失败运行不计入通过轮次。
+- A new pane's delayed initial navigation could override a place explicitly chosen afterwards. The implementation now adds a `navigationGeneration == 0` condition; the regressions around windows, the sidebar and tabs passed along with the final consecutive smoke runs.
+- In a narrow split the name column was squeezed by the other columns; the name column's minimum width was set to 180 pt, and build 5 was observed to show readable names. The automated geometry check passed along with the final consecutive smoke runs.
+- The server address field used to fire its action when it lost focus, so clicking Cancel could start a mount as well. It is now limited to an explicit submit, and the corrected-version CUA listed in the table above was carried out: Tab / Cancel do not connect, reopening leaves the state correct, Return triggers protocol validation, editing clears the error, and Escape closes. The dedicated new regression checks passed the final three rounds; real server authentication or a successful mount was not verified this time.
+- The ZIP temporary snapshot alias check once exposed a path remapping problem, which has been fixed; the matching regression is part of the final three consecutive passes, and the failing run does not count towards the passing rounds.
 
-## 截图方法
+## Screenshot method
 
-使用原生 `screencapture -x -o -l<windowID>` 捕获目标窗口，可保存相关菜单状态。尝试按屏幕矩形 `-R` 截图时曾误取背景应用，错误图片已替换；后续按窗口 ID 捕获并核对内容。CUA 返回的 11 张图片实际为 JPEG，已按真实格式改用 `.jpg` 后缀；Favorites 与 Compress / Extract 的两张原生捕获保留 `.png`，没有修改图片像素。截图维护规则见 [images/README.md](../images/README.md)。
+The target window is captured with the native `screencapture -x -o -l<windowID>`, which can also preserve the state of the relevant menu. An attempt to capture by screen rectangle with `-R` once caught a background application by mistake; the wrong image was replaced, and later captures went by window ID with their contents checked. The 11 images returned by CUA were actually JPEG and were given the `.jpg` extension that matches their real format; the two native captures of Favorites and Compress / Extract keep `.png`, and no image pixels were modified. For the rules on maintaining screenshots see [images/README.md](../images/README.md).
 
-## 截图、构建与最终自动化状态
+## Screenshots, builds and the final automation status
 
-README 全部 13 组截图均已保存并逐一检查，包括压缩 / 解压、文件操作、ZIP、终端和服务器；服务器截图已替换为最终修正版。演示图展示相关界面，不将菜单截图扩展为未执行过的文件操作或远程连接证据。
+All 13 sets of README screenshots have been saved and checked one by one, including compress / extract, file operations, ZIP, the terminal and servers; the server screenshot has been replaced with the final corrected version. The demo images show the relevant interfaces; a menu screenshot is not stretched into evidence for a file operation or remote connection that was never performed.
 
-最终 debug 构建通过；包含最新路径重映射修复的 release build 5 已重建并通过 strict codesign 检查。最终 **739 项 smoke 连续三轮通过**，三个进程均以 0 退出，stderr 均为空。日志为 `/tmp/tursora-alias-fixed-smoke.log`、`/tmp/tursora-final-smoke-2.log`、`/tmp/tursora-final-smoke-3.log`。最终测试包含名称列、快照别名和服务器表单回归；此前别名断言失败已解决，旧版本的一次通过和失败运行均不计入这三轮。
+The final debug build passed; release build 5, which carries the latest path remapping fix, was rebuilt and passed the strict codesign check. The final **739-check smoke test passed three times in a row**, with all three processes exiting 0 and empty stderr. The logs are `/tmp/tursora-alias-fixed-smoke.log`, `/tmp/tursora-final-smoke-2.log`, `/tmp/tursora-final-smoke-3.log`. The final test includes the name column, snapshot alias and server form regressions; the earlier alias assertion failure is resolved, and neither the old version's single pass nor the failing run counts towards these three rounds.
 
-## 收尾与边界
+## Wrap-up and limits
 
-已恢复本次测试前的用户偏好：显示扩展名 = 开、过滤快捷键 = ⌘F、终端实验 = 关、ZIP 浏览实验 = 开。ZIP 开启是用户原有选择，不改变该功能新安装默认关闭的规格。演示 Favorite 已移除并核对。
+The user preferences from before this test have been restored: show extensions = on, filter shortcut = ⌘F, terminal experiment = off, ZIP browsing experiment = on. ZIP being on is the user's own earlier choice and does not change the spec that the feature is off by default on a new install. The demo Favorite was removed and the removal checked.
 
-真实服务器认证、挂载、读写、掉线和 Eject 未验证。终端关闭所属浏览窗口时的进程回收、ZIP 拖出手势及 ZIP 内 Quick Look / Share 的专项 CUA、浅色模式和全部屏幕尺寸仍未在本轮逐项覆盖；对应模型 / 集成检查不能替代这些视觉或服务端验证。历史终端中断、Restart 与关闭实验的操作见[此前记录](computer-use-2026-09-12.md)。
+Real server authentication, mounting, reading and writing, dropped connections and Eject are not verified. Process reclamation when the terminal's owning browser window is closed, the drag-out gesture from a ZIP and dedicated CUA for Quick Look / Share inside a ZIP, light mode, and the full set of screen sizes were still not covered item by item this round; the corresponding model / integration checks are no substitute for these visual or server-side verifications. For the historical terminal interrupt, Restart and turning the experiment off see the [earlier record](computer-use-2026-09-12.md).
 
-## 整理阶段与产品页
+## Tidy-up stage and the product page
 
-第一阶段已提交并推送为 `fbb6762`，对应 [GitHub Build](https://github.com/zerolfx/Tursora/actions/runs/34671658320) 成功。后续整理只删除 PlacesModel 未使用常量，并去掉归档读取助手始终为 true 的参数 / 转发重载，不改变应用行为。
+The first stage was committed and pushed as `fbb6762`, and the corresponding [GitHub Build](https://github.com/zerolfx/Tursora/actions/runs/34671658320) succeeded. The tidy-up that followed only removed an unused constant in PlacesModel and dropped the always-true parameter / forwarding overload of the archive reading helper, without changing application behaviour.
 
-整理后的 debug 和 release build 6 构建成功，strict codesign 通过。**739 项 smoke 重新连续三轮通过**，均 exit 0、stderr 为空；日志为 `/tmp/tursora-tidy-smoke-1.log`、`/tmp/tursora-tidy-smoke-2.log`、`/tmp/tursora-tidy-smoke-3.log`。这些是整理阶段的新运行，不与第一阶段的三份日志混用。
+After the tidy-up, the debug and release build 6 both built successfully and passed strict codesign. The **739-check smoke test passed three consecutive rounds again**, each exiting 0 with empty stderr; the logs are `/tmp/tursora-tidy-smoke-1.log`, `/tmp/tursora-tidy-smoke-2.log`, `/tmp/tursora-tidy-smoke-3.log`. These are new runs from the tidy-up stage and are not mixed with the three logs of the first stage.
 
-补充保存并检查了 [tabs.png](../images/features/tabs.png)，尺寸为 1241 × 590，显示真实应用的三个标签与展开的 Documents。此图用于产品页的标签功能；整理后的应用界面保持原有行为，不表示重做了前半轮每一项 CUA。
+[tabs.png](../images/features/tabs.png) was additionally saved and checked, at 1241 × 590, showing three tabs of the real application with Documents expanded. This image is used for the tabs feature on the product page; the interface after the tidy-up keeps its previous behaviour, which does not mean that every CUA item of the first half was redone.
 
-中文产品页限定为地址栏、标签、分栏、只读 ZIP 四项功能，使用真实应用截图。`python3 site/build.py` 已成功生成 `site/dist/`，包含 5 个必需原始资源（图标与四张截图），通过 36 个引用检查；构建仅使用 Python 3.9+ 标准库。网站验证与应用 smoke 分开完成；站点目前仅本地预览，没有部署上线。
+The Chinese product page is limited to four features — the address bar, tabs, split panes and read-only ZIP — using screenshots of the real application. `python3 site/build.py` generated `site/dist/` successfully, containing the 5 required source assets (the icon and four screenshots) and passing 36 reference checks; the build uses only the Python 3.9+ standard library. The website verification was done separately from the application smoke test; the site is currently only previewed locally and has not been deployed.
 
-### 产品页浏览器检查
+### Product page browser checks
 
-| 检查 | 实际结果 |
+| Check | Actual result |
 |---|---|
-| 桌面布局 | 在 1280 × 720 实际查看页面，辅助文字对比度已提高，锚点直达造成的页头裁切已修复 |
-| 窄屏布局 | 390 × 844 与 320 × 740 均无横向溢出 |
-| 四项功能切换 | 点击、方向键与 End 可切换对应 tab / panel |
-| 截图弹窗 | ZIP 大图可打开，Escape 关闭并将焦点恢复到触发图片链接 |
-| 普通页面锚点 | 直接进入 `#feature-zip` 后，仅 ZIP tab 选中且仅对应 panel 显示 |
-| 图片与控制台 | 没有图片加载错误，console warn / error 为空；未打开 dialog 中没有 src 的占位 img 不算加载失败 |
-| 无 JavaScript | 在 dist 中临时移除 HTML 的 script 标签验证，四个 panel 均可见且 ZIP 锚点可用；随后重新 build，临时 QA 页面已删除 |
+| Desktop layout | The page was actually viewed at 1280 × 720; the contrast of the secondary text has been raised, and the header clipping caused by jumping straight to an anchor has been fixed |
+| Narrow layout | Neither 390 × 844 nor 320 × 740 overflows horizontally |
+| Switching between the four features | Clicks, arrow keys and End all switch the matching tab / panel |
+| Screenshot dialog | The large ZIP image opens, and Escape closes it and returns focus to the image link that triggered it |
+| Plain page anchors | Going straight to `#feature-zip` selects only the ZIP tab and shows only the matching panel |
+| Images and the console | No image load errors, and console warn / error are empty; a placeholder img with no src inside an unopened dialog does not count as a load failure |
+| Without JavaScript | Verified by temporarily removing the HTML script tag in dist: all four panels are visible and the ZIP anchor works; the build was then rerun and the temporary QA page deleted |
 
-未声称完成 reduced-motion 的专项检查；本轮本地浏览器结果不代表已部署、真实移动设备测试或 GitHub 下载链接的在线可用性。
+No dedicated reduced-motion check is claimed to have been completed; this round's local browser results say nothing about deployment, testing on a real mobile device, or the online availability of the GitHub download links.
