@@ -10,6 +10,7 @@
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Native Swift and AppKit">
 </p>
 <p align="center">
+  <a href="#installation"><strong>Install 0.2.0</strong></a> ·
   <a href="#features">Features</a> ·
   <a href="#terminal-and-zip">Terminal &amp; ZIP</a> ·
   <a href="#what-finder-still-does-that-tursora-doesnt">Finder differences</a> ·
@@ -21,11 +22,33 @@ Tursora is a **free, open-source native macOS file manager**, released under the
 
 Its goal is simple: **keep what feels familiar in Finder, then add the file-management ideas that make Dolphin and Windows File Explorer useful.**
 
-That means Quick Look, macOS sharing, familiar file operations and a native AppKit interface—with Dolphin-inspired split panes, editable paths, instant filtering, recursive search and folder-specific view settings. An integrated terminal and Explorer-style ZIP navigation in the same pane are enabled by default and can be turned off in Settings.
+<a id="installation"></a>
 
-Tursora is an early project, and it does not yet cover everything Finder can do. The [differences below](#what-finder-still-does-that-tursora-doesnt) are part of the picture.
+## Install Tursora 0.2.0
+
+**macOS 14+ · Apple Silicon · Free and open source.** [Download the latest stable release](https://github.com/zerolfx/Tursora/releases/latest) · [中文安装指南](https://zerolfx.github.io/Tursora/#installation)
+
+**0.2.0 is being prepared.** The current published version is 0.1.0 (ZIP); the DMG steps below apply once 0.2.0 is published. For 0.1.0, unzip the download and move `Tursora.app` to Applications.
+
+1. From the release page, download **`Tursora-0.2.0-macOS-arm64.dmg`**. The same page includes `SHA256SUMS.txt` to verify the download.
+2. Open the DMG.
+3. Drag **Tursora → Applications** in the installer window.
+4. Open **Tursora from Applications**. If macOS cannot verify the app, follow the [First launch instructions](#first-launch) for a trusted download.
+
+**Prefer Homebrew?** Once the tap is merged to `main`, use:
+
+```sh
+brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
+brew install --cask zerolfx/tursora/tursora
+```
+
+The prepared tap currently installs the verified 0.1.0 build; it will move to 0.2.0 after that release's DMG is published and checked. See [Homebrew details](#homebrew) for updates and uninstalling. **Existing 0.1.0 users need this manual upgrade once** to gain in-app updates.
 
 ## Features
+
+Quick Look, macOS sharing and familiar file operations meet Dolphin-inspired split panes, editable paths, instant filtering, recursive search and folder-specific view settings. The integrated terminal and Explorer-style ZIP navigation are enabled by default and can be turned off in Settings.
+
+Tursora is an early project and does not yet cover everything Finder can do. The [differences below](#what-finder-still-does-that-tursora-doesnt) are part of the picture.
 
 The features below describe current development. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size. Key combinations below are the defaults; customize application commands in **Settings → Shortcuts**.
 
@@ -134,7 +157,7 @@ The features below describe current development. See the [version history](CHANG
         <p>Settings has General, Shortcuts, Terminal and Updates pages. General controls workspace restoration, folder views, extension display, terminal access and ZIP browsing. Shortcuts lets you search all application commands, record or clear a binding, and restore one command or all defaults. Conflicts name the command already using the binding; menus update immediately. Native text editing, selection, path completion and shell controls retain their normal behavior. Updates offers daily checks, optional automatic installation and a manual check.</p>
       </td>
       <td>
-        <a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="General settings with startup workspace restoration, folder view policy and terminal and ZIP browsing enabled"></a>
+        <a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="General settings with terminal and ZIP browsing enabled and an explanation that hidden or disabled terminal sessions keep running"></a>
         <a href="docs/images/features/shortcuts.png"><img src="docs/images/features/shortcuts.png" width="600" alt="Shortcuts filtered by Show, with Show Terminal customized to F6 and clear and reset controls visible"></a>
         <a href="docs/images/features/updates.png"><img src="docs/images/features/updates.png" width="600" alt="Updates settings with automatic checks, optional download and installation, a manual check and last-check status"></a>
       </td>
@@ -147,7 +170,7 @@ The features below describe current development. See the [version history](CHANG
 
 ## Terminal & ZIP
 
-Both features are **enabled by default**. Change them in **Tursora → Settings…** (`⌘,`). Existing saved choices are preserved. These defaults apply to the next release; in 0.1.0, enable both features in Settings.
+Both features are **enabled by default** in the prepared 0.2.0 release. Change them in **Tursora → Settings…** (`⌘,`). Existing saved choices are preserved. In the historical 0.1.0 build, enable both features in Settings.
 
 <table>
   <thead>
@@ -157,12 +180,13 @@ Both features are **enabled by default**. Change them in **Tursora → Settings�
     <tr>
       <td>
         <strong>A terminal in your workspace</strong>
-        <p>Click the toolbar's <strong>Show Terminal</strong> button, or press <code>F4</code>, for an interactive <a href="https://github.com/migueldeicaza/SwiftTerm">SwiftTerm</a> terminal beneath the files. It starts in the active folder, or beside the original ZIP when browsing an archive.</p>
-        <p>Choose the system login shell or a custom executable in <strong>Settings → Terminal</strong>. Pick a monospaced font (8–36 pt), follow the system appearance, or use dark, light or custom text/background colors. Font and color changes apply to every open terminal immediately; shell changes take effect on the next open or restart. Defaults are the system login shell, System Monospaced at 12 pt, and Follow Appearance.</p>
-        <p>Navigation shows the target for <strong>Restart in Current Folder</strong> without injecting shell commands. The header distinguishes the start location from a shell-reported folder and keeps the ended state after a shell exits. The toolbar button changes to <strong>Hide Terminal</strong> while open. Restarting, hiding the panel, closing the window or disabling terminal access ends its shell session.</p>
+        <p>Click <strong>Terminal</strong> at the bottom right, the toolbar's <strong>Show Terminal</strong> button, or press <code>F4</code>, for an interactive <a href="https://github.com/migueldeicaza/SwiftTerm">SwiftTerm</a> terminal beneath the files. It starts in the active folder, or beside the original ZIP when browsing an archive. The footer keeps the window's hidden/running/ended state and task count visible; click it to show or hide the panel.</p>
+        <p>Choose the system login shell or a custom executable in <strong>Settings → Terminal</strong>. Pick a monospaced font (8–36 pt), follow the system appearance, or use dark, light or custom text/background colors. Font and color changes apply to every retained terminal immediately; shell changes take effect when starting a new session or restarting. Defaults are the system login shell, System Monospaced at 12 pt, and Follow Appearance.</p>
+        <p>Navigation shows the target for <strong>Restart in Current Folder</strong> without injecting shell commands. Hiding with the toolbar, <code>F4</code> or the panel's close button keeps its shell, output and running jobs; show it again to continue. Turning off terminal access in Settings also hides and retains existing sessions; re-enable access to show them again.</p>
+        <p>Restarting, closing the window or quitting ends its terminal session. If foreground, background or stopped jobs are detected—or their status cannot be established—Tursora asks first, with <strong>Cancel</strong> selected by default. The header preserves output after a shell exits. Terminal sessions do not survive quitting the app.</p>
       </td>
       <td>
-        <a href="docs/images/features/terminal.png"><img src="docs/images/features/terminal.png" width="600" alt="The selected terminal toolbar button and a customized terminal below split panes, retaining an exported variable across commands"></a>
+        <a href="docs/images/features/terminal.png"><img src="docs/images/features/terminal.png" width="600" alt="A customized terminal below split panes and the folder tree, displaying retained shell and background process IDs and Terminal · 1 task in the bottom-right status bar"></a>
         <a href="docs/images/features/terminal-settings.png"><img src="docs/images/features/terminal-settings.png" width="600" alt="Terminal settings for system or custom shell, monospaced font and size, and system or custom colors"></a>
       </td>
     </tr>
@@ -200,7 +224,7 @@ Tursora currently has an English interface. Workspace restoration keeps location
 Requires **macOS 14 or later**. Downloadable builds currently target **Apple Silicon** and are **ad-hoc signed, not notarized**.
 
 1. **Download** from the [latest stable release](https://github.com/zerolfx/Tursora/releases/latest). Public downloads need no GitHub account; the same release includes `SHA256SUMS.txt` for checking your download.
-2. **Install:** open the DMG and drag **Tursora → Applications**, as shown below. **The current release, 0.1.0, still provides a ZIP:** unzip it and move `Tursora.app` to Applications instead. The DMG is prepared for the next release and is not yet published.
+2. **Install:** open the DMG and drag **Tursora → Applications**, as shown below. **The current release, 0.1.0, still provides a ZIP:** unzip it and move `Tursora.app` to Applications instead. The DMG is prepared for 0.2.0 and is not yet published.
 3. **Launch Tursora from Applications.** If macOS blocks the first launch, follow the steps below.
 
 **Development builds:** after the updated workflow is published, successful [Build runs](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) will contain a DMG and checksum inside GitHub's artifact ZIP. Unpack that outer ZIP, open the DMG and drag Tursora to Applications. Older runs contain the previous application ZIP. Artifacts are kept for 14 days. See the [changelog](CHANGELOG.md) for version history.
@@ -216,7 +240,7 @@ brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
 brew install --cask zerolfx/tursora/tursora
 ```
 
-The explicit repository URL is required on the first line. Update with `brew update` followed by `brew upgrade --cask zerolfx/tursora/tursora`; uninstall with `brew uninstall --cask zerolfx/tursora/tursora`. Uninstall leaves your settings and workspace intact.
+The explicit repository URL is required on the first line. Update with `brew update` followed by `brew upgrade --cask --greedy zerolfx/tursora/tursora`; `--greedy` includes versions that also have the in-app updater. Uninstall with `brew uninstall --cask zerolfx/tursora/tursora`; your settings and workspace remain intact.
 
 This project maintains its own tap. An Apple Developer Program membership is not required to distribute it this way; **the downloaded app remains ad-hoc signed and not notarized**, and the [first-launch instructions](#first-launch) still apply. The cask keeps Homebrew's normal download quarantine and verifies the pinned SHA-256. Homebrew's official cask repository has separate [Gatekeeper acceptance requirements](https://docs.brew.sh/Acceptable-Casks#platform-compatibility-and-macos-security-protections).
 
@@ -247,7 +271,7 @@ This recursively removes only the download-quarantine attribute from this app bu
 
 ### Software updates
 
-The next release adds **Tursora → Check for Updates…** and **Settings… → Updates**. Automatic checks are enabled by default and run daily; you can turn them off and still check manually. **Automatically download and install updates** is a separate option, disabled by default. When enabled, verified updates can install when you quit. Turning off automatic checks disables that control while preserving its saved choice; changing these options does not cancel an update already downloaded or scheduled to install on quit.
+Version 0.2.0 adds **Tursora → Check for Updates…** and **Settings… → Updates**. Automatic checks are enabled by default and run daily; you can turn them off and still check manually. **Automatically download and install updates** is a separate option, disabled by default. When enabled, verified updates can install when you quit. Turning off automatic checks disables that control while preserving its saved choice; changing these options does not cancel an update already downloaded or scheduled to install on quit.
 
 **The original 0.1.0 release has no updater.** Download the first release containing this feature manually once; subsequent stable releases can update through the app. The implementation, release workflow and repository signing secret are prepared; the first update-enabled release and its live feed have not yet been published. See [update status](docs/research/app-updates.md).
 

@@ -90,42 +90,7 @@ struct TerminalPanelPresentation: Equatable {
     }
 }
 
-/// SwiftTerm stops its exit monitor in terminate(), so the owner must reap on
-/// explicit shutdown. Only the session created by this PTY is ever signalled.
-enum TerminalProcessLifecycle {
-    private static let stopped = NSHashTable<AnyObject>.weakObjects()
-
-    static func stop(_ process: LocalProcess, completion: (() -> Void)? = nil) {
-        guard process.shellPid > 0, !stopped.contains(process) else { completion?(); return }
-        stopped.add(process)
-        let pid = process.shellPid
-        // PTY EOF can clear `running` before the queued exit monitor reaps.
-        // Check child ownership rather than that flag, and never signal a PID
-        // the library already reaped (it may have been reused).
-        var status: Int32 = 0
-        var state: pid_t
-        repeat { state = waitpid(pid, &status, WNOHANG) } while state < 0 && errno == EINTR
-        guard state == 0 else { completion?(); return }
-        let foreground = process.childfd >= 0 ? tcgetpgrp(process.childfd) : -1
-        if foreground > 0, foreground != getpgrp(), getsid(foreground) == pid {
-            kill(-foreground, SIGHUP)
-            kill(-foreground, SIGKILL)
-        }
-        // Do this synchronously before cancelling the library's monitor: a
-        // subsequently reused PID must never be signalled by a delayed timer.
-        kill(pid, SIGKILL)
-        process.terminate()
-        DispatchQueue.global(qos: .utility).async { [process] in
-            var status: Int32 = 0
-            while waitpid(pid, &status, 0) < 0 && errno == EINTR {}
-            // Keep the weak idempotence marker valid until reaping finishes.
-            _ = process
-            DispatchQueue.main.async { completion?() }
-        }
-    }
-}
-
-/// One visible panel owns one interactive PTY. Navigation never sends keystrokes
+/// One retained panel owns one interactive PTY. Navigation never sends keystrokes
 /// to an existing shell: even a foreground-shell check cannot detect `read`.
 final class TerminalPanelController: NSViewController, LocalProcessTerminalViewDelegate {
     private(set) var pendingDirectory: URL
@@ -141,13 +106,48 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     private var preferencesObserver: NSObjectProtocol?
     private var launchError: String?
     private var isShutDown = false
+    private var shutdownGeneration: UInt64 = 0
+    private var activitySession: TerminalActivity.Session?
+    private var stoppingProcess: LocalProcess?
     var onClose: (() -> Void)?
+    var onStateChanged: (() -> Void)?
 
     var isRunning: Bool { terminalView?.process.running == true }
-    var hasForegroundCommand: Bool {
-        guard let process = terminalView?.process, process.running, process.childfd >= 0 else { return false }
-        let foreground = tcgetpgrp(process.childfd)
-        return foreground > 0 && foreground != process.shellPid
+    var statusState: TerminalPanelPresentation.State { presentation.state }
+    func activitySnapshot() -> TerminalActivitySnapshot {
+        guard let process = terminalView?.process ?? stoppingProcess, process.shellPid > 0 else { return .idle }
+        if activitySession == nil, process.running { activitySession = TerminalActivity.Session(process: process) }
+        guard let activitySession else {
+            // The library's running flag can become false on EOF before exit.
+            // An uninspectable process therefore needs conservative confirmation.
+            return TerminalActivitySnapshot(tasks: [], informationUnavailable: process.running || TerminalActivity.isAlive(process.shellPid))
+        }
+        return activitySession.snapshot()
+    }
+
+    /// Status polling captures AppKit/process ownership on the main thread,
+    /// then inspects immutable session metadata away from the UI. A replacement
+    /// session triggers a fresh query instead of delivering stale task counts.
+    func inspectActivity(completion: @escaping (TerminalActivitySnapshot) -> Void) {
+        guard let process = terminalView?.process ?? stoppingProcess, process.shellPid > 0 else { completion(.idle); return }
+        if activitySession == nil, process.running { activitySession = TerminalActivity.Session(process: process) }
+        guard let session = activitySession else {
+            completion(TerminalActivitySnapshot(tasks: [], informationUnavailable: process.running || TerminalActivity.isAlive(process.shellPid)))
+            return
+        }
+        let identity = ObjectIdentifier(process)
+        DispatchQueue.global(qos: .utility).async {
+            let result = session.snapshot()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { completion(.idle); return }
+                let current = self.terminalView?.process ?? self.stoppingProcess
+                guard current.map(ObjectIdentifier.init) == identity, self.activitySession === session else {
+                    self.inspectActivity(completion: completion)
+                    return
+                }
+                completion(result)
+            }
+        }
     }
 
     init(initialDirectory: URL, localHostNames: Set<String> = TerminalPanelPresentation.localHostNames,
@@ -163,7 +163,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     deinit {
         if let preferencesObserver { preferences.notificationCenter.removeObserver(preferencesObserver) }
-        if let process = terminalView?.process { TerminalProcessLifecycle.stop(process) }
+        if let process = terminalView?.process { TerminalProcessLifecycle.stop(process, session: activitySession) }
     }
 
     override func loadView() {
@@ -186,11 +186,11 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         restartButton.controlSize = .small
         restartButton.target = self
         restartButton.action = #selector(restartHere(_:))
-        restartButton.toolTip = "Ends this shell and its foreground command, then starts in the current folder."
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Terminal")!, target: self, action: #selector(closePanel(_:)))
+        restartButton.toolTip = "Ends this shell and its tasks, then starts in the current folder."
+        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Hide Terminal")!, target: self, action: #selector(closePanel(_:)))
         close.bezelStyle = .inline
         close.isBordered = false
-        close.toolTip = "Close Terminal and end its session"
+        close.toolTip = "Hide Terminal; its shell and tasks keep running"
         let header = NSStackView(views: [title, locationLabel, restartButton, close])
         header.orientation = .horizontal
         header.spacing = 10
@@ -233,16 +233,28 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         if let terminalView { view.window?.makeFirstResponder(terminalView) }
     }
 
-    func shutdown() {
+    func shutdown(completion: (() -> Void)? = nil) {
+        shutdownGeneration &+= 1
         isShutDown = true
+        let process = terminalView?.process ?? stoppingProcess
         if let terminalView {
             terminalView.processDelegate = nil
-            TerminalProcessLifecycle.stop(terminalView.process)
             terminalView.removeFromSuperview()
         }
         terminalView = nil
         presentation = TerminalPanelPresentation()
         launchError = nil
+        guard let process else { onStateChanged?(); completion?(); return }
+        stoppingProcess = process
+        onStateChanged?()
+        TerminalProcessLifecycle.stop(process, session: activitySession) { [weak self] in
+            if self?.stoppingProcess === process {
+                self?.stoppingProcess = nil
+                self?.activitySession = nil
+                self?.onStateChanged?()
+            }
+            completion?()
+        }
     }
 
     private func startIfNeeded() {
@@ -259,14 +271,17 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
             presentation = TerminalPanelPresentation(state: .failedToStart)
             launchError = error.localizedDescription + " Open Settings → Terminal to choose a shell."
             updateLocation()
+            onStateChanged?()
             return
         }
         let terminal = LocalProcessTerminalView(frame: terminalContainer.bounds)
         installTerminal(terminal, in: directory)
         terminal.startProcess(executable: configuration.executable, args: configuration.arguments,
                               environment: configuration.environment, currentDirectory: directory.path)
+        activitySession = TerminalActivity.Session(process: terminal.process, expectedShell: configuration.shell)
         if !terminal.process.running { presentation.state = .failedToStart }
         updateLocation()
+        onStateChanged?()
         view.window?.makeFirstResponder(terminal)
     }
 
@@ -299,35 +314,37 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         _ = view
         if let previous = terminalView, previous !== terminal {
             previous.processDelegate = nil
-            TerminalProcessLifecycle.stop(previous.process)
+            TerminalProcessLifecycle.stop(previous.process, session: activitySession)
             previous.removeFromSuperview()
         }
         terminal.processDelegate = self
         terminalContainer.pinToEdges(terminal)
         terminalView = terminal
+        activitySession = TerminalActivity.Session(process: terminal.process)
         launchError = nil
         applyAppearancePreferences()
         presentation = TerminalPanelPresentation(state: .running, startedDirectory: directory)
         updateLocation()
+        onStateChanged?()
     }
 
     @objc private func restartHere(_ sender: Any?) {
-        guard !SmokeTest.isRequested, !isShutDown else { return }
+        guard !isShutDown, TerminalTaskConfirmation.confirm(action: .restart, activities: [activitySnapshot()]) else { return }
+        guard !SmokeTest.isRequested else { return }
+        restartSession { [weak self] destination in self?.start(in: destination) }
+    }
+
+    /// A later close/quit invalidates this request while process cleanup is
+    /// pending. The launch callback also lets smoke tests verify that barrier
+    /// without starting a user-configured shell.
+    func restartSession(start: @escaping (URL) -> Void) {
         let destination = pendingDirectory
-        let restart = { [weak self] in
-            guard let self else { return }
-            self.shutdown()
+        let generation = shutdownGeneration &+ 1
+        shutdown { [weak self] in
+            guard let self, self.shutdownGeneration == generation else { return }
             self.isShutDown = false
-            self.start(in: destination)
+            start(destination)
         }
-        if hasForegroundCommand, let window = view.window {
-            let alert = NSAlert()
-            alert.messageText = "Restart Terminal?"
-            alert.informativeText = "This ends the running command and starts a new shell in the current folder."
-            alert.addButton(withTitle: "Restart")
-            alert.addButton(withTitle: "Cancel")
-            alert.beginSheetModal(for: window) { if $0 == .alertFirstButtonReturn { restart() } }
-        } else { restart() }
     }
 
     @objc private func closePanel(_ sender: Any?) { onClose?() }
@@ -341,7 +358,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         destinationLabel.toolTip = "New shell destination: \(pendingDirectory.path). Browsing folders does not change the existing shell."
         restartButton.title = presentation.actionTitle
         restartButton.toolTip = presentation.state == .running
-            ? "Ends this shell and its foreground command, then starts in \(pendingDirectory.path)."
+            ? "Ends this shell and its tasks, then starts in \(pendingDirectory.path)."
             : "Starts a new shell in \(pendingDirectory.path)."
     }
 
@@ -358,6 +375,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         guard !isShutDown, source === terminalView else { return }
         presentation.state = .ended
         updateLocation()
+        onStateChanged?()
     }
 }
 

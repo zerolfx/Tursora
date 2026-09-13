@@ -81,7 +81,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Focus Other Pane | ⌥⇥ | — | Split only |
 | Show Sidebar | ⌃⌘S | `sidebar.leading` | (Finder: ⌥⌘S) |
 | Show Folders | F7 | `list.bullet.indent` | Shows the optional directory tree alongside Places |
-| Show / Hide Terminal | F4 | — | Present only when Terminal panel is enabled in Settings; hiding ends the session |
+| Show / Hide Terminal | F4 | — | Present only when Terminal panel is enabled in Settings; hiding retains the session |
 
 ### Go
 | Item | Shortcut | Icon |
@@ -201,7 +201,11 @@ Settings (⌘,) has **General**, **Shortcuts**, **Terminal** and **Updates** tab
 
 Updates provides **Automatically check for updates** (daily, default on), **Automatically download and install updates** (default off), **Check for Updates…**, and the last-check status. Disabling automatic checks disables the automatic-installation control without clearing its saved choice; manual checking remains available. Existing downloaded or deferred-install updates are not cancelled by changing these preferences. Startup failures appear inline and disable unavailable controls; bare debug binaries and smoke runs do not start Sparkle. No new keyboard shortcut is assigned to updating.
 
-With **Terminal panel** enabled, F4 toggles a window-wide panel below the file panes. Opening starts an interactive shell in the active folder; inside a ZIP, it uses the original ZIP's containing folder rather than a temporary snapshot. The header distinguishes **Started in** from a reported **Shell folder** and preserves the ended state after exit. Navigation shows the destination for **Restart in Current Folder**; it never types `cd` into the running session. Restart ends the shell/current command and asks for confirmation when a foreground command is detected. F4 to hide, the panel close button, disabling terminal access, closing its window, or quitting Tursora ends the session.
+With **Terminal panel** enabled, F4 toggles a window-wide panel below the file panes. The bottom-right **Terminal** status button and toolbar button use the same action. Only the current tab's rightmost pane shows this window-wide status, including while the terminal is hidden; narrow panes show its icon with the full tooltip. Initial, running/hidden, task-count, ended/error and unknown states do not start a shell by themselves. Task counts refer to detected processes, not parsed shell jobs.
+
+First opening starts an interactive shell in the active folder; inside a ZIP, it uses the original ZIP's containing folder rather than a temporary snapshot. The header distinguishes **Started in** from a reported **Shell folder** and preserves the ended state after exit. Navigation shows the destination for **Restart in Current Folder**; it never types `cd` into the running session. F4, the toolbar toggle and the panel close button only hide the terminal; show it again to resume the same shell and output. Disabling terminal access in Settings hides existing sessions without stopping them; re-enable it to show them again.
+
+Restart, window close and application quit stop their owned sessions. Foreground, background or stopped jobs, and activity that cannot be established, require confirmation with **Cancel** as the default. Cancel leaves the session and current work intact. Application quit checks hidden terminals in every window before saving the final workspace or cancelling transfers. Sessions are not restored after quitting; detection limits and verification are in the [lifecycle record](research/terminal-session-lifecycle.md).
 
 With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in the current pane. ⌘↓ / double-click opens the selected entry; ⌘↑ goes up, returning from the ZIP root to its containing folder and selecting the ZIP. ⌘[ / ⌘] navigate history. ⌘L, breadcrumbs, tabs, splits, list / icon view, grouping, sorting and current-directory name filtering use the ordinary pane controls, with logical paths under the source ZIP. Each archive navigation starts from the saved default view; changes remain temporary and never write directory records or defaults. Return does not rename archive entries.
 

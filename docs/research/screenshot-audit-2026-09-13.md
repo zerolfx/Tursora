@@ -2,6 +2,35 @@
 
 用户要求所有截图的原生窗口圆角外侧透明，不残留白底或其他底色，并明确授权确定性的截图 alpha 处理。真实界面内部不能因此修改；新功能截图须由最终打包应用实测后重拍。
 
+## 0.2.0 安装页静态检查（新增终端截图替换前）
+
+0.2.0 安装入口前置后，当前 `python3 site/build.py` 通过：**5 份资产、39 处引用、约 1,629 KiB，全部 29 张 canonical PNG 通过 alpha 门槛**。新增站点资产复用已验证的 `installation.png`；五份分发资产与源文件逐字节一致，未新增 canonical 图片或重新编码。
+
+独立静态解析确认：导航与首屏两个“安装指南”均为 `#installation` 页内链接，唯一目标及旧 `#download` 兼容锚点存在；两个“免费下载”仍指向真实 latest release，无未发布 0.2.0 固定资产链接；Homebrew 代码保留两条实际命令行。README 安装段位于 Features / 首个表格之前，20 个不同截图引用均存在。页面与 README 保留准备中 0.2.0 / 已发布 0.1.0 的真实阶段说明。
+
+证据（含资产 SHA、全部 alpha 清单及链接）为 `/private/tmp/tursora-installation-site-static-wu6hgft4/checks.json`；`git diff --check` 通过。本次未操作浏览器或应用、不运行 smoke，不能据此声明锚点的实际滚动、窄屏换行 / 图片查看器或新终端状态已实测。该静态检查时，新的 General / Terminal 原始截图尚未提供；随后替换阶段见下节。
+
+随后主任务完成独立浏览器实测：1200 × 850 中点击导航“安装指南”，URL fragment 变为 `#installation`，安装区顶部距视口 100 px，页面宽度 1200；390 × 844 中点击首屏“安装指南”跳到同一目标，页面宽度 390、无横向溢出。窄屏实际截图确认四步 DMG 说明和 Homebrew 命令可读；tap URL 视觉换行，但 `pre.textContent` 仍精确保留两条原命令。
+
+桌面和窄屏均实际打开安装图弹窗，窄屏暗色遮罩中的原生透明外沿经目视确认；Escape 均将焦点返回原安装图链接（AX label：`查看 DMG 安装窗口完整截图`）。实点范围只有桌面导航与窄屏首屏按钮，其余同目标结论来自上述静态解析；未扩展为所有键盘、无 JavaScript 或应用交互测试。主任务已重置视口并关闭自有页签，服务器停止另由主任务处理。
+
+## 0.2.0 会话保留与状态栏截图正式替换
+
+主任务提供 `/private/tmp/tursora-terminal-session-qa/screenshots/settings.jpg` 与 `terminal.jpg`，分别为真实 660 × 777 General 和 1100 × 740 终端窗口。已先保存独立原始副本，再使用未改动的 `prepare-screenshots.swift` 确定性处理，未使用任意几何遮罩或编辑界面内部。首次 Swift 编译的默认 module cache 无写权限，改用本轮临时目录内的 cache 后两次处理均 exit 0；没有更改工具链或应用源码。
+
+General 实际开启终端与 ZIP，并说明收起或禁用面板仍保留会话；原紫色系统标记完整保留。Terminal 显示目录树、分栏、自定义颜色、右下角 `Terminal · 1 task`，以及实际打印的 Shell PID `55113` / Background PID `55145`。主任务报告此捕获位于隐藏、禁用、重新启用并恢复会话之后；操作顺序与存活核对由[会话生命周期记录](terminal-session-lifecycle.md)单独说明，不能仅凭截图中的文字断言任务检测或清理已通过。`quit-hidden.jpg` 是独立退出交互证据，未加入 canonical。
+
+| Canonical | 改变的角像素 | 保护像素 / RGBA 字节不变 | 全透明 / 半透明 | 测量边色回退 | PNG SHA-256 |
+|---|---:|---:|---:|---:|---|
+| `settings.png` | 362 | 512,458 / 2,049,832 | 176 / 186 | 6 | `7922bbc6461fd836d9823fcc4ae4e7af0eee4d7123e90a9f52fad1338b91352d` |
+| `terminal.png` | 849 | 813,151 / 3,252,604 | 519 / 330 | 0 | `49cbc1faa7f19edced3b9cd738dbd6db3db974813eb1c6d3a6f214422df6f402` |
+
+原始图、明暗棋盘整体与四角 4 倍细节均逐一查看，边缘未见残留白底，原内部与窗口轮廓保留。处理器编码后重新解码核对保护区，`protectedBytesEqual` 均为 true。已替换两份 canonical，拷贝与暂存 PNG 字节相同；其余 27 张图片 SHA 全部未变。README alt 与图片清单已更新到实际可见内容。
+
+所有证据保存在 `/private/tmp/tursora-lifecycle-screenshots-qapzdqgt/`：`sources.json` 含原图来源和 SHA，`*.raw.jpg` / `*.png` / `*-stats.json` / `*-contact.png` 为处理链，`*.previous.png` 保留上一阶段图片，`before-inventory.json` / `replacement-inventory.json` 记录替换范围。此段只报告截图检查，最终应用源码、三轮 smoke 和发布验证另由主任务记录。
+
+替换后独立 `screenshot_alpha.py --json` 全量检查 **29 张通过、0 错误**；清单为同目录 `alpha-audit.json`。`site/build.py` 再次通过，5 份资产、39 处引用、1,629 KiB，所有网站资产的 SHA 与替换前检查一致；日志为 `site-build.out` / `site-build.err`，stderr 为空。General / Terminal 未被网站独立复制，但仍受其全量 canonical 检查门槛覆盖。`git diff --check` 通过；此步没有重跑浏览器或应用。
+
 ## 初始盘点
 
 `docs/images/features/` 初始共 26 张真实 PNG。用原生 ImageIO 解码逐图检查 alpha，20 张四角已完全透明且带半透明抗锯齿，6 张完全不透明。网站的三张截图复用透明的 canonical PNG，本轮初始没有网站独立副本或 CSS 白底问题。

@@ -54,4 +54,4 @@ ruby -c Casks/tursora.rb
 4. `brew uninstall --cask zerolfx/tursora/tursora` 成功，临时 app 路径不再存在。
 5. 发布边界测试 6 个方法通过，Ruby 语法通过；这些独立工具检查不代替最终组合应用 smoke。
 
-本轮只准备仓库内分发配置。`main` 的 cask 发布、远端工作流及网站重新部署尚未执行；这些状态由最终整合记录更新。本次也不算 Gatekeeper 首次启动实测或生产自动更新实测。
+用户已授权在新增终端生命周期完成后推送、合入并发布 0.2.0。当前仍只准备仓库内分发配置：`main` 的 cask、远端工作流及网站重新部署尚未执行。0.2.0 真实 DMG / appcast 发布核验后，用 [RELEASING 中的命令](../RELEASING.md#020-preparation-2026-09-13)生成后续 cask 并加入 `auto_updates true`，不能提前把当前 cask 指向未发布字节。这些状态由最终 HANDOFF 更新；本次也不算 Gatekeeper 首次启动实测或生产自动更新实测。

@@ -68,7 +68,7 @@ enum SmokeTest {
                     ArchivePreparationSmokeTests.run {
                     ArchiveBrowserSmokeTests.run {
                         SplitToolbarSmokeTests.run {
-                            FolderTreeSmokeTests.run { ShortcutSmokeTests.run { TerminalToolbarSmokeTests.run { TerminalSmokeTests.run { TerminalPreferencesSmokeTests.run {
+                            FolderTreeSmokeTests.run { ShortcutSmokeTests.run { TerminalToolbarSmokeTests.run { TerminalSmokeTests.run { TerminalPreferencesSmokeTests.run { TerminalActivitySmokeTests.run { TerminalStatusSmokeTests.run { TerminalSessionSmokeTests.run {
                                 SearchEntrySmokeTests.run {
                                 SearchSmokeTests.run {
                                     IntegratedSearchSmokeTests.run {
@@ -84,7 +84,7 @@ enum SmokeTest {
                                     }
                                 }
                                 }
-                            } } } } }
+                            } } } } } } } }
                         }
                     }
                     }
@@ -293,7 +293,7 @@ enum SmokeTest {
             check("terminal panel opens without a user shell in smoke mode", wc.terminalPanel != nil && wc.terminalPanel?.isRunning == false)
             check("terminal starts in active folder", wc.terminalPanel?.pendingDirectory.standardizedFileURL == directory.standardizedFileURL)
             AppPreferences.experimentalTerminalEnabled = false
-            check("disabling experiment removes terminal immediately", wc.terminalPanel == nil && terminalItem?.isHidden == true)
+            check("disabling terminal hides its retained session immediately", !wc.isTerminalVisible && wc.terminalPanel != nil && terminalItem?.isHidden == true)
             check("display preference does not rename the actual file", FileManager.default.fileExists(atPath: file.path))
             b.setViewMode(.details)
             if let folderNode = b.model.node(for: folder) { b.fileList.expand(folderNode) }

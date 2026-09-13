@@ -178,7 +178,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
             detail("Remember view mode, sorting, icon sizes, groups, hidden files and previews. Use View → Folder View Settings to save a default or reset a folder. In Remember Each Folder mode, open panes keep their own view until you revisit the folder."),
             folderViewSaveMessage, retryFolderViewSave, separator(),
             heading("Terminal & ZIP"),
-            terminalCheckbox, detail("Use the toolbar Terminal button to open a terminal alongside your files. Customize its shell and appearance in Terminal, and its shortcut in Shortcuts."),
+            terminalCheckbox, detail("Use the toolbar Terminal button to show or hide your terminal. Hidden sessions keep running, including when this option is off. Re-enable it to return to the session. Customize its shell and appearance in Terminal, and its shortcut in Shortcuts."),
             zipCheckbox, detail("Open ZIP files read-only in the current pane. Use Extract when you want to unpack the archive."),
         ]
         let stack = NSStackView(views: rows)

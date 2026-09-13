@@ -9,6 +9,9 @@ final class StatusBarView: NSView {
     private let label = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
     let zoomSlider = NSSlider()
+    let terminalStatusButton = NSButton()
+    var onTerminalToggle: (() -> Void)?
+    private var terminalStatus: TerminalStatusPresentation?
     var onZoomChanged: ((Int) -> Void)?
     private var busyCount = 0
     private var isShowingArchiveStatus = false
@@ -34,9 +37,30 @@ final class StatusBarView: NSView {
         zoomSlider.target = self
         zoomSlider.action = #selector(sliderMoved(_:))
         addSubview(zoomSlider)
+        terminalStatusButton.bezelStyle = .inline
+        terminalStatusButton.isBordered = false
+        terminalStatusButton.font = .systemFont(ofSize: 10)
+        terminalStatusButton.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
+        terminalStatusButton.imagePosition = .imageLeading
+        terminalStatusButton.target = self
+        terminalStatusButton.action = #selector(toggleTerminal(_:))
+        terminalStatusButton.isHidden = true
+        addSubview(terminalStatusButton)
     }
 
     @objc private func sliderMoved(_ sender: NSSlider) { onZoomChanged?(Int(sender.doubleValue.rounded())) }
+    @objc private func toggleTerminal(_ sender: NSButton) { onTerminalToggle?() }
+
+    func setTerminalStatus(_ value: TerminalStatusPresentation?) {
+        guard terminalStatus != value else { return }
+        terminalStatus = value
+        terminalStatusButton.isHidden = value == nil
+        terminalStatusButton.isEnabled = value?.isEnabled == true
+        terminalStatusButton.toolTip = value?.detail
+        terminalStatusButton.setAccessibilityLabel(value.map { $0.title + ". " + $0.detail })
+        terminalStatusButton.contentTintColor = value?.hasTasks == true ? .controlAccentColor : .secondaryLabelColor
+        needsLayout = true
+    }
 
     /// Reflect the current zoom step without firing the action.
     func setZoom(index: Int, count: Int) {
@@ -51,6 +75,23 @@ final class StatusBarView: NSView {
     override func layout() {
         super.layout()
         spinner.frame = NSRect(x: bounds.width - 22, y: (bounds.height - 16) / 2, width: 16, height: 16)
+        if let terminalStatus {
+            // Keep the ZIP/search status and task spinner legible in a narrow
+            // pane; the full terminal state remains available to AX/tooltips.
+            let compact = bounds.width < 280
+            let width: CGFloat = compact ? 24 : min(140, max(110, bounds.width * 0.3))
+            let title = compact ? "" : terminalStatus.title
+            let imagePosition: NSControl.ImagePosition = compact ? .imageOnly : .imageLeading
+            if terminalStatusButton.title != title { terminalStatusButton.title = title }
+            if terminalStatusButton.imagePosition != imagePosition { terminalStatusButton.imagePosition = imagePosition }
+            terminalStatusButton.frame = NSRect(x: max(4, spinner.frame.minX - width - 4), y: (bounds.height - 18) / 2, width: width, height: 18)
+            zoomSlider.isHidden = bounds.width < 450
+            let zoomWidth: CGFloat = zoomSlider.isHidden ? 0 : 90
+            zoomSlider.frame = NSRect(x: terminalStatusButton.frame.minX - zoomWidth - 8, y: (bounds.height - 16) / 2, width: zoomWidth, height: 16)
+            let trailing = zoomSlider.isHidden ? terminalStatusButton.frame.minX : zoomSlider.frame.minX
+            label.frame = NSRect(x: 8, y: (bounds.height - 16) / 2, width: max(0, trailing - 16), height: 16)
+            return
+        }
         zoomSlider.frame = NSRect(x: bounds.width - 22 - 8 - 110, y: (bounds.height - 16) / 2, width: 110, height: 16)
         // Preserve the read-only warning in narrow split panes. Zoom remains
         // available from the menu and gestures when its slider cannot fit.

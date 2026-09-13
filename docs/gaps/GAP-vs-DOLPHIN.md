@@ -25,7 +25,7 @@
 |---|---|---|
 | **Folders 面板**（目录树，可与视图同步） | ✅ 已实现并验证 | Places 下方独立 NSOutlineView 树；F7、活动 pane 跟随、按需读取、隐藏 / Home 选项、上下比例与可见性会话记忆；没有任意停靠 / 浮动，见[记录](../research/folder-tree.md) |
 | Information 面板（预览 + 元数据 + 媒体自动播放、"悬停时显示"） | ❌ | (mac) Quick Look 覆盖预览；元数据面板可做成 Inspector |
-| Terminal 面板（内嵌终端，随目录同步，`switch_terminal_url_sync`） | ✅ 默认启用 | 原生 SwiftTerm 1.15.0 + PTY，工具栏 / 默认 F4；可设 shell、等宽字体和文本 / 背景配色。导航只更新手动 Restart 目标，不注入 cd，不做自动双向同步 |
+| Terminal 面板（内嵌终端，随目录同步，`switch_terminal_url_sync`） | ✅ 默认启用 | 原生 SwiftTerm 1.15.0 + PTY，工具栏 / 默认 F4；可设 shell、等宽字体和文本 / 背景配色。隐藏保留会话，终止前任务确认的追加验证见[生命周期](../research/terminal-session-lifecycle.md)。导航只更新手动 Restart 目标，不注入 cd，不做自动双向同步 |
 | Places：隐藏条目 / 显示全部、"最近使用"与"搜索"分组 | 部分 | 我们有增删拖拽重排、推出 ✅ |
 | 面板锁定 / 布局记忆 | 部分 | 会话恢复已有侧栏宽度 / 折叠及分栏比例；本轮加入 Folders 可见性 / 高度比例 / 选项。面板锁定、任意停靠及终端布局恢复仍未实现 |
 
@@ -145,4 +145,5 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 - [x] Places 旁的独立 Folders 树：本实现位于其下方，允许拖动高度，保持收藏可见。
 - [x] MIT 许可、免费开源说明和自有 Homebrew tap 配置；隔离安装 / 卸载通过。
 - [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG、实机与全部 29 张透明截图检查完成；阶段和范围见 [HANDOFF](../HANDOFF.md)。
-- [ ] 公开 main 上的 tap 发布、远端 CI 与网站部署；新版本发布另行处理。
+- [ ] 隐藏保留终端与退出 / 关窗 / Restart 任务确认的追加验证；[生命周期范围](../research/terminal-session-lifecycle.md)。
+- [ ] 用户已授权公开 main 上的 tap、远端 CI / 网站部署与 0.2.0 发布；先完成新增源码验证，再核验真实 release 后更新 cask。

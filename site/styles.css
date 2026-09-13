@@ -20,6 +20,7 @@ a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid 
 .brand img{filter:drop-shadow(0 1px 3px #142d4720)}
 .nav-links{display:flex;align-items:center;gap:30px;font-size:14px;font-weight:500}
 .nav-links a:hover,.site-footer a:hover{color:var(--blue)}
+.nav-links .nav-install{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:5px 13px;border:1px solid #bbd5f4;border-radius:8px;background:#e9f2ff;color:var(--blue);font-weight:650;white-space:nowrap}
 .nav-source span{margin-left:3px;color:var(--muted)}
 .eyebrow{font-size:12px;font-weight:650;letter-spacing:.12em;color:var(--blue);line-height:1.6}
 .hero{padding-top:66px}
@@ -29,7 +30,7 @@ a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid 
 .hero h1{margin-top:20px;font-size:clamp(42px,5.4vw,66px);line-height:1.2;letter-spacing:-.055em;font-weight:650}
 .hero h1 span{color:var(--blue)}
 .hero-description{margin-top:25px;color:var(--muted);font-size:17px;line-height:1.95;letter-spacing:.01em}
-.hero-actions,.download-actions{display:flex;align-items:center;gap:27px;margin-top:28px}
+.hero-actions,.download-actions{display:flex;align-items:center;gap:27px;margin-top:28px;flex-wrap:wrap}
 .button{display:inline-flex;align-items:center;justify-content:center;gap:26px;border-radius:9px;padding:12px 20px;font-size:14px;font-weight:600;line-height:1.8;min-height:48px;transition:background .18s,box-shadow .18s,transform .18s}
 .button.primary{background:var(--blue);color:#fff;box-shadow:0 3px 7px #0761d81a,inset 0 1px 0 #ffffff20}
 .button.primary:hover{background:var(--blue-dark);box-shadow:0 5px 13px #0761d825;transform:translateY(-1px)}
@@ -105,6 +106,13 @@ kbd{display:inline-flex;align-items:center;justify-content:center;min-width:48px
 .download-copy>p:not(.eyebrow){font-size:14px;color:var(--muted);margin-top:18px;line-height:1.95}
 .download-actions{gap:24px;margin-top:24px;flex-wrap:wrap}
 .download-label{font-size:11px;letter-spacing:.1em;color:var(--muted);font-weight:600}
+.download-info{min-width:0}
+.installation-figure{margin-top:30px}
+.installation-figure figcaption{font-size:12px}
+.install-method{font-size:16px;font-weight:650;margin-top:22px}
+.install-note{font-size:12px;line-height:1.85;color:#5a6f87;margin:10px 0 14px;overflow-wrap:anywhere}
+.install-code{margin:12px 0;padding:14px 16px;border:1px solid #cfddee;border-radius:9px;background:#eaf0f8;color:#263f5f;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.85 ui-monospace,SFMono-Regular,Menlo,monospace}
+.install-code code{font:inherit}
 .requirements{margin:17px 0 22px}
 .requirements>div{display:grid;grid-template-columns:100px 1fr;gap:16px;padding:11px 0;border-bottom:1px solid var(--line);font-size:13px}
 .requirements dt{color:var(--muted)}

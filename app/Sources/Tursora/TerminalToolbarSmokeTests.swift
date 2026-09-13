@@ -48,20 +48,20 @@ enum TerminalToolbarSmokeTests {
             await listed(first.browser)
             check("panel belongs to its window across panes and tabs", first.terminalPanel === panel && button.state == .on)
             check("overflow dispatches the same close action", NSApp.sendAction(overflow.action!, to: overflow.target, from: overflow))
-            check("overflow closes and restores the file focus", first.terminalPanel == nil && button.state == .off && first.window?.firstResponder === first.browser.focusView)
+            check("overflow hides the retained panel and restores file focus", !first.isTerminalVisible && first.terminalPanel === panel && button.state == .off && first.window?.firstResponder === first.browser.focusView)
         }
         button.performClick(nil)
         let opened = first.terminalPanel
         opened?.onClose?()
-        check("panel close updates toolbar and overflow", first.terminalPanel == nil && button.state == .off && overflow.state == .off)
+        check("panel hide updates toolbar and overflow without discarding it", !first.isTerminalVisible && first.terminalPanel === opened && button.state == .off && overflow.state == .off)
         button.performClick(nil)
         AppPreferences.experimentalTerminalEnabled = false
-        check("settings opt-out closes and disables all window controls", first.terminalPanel == nil && !button.isEnabled && !overflow.isEnabled && second.terminalToolbarButtonForTesting?.isEnabled == false)
+        check("settings opt-out hides the retained panel and disables window controls", !first.isTerminalVisible && first.terminalPanel === opened && !button.isEnabled && !overflow.isEnabled && second.terminalToolbarButtonForTesting?.isEnabled == false)
         button.performClick(nil)
         first.toggleTerminal(nil)
-        check("disabled action cannot reopen the panel", first.terminalPanel == nil && button.state == .off)
+        check("disabled action cannot reveal the retained panel", !first.isTerminalVisible && first.terminalPanel === opened && button.state == .off)
         AppPreferences.experimentalTerminalEnabled = true
-        check("re-enabling exposes the action without starting a shell", button.isEnabled && overflow.isEnabled && first.terminalPanel == nil)
+        check("re-enabling exposes the action without showing or replacing the session", button.isEnabled && overflow.isEnabled && !first.isTerminalVisible && first.terminalPanel === opened)
         first.window?.setContentSize(NSSize(width: 560, height: 360))
         first.window?.contentView?.layoutSubtreeIfNeeded()
         check("narrow toolbar retains usable overflow", NSApp.sendAction(overflow.action!, to: overflow.target, from: overflow) && first.terminalPanel != nil)

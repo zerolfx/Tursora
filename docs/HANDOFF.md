@@ -2,12 +2,28 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
-## 本轮：快捷键、终端设置、目录树与免费开源分发
+## 本轮：终端会话保留与 0.2.0 发布
+
+上一阶段已提交为 `eeaea1c`。用户进一步要求收起终端保留会话，退出有任务时询问，并已授权在这些改动完成后推送、合入和发布新版本；本轮选定 `0.2.0`。终端、窗口与退出协调由主任务和终端 agent 实现，文档与发布准备并行。
+
+工具栏 / F4 / 面板关闭按钮只隐藏每窗口终端，再展开继续原 PTY、输出与任务。Settings 禁用入口也隐藏并保留；Shell 选择只在新建会话 / Restart 时应用。退出、关闭窗口或 Restart 对前台 / 后台 / 已停止任务及未知状态先确认，默认 Cancel；取消退出不进入最终保存和清理，不取消文件传输。仍不恢复跨应用重启的终端会话。精确检测边界、验证计划及后续实测统一见[会话生命周期](research/terminal-session-lifecycle.md)，行为见 SPEC §17 / §22、D55。
+
+用户又确认把终端状态放在窗口右下角：当前标签最右 pane 的 footer 显示唯一入口，点击切换同一终端；初始、隐藏 / 运行、任务进程数、结束 / 错误 / 未知状态均有说明，窄栏缩为图标。现有会话约两秒后台采样，初始展示不启动 PTY，动作时即时检测；D56 记录取舍；独立发布包的初始状态、保留任务、默认取消、窄栏及退出清理已实测，最终 101 份 Swift 源码的 3,329 项 smoke 已连续三轮通过。README 的 0.2.0 安装说明已前置，网站导航 / 首屏“安装指南”跳转 `#installation`，含实际 DMG 图及 Homebrew 命令；当前页面构建（5 资产 / 39 引用）与新增入口桌面 / 390 px 实测通过，安装图弹窗和 Escape 返回焦点通过；精确点击范围见[截图记录](research/screenshot-audit-2026-09-13.md)。正式发布前保留 pending 文案与有效 latest 链接。网站复用现有 installation.png，资产数变为 5，canonical 图片总数仍为 29。
+
+Ghostty 仅完成一手源码评估：公开 libghostty-vt 与内部完整 Metal 嵌入 API 的边界、MIT 许可及后续原型建议见[研究](research/ghostty-embedding.md)。本轮不替换 SwiftTerm，也不宣称做过性能横评。
+
+**此追加阶段：101 份 Swift 源码，3,329 项 smoke 连续三轮通过**（194.4 / 188.4 / 187.6 秒，stderr 均为空，逐轮与当前源码哈希一致）。最终默认 0.2.0 release / DMG 构建、严格签名与安装布局检查及 83 项工具测试通过；公开发布核对仍待完成；下面的 3,194 项与 95 份源码只代表 `eeaea1c` 之前的定制阶段。独立发布包已实测隐藏 / Settings 禁用再启用仍保留实际 sleep 任务及相同 PID，默认 Cancel、Restart / 关窗取消、窄至 560 × 380 的可点击状态图标、接受退出后的 PID 清理，以及浅色重开初始无 shell / 自然结束。精确步骤和边界见[会话生命周期](research/terminal-session-lifecycle.md)。
+
+General / Terminal 已替换为这轮真实截图，显示新的保留说明和右下角 `Terminal · 1 task`；保护区逐字节相同，明暗整体及四角检查通过，其余 27 张 canonical 字节未变。全部 29 张 alpha 检查与网站重建通过；`quit-hidden.jpg` 保留为独立交互证据。截图不替代最终源码测试，旧通过数不能用作新增生命周期的验证结论。
+
+2026-09-13 只读预检：远程 main 为 `b58c1ce5acb0f5318f67feb129073864be4950f1`，其 Build / Pages 均成功；没有打开的 PR，远程仅有 `v0.1.0`，`v0.2.0` 尚未占用。0.1.0 公开资产仍仅 ZIP / 校验文件，没有 appcast；此轮未读取密钥或修改远程。CHANGELOG 已准备 0.2.0 日期节并保留 Unreleased；先完成最终验证和 main 合入，再从精确提交运行 Release。发布后重新下载核验 DMG / appcast / SHA256SUMS，最后根据真实新资产更新 cask 并确认 Homebrew / Pages CI，步骤见 [RELEASING](RELEASING.md)。当前 cask 仍固定真实 0.1.0，未提前引用新 DMG。
+
+## 已完成阶段：快捷键、终端设置、目录树与免费开源分发
 
 当前整合分支 `codex/customization-and-distribution` 从 `b58c1ce` 开始。用户要求协调 agent 开发：所有应用快捷键可定制、终端 Shell / 字体 / 颜色设置、工具栏直接展开 / 收起终端、参考 Dolphin 的 Places 与目录树、README 强调免费开源、截图圆角外透明以及 Homebrew 分发；用户已明确选择 MIT 许可证。
 
 - Settings 现分 General / Shortcuts / Terminal / Updates。Shortcuts 覆盖主菜单已有及未绑定命令、文件 Return / Space、标签定位与循环、备用缩放及归档取消；持久化录制 / 清除 / 单项或全部重置，保留原 Filter 绑定，冲突说明归属。文本、Info / Settings 编辑器与 SwiftTerm 的原生 Control / 功能键受保护，终端开关除外；默认绑定和精确范围见 [SHORTCUTS](SHORTCUTS.md)、[快捷键记录](research/custom-shortcuts.md)。
-- Terminal 默认系统登录 Shell、系统等宽 12 pt、跟随外观；可选绝对可执行 Shell、已安装等宽字体 / 8–36 pt、Dark / Light / Custom 文本背景色。字体和颜色即时应用到所有已打开 PTY，Shell 下次启动才用。工具栏终端按钮及溢出菜单反映本窗口展开状态；收起仍终止会话。Tursora 是 SwiftTerm + 真实 PTY，Rascal 当前是逐条 Process + Pipe 命令面板，源码依据与边界见[终端记录](research/terminal-customization.md)。
+- Terminal 默认系统登录 Shell、系统等宽 12 pt、跟随外观；可选绝对可执行 Shell、已安装等宽字体 / 8–36 pt、Dark / Light / Custom 文本背景色。字体和颜色即时应用到所有已打开 PTY，Shell 下次启动才用。工具栏终端按钮及溢出菜单反映本窗口展开状态；当时收起终止会话的规则由页首追加阶段取代。Tursora 是 SwiftTerm + 真实 PTY，Rascal 当前是逐条 Process + Pipe 命令面板，源码依据与边界见[终端记录](research/terminal-customization.md)。
 - View → Show Folders 默认 F7，在收藏与位置下方展开独立目录树，单层后台读取、活动 pane 跟随、独立隐藏 / Home 限制选项、右键打开到新标签 / 另一侧、文件拖入走既有任务。按窗口恢复可见性、上下比例及选项；隐藏树或收起侧栏停用监听。Dolphin 两种面板的区别、固定左侧布局取舍见[目录树记录](research/folder-tree.md)。
 - 根目录 MIT 许可与 README / 网站免费开源说明已加入，第三方声明保留。Homebrew cask 复用本公开仓库，固定已发布 `0.1.0` ZIP，实际下载字节 / 校验文件 / GitHub digest 一致；独立临时 Homebrew 6.0.22 中真安装、包版本 / arm64 / strict codesign / 保留 quarantine 与卸载通过。公开 main 的 tap、远端工作流仍需最终发布；不声称官方 homebrew/cask 已接纳，不把 brew 安装当作 Apple 公证。维护工具与依据见[Homebrew](research/homebrew.md)。
 - 新增标准库 PNG 检查和 Pages 门槛覆盖整个 canonical 目录；透明化处理器沿用实测边缘、原残差阈值和窄范围，保护真实内部，83 项 Python 工具测试通过。**全部 29 张截图通过 alpha 与逐张明暗 / 四角检查**：原有 20 张字节未改，六张旧不透明图真实重拍，并新增 Shortcuts / Terminal Settings / Folders。安装图使用同一 Finder 窗口配准参考，真实白色示意内部保留。网站完整构建（4 资产、36 引用）及 1200 / 390 px 浏览器复查通过，包含 ZIP 页签、透明图暗色弹窗和 Escape 焦点恢复；自有页签及服务器已关闭。来源、像素统计和阶段边界见[截图记录](research/screenshot-audit-2026-09-13.md)。
@@ -129,7 +145,7 @@ CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开�
 - 快捷键与 Finder 有几处冲突（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌥⌘S），是有意的，见 [DECISIONS.md](DECISIONS.md) D9。
 - 已有 General / Shortcuts / Terminal / Updates 设置：扩展名只改显示、所有应用命令快捷键可配置、终端 Shell / 字体 / 颜色可配置，每目录 / 统一默认视图策略已实现；本轮验证与发布进度见页首。会话恢复已实现，当前验证进度见页首；其他偏好策略、本地化仍未实现。
 - 搜索支持普通目录递归名称与 Spotlight 正文，正文受索引 / importer / 权限限制，真实正向正文命中尚未验证。单次最多展示 50,000 项，Spotlight 最多检查 50,000 个候选；没有 ZIP 内搜索、Tags / 评分条件、Finder `.savedSearch` 互通或实时结果增量。
-- 终端工具栏 / 默认 F4 入口默认启用，只有展开面板才启动 shell；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认启用，Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭 ZIP 浏览开关后已有页仍只读，新打开 ZIP 恢复 Extract。
+- 终端工具栏 / 默认 F4 入口默认启用，首次展开才启动 shell；每窗口一个 PTY，收起保留，浏览导航只更新手动 Restart 目标，Restart / 关窗 / 退出的任务确认见页首；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认启用，Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭 ZIP 浏览开关后已有页仍只读，新打开 ZIP 恢复 Extract。
 - 归档与服务器新增功能边界：仅普通 ZIP；远程走系统 NetFS 挂载，不含自建 SFTP / 重连；真实服务器读写还未验证。`FileOperations.report` 和 Eject 错误路径已防止 smoke 模式弹模态框。
 
 ## 下一步

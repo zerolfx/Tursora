@@ -4,7 +4,7 @@
 |---|---|---|
 | you are picking the project up | [HANDOFF.md](HANDOFF.md) — state, what is verified and what is not, next steps | 中文 |
 | you need the intended behaviour of a feature | [SPEC.md](SPEC.md) — v1 spec, each section marked "对标 Dolphin / Finder" | 中文 |
-| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D54 | 中文 |
+| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D56 | 中文 |
 | you are changing code | [ARCHITECTURE.md](ARCHITECTURE.md) — object graph, per-file map, data flows, notifications, persistence, threading | English |
 | you are building, testing or releasing | [DEVELOPMENT.md](DEVELOPMENT.md) — toolchain, smoke test, conventions, AppKit pitfalls, release checklist | English |
 | you are editing or previewing the Chinese product page | [site/README.md](../site/README.md) — three workflows, canonical screenshots, Python static build and browser checks; [architecture](ARCHITECTURE.md#product-page) | English |
@@ -28,6 +28,8 @@
 | you are changing defaults, ZIP cancellation/recovery or terminal status | [research/default-features-polish.md](research/default-features-polish.md) — default migration, shared preparation cancellation, startup recovery and terminal state | 中文 |
 | you are customizing application commands or input focus | [research/custom-shortcuts.md](research/custom-shortcuts.md), [SHORTCUTS.md](SHORTCUTS.md) — command catalog, validation, migration and native input protection | 中文 / English |
 | you are changing terminal settings or comparing Rascal | [research/terminal-customization.md](research/terminal-customization.md) — real PTY, shell validation, live appearance and source comparison | 中文 |
+| you are changing terminal hiding, job detection or quit/close/restart confirmation | [research/terminal-session-lifecycle.md](research/terminal-session-lifecycle.md) — retained per-window PTY, cancellation order, process ownership and verification | 中文 |
+| you are evaluating a Ghostty backend | [research/ghostty-embedding.md](research/ghostty-embedding.md) — current official VT/internal APIs, licensing and a follow-up comparison plan | 中文 |
 | you are changing the folder tree or Places/Folders layout | [research/folder-tree.md](research/folder-tree.md) — pinned Dolphin evidence, lazy model, active-pane ownership and saved options | 中文 |
 | you are updating the Homebrew cask or checking signing requirements | [research/homebrew.md](research/homebrew.md), [../Casks/tursora.rb](../Casks/tursora.rb) — verified release generation and isolated installation | 中文 / Ruby |
 | you are auditing all README/site screenshot transparency | [research/screenshot-audit-2026-09-13.md](research/screenshot-audit-2026-09-13.md) — initial inventory, PNG build gate and recapture stage | 中文 |

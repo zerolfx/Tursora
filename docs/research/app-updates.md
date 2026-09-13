@@ -2,7 +2,9 @@
 
 ## 当前状态
 
-更新代码、设置和 DMG 发布工具已实现，尚未发布含 updater 的新版本。最终同源码 **2,158 项 smoke 连续三轮通过**，stderr 均为空；工具测试 **70 项通过**（发布说明 33、更新元数据 / 布局 37）。General / Updates 实机设置、重启持久化、本地 Sparkle DMG 下载 / 校验 / 安装 / 重启及最终 DMG 的 Finder 视觉检查均已完成。用户已授权提 PR 并合入；Pages 工作流合入 `main` 后部署，当前结果以 [Actions](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 为准，生产稳定 release 与 feed 另行发布。
+更新代码、设置和 DMG 发布工具已实现，尚未发布含 updater 的新版本。2026-09-13 用户已授权在[终端会话保留与退出确认](terminal-session-lifecycle.md)完成后推送、合入并发布 **0.2.0**；CHANGELOG 已准备对应日期节。只读 GitHub 预检仍为唯一正式版 0.1.0，没有 appcast；新版本最终源码验证、远端 Release 和生产 feed 核验未完成，具体进度以 [HANDOFF](../HANDOFF.md) 为准。
+
+以下为软件更新独立阶段的历史证据：同源码 **2,158 项 smoke 连续三轮通过**，stderr 均为空；工具测试 **70 项通过**（发布说明 33、更新元数据 / 布局 37）。General / Updates 实机设置、重启持久化、本地 Sparkle DMG 下载 / 校验 / 安装 / 重启及最终 DMG 的 Finder 视觉检查均已完成。Pages 随 PR #5 合入并部署，见[站点记录](github-pages.md)；这些历史结果不替代 0.2.0 新增源码或真实生产发布检查。
 
 Ed25519 公钥已写入 `app/Resources/SparklePublicKey.txt`，私钥保存在本机 Keychain 的 `com.tursora.Tursora` account。首次上传被自动审批拦截后，用户明确授权；`zerolfx/Tursora` 的 Actions secret `SPARKLE_PRIVATE_KEY` 已于 2026-09-13 00:48:20（Asia/Shanghai）成功配置，GitHub `updatedAt=2026-09-12T16:48:20Z`，secret 列表已核实名称与时间。上传前从现有 Keychain 导出到 mode-0600 临时文件，经 CryptoKit 派生公钥与 Resources 一致后通过 stdin 上传，trap 清理临时文件；私钥未进入源码或日志。新稳定 release 尚未发布，`0.1.0` 标签与资产保持原样。
 
@@ -10,7 +12,7 @@ Ed25519 公钥已写入 `app/Resources/SparklePublicKey.txt`，私钥保存在�
 
 ## 交互与偏好
 
-Settings 分为 General 和 Updates 两页，初始选择 General。Updates 提供每日自动检查、自动下载安装、手动检查和最近检查时间。Tursora 菜单也提供 Check for Updates…，没有新增快捷键。
+Settings 当前分 General / Shortcuts / Terminal / Updates 四页，初始选择 General。Updates 提供每日自动检查、自动下载安装、手动检查和最近检查时间。Tursora 菜单也提供 Check for Updates…，默认没有快捷键，可在 Shortcuts 中配置。
 
 自动检查默认开启，可关闭；自动下载安装默认关闭。两个偏好交给 Sparkle 保存，应用启动不覆盖已有选择。自动检查关闭时，自动下载安装控件禁用；Sparkle 的有效 getter 可显示关闭，但已保存的选择仍保留，重新开启检查后恢复。手动检查继续可用，后台 updater 忙碌时由 `canCheckForUpdates` 禁用重复入口。
 
@@ -22,7 +24,7 @@ Settings 分为 General 和 Updates 两页，初始选择 General。Updates 提�
 - `AppUpdateDriver` 为测试注入边界。smoke 与裸 SPM 可执行文件的 shared factory 不构造 Sparkle，不启动网络检查、权限提示或安装服务。配置失败内联显示并禁用操作，成功重试可恢复。
 - 初始值放在 Info.plist：`SUEnableAutomaticChecks=true`、`SUAutomaticallyUpdate=false`、`SUSendProfileInfo=false`、`SUVerifyUpdateBeforeExtraction=true`；不设 `SUAllowsAutomaticUpdates`，让检查状态决定自动下载资格。检查间隔使用 Sparkle 默认 86,400 秒。
 - 打包将完整 Sparkle framework 通过 `ditto` 放入 `Contents/Frameworks`，保留 helper / XPC 签名、符号链接与执行权限。可执行文件使用包内 framework rpath，清理 SPM 开发目录路径；只给外层应用 ad-hoc 签名，不用 `--deep` 重签嵌套 helper。
-- 更新属于应用生命周期，不经文件浏览器的用户文件撤销通道；既有退出逻辑仍先取消并等待文件传输清理。没有改动用户文件操作、pane 或标签的数据模型。
+- 更新属于应用生命周期，不经文件浏览器的用户文件撤销通道；应用退出先执行终端任务确认，通过后才开始最终保存与文件传输 / PTY 清理。没有改动用户文件操作、pane 或标签的数据模型。与 Sparkle 实际安装 / 重启的组合验证需独立记录，不能由旧 loopback 更新结果推断新增确认已实测。
 
 ## 发布与信任链
 

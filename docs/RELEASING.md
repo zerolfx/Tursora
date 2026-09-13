@@ -14,7 +14,7 @@ The stable feed is `https://github.com/zerolfx/Tursora/releases/latest/download/
 
 ## Build the drag-install DMG
 
-Run `tools/make-app.sh`, then `tools/make-dmg.sh [release-version]` from `app/`. The optional version defaults to the bundle's short version; a supplied prerelease name must have the same numeric version as the app. Output is `app/dist/Tursora-<version>-macOS-arm64.dmg`. GitHub Releases attaches this DMG directly. GitHub Actions' download service still wraps build artifacts in its own ZIP; that outer wrapper is not the application's installer format.
+Run `tools/make-app.sh`, then `tools/make-dmg.sh [release-version]` from `app/`. The local bundle version defaults to `0.2.0`; `TURSORA_VERSION` can override it, and the Release workflow supplies its explicitly selected version. The optional version defaults to the bundle's short version; a supplied prerelease name must have the same numeric version as the app. Output is `app/dist/Tursora-<version>-macOS-arm64.dmg`. GitHub Releases attaches this DMG directly. GitHub Actions' download service still wraps build artifacts in its own ZIP; that outer wrapper is not the application's installer format.
 
 DMG creation requires Python 3.10+ (`TURSORA_PYTHON` selects the interpreter); both workflows set up Python 3.13. `make-dmg.sh` uses the dedicated `app/.build/dmg-tools` virtual environment and installs `dmgbuild==1.6.7`, `ds-store==1.3.3` and `mac-alias==2.2.3` with all three wheel hashes pinned in `dmg-requirements.txt`. It writes layout metadata directly and does not depend on a running Finder UI.
 
@@ -31,10 +31,10 @@ Mac App Store distribution is a separate project, including the [App Sandbox req
 ## Prepare a release
 
 1. Finish the implementation and documentation together. Review the diff, run the full application smoke suite three consecutive times, and verify the packaged app. Do not run computer-use checks while smoke is running.
-2. Choose an unused semantic version without `v`. Move the Unreleased entries into a dated heading such as `## [0.2.0] - 2026-10-01`; retain an empty Unreleased heading for future work. Update the compare and release links at the bottom of the changelog.
+2. Choose an unused semantic version without `v`. Move the Unreleased entries into a dated heading such as `## [0.2.0] - 2026-09-13`; retain an empty Unreleased heading for future work. Update the compare and release links at the bottom of the changelog.
 3. Run `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s app/tools -p 'test_*.py'` to cover release notes and update metadata. The Release workflow rejects a missing, duplicate or empty version section before creating a tag. It also supplies the repository and exact commit to make repository-relative links usable from GitHub Release pages.
 4. Update README download guidance and current handoff information. Commit with the required author identity and the final smoke-test count. Push only with the maintainer's authorization.
-5. Confirm remote `main` is exactly the reviewed commit. Dispatch the **Release** workflow on `main`, supplying the version and prerelease flag. A version suffix requires the prerelease flag.
+5. Confirm remote `main` is exactly the reviewed commit and its Build, Pages and applicable Homebrew checks pass. Dispatch the **Release** workflow on `main`, supplying the version and prerelease flag. A version suffix requires the prerelease flag. Release builds and validates the package but does not run the application smoke suite; the three exact-source local runs remain a prerequisite.
 
 The workflow checks out the dispatch commit and builds the Apple Silicon application. `CFBundleVersion` is the commit's Unix committer timestamp, identical between Build and Release workflows for the same commit. The numeric part of the requested version becomes `CFBundleShortVersionString`; the filename/tag retain a prerelease suffix if present. Do not substitute a workflow run number for the build number: Build and Release have independent sequences.
 
@@ -44,6 +44,46 @@ The workflow verifies the outer app signature, updater framework/helpers, runtim
 
 Finally it atomically creates a new `v<version>` tag at that exact commit and publishes the matching changelog section as release notes. Stable releases explicitly become latest. Prereleases omit the appcast, do not need the signing secret and use `--latest=false`, keeping the stable feed unchanged. Existing tags/releases are never overwritten.
 
+Tag creation and release creation are separate GitHub operations. If publishing fails after the tag is created, a normal rerun will reject the existing tag. Inspect the exact tag SHA and the successful run's verified assets before completing that same release; do not move/delete a published tag or rebuild different bytes under an existing version to bypass the check.
+
+## 0.2.0 preparation (2026-09-13)
+
+The maintainer has authorized pushing, merging and publishing after terminal hide/retain behavior and quit/close/restart job confirmation are finished. The changelog now contains the dated 0.2.0 section, aggregating changes since 0.1.0 and retaining Unreleased. This is preparation, not evidence that 0.2.0 is published.
+
+Read-only preflight found remote main at `b58c1ce5acb0f5318f67feb129073864be4950f1`, successful Build/Pages for that commit, no open PRs, and only the `v0.1.0` tag/release. The 0.1.0 assets are its historical ZIP and SHA256SUMS; the unused `v0.2.0` is the first planned updater/DMG release. Do not reuse the earlier customization stage's 3,194-check runs for the new lifecycle code. Final source smoke, packaged-app/DMG validation and changed General/Terminal screenshots are tracked in [the lifecycle record](research/terminal-session-lifecycle.md).
+
+After those checks and the exact reviewed main merge:
+
+```sh
+gh workflow run release.yml --repo zerolfx/Tursora --ref main \
+  -f version=0.2.0 -f prerelease=false
+```
+
+Identify the resulting Release run by its main SHA, wait for success, and verify the `v0.2.0` tag resolves to that SHA. The required stable assets are `Tursora-0.2.0-macOS-arm64.dmg`, `appcast.xml` and `SHA256SUMS.txt`. Download into a new owned directory:
+
+```sh
+release_dir="$(mktemp -d -t tursora-release-0.2.0)"
+gh api repos/zerolfx/Tursora/releases/tags/v0.2.0 > "$release_dir/release.json"
+gh release download v0.2.0 --repo zerolfx/Tursora \
+  --pattern Tursora-0.2.0-macOS-arm64.dmg \
+  --pattern appcast.xml --pattern SHA256SUMS.txt --dir "$release_dir"
+(cd "$release_dir" && shasum -a 256 -c SHA256SUMS.txt)
+```
+
+Perform the mounted-app and feed checks below, including bundled MIT/third-party notices, and confirm `releases/latest/download/appcast.xml` serves the same feed bytes. The publication run verifies the archive signature separately from metadata. A controlled production-feed update is separate from the previous loopback test; the historical 0.1.0 executable cannot perform it because it has no updater.
+
+Only after the real release passes verification, generate its cask:
+
+```sh
+python3 app/tools/update-homebrew.py \
+  --release-json "$release_dir/release.json" \
+  --checksums "$release_dir/SHA256SUMS.txt" \
+  --archive "$release_dir/Tursora-0.2.0-macOS-arm64.dmg" \
+  --auto-updates --output Casks/tursora.rb
+```
+
+Review the generated version, exact SHA and immutable asset URL, run the cask tool checks, then commit/merge the cask follow-up and verify its Homebrew workflow. Remove the prepared/unpublished wording from README and the product page only after publication succeeds, retain the 0.1.0 manual-upgrade note, and record Release / Homebrew / Pages URLs and scope in HANDOFF. Cask updates, Pages deployment and production update verification are independent steps; Release does not perform them automatically.
+
 ## Verify the published result
 
 Check that the workflow succeeded, the release tag resolves to the reviewed commit, and the expected application DMG and checksum file are attached. A stable release must also contain `appcast.xml` and be the repository's latest release. Download the assets, check SHA-256, mount the DMG read-only and verify the application signature, version, architecture, embedded resources, Applications link and layout. Copy its app to an owned test directory before checking app launch/update behavior. Metadata commands:
@@ -52,10 +92,10 @@ Check that the workflow succeeded, the release tag resolves to the reviewed comm
 python3 app/tools/update-metadata.py verify-bundle /path/to/Tursora.app \
   --public-key app/Resources/SparklePublicKey.txt
 python3 app/tools/update-metadata.py verify-appcast /path/to/appcast.xml \
-  --archive /path/to/Tursora-0.1.1-macOS-arm64.dmg --app /path/to/Tursora.app
+  --archive /path/to/Tursora-0.2.0-macOS-arm64.dmg --app /path/to/Tursora.app
 ```
 
-Replace the example `0.1.1` archive name with the released version. The appcast metadata command validates fields and returns the archive signature; it is not itself a cryptographic signature verifier. The release script performs the separate Sparkle signature check. For release verification, also exercise a controlled older update-enabled app against the feed, checking download, installation and relaunch without replacing the user's active app. A successful metadata/signing test alone is not evidence that the live installer flow was exercised.
+Replace the example `0.2.0` archive name with the released version. The appcast metadata command validates fields and returns the archive signature; it is not itself a cryptographic signature verifier. The release script performs the separate Sparkle signature check. For release verification, also exercise a controlled older update-enabled app against the feed, checking download, installation and relaunch without replacing the user's active app. A successful metadata/signing test alone is not evidence that the live installer flow was exercised.
 
 Record the release URL, workflow result, exact commit and verification scope in the handoff. Publishing a release does not deploy the separate product website or change repository visibility. Pages uses its own workflow; see [site/README.md](../site/README.md).
 

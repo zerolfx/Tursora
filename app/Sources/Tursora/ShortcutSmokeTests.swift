@@ -186,7 +186,17 @@ enum ShortcutSmokeTests {
         let menu = NSApp.mainMenu!
         let icons = find("menu.viewAsIcons", menu)
         check("real menu updates the assigned equivalent immediately", icons?.keyEquivalent == "3" && icons?.keyEquivalentModifierMask == [.command, .option])
-        check("native menu dispatch changes the active pane", menu.performKeyEquivalent(with: event("3", [.command, .option], 20, controller.window)) && controller.browser.viewMode == .icons)
+        // Native menu actions use NSApp's responder chain, not the windowNumber
+        // on a synthetic event. Reacquire it after asynchronous fixture loading.
+        controller.browser.setViewMode(.details)
+        focusNativeMenuWindow(controller, responder: controller.browser.focusView)
+        icons?.menu?.update()
+        let iconTarget = icons.flatMap { item in item.action.flatMap { NSApp.target(forAction: $0, to: item.target, from: item) } }
+        if (iconTarget as AnyObject?) !== controller.browser { printMenuDiagnosis(icons, controller: controller) }
+        check("native menu resolves the owned active pane", (iconTarget as AnyObject?) === controller.browser)
+        let handledIcons = menu.performKeyEquivalent(with: event("3", [.command, .option], 20, controller.window))
+        if !handledIcons || controller.browser.viewMode != .icons { printMenuDiagnosis(icons, controller: controller, handled: handledIcons) }
+        check("native menu dispatch changes the active pane", handledIcons && controller.browser.viewMode == .icons)
         check("old menu equivalent stops dispatching", !menu.performKeyEquivalent(with: event("1", [.command, .option], 18, controller.window)))
         if let plusEvent = plusEvent(in: controller.window) {
             let before = controller.browser.zoomIndex
@@ -270,11 +280,25 @@ enum ShortcutSmokeTests {
         check("terminal toggle remains available while the shell has focus", !ShortcutDispatcher.protectInput(event("\u{f707}", [], 118, controller.window)))
         check("Command editing shortcuts retain normal responder-chain dispatch", !ShortcutDispatcher.protectInput(event("c", .command, 8, controller.window)))
         terminal.removeFromSuperview()
-        controller.window?.makeFirstResponder(text)
+        focusNativeMenuWindow(controller, responder: text)
         try! store.set(.init(keyEquivalent: "j", modifierFlags: [.command, .option]), for: ShortcutCatalog.filterID)
         check("Command shortcut dispatch from text fields still reaches the app", menu.performKeyEquivalent(with: event("j", [.command, .option], 38, controller.window)) && controller.window?.firstResponder !== text)
         text.removeFromSuperview()
         store.resetAll()
+    }
+
+    @MainActor
+    private static func focusNativeMenuWindow(_ controller: MainWindowController, responder: NSResponder) {
+        controller.window?.makeKeyAndOrderFront(nil)
+        controller.window?.makeMain()
+        check("native menu fixture owns its requested first responder", controller.window?.makeFirstResponder(responder) == true
+            && controller.window?.firstResponder === responder)
+    }
+
+    @MainActor
+    private static func printMenuDiagnosis(_ item: NSMenuItem?, controller: MainWindowController, handled: Bool? = nil) {
+        let target = item.flatMap { item in item.action.flatMap { NSApp.target(forAction: $0, to: item.target, from: item) } }
+        print("shortcut menu diagnosis: handled=\(String(describing: handled)), active=\(NSApp.isActive), key=\(NSApp.keyWindow?.windowNumber ?? -1), main=\(NSApp.mainWindow?.windowNumber ?? -1), expected=\(controller.window?.windowNumber ?? -1), fileFocus=\(controller.window?.firstResponder === controller.browser.focusView), target=\(String(describing: target.map { type(of: $0) })), targetIsBrowser=\((target as AnyObject?) === controller.browser), enabled=\(item?.isEnabled == true), mode=\(controller.browser.viewMode)")
     }
 
     private static func event(_ key: String, _ modifiers: NSEvent.ModifierFlags, _ code: UInt16, _ window: NSWindow? = nil) -> NSEvent {

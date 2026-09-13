@@ -278,7 +278,12 @@ enum FolderTreeSmokeTests {
 
     @MainActor private static func windowChecks(_ root: URL, mode: ViewMode) async throws {
         let provider = CountingProvider(home: root)
-        let store = DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("views.json"))
+        // Browser panes still have real FSEvents watchers with this provider.
+        // Keep their debounced preference writes outside the browsed fixture;
+        // otherwise a legitimate browser refresh changes the shared request
+        // count while the tree's accessibility callbacks are being measured.
+        let store = DirectoryViewPropertiesStore(fileURL: root.deletingLastPathComponent()
+            .appendingPathComponent("views-\(mode).json"))
         var defaults = DirectoryViewProperties()
         defaults.viewMode = mode
         store.setDefault(defaults)
@@ -303,10 +308,22 @@ enum FolderTreeSmokeTests {
         window.toggleFoldersPanel(nil)
         guard let panel = window.sidebar.foldersPanel else { check("\(mode): toggle creates a tree", false); return }
         await until("\(mode): tree root is visible") { panel.model.root?.children != nil && panel.outlineView.numberOfRows >= 4 }
+        await selected(root, in: panel)
+        window.window?.contentView?.layoutSubtreeIfNeeded()
         check("\(mode): Places remains installed above independent tree", window.sidebar.outlineView.superview != nil && panel.view.superview != nil && window.sidebar.foldersVisible && panel.model.isActive)
         check("\(mode): filtering file pane does not filter tree folders", panel.model.root?.children?.map(\.name) == ["Alpha", "Beta", "Gamma"])
         let collapsedChildren = panel.model.root!.children!
-        let beforeQueries = provider.requestCount
+        let rootBeforeQueries = panel.model.root!
+        let requestsBeforeQueries = provider.requestedPaths
+        let generationsBeforeQueries = [left, right, background].map { $0.model.generation }
+        let queryState = {
+            "rootUnchanged=\(panel.model.root === rootBeforeQueries), root=\(panel.model.root?.url.path ?? "nil"), selected=\(selectedURL(panel)?.path ?? "nil"), rows=\(panel.outlineView.numberOfRows), requestsBefore=\(requestsBeforeQueries), requestsAfter=\(provider.requestedPaths), generationsBefore=\(generationsBeforeQueries), generationsAfter=\([left, right, background].map { $0.model.generation }), children=\(collapsedChildren.map { "\($0.name):children=\($0.children?.count.description ?? "nil"),loading=\($0.isLoading),expanded=\(panel.outlineView.isItemExpanded($0))" })"
+        }
+        func checkQuery(_ name: String, _ passed: Bool, detail: String = "") {
+            check("\(mode): \(name)", passed, passed ? "" : "\(detail) \(queryState())")
+        }
+        checkQuery("accessibility fixture starts with untouched collapsed siblings",
+                   collapsedChildren.allSatisfy { $0.children == nil && !$0.isLoading && !panel.outlineView.isItemExpanded($0) })
         for node in collapsedChildren {
             check("\(mode): expansion permission allows a folder", panel.outlineView(panel.outlineView, shouldExpandItem: node))
         }
@@ -324,7 +341,13 @@ enum FolderTreeSmokeTests {
         }
         await turn()
         await turn()
-        check("\(mode): accessibility and expansion permission queries do not enumerate or expand siblings", accessibilityQueries > 0 && provider.requestCount == beforeQueries && collapsedChildren.allSatisfy { $0.children == nil && !$0.isLoading && !panel.outlineView.isItemExpanded($0) })
+        checkQuery("accessibility queries exercise real outline rows", accessibilityQueries > 0,
+                   detail: "queried=\(accessibilityQueries), returned=\(accessibilityRows.count)")
+        checkQuery("accessibility and expansion permission queries do not enumerate folders",
+                   provider.requestedPaths == requestsBeforeQueries)
+        checkQuery("accessibility and expansion permission queries preserve collapsed siblings",
+                   panel.model.root === rootBeforeQueries && sameLocation(selectedURL(panel), root)
+                    && collapsedChildren.allSatisfy { $0.children == nil && !$0.isLoading && !panel.outlineView.isItemExpanded($0) })
         select(root.appendingPathComponent("Alpha"), in: panel)
         await listed(left, at: root.appendingPathComponent("Alpha"))
         check("\(mode): tree selection navigates only active pane", window.browser === left && sameLocation(right.currentURL, root.appendingPathComponent("Beta")) && right.nameFilter == "note" && right.model.groupKey == .dateModified && sameLocation(background.currentURL, root.appendingPathComponent("Gamma")))
@@ -501,6 +524,7 @@ enum FolderTreeSmokeTests {
         private var waiting = false
         init(home: URL) { homeURL = home }
         var requestCount: Int { lock.lock(); defer { lock.unlock() }; return requests.count }
+        var requestedPaths: [String] { lock.lock(); defer { lock.unlock() }; return requests }
         var completedCount: Int { lock.lock(); defer { lock.unlock() }; return finished }
         var isWaiting: Bool { lock.lock(); defer { lock.unlock() }; return waiting }
         func count(at url: URL) -> Int { let path = physicalPath(url)!; lock.lock(); defer { lock.unlock() }; return requests.filter { $0 == path }.count }

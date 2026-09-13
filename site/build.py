@@ -19,6 +19,7 @@ ASSETS = {
     "path-navigation.png": ROOT / "docs/images/features/path-navigation.png",
     "split-panes.png": ROOT / "docs/images/features/split-panes.png",
     "zip-browsing.png": ROOT / "docs/images/features/zip-browsing.png",
+    "installation.png": ROOT / "docs/images/features/installation.png",
 }
 
 

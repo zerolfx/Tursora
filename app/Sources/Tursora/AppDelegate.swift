@@ -21,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var hasStartedWorkspace = false
     private var isRestoringWorkspace = false
     private var isTerminating = false
+    private var isCheckingTerminalQuit = false
+    private var terminationPending = false
+    var terminalTaskConfirmation: TerminalTaskConfirmation.Decision = TerminalTaskConfirmation.confirm
     private var canReplaceSavedWorkspace = true
     private var lastObservedWorkspace: WorkspaceSessionState?
     private var restoresWorkspace: Bool
@@ -79,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         catch { NSLog("Could not save folder view settings: %@", error.localizedDescription) }
         InfoWindowController.closeAll()
         windowControllers.forEach {
-            $0.hideTerminal()
+            $0.shutdownTerminal()
             // Release transfer journals while the process is still alive so
             // private recovery storage is reclaimed on an ordinary quit.
             $0.window?.undoManager?.removeAllActions()
@@ -99,6 +102,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showFileOperations(_ sender: Any?) { TransferTasksWindowController.shared.show() }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if terminationPending { return .terminateLater }
+        guard confirmTerminalTermination() else { return .terminateCancel }
+        terminationPending = true
         // Save pending logical ZIP destinations before cancelling workers.
         prepareWorkspaceForTermination()
         // Reply only after AppKit has received terminateLater, even when there
@@ -106,11 +112,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         DispatchQueue.main.async {
             TransferTasksWindowController.shared.cancelAll {
                 ArchiveWorkspace.shared.shutdownAll {
-                    sender.reply(toApplicationShouldTerminate: true)
+                    let terminals = DispatchGroup()
+                    for controller in self.windowControllers {
+                        terminals.enter()
+                        controller.shutdownTerminal { terminals.leave() }
+                    }
+                    terminals.notify(queue: .main) {
+                        // A just-closed window may already have left our array
+                        // while its owned process shutdown is still finishing.
+                        TerminalProcessLifecycle.whenAllStopped {
+                            sender.reply(toApplicationShouldTerminate: true)
+                        }
+                    }
                 }
             }
         }
         return .terminateLater
+    }
+
+    /// Ask before freezing workspace saves or cancelling any unrelated work.
+    /// Sparkle's relaunch quit request uses this same application delegate path.
+    func confirmTerminalTermination() -> Bool {
+        guard !isCheckingTerminalQuit else { return false }
+        isCheckingTerminalQuit = true
+        defer { isCheckingTerminalQuit = false }
+        return terminalTaskConfirmation(.quit, windowControllers.compactMap { $0.terminalPanel?.activitySnapshot() })
     }
 
     /// A file manager stays alive with no windows open, like Finder does.

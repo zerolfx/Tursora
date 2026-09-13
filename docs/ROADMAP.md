@@ -8,7 +8,12 @@ v1（纯本地）的功能已经齐了：地址栏、标签页、分栏、两种
 - [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) — 对照 Finder 菜单 nib 逐项
 - [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md) — 对照 Dolphin 注册的 action / 面板 / 设置
 
-## 本轮：操作定制与目录导航
+## 本轮：终端会话与 0.2.0 发布
+
+- [ ] 收起 / 禁用入口保留窗口终端；退出、关窗与 Restart 对任务确认，取消退出保留传输与工作区。右下角可点击状态显示隐藏会话及任务进程数，后台轮询不创建 PTY。实现和最终验证进行中，见[生命周期记录](research/terminal-session-lifecycle.md)。
+- [ ] 完成新增源码三轮 smoke、打包实测与 General / Terminal 真实截图更新后，按用户授权推送、合入并发布 0.2.0；重新下载验证资产，再把 Homebrew cask 更新到真实 DMG，核对远端 CI 与 Pages。
+
+## 已完成阶段：操作定制与目录导航
 
 - [x] 所有应用命令快捷键可搜索、录制、清除与重置，保留原生文本 / shell 控制；[范围与验证](research/custom-shortcuts.md)。
 - [x] 终端 Shell、等宽字体 / 字号、外观和自定义文本 / 背景色；工具栏直接展开 / 收起；[实现与边界](research/terminal-customization.md)。
@@ -44,7 +49,8 @@ Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私
 - 在有用户提供的服务器时验证 SMB / NFS / WebDAV / legacy AFP 的认证、读写和掉线；当前只验证系统挂载接口与无网络状态流转。
 - [0.1.0](https://github.com/zerolfx/Tursora/releases/tag/v0.1.0) 已发布，对应提交的 Build / Release 成功，重新下载的 ZIP 校验和、签名、版本、架构与资源核对通过，见 [HANDOFF](HANDOFF.md)。下载产物在其他机器上的首次安装 / 启动仍待验证；本地同源打包实测不替代该检查。
 - GitHub Actions 本轮成功，但 checkout / upload-artifact 的 v4 版本出现 Node 20 运行时弃用提示；后续单独升级 action 并验证构建与发布流程。
-- 终端 Shell / 字体 / 配色设置已实现；后续继续覆盖更多第三方 shell、全屏程序、真实多显示器布局和长时间运行。没有自动目录同步，手动 Restart 会结束当前会话；本轮最终实机范围单独记录。
+- 终端 Shell / 字体 / 配色设置已实现；后续继续覆盖更多第三方 shell、全屏程序、真实多显示器布局和长时间运行。没有自动目录同步，隐藏保留会话；手动 Restart 的任务确认与本轮最终实机范围见[生命周期记录](research/terminal-session-lifecycle.md)。
+- Ghostty 已作官方源码调查，留作 0.2.0 之后的独立原型：比较中文输入、复杂 TUI、滚动 / 重绘、CPU / 内存与现有 SwiftTerm（及其可选实验 Metal 路径）。公开 VT 库不包含绘制，完整 Metal 接口仍标为内部，不能当作稳定 Swift 控件直接替换；[证据与范围](research/ghostty-embedding.md)。
 - 已完成检查按对应版本统一见 [HANDOFF](HANDOFF.md) 与[历史 ZIP 实机记录](research/computer-use-2026-09-12-inline-zip.md)；历史结果不替代本次合并后的检查。ZIP 拖出手势、归档内 Quick Look / Share 和关闭开关后既有页的专项 CUA 仍可补充。
 - ZIP 浏览仍使用完整暂存，进一步评估大归档的空间与响应；密码归档、其他格式、原 ZIP 外部改变后的自动重载和归档写回未实现。
 

@@ -156,19 +156,34 @@ enum TerminalSmokeTests {
         let delivery = DispatchQueue(label: "tursora-terminal-exit-regression")
         delivery.suspend()
         let probe = PTYProbe(queue: delivery)
-        probe.process.startProcess(executable: "/bin/sh", args: ["-c", "exit 0"],
+        let ready = directory.appendingPathComponent("eof-ready-" + UUID().uuidString)
+        // No prompt/echo output: SwiftTerm synchronously delivers nonempty
+        // reads to this intentionally suspended alternate queue. A quiet
+        // readiness file lets the read queue reach EOF before the exit monitor.
+        probe.process.startProcess(executable: "/bin/sh", args: ["-c", "stty -echo; : > \"$1\"; read tursora_exit; exit 0", "tursora-eof", ready.path],
                                    environment: ["PATH=/usr/bin:/bin", "HOME=\(directory.path)", "ENV=/dev/null"],
                                    currentDirectory: directory.path)
-        waitUntil("terminal: EOF precedes the suspended exit callback", condition: {
-            probe.process.shellPid > 0 && !probe.process.running
+        waitUntil("terminal: EOF fixture captures its shell identity while alive", condition: {
+            guard FileManager.default.fileExists(atPath: ready.path),
+                  let record = TerminalActivity.readProcess(probe.process.shellPid) else { return false }
+            return probe.process.running && !record.isZombie && record.parentPID == getpid() && record.sessionID == record.pid
+        }, detail: {
+            "pid=\(probe.process.shellPid), running=\(probe.process.running), record=\(String(describing: TerminalActivity.readProcess(probe.process.shellPid))), owner=\(getpid()), ready=\(FileManager.default.fileExists(atPath: ready.path))"
         }) {
-            let pid = probe.process.shellPid
-            TerminalProcessLifecycle.stop(probe.process) {
-                var status: Int32 = 0
-                let outcome = waitpid(pid, &status, WNOHANG)
-                check("terminal: closing after EOF still reaps the owned shell", outcome == -1 && errno == ECHILD)
-                delivery.resume()
-                completion()
+            let session = TerminalActivity.Session(process: probe.process)!
+            probe.send("exit\n")
+            waitUntil("terminal: EOF precedes the suspended exit callback", condition: {
+                !probe.process.running && TerminalActivity.readProcess(probe.process.shellPid)?.isZombie == true
+            }) {
+                let pid = probe.process.shellPid
+                check("terminal: unreaped zombie retains its captured birth identity", TerminalActivity.readProcess(pid)?.identity == session.shell)
+                TerminalProcessLifecycle.stop(probe.process, session: session) {
+                    var status: Int32 = 0
+                    let outcome = waitpid(pid, &status, WNOHANG)
+                    check("terminal: closing after EOF still reaps the owned shell", outcome == -1 && errno == ECHILD, "outcome=\(outcome), errno=\(errno)")
+                    delivery.resume()
+                    completion()
+                }
             }
         }
     }

@@ -12,6 +12,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private let contentSplitController = NSSplitViewController()
     private(set) var terminalPanel: TerminalPanelController?
     private var terminalItem: NSSplitViewItem?
+    var isTerminalVisible: Bool { terminalItem != nil }
+    private var terminalHeight: CGFloat?
+    private var terminalActivity: TerminalActivitySnapshot?
+    private var terminalStatusTimer: Timer?
+    private var terminalActivityRequest: UUID?
+    var terminalTaskConfirmation: TerminalTaskConfirmation.Decision = TerminalTaskConfirmation.confirm
+    private var isCheckingTerminalClose = false
     private var preferencesObserver: NSObjectProtocol?
     private var shortcutsObserver: NSObjectProtocol?
     private var displayedExtensions = AppPreferences.showFileExtensions
@@ -144,6 +151,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
     required init?(coder: NSCoder) { fatalError() }
+    deinit { terminalStatusTimer?.invalidate() }
 
     var workspaceSessionState: WorkspaceWindowState {
         let frame = window.map {
@@ -221,18 +229,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     @objc func toggleTerminal(_ sender: Any?) {
         guard AppPreferences.experimentalTerminalEnabled else { return }
-        if terminalPanel != nil { hideTerminal(); return }
-        let panel = TerminalPanelController(initialDirectory: terminalWorkingDirectory)
+        if isTerminalVisible { hideTerminal(); return }
+        let panel = terminalPanel ?? TerminalPanelController(initialDirectory: terminalWorkingDirectory)
         panel.onClose = { [weak self] in self?.hideTerminal() }
+        panel.onStateChanged = { [weak self] in self?.terminalStateChanged() }
         terminalPanel = panel
         let item = NSSplitViewItem(viewController: panel)
         item.minimumThickness = 120
         item.preferredThicknessFraction = 0.32
         terminalItem = item
         contentSplitController.addSplitViewItem(item)
-        contentSplitController.splitView.setPosition(max(180, contentSplitController.view.bounds.height * 0.68), ofDividerAt: 0)
+        let height = contentSplitController.view.bounds.height
+        let desiredHeight = terminalHeight ?? height * 0.32
+        contentSplitController.splitView.setPosition(max(180, height - max(120, desiredHeight)), ofDividerAt: 0)
         syncTerminalToolbar()
         panel.focus()
+        terminalStateChanged()
     }
 
     /// A terminal may work beside a ZIP, never inside its temporary snapshot.
@@ -241,12 +253,81 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func hideTerminal() {
-        terminalPanel?.shutdown()
-        if let terminalItem { contentSplitController.removeSplitViewItem(terminalItem) }
-        terminalItem = nil
-        terminalPanel = nil
+        guard let terminalItem else { return }
+        terminalHeight = terminalPanel?.view.bounds.height
+        contentSplitController.removeSplitViewItem(terminalItem)
+        self.terminalItem = nil
         syncTerminalToolbar()
         window?.makeFirstResponder(browser.focusView)
+    }
+
+    /// Hiding detaches only the view. Closing its window or quitting explicitly
+    /// ends the retained session after the task confirmation has been accepted.
+    func shutdownTerminal(completion: (() -> Void)? = nil) {
+        hideTerminal()
+        let panel = terminalPanel
+        terminalPanel = nil
+        terminalStatusTimer?.invalidate()
+        terminalStatusTimer = nil
+        terminalActivityRequest = nil
+        terminalActivity = nil
+        panel?.onStateChanged = nil
+        if let panel { panel.shutdown(completion: completion) }
+        else { completion?() }
+        syncTerminalStatus()
+    }
+
+    private func terminalStateChanged() {
+        guard terminalPanel?.terminalView != nil else {
+            terminalStatusTimer?.invalidate()
+            terminalStatusTimer = nil
+            terminalActivityRequest = nil
+            terminalActivity = nil
+            syncTerminalStatus()
+            return
+        }
+        syncTerminalStatus()
+        if terminalStatusTimer == nil {
+            let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.refreshTerminalActivity() }
+            terminalStatusTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        refreshTerminalActivity()
+    }
+
+    /// Only status refreshes use a background snapshot. Destructive actions
+    /// still inspect fresh activity synchronously immediately before asking.
+    func refreshTerminalActivity() {
+        guard terminalActivityRequest == nil, let panel = terminalPanel else { return }
+        let request = UUID()
+        let state = panel.statusState
+        terminalActivityRequest = request
+        panel.inspectActivity { [weak self, weak panel] snapshot in
+            guard let self, self.terminalActivityRequest == request else { return }
+            self.terminalActivityRequest = nil
+            guard let panel, self.terminalPanel === panel else { return }
+            // A pre-exit idle result cannot stop checks for a shell that has
+            // since exited and left background jobs in its terminal session.
+            guard panel.statusState == state else { self.refreshTerminalActivity(); return }
+            self.terminalActivity = snapshot
+            self.syncTerminalStatus()
+            if panel.statusState == .ended && !snapshot.requiresConfirmation {
+                self.terminalStatusTimer?.invalidate()
+                self.terminalStatusTimer = nil
+            }
+        }
+    }
+
+    private func syncTerminalStatus() {
+        let host = tabs.currentPage.panes.last?.statusBar
+        let enabled = AppPreferences.experimentalTerminalEnabled
+        let status = enabled || terminalPanel != nil
+            ? TerminalStatusPresentation.make(state: terminalPanel?.statusState, visible: isTerminalVisible,
+                                              activity: terminalActivity, enabled: enabled) : nil
+        for pane in tabs.pages.flatMap(\.panes) {
+            pane.statusBar.setTerminalStatus(pane.statusBar === host ? status : nil)
+            pane.statusBar.onTerminalToggle = pane.statusBar === host ? { [weak self] in self?.toggleTerminal(nil) } : nil
+        }
     }
 
     // MARK: - Current-directory name filter
@@ -422,9 +503,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     var terminalToolbarButtonForTesting: NSButton? { terminalButton }
 
     private func syncTerminalToolbar() {
+        syncTerminalStatus()
         let enabled = AppPreferences.experimentalTerminalEnabled
-        let title = terminalPanel == nil ? "Show Terminal" : "Hide Terminal"
-        let state: NSControl.StateValue = terminalPanel == nil ? .off : .on
+        let title = isTerminalVisible ? "Hide Terminal" : "Show Terminal"
+        let state: NSControl.StateValue = isTerminalVisible ? .on : .off
         terminalButton?.state = state
         terminalButton?.isEnabled = enabled
         terminalButton?.toolTip = enabled ? shortcutTooltip(title, action: "menu.toggleTerminal") : "Enable Terminal in Settings to open a shell here."
@@ -575,8 +657,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if let valid = validateViewPropertiesMenuItem(item) { return valid }
         switch item.action {
         case #selector(toggleTerminal(_:)):
-            item.title = terminalPanel == nil ? "Show Terminal" : "Hide Terminal"
-            item.state = terminalPanel == nil ? .off : .on
+            item.title = isTerminalVisible ? "Hide Terminal" : "Show Terminal"
+            item.state = isTerminalVisible ? .on : .off
             return AppPreferences.experimentalTerminalEnabled
         case #selector(goBack(_:)):     return browser.canGoBack
         case #selector(goForward(_:)):  return browser.canGoForward
@@ -868,6 +950,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func windowDidBecomeKey(_ notification: Notification) { onSessionChanged?() }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard !isCheckingTerminalClose else { return false }
+        isCheckingTerminalClose = true
+        let approved = terminalTaskConfirmation(.closeWindow, terminalPanel.map { [$0.activitySnapshot()] } ?? [])
+        isCheckingTerminalClose = false
+        guard approved else { return false }
         let tasks = TransferTasksWindowController.shared
         guard tasks.hasActiveTasks(ownedBy: sender) else { return true }
         tasks.cancelTasks(ownedBy: sender) { [weak self] in self?.window?.close() }
@@ -880,7 +967,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             $0.searchPanel.cancelPendingSearch()
         }
         removeEventMonitors()
-        hideTerminal()
+        shutdownTerminal()
         sidebar.setFoldersActive(false)
         if let shortcutsObserver { NotificationCenter.default.removeObserver(shortcutsObserver) }
         shortcutsObserver = nil

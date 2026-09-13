@@ -4,8 +4,13 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-13
+
 ### Improved
 
+- Hiding the terminal with its toolbar button, F4 or panel close button retains the shell, output and running jobs. Turning off terminal access in Settings also hides and retains existing sessions; showing them again resumes the same session.
+- Quitting, closing a terminal's window or restarting checks foreground, background and stopped jobs before stopping them. Confirmation defaults to Cancel, including when activity cannot be established; cancelling quit leaves terminals, transfers and the workspace running. Sessions still do not survive application quit.
+- Installation instructions now appear near the top of the README. The product page has prominent installation-guide links that jump to DMG steps, a real installer screenshot and Homebrew commands.
 - Narrow split panes keep stable breadcrumb controls instead of repeatedly rebuilding the overflow button. Folder-tree accessibility queries leave collapsed directories unopened, and selection stays visible after resizing.
 - Terminal font-size edits also apply when leaving the field with Tab; the Folders tree follows macOS temporary-directory aliases through their real system ancestors without enabling unrelated hidden folders.
 - Terminal access and ZIP browsing are enabled by default while preserving saved opt-outs. Settings explains lazy terminal startup and explicit ZIP extraction.
@@ -14,6 +19,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ### Added
 
+- A clickable Terminal status at the bottom right of the current tab, showing the window's retained session and detected task count even while hidden. Narrow panes retain an icon and explanatory tooltip; displaying status never starts a shell.
 - Searchable customization for every application-command shortcut, including unassigned menu commands and file/window alternatives, with conflict explanations, clear/reset controls and existing Filter-binding migration.
 - Terminal settings for the default/custom shell, installed monospaced fonts, font size and system/dark/light/custom colors. Font and color edits update open terminals without restarting their shells; shell selection applies on the next start.
 - A toolbar button to show or hide the window's terminal, with a matching overflow action and current shortcut hint.
@@ -60,5 +66,6 @@ First release of Tursora, a native macOS file manager built with Swift and AppKi
 
 Earlier implementation notes and historical verification counts are preserved in [Development history](docs/DEVELOPMENT_HISTORY.md). Current verification and remaining limits are tracked in [Handoff](docs/HANDOFF.md).
 
-[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/zerolfx/Tursora/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/zerolfx/Tursora/releases/tag/v0.1.0
