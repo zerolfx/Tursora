@@ -4,6 +4,10 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Documentation
+
+- Homebrew installation now presents tap setup, explicit trust for the Tursora cask and installation together in one three-command block in README and the website; the Homebrew workflow follows the same sequence.
+
 ## [0.2.0] - 2026-09-13
 
 ### Improved

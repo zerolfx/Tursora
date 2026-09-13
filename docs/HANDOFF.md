@@ -2,11 +2,17 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
-## 本轮：安装排错与说明简化
+## 当前：Homebrew 显式单项信任纳入主流程
+
+用户明确要求把信任和 tap / install 一起列出。当前 README、网站与维护文档统一依次执行完整 URL 的 tap、`brew trust --cask zerolfx/tursora/tursora`、完整名称 install；每步成功后继续，信任是文档主流程的必做步骤，只授予 Tursora cask。Homebrew 完整名称安装的自动信任已独立验证成功，因此不声称少一条必然失败；D58 记录此明确流程选择。
+
+主任务已验证本次三步版本：新的隔离信任目录按 tap → 单 cask trust → install dry run 顺序均 exit 0，只有此 cask 被信任；证据 `/private/tmp/tursora-three-step-install-3liuppa5/verification.json`，不把 dry run 记为重新安装应用。6 项 cask 测试与 Ruby 语法通过；网站构建 5 资产 / 40 引用 / 29 图 alpha 通过，README 两个安装代码块及网站均精确保留三条实际命令。101 份 Swift 源码哈希未变；下面两行流程及 83 项测试仍是此前阶段证据。显式 trust 的 CI 和线上部署由主任务另行核对，应用、cask 资产及 0.2.0 版本 / build 不变。
+
+## 历史阶段：安装排错与说明简化
 
 用户确认没有 0.1.0 用户，不需要该版本的迁移支持。当前 README、网站和发布操作说明以 0.2.0 安装与后续正常更新为准，去掉一次性手动升级及旧版开关提示；保留历史版本 / 标签 / 资产和当时的验证事实。下面早期阶段的 0.1.0 迁移文案属于当时假设，由此决定取代；见 D57。
 
-用户报告 `homebrew-tursora` 仓库不存在，重试后报告 `untrusted tap`。原两条命令使用真实主仓库，已在清空自有测试 tap 后从公开 URL 重验成功；安装说明强调先完成含完整 URL 的 tap，再安装。单参数 tap 的默认仓库错误，以及启用信任检查时短名称安装的 untrusted 错误已独立复现；单项 `brew trust --cask` 和直接 fully-qualified install 的 dry run 均通过，只有指定 cask 获得信任，不改用户 Homebrew。完整记录见[Homebrew 排错](research/homebrew.md#安装排错仓库地址与单项信任)。
+用户报告 `homebrew-tursora` 仓库不存在，重试后报告 `untrusted tap`。原两条命令使用真实主仓库，已在清空自有测试 tap 后从公开 URL 重验成功；当时安装说明强调先完成含完整 URL 的 tap，再安装；现已由页首三步流程取代。单参数 tap 的默认仓库错误，以及启用信任检查时短名称安装的 untrusted 错误已独立复现；单项 `brew trust --cask` 和直接 fully-qualified install 的 dry run 均通过，只有指定 cask 获得信任，不改用户 Homebrew。完整记录见[Homebrew 排错](research/homebrew.md#安装排错仓库地址与单项信任)。
 
 本轮仅修改文档和发布页面文字，不改 Swift、cask 资产或版本；现有 101 份 Swift 源码的 3 × 3,329 smoke 记录仍是同源码历史验证，不称为新跑。83 项工具测试与网站构建通过，5 资产 / 40 引用 / 29 张透明截图门槛通过；推送与线上部署另行核对，新的发布文案不需要重新生成或移动 0.2.0 标签。
 

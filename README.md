@@ -35,16 +35,17 @@ Its goal is simple: **keep what feels familiar in Finder, then add the file-mana
 3. Drag **Tursora → Applications** in the installer window.
 4. Open **Tursora from Applications**. If macOS cannot verify the app, follow the [First launch instructions](#first-launch) for a trusted download.
 
-**Prefer Homebrew?** Run the first command with the **entire repository URL**, wait for it to succeed, then run the second:
+**Prefer Homebrew?** Run these three commands in order: add the tap with the **entire repository URL**, trust the Tursora cask, then install:
 
 ```sh
 brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
+brew trust --cask zerolfx/tursora/tursora
 brew install --cask zerolfx/tursora/tursora
 ```
 
 If an error says `zerolfx/homebrew-tursora` was not found, Homebrew used its default tap address. Run the first command above with the full URL before installing.
 
-The tap installs the published 0.2.0 DMG with its verified SHA-256. See [Homebrew details](#homebrew) for updates and uninstalling, or [troubleshooting](#homebrew-troubleshooting) for an `untrusted tap` error.
+The trust command allows Homebrew to load this cask's installation code. The tap installs the published 0.2.0 DMG with its verified SHA-256. See [Homebrew details](#homebrew) for updates and uninstalling, or [troubleshooting](#homebrew-troubleshooting) if installation fails.
 
 ## Features
 
@@ -235,10 +236,11 @@ Requires **macOS 14 or later**. Downloadable builds currently target **Apple Sil
 
 ### Homebrew
 
-The repository includes a Homebrew cask for the published **0.2.0** Apple Silicon DMG. First add the tap using the **full URL**; run the install command only after that succeeds:
+The repository includes a Homebrew cask for the published **0.2.0** Apple Silicon DMG. Run all three commands in order, continuing only after each succeeds:
 
 ```sh
 brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
+brew trust --cask zerolfx/tursora/tursora
 brew install --cask zerolfx/tursora/tursora
 ```
 
@@ -250,14 +252,7 @@ See [Homebrew maintenance and verification](docs/research/homebrew.md) for relea
 
 #### Homebrew troubleshooting
 
-If Homebrew reports `untrusted tap` after the full-URL tap command succeeds, explicitly trust the Tursora cask and retry:
-
-```sh
-brew trust --cask zerolfx/tursora/tursora
-brew install --cask zerolfx/tursora/tursora
-```
-
-This grants trust to this cask only. Homebrew normally grants the same item-level trust when installing by its fully qualified name; see [Homebrew's Tap Trust documentation](https://docs.brew.sh/Tap-Trust).
+If Homebrew reports `untrusted tap`, check that the second command in the installation block completed successfully, then retry the third. `brew trust --cask` grants trust to the Tursora installation definition only. See [Homebrew's Tap Trust documentation](https://docs.brew.sh/Tap-Trust).
 
 ### First launch
 

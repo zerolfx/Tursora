@@ -103,8 +103,16 @@ Before 0.1.0, the changelog was a development log rather than a version history.
 
 ## Homebrew tap
 
-The repository itself is a tap: first run `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora` with the full URL, wait for success, then run `brew install --cask zerolfx/tursora/tursora`. Without an installed custom tap, the fully qualified install automatically tries the default `https://github.com/zerolfx/homebrew-tursora`; a repository-not-found error for that URL is resolved by adding the explicit remote first. `Casks/tursora.rb` tracks a real published stable application asset with a pinned SHA-256; the current follow-up tracks the published 0.2.0 DMG and sets `auto_updates true`. After publishing and verifying a new stable release, use `app/tools/update-homebrew.py` with its saved release JSON, SHA256SUMS and actual downloaded DMG, review the generated diff and merge it to main. Add `--auto-updates` only for a Sparkle-enabled release that has published its versioned appcast. See [the exact maintenance commands and local verification](research/homebrew.md).
+The repository itself is a tap. The documented installation flow requires all three steps in order, waiting for each to succeed. The explicit trust step authorizes only the Tursora cask:
+
+```sh
+brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
+brew trust --cask zerolfx/tursora/tursora
+brew install --cask zerolfx/tursora/tursora
+```
+
+Without an installed custom tap, the fully qualified install automatically tries the default `https://github.com/zerolfx/homebrew-tursora`; a repository-not-found error for that URL is resolved by adding the explicit remote first. `Casks/tursora.rb` tracks a real published stable application asset with a pinned SHA-256; the current follow-up tracks the published 0.2.0 DMG and sets `auto_updates true`. After publishing and verifying a new stable release, use `app/tools/update-homebrew.py` with its saved release JSON, SHA256SUMS and actual downloaded DMG, review the generated diff and merge it to main. Add `--auto-updates` only for a Sparkle-enabled release that has published its versioned appcast. See [the exact maintenance commands and local verification](research/homebrew.md).
 
 The cask leaves Homebrew's quarantine in place and uses no post-install bypass. Its custom-tap installation does not require Developer ID membership, while official homebrew/cask acceptance has separate Gatekeeper rules. The Homebrew workflow validates this checkout's cask by installing/uninstalling into a temporary runner app directory. Publishing a release does not automatically update or publish the cask. The project MIT license must remain in the packaged app beside the third-party notices.
 
-Installation-instruction corrections do not require a new application release. Keep the published 0.2.0 bundle version, build metadata, tag and assets unchanged. For a reported `untrusted tap`, README troubleshooting uses `brew trust --cask zerolfx/tursora/tursora` and retries the fully qualified install; the normal two-command tap/install flow remains intact. Trust handling follows [Homebrew Tap Trust](https://docs.brew.sh/Tap-Trust).
+Installation-instruction corrections do not require a new application release. Keep the published 0.2.0 bundle version, build metadata, tag and assets unchanged. The maintainer explicitly requested the single-cask trust command in the main installation block. It is mandatory in our documented flow, even though supported Homebrew versions can also grant that item-level trust automatically during a fully qualified install. This is not a claim that every installation without a separate trust command fails. Trust handling follows [Homebrew Tap Trust](https://docs.brew.sh/Tap-Trust).

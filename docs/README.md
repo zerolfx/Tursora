@@ -4,7 +4,7 @@
 |---|---|---|
 | you are picking the project up | [HANDOFF.md](HANDOFF.md) — state, what is verified and what is not, next steps | 中文 |
 | you need the intended behaviour of a feature | [SPEC.md](SPEC.md) — v1 spec, each section marked "对标 Dolphin / Finder" | 中文 |
-| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D57 | 中文 |
+| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D58 | 中文 |
 | you are changing code | [ARCHITECTURE.md](ARCHITECTURE.md) — object graph, per-file map, data flows, notifications, persistence, threading | English |
 | you are building, testing or releasing | [DEVELOPMENT.md](DEVELOPMENT.md) — toolchain, smoke test, conventions, AppKit pitfalls, release checklist | English |
 | you are editing or previewing the Chinese product page | [site/README.md](../site/README.md) — three workflows, canonical screenshots, Python static build and browser checks; [architecture](ARCHITECTURE.md#product-page) | English |
@@ -32,7 +32,7 @@
 | you are changing terminal hiding, job detection or quit/close/restart confirmation | [research/terminal-session-lifecycle.md](research/terminal-session-lifecycle.md) — retained per-window PTY, cancellation order, process ownership and verification | 中文 |
 | you are evaluating a Ghostty backend | [research/ghostty-embedding.md](research/ghostty-embedding.md) — current official VT/internal APIs, licensing and a follow-up comparison plan | 中文 |
 | you are changing the folder tree or Places/Folders layout | [research/folder-tree.md](research/folder-tree.md) — pinned Dolphin evidence, lazy model, active-pane ownership and saved options | 中文 |
-| you are updating the Homebrew cask or checking signing requirements | [research/homebrew.md](research/homebrew.md), [../Casks/tursora.rb](../Casks/tursora.rb) — verified release generation and isolated installation | 中文 / Ruby |
+| you are updating the Homebrew cask or checking signing requirements | [research/homebrew.md](research/homebrew.md), [../Casks/tursora.rb](../Casks/tursora.rb) — three-step tap / single-cask trust / install flow, verified release generation and isolated installation | 中文 / Ruby |
 | you are auditing all README/site screenshot transparency | [research/screenshot-audit-2026-09-13.md](research/screenshot-audit-2026-09-13.md) — initial inventory, PNG build gate and recapture stage | 中文 |
 | you are changing settings, shortcuts or terminal/ZIP behavior | [research/settings-and-shortcuts.md](research/settings-and-shortcuts.md), [research/dolphin-terminal.md](research/dolphin-terminal.md), [SPEC.md §16–18](SPEC.md#16-设置与自定义快捷键) | 中文 |
 | you are changing per-directory view memory, defaults or storage identity | [research/directory-view-properties.md](research/directory-view-properties.md) — pinned Dolphin evidence and Tursora's application-owned path library; [SPEC.md §5](SPEC.md#5-视图模式缩放与预览对标-dolphin) | 中文 |

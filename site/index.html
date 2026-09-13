@@ -180,11 +180,12 @@
         </ol>
         <p class="install-note">若系统无法验证此应用，确认官方来源及下载可信后，可在“系统设置 → 隐私与安全性”中选择“仍要打开”，再确认打开。详见<a class="inline-link" href="https://github.com/zerolfx/Tursora#first-launch">首次启动说明</a>。</p>
         <h3 class="install-method">通过 Homebrew 安装</h3>
-        <p class="install-note">先执行第一条命令，保留完整仓库 URL；成功后再执行第二条：</p>
+        <p class="install-note">按顺序执行以下三条命令：添加仓库、信任 Tursora 安装定义、安装应用。每条成功后再继续，保留第一条的完整仓库 URL：</p>
         <pre class="install-code" aria-label="Homebrew 安装命令"><code>brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
+brew trust --cask zerolfx/tursora/tursora
 brew install --cask zerolfx/tursora/tursora</code></pre>
         <p class="install-note">若报错提示找不到 <span lang="en">zerolfx/homebrew-tursora</span>，Homebrew 使用了默认 tap 地址。请先完整执行上方含 URL 的第一条命令。Tap 安装已发布的 0.2.0 DMG，并校验固定 SHA-256。<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew">更新与卸载说明 <span aria-hidden="true">↗</span></a></p>
-        <p class="install-note">若提示 <span lang="en">untrusted tap</span>，见<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew-troubleshooting">仅信任 Tursora cask 的处理步骤</a>。</p>
+        <p class="install-note">第二条只信任 Tursora 的安装定义。若仍提示 <span lang="en">untrusted tap</span>，见<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew-troubleshooting">安装排错说明</a>。</p>
         <a class="inline-link" href="https://github.com/zerolfx/Tursora#build-locally">也可以在本机构建 <span aria-hidden="true">↗</span></a>
       </div>
     </section>

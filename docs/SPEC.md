@@ -302,8 +302,8 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 ## 21. 下载与安装
 
 - README 简介后、功能表前直接提供 0.2.0 安装步骤与 Homebrew 命令。网站首屏主按钮及导航中的“安装指南”是页内 `#installation` 跳转；“免费下载”单独指向真实最新稳定 release。安装区逐步说明下载 DMG、打开、拖入 Applications、从 Applications 启动，复用真实透明安装截图，并链接可信下载的首次启动说明。当前提供已发布的 0.2.0 DMG，不链接不存在的新版资产。
-- 项目自己的 Homebrew tap 直接使用本仓库 `Casks/tursora.rb`。先完整执行 `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora`，成功后再 `brew install --cask zerolfx/tursora/tursora`。第一条显式 URL 不可省略；未安装 tap 时直接 install 会自动寻找默认 `zerolfx/homebrew-tursora`，其仓库不存在提示应先检查显式 tap 步骤。固定已发布版本与 SHA-256；当前 cask 用真实 `0.2.0` DMG，并标记 `auto_updates true`。不需要为自有 tap 先购买 Apple 会员，但安装包仍未公证；保留下载隔离，不在 cask 中执行绕过命令。官方 `homebrew/cask` 接纳条件与自有 tap 分开，见[Homebrew 依据与实装验证](research/homebrew.md)。
-- 默认 Homebrew 流程仍为显式 URL 的 tap、成功后再完整名称 install 两条命令；`untrusted tap` 的独立排错只授予 `brew trust --cask zerolfx/tursora/tursora`，再重试安装。网站简短提示并跳到 README 排错说明。这些安装说明修订不修改已发布应用版本 / build 或重新发布二进制。
+- 项目自己的 Homebrew tap 直接使用本仓库 `Casks/tursora.rb`。依次执行完整 URL 的 `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora`、仅授权此 cask 的 `brew trust --cask zerolfx/tursora/tursora`，最后 `brew install --cask zerolfx/tursora/tursora`，每步成功后继续。第一条显式 URL 不可省略；未安装 tap 时直接 install 会自动寻找默认 `zerolfx/homebrew-tursora`，其仓库不存在提示应先检查显式 tap 步骤。固定已发布版本与 SHA-256；当前 cask 用真实 `0.2.0` DMG，并标记 `auto_updates true`。不需要为自有 tap 先购买 Apple 会员，但安装包仍未公证；保留下载隔离，不在 cask 中执行绕过命令。官方 `homebrew/cask` 接纳条件与自有 tap 分开，见[Homebrew 依据与实装验证](research/homebrew.md)。
+- 按用户明确要求，README、网站及维护说明的主安装流程固定为 tap → 单 cask trust → install 三条命令，显式信任是文档流程中的必做步骤，不仅放在错误后的备选说明。Homebrew 的完整名称安装本身也可能自动授予同一单项信任，不能据此宣称省略 trust 在所有版本都会失败；不授予整个 tap 的信任，不关闭全局检查。此说明修订不修改已发布应用版本 / build 或重新发布二进制，取舍见 D58。
 - README、研究记录和网站的 canonical 截图必须是实际窗口 PNG，原生圆角外侧透明且边缘带抗锯齿；确定性处理保护内部像素，不能生成或修饰 UI。网站构建检查整个图片目录，不能靠 CSS 覆盖白底，见[本轮截图审计](research/screenshot-audit-2026-09-13.md)。
 
 - 当前及后续 release 直接提供 `Tursora-<version>-macOS-arm64.dmg` 与 SHA-256 校验文件，正式版另附更新 appcast。打开镜像后，窗口中左侧为 Tursora、右侧为 Applications，中间箭头指向目标；将应用拖入 Applications 完成安装。Applications 是 `/Applications` 的链接，没有额外安装脚本。

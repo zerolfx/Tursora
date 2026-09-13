@@ -39,6 +39,7 @@ jobs:
       - name: Tap this checkout and install the published application
         run: |
           brew tap zerolfx/tursora "$GITHUB_WORKSPACE"
+          brew trust --cask zerolfx/tursora/tursora
           mkdir -p "$RUNNER_TEMP/homebrew-apps"
           brew install --cask --appdir="$RUNNER_TEMP/homebrew-apps" zerolfx/tursora/tursora
           codesign --verify --deep --strict "$RUNNER_TEMP/homebrew-apps/Tursora.app"
