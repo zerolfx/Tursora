@@ -19,7 +19,7 @@
 - GitHub 官方[自定义 Pages 工作流](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)说明 `configure-pages@v5`、`upload-pages-artifact@v4`、`deploy-pages@v4`，以及部署权限、环境与构建依赖。
 - GitHub 官方[发布源配置](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)说明以 GitHub Actions 为 source，并建议限制部署 environment 的分支。
 - 2026-09-12，GitHub API 的仓库响应为 `visibility=public`、`default_branch=main`、`has_pages=true`；Pages 响应为 `build_type=workflow`、`html_url=https://zerolfx.github.io/Tursora/`、`https_enforced=true`、`cname=null`、`status=null`。现有 Pages 已选 Actions，无需重复创建。
-- 同日 `releases/latest` 为正式非草稿的 `v0.1.0`，资产包括 `Tursora-0.1.0-macOS-arm64.zip`（4,101,534 bytes）与 `SHA256SUMS.txt`（96 bytes）。本阶段只读取 release 元数据，未重复下载并验证应用；既有产物验证见交接记录。
+- 同日 `releases/latest` 为正式非草稿的 `v0.1.0`，资产包括 `Tursora-0.1.0-macOS-arm64.zip`（4,101,534 bytes）与 `SHA256SUMS.txt`（96 bytes）。本阶段只读取 release 元数据，未重复下载并验证应用；后续独立的 ZIP 校验与隔离安装证据见 [Homebrew 历史记录](homebrew.md#初始-010-cask-的本地验证历史)。
 
 ## 本地验证与边界
 

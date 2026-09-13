@@ -26,7 +26,7 @@ Browse, preview and organize files with familiar Mac controls, split panes, edit
 
 ## Install Tursora 0.2.0
 
-**macOS 14+ · Apple Silicon · Free and open source.** [Download the latest stable release](https://github.com/zerolfx/Tursora/releases/latest) · [中文安装指南](https://zerolfx.github.io/Tursora/#installation)
+**macOS 14+ · Apple Silicon · Free and open source.** [Download the latest stable release](https://github.com/zerolfx/Tursora/releases/latest) · [中文安装指南](https://zerolfx.github.io/Tursora/zh.html#installation)
 
 **[0.2.0 is available](https://github.com/zerolfx/Tursora/releases/tag/v0.2.0).** Download the DMG and install it in four steps:
 
@@ -61,7 +61,7 @@ Quick Look, macOS sharing and familiar file operations meet Dolphin-inspired spl
 
 Tursora is an early project and does not yet cover everything Finder can do. The [differences below](#what-finder-still-does-that-tursora-doesnt) are part of the picture.
 
-The features below are available in 0.2.0. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size. Key combinations below are the defaults; customize application commands in **Settings → Shortcuts**.
+The features below are available in 0.2.0 unless marked as upcoming in 0.2.1. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size. Key combinations below are the defaults; customize application commands in **Settings → Shortcuts**.
 
 <table>
   <thead>
@@ -76,7 +76,7 @@ The features below are available in 0.2.0. See the [version history](CHANGELOG.m
         <p>Click Split View or press <code>⇧⌘D</code>. <code>⌥Tab</code> switches panes; <code>⇧⌘C</code> copies to the other side.</p>
       </td>
       <td>
-        <a href="docs/images/features/split-panes.png"><img src="docs/images/features/split-panes.png" width="600" alt="Split panes with independent paths: source files on the left, delivery folder on the right"></a>
+        <a href="docs/images/features/split-panes.png"><img src="docs/images/features/split-panes.png" width="600" alt="Independent split panes: the project folder in list view on the left and Source files in icon view on the right"></a>
         <a href="docs/images/features/workspace-restored.png"><img src="docs/images/features/workspace-restored.png" width="600" alt="After normal quit and relaunch: two tabs, the original split layout and the active right pane in icon view restored"></a>
       </td>
     </tr>
@@ -191,13 +191,13 @@ Both features are **enabled by default** in 0.2.0. Change them in **Tursora → 
     <tr>
       <td>
         <strong>A terminal in your workspace</strong>
-        <p>Click <strong>Terminal</strong> at the bottom right, the toolbar's <strong>Show Terminal</strong> button, or press <code>F4</code>, for an interactive <a href="https://github.com/migueldeicaza/SwiftTerm">SwiftTerm</a> terminal beneath the files. It starts in the active folder, or beside the original ZIP when browsing an archive. The footer keeps the window's hidden/running/ended state and task count visible; click it to show or hide the panel.</p>
+        <p><strong>Updated in upcoming 0.2.1.</strong> Click the toolbar's <strong>Show Terminal</strong> button or press <code>F4</code> for an interactive <a href="https://github.com/migueldeicaza/SwiftTerm">SwiftTerm</a> terminal beneath the files. With zsh, it follows the active folder, even while hidden. Running commands, <code>read</code> and unfinished input are left intact; the latest folder change waits for a safe prompt. ZIP browsing uses the original archive's parent folder.</p>
         <p>Choose the system login shell or a custom executable in <strong>Settings → Terminal</strong>. Pick a monospaced font (8–36 pt), follow the system appearance, or use dark, light or custom text/background colors. Font and color changes apply to every retained terminal immediately; shell changes take effect when starting a new session or restarting. Defaults are the system login shell, System Monospaced at 12 pt, and Follow Appearance.</p>
-        <p>Navigation shows the target for <strong>Restart in Current Folder</strong> without injecting shell commands. Hiding with the toolbar, <code>F4</code> or the panel's close button keeps its shell, output and running jobs; show it again to continue. Turning off terminal access in Settings also hides and retains existing sessions; re-enable access to show them again.</p>
+        <p>A compact header provides restart and hide controls. Other custom shells can restart in the current folder manually. Hiding with the toolbar, <code>F4</code> or the panel's close button keeps its shell, output and running jobs; show it again to continue. Turning off terminal access in Settings also hides and retains existing sessions; re-enable access to show them again.</p>
         <p>Restarting, closing the window or quitting ends its terminal session. If foreground, background or stopped jobs are detected—or their status cannot be established—Tursora asks first, with <strong>Cancel</strong> selected by default. The header preserves output after a shell exits. Terminal sessions do not survive quitting the app.</p>
       </td>
       <td>
-        <a href="docs/images/features/terminal.png"><img src="docs/images/features/terminal.png" width="600" alt="A customized terminal below split panes and the folder tree, displaying retained shell and background process IDs and Terminal · 1 task in the bottom-right status bar"></a>
+        <a href="docs/images/features/terminal.png"><img src="docs/images/features/terminal.png" width="600" alt="An integrated terminal below the file browser, with a compact header and directory following"></a>
         <a href="docs/images/features/terminal-settings.png"><img src="docs/images/features/terminal-settings.png" width="600" alt="Terminal settings for system or custom shell, monospaced font and size, and system or custom colors"></a>
       </td>
     </tr>

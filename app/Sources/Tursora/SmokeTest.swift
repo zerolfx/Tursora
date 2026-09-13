@@ -68,7 +68,7 @@ enum SmokeTest {
                     ArchivePreparationSmokeTests.run {
                     ArchiveBrowserSmokeTests.run {
                         SplitToolbarSmokeTests.run {
-                            FolderTreeSmokeTests.run { ShortcutSmokeTests.run { TerminalToolbarSmokeTests.run { TerminalSmokeTests.run { TerminalPreferencesSmokeTests.run { TerminalActivitySmokeTests.run { TerminalStatusSmokeTests.run { TerminalSessionSmokeTests.run {
+                            FolderTreeSmokeTests.run { ShortcutSmokeTests.run { TerminalToolbarSmokeTests.run { TerminalSmokeTests.run { TerminalDirectorySyncSmokeTests.run { TerminalPreferencesSmokeTests.run { TerminalActivitySmokeTests.run { StatusBarSmokeTests.run { TerminalSessionSmokeTests.run {
                                 SearchEntrySmokeTests.run {
                                 SearchSmokeTests.run {
                                     IntegratedSearchSmokeTests.run {
@@ -84,7 +84,7 @@ enum SmokeTest {
                                     }
                                 }
                                 }
-                            } } } } } } } }
+                            } } } } } } } } }
                         }
                     }
                     }

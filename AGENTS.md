@@ -1,6 +1,6 @@
 # Working on Tursora — rules for coding agents
 
-Tursora is a native macOS file manager (Swift + AppKit, no Xcode project). Read [docs/HANDOFF.md](docs/HANDOFF.md) first, then the document that matches your task in [docs/README.md](docs/README.md).
+Tursora is a native macOS file manager (Swift + AppKit, no Xcode project). Start with [docs/README.md](docs/README.md), then read the document that matches your task.
 
 ## Commands
 
@@ -15,15 +15,15 @@ Kill the running app before relaunching: `pkill -f "Tursora.app/Contents/MacOS/T
 
 ## Rules
 
-1. **Every change is verified by the smoke test**, not by looking. Add checks for what you build (`app/Sources/Tursora/SmokeTest.swift`); test model helpers as pure functions, then the UI path. Green three times in a row before committing. If you have screen access, also look at the packaged app — many visuals have never been seen (see HANDOFF).
+1. **Every change is verified by the smoke test**, not by looking. Add checks for what you build (`app/Sources/Tursora/SmokeTest.swift`); test model helpers as pure functions, then the UI path. Green three times in a row before committing. If you have screen access, also look at the packaged app and record the observed scope in the relevant research record under `docs/research/`.
 2. **No modal dialogs on a headless run.** Error paths check `SmokeTest.isRequested` and print instead. A modal hangs the test and hides the message.
 3. **Views never touch the filesystem.** Mutations go through `FileOperations`; `BrowserViewController` owns undo (`asUndoGroup`) and posts `DirectoryChanges.post` afterwards so other panes and Info windows refresh. Both file views (`FileListViewController`, `IconGridViewController`) must support a feature, and it must work with split panes, several tabs, filtering and grouping active.
 4. **Finder evidence rule.** A label, icon, group name or dialog wording that claims to match Finder comes from Finder's own resources (`strings` on `/System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/*.nib`, `plutil -convert json` on its `.strings`), recorded under `docs/research/`. Mark what is still inferred. Dolphin semantics come from `upstream/dolphin/src` (git-ignored checkout; re-clone if missing).
 5. **Read-after-write of file flags goes through `FileManager`**, not `URL.resourceValues` (cached for the run-loop pass). More pitfalls with fixes: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) § AppKit pitfalls — check it before debugging AppKit behaviour.
-6. **Keep the docs true.** Behaviour change → `docs/SPEC.md`; a choice with trade-offs → a row in `docs/DECISIONS.md`; a feature done → tick it in `docs/gaps/*.md` and add a `CHANGELOG.md` line; new shortcut → `docs/SHORTCUTS.md`. Iterate docs in the same change as the implementation: update architecture and handoff where affected, and keep README feature descriptions and actual app screenshots current. Distinguish implementation, automated verification and computer-use evidence; never present pending checks as completed.
+6. **Keep the docs true.** Behaviour change → `docs/SPEC.md`; a choice with trade-offs → a row in `docs/DECISIONS.md`; a feature done → tick it in `docs/gaps/*.md` and add a `CHANGELOG.md` line; new shortcut → `docs/SHORTCUTS.md`. Iterate docs in the same change as the implementation: update architecture and the relevant research records where affected, and keep README feature descriptions and actual app screenshots current. Distinguish implementation, automated verification and computer-use evidence; never present pending checks as completed.
 7. **Commits**: use a meaningful module scope, such as `feat(search): …`, `fix(transfers): …`, or `docs(view-settings): …`; omit the scope for global or multi-module changes (`feat: …`, `fix: …`, `docs: …`). Do not use `tursora` as a blanket scope. The body says what and why and ends with the smoke-test count. Use `zerol <20219056+zerolfx@users.noreply.github.com>` for author and committer; do not add AI co-author trailers. Do not commit `app/.build`, `app/build`, or `upstream/`.
 8. **Scope.** Do what was asked; put out-of-scope findings in `docs/ROADMAP.md` or the gap lists rather than building them. Ask before destructive or outward-facing actions (deleting user data, pushing, changing the bundle id).
-9. **Language.** Code, comments and code-facing docs in English; product-facing docs (spec, decisions, gaps, handoff) in Chinese, as the owner writes Chinese.
+9. **Language.** Code, comments and code-facing docs in English; product-facing docs (spec, decisions, gaps, feature research records) in Chinese, as the owner writes Chinese.
 
 ## Layout
 

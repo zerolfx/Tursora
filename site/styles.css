@@ -22,6 +22,9 @@ a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid 
 .nav-links a:hover,.site-footer a:hover{color:var(--blue)}
 .nav-links .nav-install{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:5px 13px;border:1px solid #bbd5f4;border-radius:8px;background:#e9f2ff;color:var(--blue);font-weight:650;white-space:nowrap}
 .nav-source span{margin-left:3px;color:var(--muted)}
+.language-switch{display:flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--line);border-radius:8px}
+.language-switch a{display:flex;align-items:center;min-height:32px;padding:3px 8px;border-radius:5px;white-space:nowrap}
+.language-switch a[aria-current=page]{background:#e0edff;color:var(--blue);font-weight:650}
 .eyebrow{font-size:12px;font-weight:650;letter-spacing:.12em;color:var(--blue);line-height:1.6}
 .hero{padding-top:66px}
 .hero-intro{display:flex;align-items:center;justify-content:space-between;gap:70px}
@@ -155,10 +158,11 @@ kbd{display:inline-flex;align-items:center;justify-content:center;min-width:48px
 }
 @media(max-width:720px){html{scroll-padding-top:30px}
 .wrap{width:calc(100% - 40px)}
-.nav{height:67px;gap:18px}
+.nav{height:auto;min-height:67px;gap:12px;flex-wrap:wrap;padding-block:12px}
 .brand{font-size:18px}
 .brand img{width:30px;height:30px}
-.nav-links{gap:21px;font-size:12px}
+.nav-links{gap:12px;font-size:12px;flex-wrap:wrap}
+.nav-features{display:none}
 .nav-source{display:none}
 .hero{padding-top:39px}
 .hero-intro{position:relative;gap:0}

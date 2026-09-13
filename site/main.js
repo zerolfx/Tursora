@@ -54,6 +54,7 @@
   const close = document.querySelector("[data-close-viewer]");
   let opener;
   if (dialog && image && title && close && typeof dialog.showModal === "function") {
+    const fallbackTitle = dialog.dataset.viewerTitle || title.textContent;
     document.querySelectorAll("[data-viewer]").forEach(link => {
       link.addEventListener("click", event => {
         // Preserve open-in-new-tab and other normal link gestures.
@@ -61,8 +62,8 @@
         event.preventDefault();
         opener = link;
         image.src = link.href;
-        image.alt = link.querySelector("img")?.alt || link.dataset.title || "Tursora 界面截图";
-        title.textContent = link.dataset.title || "Tursora 界面截图";
+        image.alt = link.querySelector("img")?.alt || link.dataset.title || fallbackTitle;
+        title.textContent = link.dataset.title || fallbackTitle;
         dialog.showModal();
         document.body.classList.add("viewer-open");
         close.focus();

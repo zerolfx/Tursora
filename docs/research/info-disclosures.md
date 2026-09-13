@@ -38,7 +38,7 @@ Tursora 采用这一可复核的本机基线：**General 与 Preview 展开，�
 
 ## 验证状态
 
-本轮 Dock 与后续输入法调整之前的截图阶段，组合源码完整 smoke **连续三轮通过，每轮 2,024 项**，三次均 exit 0、stderr 为空；这是包含 Info 折叠回归的组合套件总数。后续最终源码的结果以 [HANDOFF](../HANDOFF.md) 为准。
+本轮 Dock 与后续输入法调整之前的截图阶段，组合源码完整 smoke **连续三轮通过，每轮 2,024 项**，三次均 exit 0、stderr 为空；这是包含 Info 折叠回归的组合套件总数。后续 Dock / 输入法调整阶段的最终结果见 [Dock 研究记录](dock-menu.md)。
 
 `InfoDisclosureSmokeTests.swift` 使用隔离的 UserDefaults suite 与临时文件，覆盖缺省值、旧自动 `true`、旧 `false`、新显式 `true` / `false` 优先级、初始化不写偏好、展开与折叠后重开、真实 Info / Inspector / Summary 的分区构建和跨窗口记忆。主 smoke 中相应 fixture 已改用新显式键，并在测试开始时隔离、结束时恢复旧键和新键，避免已有选择影响结果或测试改写用户偏好。
 

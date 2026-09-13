@@ -32,7 +32,7 @@ Microsoft 的[ZIP 与解压说明](https://support.microsoft.com/en-us/windows/e
 
 ## 验证状态与限制
 
-当前验证状态统一见 [HANDOFF](../HANDOFF.md)，同 pane 导航、只读菜单、外部打开副本、复制与撤销的操作证据见[实机记录](computer-use-2026-09-12-inline-zip.md)。该记录分别列出自动化覆盖和未逐项实测的交互，本文只维护行为与实现边界。
+后续默认开启、取消与恢复的验证范围见[功能完善记录](default-features-polish.md)；同 pane 导航、只读菜单、外部打开副本、复制与撤销的操作证据见[实机记录](computer-use-2026-09-12-inline-zip.md)。该记录分别列出自动化覆盖和未逐项实测的交互，本文只维护行为与实现边界。
 
 **历史证据：旧独立窗口实现。** 2026-09-12 曾在打包应用中检查独立 ZIP 窗口布局、原始根结构、嵌套目录和 Back / Up；Return 将文本交给 TextEdit，确认读取临时副本，关闭 ZIP 窗口后副本仍可读。旧窗口的只读 / Save As 说明、关闭实验后恢复解压也已检查。详见[实机检查记录](computer-use-2026-09-12.md)。这些结果说明旧实现当时的行为，不能视为当前 pane 导航与菜单已通过实测。
 

@@ -1,6 +1,6 @@
 # 全应用快捷键设置（2026-09-13）
 
-本轮把原先仅可修改 Filter 的录制器扩展为完整应用命令目录。此记录描述实现边界与专项证据；最终组合 smoke 与实机状态由 HANDOFF 维护。
+本轮把原先仅可修改 Filter 的录制器扩展为完整应用命令目录。此记录描述实现边界与专项证据；本阶段最终组合 smoke 与实机范围见[定制功能整合记录](customization-integration.md)。
 
 ## 命令目录与持久化
 
@@ -22,7 +22,7 @@ Settings 分 General、Shortcuts、Terminal、Updates。Shortcuts 支持命令 /
 
 `ShortcutSmokeTests` 包含逐命令 Clear / 重新绑定 / Reset、唯一 ID / 默认无冲突、重新构造持久化、旧 Filter 迁移、坏映射保留、冲突错误、搜索与录制布局，以及真实 NSMenu.performKeyEquivalent、双标签 / 双 pane、列表 / 图标自定义事件、旧绑定停止、Info alternate、普通文本与 SwiftTerm 输入保护。原 Settings / Updates smoke 跟随新布局和有效键范围更新。
 
-主任务已完成真实 Settings 布局与录制检查：Cmd-T 冲突被拒绝，Control-Command-T 改绑后能收起终端；F6 可以录制，并在文件区与终端内打开 / 收起。过滤 `Show` 后选中 Show Terminal 的真实截图已透明化，选中行、录制值与按钮一致。包含 Plus、删除键和菜单替代项回归的最终 95 份 Swift 源码，3,194 项组合 smoke 连续三轮通过（`smoke-7` / `8` / `9`），均 exit 0、stderr 为空、源码未变；交付 app / DMG 检查通过，精确最终结果见 HANDOFF。
+主任务已完成真实 Settings 布局与录制检查：Cmd-T 冲突被拒绝，Control-Command-T 改绑后能收起终端；F6 可以录制，并在文件区与终端内打开 / 收起。过滤 `Show` 后选中 Show Terminal 的真实截图已透明化，选中行、录制值与按钮一致。包含 Plus、删除键和菜单替代项回归的最终 95 份 Swift 源码，3,194 项组合 smoke 连续三轮通过（`smoke-7` / `8` / `9`），均 exit 0、stderr 为空、源码未变；交付 app / DMG 检查通过，精确结果见[定制功能整合记录](customization-integration.md)。
 
 ## 录制函数键与初始选区
 
@@ -34,4 +34,4 @@ Shortcuts 页打开时将已选命令滚入视口，保持搜索状态；此前�
 
 AppKit 的事件字符与菜单字符不能直接混用：物理 Backspace 通常报告 U+007F，而菜单用 U+0008；Forward Delete 报告 U+F728，而菜单用 U+007F。2026-09-13 无窗口 AppKit 探针确认，`NSMenu.performKeyEquivalent` 和 `NSApplication.sendEvent` 按字符匹配，并不会靠 hardware key code、Function 或 Numeric Pad 修饰符自动转换。主菜单现使用 `ShortcutMenu`，仅为菜单匹配复制并规范化删除事件；未处理时 responder 仍接收原事件。Fn-Delete 即使报告 Backspace 的硬件码，也以 U+F728 的前向删除语义为准。
 
-同一探针引用生产 helper 和菜单 subclass，验证原始 Forward Delete、Fn-Delete、Backspace 不误触 Forward Delete、经 NSApplication 分发及禁用项不执行均通过；AppKit 对禁用但匹配的项仍返回 handled=true，因此回归检查命令没有执行，而非假设返回 false。组合 smoke 增加以上行为及 Control-Forward Delete 文本输入保护，最终结果由 HANDOFF 记录。
+同一探针引用生产 helper 和菜单 subclass，验证原始 Forward Delete、Fn-Delete、Backspace 不误触 Forward Delete、经 NSApplication 分发及禁用项不执行均通过；AppKit 对禁用但匹配的项仍返回 handled=true，因此回归检查命令没有执行，而非假设返回 false。组合 smoke 增加以上行为及 Control-Forward Delete 文本输入保护，本阶段最终结果见[定制功能整合记录](customization-integration.md)。

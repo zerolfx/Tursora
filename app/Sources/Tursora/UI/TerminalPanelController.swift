@@ -53,7 +53,7 @@ struct TerminalPanelPresentation: Equatable {
         }
     }
 
-    var actionTitle: String { state == .running ? "Restart in Current Folder" : "Start in Current Folder" }
+    var actionTitle: String { state == .running ? "Restart Terminal" : "Start Terminal" }
 
     func destinationText(_ pendingDirectory: URL) -> String {
         "\(state == .running ? "Restart" : "Start") in: \(Self.displayPath(pendingDirectory))"
@@ -90,16 +90,15 @@ struct TerminalPanelPresentation: Equatable {
     }
 }
 
-/// One retained panel owns one interactive PTY. Navigation never sends keystrokes
-/// to an existing shell: even a foreground-shell check cannot detect `read`.
+/// One retained panel owns one interactive PTY. Directory synchronization uses
+/// a shell-side line-editor channel, never synthetic terminal input.
 final class TerminalPanelController: NSViewController, LocalProcessTerminalViewDelegate {
     private(set) var pendingDirectory: URL
     var sessionDirectory: URL? { presentation.reportedDirectory ?? presentation.startedDirectory }
     private(set) var terminalView: LocalProcessTerminalView?
     private let terminalContainer = NSView()
-    let locationLabel = NSTextField(labelWithString: "")
-    let destinationLabel = NSTextField(labelWithString: "")
-    let restartButton = NSButton(title: "Restart in Current Folder", target: nil, action: nil)
+    let titleLabel = NSTextField(labelWithString: "Terminal")
+    let restartButton = NSButton(title: "", target: nil, action: nil)
     private var presentation = TerminalPanelPresentation()
     private let localHostNames: Set<String>
     private let preferences: TerminalPreferences.Store
@@ -109,8 +108,10 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     private var shutdownGeneration: UInt64 = 0
     private var activitySession: TerminalActivity.Session?
     private var stoppingProcess: LocalProcess?
+    private var directorySync: TerminalDirectorySync?
+    private(set) var directorySyncUpdate: TerminalDirectorySync.Update?
+    private var directorySyncError: String?
     var onClose: (() -> Void)?
-    var onStateChanged: (() -> Void)?
 
     var isRunning: Bool { terminalView?.process.running == true }
     var statusState: TerminalPanelPresentation.State { presentation.state }
@@ -123,31 +124,6 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
             return TerminalActivitySnapshot(tasks: [], informationUnavailable: process.running || TerminalActivity.isAlive(process.shellPid))
         }
         return activitySession.snapshot()
-    }
-
-    /// Status polling captures AppKit/process ownership on the main thread,
-    /// then inspects immutable session metadata away from the UI. A replacement
-    /// session triggers a fresh query instead of delivering stale task counts.
-    func inspectActivity(completion: @escaping (TerminalActivitySnapshot) -> Void) {
-        guard let process = terminalView?.process ?? stoppingProcess, process.shellPid > 0 else { completion(.idle); return }
-        if activitySession == nil, process.running { activitySession = TerminalActivity.Session(process: process) }
-        guard let session = activitySession else {
-            completion(TerminalActivitySnapshot(tasks: [], informationUnavailable: process.running || TerminalActivity.isAlive(process.shellPid)))
-            return
-        }
-        let identity = ObjectIdentifier(process)
-        DispatchQueue.global(qos: .utility).async {
-            let result = session.snapshot()
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { completion(.idle); return }
-                let current = self.terminalView?.process ?? self.stoppingProcess
-                guard current.map(ObjectIdentifier.init) == identity, self.activitySession === session else {
-                    self.inspectActivity(completion: completion)
-                    return
-                }
-                completion(result)
-            }
-        }
     }
 
     init(initialDirectory: URL, localHostNames: Set<String> = TerminalPanelPresentation.localHostNames,
@@ -163,6 +139,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     deinit {
         if let preferencesObserver { preferences.notificationCenter.removeObserver(preferencesObserver) }
+        directorySync?.invalidate()
         if let process = terminalView?.process { TerminalProcessLifecycle.stop(process, session: activitySession) }
     }
 
@@ -170,47 +147,34 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         let root = TerminalPanelRootView()
         root.onAppearanceChanged = { [weak self] in self?.applyAppearancePreferences() }
         view = root
-        let title = NSTextField(labelWithString: "Terminal")
-        title.font = .systemFont(ofSize: 11, weight: .medium)
-        title.textColor = .secondaryLabelColor
-        locationLabel.font = .systemFont(ofSize: 11)
-        locationLabel.textColor = .secondaryLabelColor
-        locationLabel.lineBreakMode = .byTruncatingMiddle
-        locationLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        destinationLabel.font = .systemFont(ofSize: 11)
-        destinationLabel.textColor = .secondaryLabelColor
-        destinationLabel.lineBreakMode = .byTruncatingMiddle
-        destinationLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        destinationLabel.translatesAutoresizingMaskIntoConstraints = false
-        restartButton.bezelStyle = .rounded
+        titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        titleLabel.textColor = .secondaryLabelColor
+        restartButton.bezelStyle = .inline
+        restartButton.isBordered = false
         restartButton.controlSize = .small
         restartButton.target = self
         restartButton.action = #selector(restartHere(_:))
-        restartButton.toolTip = "Ends this shell and its tasks, then starts in the current folder."
         let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Hide Terminal")!, target: self, action: #selector(closePanel(_:)))
         close.bezelStyle = .inline
         close.isBordered = false
         close.toolTip = "Hide Terminal; its shell and tasks keep running"
-        let header = NSStackView(views: [title, locationLabel, restartButton, close])
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let header = NSStackView(views: [titleLabel, spacer, restartButton, close])
         header.orientation = .horizontal
         header.spacing = 10
         header.translatesAutoresizingMaskIntoConstraints = false
         terminalContainer.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(header)
-        view.addSubview(destinationLabel)
         view.addSubview(terminalContainer)
         NSLayoutConstraint.activate([
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
             header.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
             header.heightAnchor.constraint(equalToConstant: 24),
-            destinationLabel.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-            destinationLabel.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-            destinationLabel.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 2),
-            destinationLabel.heightAnchor.constraint(equalToConstant: 15),
             terminalContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             terminalContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            terminalContainer.topAnchor.constraint(equalTo: destinationLabel.bottomAnchor, constant: 5),
+            terminalContainer.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
             terminalContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         updateLocation()
@@ -221,10 +185,16 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         startIfNeeded()
     }
 
-    /// Called by navigation; deliberately updates only the restart destination.
+    /// Hidden panels retain the same channel. A busy/editor-owned request stays
+    /// pending in the shell until its next safe primary prompt.
     func followDirectory(_ url: URL) {
         guard TerminalPanelPresentation.localDirectory(url.absoluteString, localHostNames: localHostNames) != nil else { return }
         pendingDirectory = url
+        if directorySync != nil {
+            directorySyncUpdate = TerminalDirectorySync.Update(state: .waiting, directory: presentation.reportedDirectory,
+                                                               requestedDirectory: url, isReady: directorySyncUpdate?.isReady == true)
+        }
+        directorySync?.request(url)
         if isViewLoaded { updateLocation() }
     }
 
@@ -236,6 +206,10 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     func shutdown(completion: (() -> Void)? = nil) {
         shutdownGeneration &+= 1
         isShutDown = true
+        directorySync?.invalidate()
+        directorySync = nil
+        directorySyncUpdate = nil
+        directorySyncError = nil
         let process = terminalView?.process ?? stoppingProcess
         if let terminalView {
             terminalView.processDelegate = nil
@@ -244,14 +218,12 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         terminalView = nil
         presentation = TerminalPanelPresentation()
         launchError = nil
-        guard let process else { onStateChanged?(); completion?(); return }
+        guard let process else { completion?(); return }
         stoppingProcess = process
-        onStateChanged?()
         TerminalProcessLifecycle.stop(process, session: activitySession) { [weak self] in
             if self?.stoppingProcess === process {
                 self?.stoppingProcess = nil
                 self?.activitySession = nil
-                self?.onStateChanged?()
             }
             completion?()
         }
@@ -265,23 +237,29 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
 
     private func start(in directory: URL) {
         guard !SmokeTest.isRequested, AppPreferences.experimentalTerminalEnabled else { return }
-        let configuration: TerminalLaunchConfiguration
+        var configuration: TerminalLaunchConfiguration
         do { configuration = try launchConfiguration(in: directory) }
         catch {
             presentation = TerminalPanelPresentation(state: .failedToStart)
             launchError = error.localizedDescription + " Open Settings → Terminal to choose a shell."
             updateLocation()
-            onStateChanged?()
             return
         }
         let terminal = LocalProcessTerminalView(frame: terminalContainer.bounds)
         installTerminal(terminal, in: directory)
+        do {
+            if let sync = try TerminalDirectorySync.make(shell: configuration.shell, environment: ProcessInfo.processInfo.environment) {
+                configuration = TerminalLaunchConfiguration.make(directory: directory, shell: configuration.shell, environment: sync.environment)
+                installDirectorySynchronization(sync, for: terminal)
+            }
+        } catch {
+            directorySyncError = "Folder sync is unavailable: \(error.localizedDescription)"
+        }
         terminal.startProcess(executable: configuration.executable, args: configuration.arguments,
                               environment: configuration.environment, currentDirectory: directory.path)
         activitySession = TerminalActivity.Session(process: terminal.process, expectedShell: configuration.shell)
         if !terminal.process.running { presentation.state = .failedToStart }
         updateLocation()
-        onStateChanged?()
         view.window?.makeFirstResponder(terminal)
     }
 
@@ -312,6 +290,10 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     func installTerminal(_ terminal: LocalProcessTerminalView, in directory: URL) {
         guard !isShutDown, terminal !== terminalView else { return }
         _ = view
+        directorySync?.invalidate()
+        directorySync = nil
+        directorySyncUpdate = nil
+        directorySyncError = nil
         if let previous = terminalView, previous !== terminal {
             previous.processDelegate = nil
             TerminalProcessLifecycle.stop(previous.process, session: activitySession)
@@ -325,7 +307,24 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         applyAppearancePreferences()
         presentation = TerminalPanelPresentation(state: .running, startedDirectory: directory)
         updateLocation()
-        onStateChanged?()
+    }
+
+    /// Also used by controlled PTY tests. A callback belongs to this exact view
+    /// and channel; shutdown/replacement invalidates all queued file activity.
+    func installDirectorySynchronization(_ sync: TerminalDirectorySync, for terminal: LocalProcessTerminalView) {
+        guard !isShutDown, terminal === terminalView else { sync.invalidate(); return }
+        directorySync?.invalidate()
+        directorySync = sync
+        directorySyncUpdate = nil
+        sync.onChange = { [weak self, weak terminal, weak sync] update in
+            guard let self, let sync, self.directorySync === sync, terminal === self.terminalView,
+                  !self.isShutDown, self.presentation.state == .running else { return }
+            self.directorySyncUpdate = update
+            if let reported = update.directory { self.presentation.reportedDirectory = reported }
+            self.updateLocation()
+        }
+        sync.request(pendingDirectory)
+        updateLocation()
     }
 
     @objc private func restartHere(_ sender: Any?) {
@@ -350,16 +349,30 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     @objc private func closePanel(_ sender: Any?) { onClose?() }
 
     private func updateLocation() {
-        locationLabel.stringValue = launchError ?? presentation.locationText
-        locationLabel.textColor = presentation.state == .failedToStart ? .systemRed : .secondaryLabelColor
-        locationLabel.toolTip = launchError ?? presentation.reportedDirectory.map { "Shell-reported folder: \($0.path)" }
-            ?? presentation.startedDirectory.map { "Started in \($0.path). The shell has not reported its current folder." }
-        destinationLabel.stringValue = presentation.destinationText(pendingDirectory)
-        destinationLabel.toolTip = "New shell destination: \(pendingDirectory.path). Browsing folders does not change the existing shell."
-        restartButton.title = presentation.actionTitle
-        restartButton.toolTip = presentation.state == .running
-            ? "Ends this shell and its tasks, then starts in \(pendingDirectory.path)."
-            : "Starts a new shell in \(pendingDirectory.path)."
+        let detail: String
+        if let launchError { detail = launchError }
+        else if presentation.state == .running {
+            let location = presentation.reportedDirectory.map { "Shell folder: \($0.path). " } ?? ""
+            if let directorySyncError { detail = location + directorySyncError }
+            else if directorySync == nil {
+                detail = location + "Automatic folder sync needs zsh integration. Restart to open \(pendingDirectory.path)."
+            } else if directorySyncUpdate?.state == .synchronized {
+                detail = location + "Follows browsing folders, including while hidden."
+            } else if directorySyncUpdate?.state == .failed {
+                detail = location + "Could not synchronize to \(pendingDirectory.path). The request is kept for the next prompt."
+            } else {
+                detail = location + "Folder sync pending: \(pendingDirectory.path). Waiting for an empty zsh prompt; commands and unfinished input are preserved."
+            }
+        } else { detail = presentation.locationText }
+        titleLabel.toolTip = detail
+        titleLabel.setAccessibilityHelp(detail)
+        titleLabel.textColor = launchError == nil ? .secondaryLabelColor : .systemRed
+        restartButton.image = NSImage(systemSymbolName: presentation.state == .running ? "arrow.clockwise" : "play", accessibilityDescription: presentation.actionTitle)
+        restartButton.setAccessibilityLabel(presentation.actionTitle)
+        restartButton.setAccessibilityHelp(detail)
+        restartButton.toolTip = presentation.actionTitle + ". " + (presentation.state == .running
+            ? "Ends this shell and its tasks, then starts in \(pendingDirectory.path). "
+            : "Starts a shell in \(pendingDirectory.path). ") + detail
     }
 
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
@@ -373,9 +386,10 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     }
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         guard !isShutDown, source === terminalView else { return }
+        directorySync?.invalidate()
+        directorySync = nil
         presentation.state = .ended
         updateLocation()
-        onStateChanged?()
     }
 }
 

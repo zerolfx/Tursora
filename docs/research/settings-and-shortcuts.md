@@ -38,6 +38,6 @@ strings /System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/Me
 
 ## 验证边界
 
-`SettingsSmokeTests.run()` 使用独立临时 UserDefaults domain 和 NotificationCenter，覆盖默认值、持久化、通知、冲突/无效绑定、重置、设置控件写入和刷新、录制事件与 Escape，以及窗口内布局。不打开设置窗口、不触发外部程序、终端或真实 ZIP 浏览。主流程的 `SmokeTest.preferencesIntegration` 另覆盖实际菜单绑定、实验开关入口、两种文件视图的扩展名显示与重命名真名；当前验证状态见 [HANDOFF](../HANDOFF.md)。
+`SettingsSmokeTests.run()` 使用独立临时 UserDefaults domain 和 NotificationCenter，覆盖默认值、持久化、通知、冲突/无效绑定、重置、设置控件写入和刷新、录制事件与 Escape，以及窗口内布局。不打开设置窗口、不触发外部程序、终端或真实 ZIP 浏览。主流程的 `SmokeTest.preferencesIntegration` 另覆盖实际菜单绑定、实验开关入口、两种文件视图的扩展名显示与重命名真名；后续完整快捷键目录及整合验证分别见[快捷键研究](custom-shortcuts.md)与[定制功能整合记录](customization-integration.md)。
 
 同 pane ZIP 与设置的实际操作、示例截图和偏好恢复记录见[实机记录](computer-use-2026-09-12-inline-zip.md)。默认值按本文的数据表定义，不从演示截图或某位用户的当前偏好推断。

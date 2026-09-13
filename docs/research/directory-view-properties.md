@@ -1,6 +1,6 @@
 # 每目录视图属性：Dolphin 依据与 Tursora 取舍
 
-2026-09-12。以下 Dolphin 结论来自本机只读源码 `/Users/zerol/Workspace/Tursora/upstream/dolphin/src`，已核对 Git HEAD 为 `5e457ee9e88aa6277fbf056cd5c32462c5318866`（项目固定参考版本，2026-08-18）。行号针对该 pin；没有修改或运行上游源码。Tursora 的具体实现、自动验证与实机检查状态分别以 [ARCHITECTURE](../ARCHITECTURE.md)、[SPEC](../SPEC.md) 和 [HANDOFF](../HANDOFF.md) 为准。
+2026-09-12。以下 Dolphin 结论来自本机只读源码 `/Users/zerol/Workspace/Tursora/upstream/dolphin/src`，已核对 Git HEAD 为 `5e457ee9e88aa6277fbf056cd5c32462c5318866`（项目固定参考版本，2026-08-18）。行号针对该 pin；没有修改或运行上游源码。Tursora 的具体实现、自动验证与实机检查状态分别以 [ARCHITECTURE](../ARCHITECTURE.md)、[SPEC](../SPEC.md) 和[目录视图验证记录](computer-use-2026-09-12-directory-views.md)为准。
 
 ## Dolphin 的已核对语义
 
@@ -41,7 +41,7 @@ Application Support 路径键避免污染用户目录，也不需要目录写权
 
 ## 验证原则
 
-模型用独立库和临时目录验证两目录往返、无记录默认、重建库模拟重启、重置、策略切换、旧版 / 损坏数据与路径边界；UI 验证同目录多 pane 规则、两种模式所有属性、过滤 / 选择隔离、活动工具栏及滑块同步。快速 A → B 导航时，只有当前导航的结果能应用属性，A 的迟到结果不能覆盖 B。归档验证同时检查没有临时路径记录和只读动作仍被禁止。最终 smoke 数量、三轮日志、strict codesign 及 packaged-app computer-use 证据由本功能交接记录更新；上游源码阅读不等于这些检查已通过。
+模型用独立库和临时目录验证两目录往返、无记录默认、重建库模拟重启、重置、策略切换、旧版 / 损坏数据与路径边界；UI 验证同目录多 pane 规则、两种模式所有属性、过滤 / 选择隔离、活动工具栏及滑块同步。快速 A → B 导航时，只有当前导航的结果能应用属性，A 的迟到结果不能覆盖 B。归档验证同时检查没有临时路径记录和只读动作仍被禁止。最终 smoke 数量、三轮日志、strict codesign 及 packaged-app computer-use 证据见[目录视图验证记录](computer-use-2026-09-12-directory-views.md)；上游源码阅读不等于这些检查已通过。
 
 ## 独立对抗性 review 与修复复查
 

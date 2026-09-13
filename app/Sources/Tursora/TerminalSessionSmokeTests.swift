@@ -51,13 +51,11 @@ enum TerminalSessionSmokeTests {
         }
         try await waitUntil("private workspace loads", { controller.browser.model.generation > 0 })
         try check("initial workspace can be saved", owner.saveWorkspaceNow())
-        let statusButton = controller.browser.statusBar.terminalStatusButton
         window.contentView?.layoutSubtreeIfNeeded()
-        try check("initial footer status creates no session", !statusButton.isHidden && statusButton.isEnabled
-            && statusButton.title == "Terminal" && controller.terminalPanel == nil)
-        statusButton.performClick(nil)
+        try check("initial footer has no terminal control and creates no session", hasNoFooterButton(controller) && controller.terminalPanel == nil)
+        controller.toggleTerminal(nil)
         guard let panel = controller.terminalPanel else { throw Failure("terminal panel opens") }
-        try check("clicking the exact footer button opens the panel without a headless shell", controller.isTerminalVisible && panel.terminalView == nil)
+        try check("terminal action opens the panel without a headless shell", controller.isTerminalVisible && panel.terminalView == nil)
         let terminal = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 720, height: 240))
         panel.installTerminal(terminal, in: root)
         terminal.startProcess(executable: "/bin/sh", args: ["-f", "-i"], environment: [
@@ -79,18 +77,20 @@ enum TerminalSessionSmokeTests {
         try await waitUntil("background work is detected at the shell prompt", {
             tcgetpgrp(terminal.process.childfd) == shellPID && panel.activitySnapshot().tasks.contains { $0.pid == jobPID }
         })
-        controller.refreshTerminalActivity()
-        try await waitUntil("async footer refresh reports the real background task", {
-            window.contentView?.layoutSubtreeIfNeeded()
-            return statusButton.title.contains("1 task") && statusButton.toolTip?.contains("visible") == true
-        }, detail: { statusButton.toolTip ?? "no terminal status" })
-        statusButton.performClick(nil)
+        try check("running terminal work adds no footer control", hasNoFooterButton(controller))
+        controller.toggleTerminal(nil)
         try check("hide retains the controller, view and running PID", !controller.isTerminalVisible && controller.terminalPanel === panel
             && panel.terminalView === terminal && terminal.process.shellPid == shellPID && processExists(jobPID))
-        try check("footer task status remains available while hidden", !statusButton.isHidden && statusButton.toolTip?.contains("hidden") == true)
+        send("kill -STOP \"$TURSORA_JOB\"; printf '\\n__STOPPED_%s__\\n' JOB\n", to: terminal)
+        try await waitFor("__STOPPED_JOB__", in: terminal)
+        try await waitUntil("controlled background job is stopped", { panel.activitySnapshot().tasks.contains { $0.pid == jobPID && $0.isStopped } })
+        try check("stopped work still requires shutdown confirmation", panel.activitySnapshot().requiresConfirmation)
+        send("kill -CONT \"$TURSORA_JOB\"; printf '\\n__RESUMED_%s__\\n' JOB\n", to: terminal)
+        try await waitFor("__RESUMED_JOB__", in: terminal)
+        try await waitUntil("controlled background job resumes", { panel.activitySnapshot().tasks.contains { $0.pid == jobPID && !$0.isStopped } })
         send("printf '\\n__HIDDEN_%s__\\n' OUTPUT\n", to: terminal)
         try await waitFor("__HIDDEN_OUTPUT__", in: terminal)
-        statusButton.performClick(nil)
+        controller.toggleTerminal(nil)
         try check("reopening restores the same output and background task", controller.isTerminalVisible && controller.terminalPanel === panel
             && panel.terminalView === terminal && terminal.process.shellPid == shellPID && output(terminal).contains("__HIDDEN_OUTPUT__")
             && processExists(jobPID))
@@ -104,8 +104,6 @@ enum TerminalSessionSmokeTests {
         AppPreferences.experimentalTerminalEnabled = false
         try check("Settings disable hides without ending retained work", !controller.isTerminalVisible && controller.terminalPanel === panel
             && panel.terminalView === terminal && terminal.process.running && processExists(jobPID))
-        try check("disabled footer retains task information without accepting clicks", !statusButton.isHidden && !statusButton.isEnabled
-            && statusButton.toolTip?.contains("Settings") == true)
         controller.toggleTerminal(nil)
         try check("disabled terminal action does not reveal or replace the session", !controller.isTerminalVisible && controller.terminalPanel === panel)
         AppPreferences.experimentalTerminalEnabled = true
@@ -175,7 +173,7 @@ enum TerminalSessionSmokeTests {
         try check("approved session shutdown leaves no unreaped shell", waitpid(shellPID, &status, WNOHANG) == -1 && errno == ECHILD)
 
         // The remaining window exercises natural exit rather than synthesizing
-        // a delegate callback. The footer must update while preserving output.
+        // a delegate callback. Ending the shell still preserves its output.
         guard let endedPanel = idleWindow.terminalPanel else { throw Failure("second panel remains owned") }
         let endedTerminal = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 720, height: 240))
         endedPanel.installTerminal(endedTerminal, in: root)
@@ -184,18 +182,21 @@ enum TerminalSessionSmokeTests {
         ], currentDirectory: root.path)
         send("set +H; stty -echo; printf '\\n__ENDED_%s__\\n' READY\n", to: endedTerminal)
         try await waitFor("__ENDED_READY__", in: endedTerminal)
-        idleWindow.refreshTerminalActivity()
         send("printf '\\n__RETAINED_%s__\\n' OUTPUT; exit\n", to: endedTerminal)
-        let endedStatus = idleWindow.browser.statusBar.terminalStatusButton
-        try await waitUntil("natural shell exit updates footer status asynchronously", {
-            idleWindow.window?.contentView?.layoutSubtreeIfNeeded()
-            return !endedTerminal.process.running && endedStatus.title.contains("Ended")
-        }, detail: { endedStatus.toolTip ?? "no ended status" })
-        endedStatus.performClick(nil)
-        endedStatus.performClick(nil)
-        try check("ended-session footer toggles preserve the original view and final output", idleWindow.isTerminalVisible
+        try await waitUntil("natural shell exit preserves final output", {
+            !endedTerminal.process.running && endedPanel.statusState == .ended && output(endedTerminal).contains("__RETAINED_OUTPUT__")
+        })
+        idleWindow.toggleTerminal(nil)
+        idleWindow.toggleTerminal(nil)
+        try check("ended-session terminal actions preserve the original view and final output", idleWindow.isTerminalVisible
             && endedPanel.terminalView === endedTerminal && !endedTerminal.process.running && output(endedTerminal).contains("__RETAINED_OUTPUT__")
-            && endedStatus.toolTip?.contains("output is retained") == true)
+            && hasNoFooterButton(idleWindow))
+    }
+
+    private static func hasNoFooterButton(_ controller: MainWindowController) -> Bool {
+        controller.tabs.pages.flatMap(\.panes).allSatisfy { pane in
+            !pane.statusBar.subviews.contains { $0 is NSButton }
+        }
     }
 
     @MainActor

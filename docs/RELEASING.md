@@ -1,6 +1,6 @@
 # Releases and changelog
 
-`CHANGELOG.md` is the user-facing release history. Put new user-visible changes in `## [Unreleased]` as they are implemented. Keep implementation evidence, detailed test counts and historical investigation in the relevant research record and `HANDOFF.md`.
+`CHANGELOG.md` is the user-facing release history. Put new user-visible changes in `## [Unreleased]` as they are implemented. Keep implementation evidence, detailed test counts and historical investigation in the relevant version or feature research record under [research/](research/).
 
 ## Update signing and first-release readiness
 
@@ -14,7 +14,7 @@ The stable feed is `https://github.com/zerolfx/Tursora/releases/latest/download/
 
 ## Build the drag-install DMG
 
-Run `tools/make-app.sh`, then `tools/make-dmg.sh [release-version]` from `app/`. The local bundle version defaults to `0.2.0`; `TURSORA_VERSION` can override it, and the Release workflow supplies its explicitly selected version. The optional version defaults to the bundle's short version; a supplied prerelease name must have the same numeric version as the app. Output is `app/dist/Tursora-<version>-macOS-arm64.dmg`. GitHub Releases attaches this DMG directly. GitHub Actions' download service still wraps build artifacts in its own ZIP; that outer wrapper is not the application's installer format.
+Run `tools/make-app.sh`, then `tools/make-dmg.sh [release-version]` from `app/`. The local bundle version defaults to `0.2.1`; `TURSORA_VERSION` can override it, and the Release workflow supplies its explicitly selected version. The optional version defaults to the bundle's short version; a supplied prerelease name must have the same numeric version as the app. Output is `app/dist/Tursora-<version>-macOS-arm64.dmg`. GitHub Releases attaches this DMG directly. GitHub Actions' download service still wraps build artifacts in its own ZIP; that outer wrapper is not the application's installer format.
 
 DMG creation requires Python 3.10+ (`TURSORA_PYTHON` selects the interpreter); both workflows set up Python 3.13. `make-dmg.sh` uses the dedicated `app/.build/dmg-tools` virtual environment and installs `dmgbuild==1.6.7`, `ds-store==1.3.3` and `mac-alias==2.2.3` with all three wheel hashes pinned in `dmg-requirements.txt`. It writes layout metadata directly and does not depend on a running Finder UI.
 
@@ -33,7 +33,7 @@ Mac App Store distribution is a separate project, including the [App Sandbox req
 1. Finish the implementation and documentation together. Review the diff, run the full application smoke suite three consecutive times, and verify the packaged app. Do not run computer-use checks while smoke is running.
 2. Choose an unused semantic version without `v`. Move the Unreleased entries into a dated heading such as `## [0.2.0] - 2026-09-13`; retain an empty Unreleased heading for future work. Update the compare and release links at the bottom of the changelog.
 3. Run `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s app/tools -p 'test_*.py'` to cover release notes and update metadata. The Release workflow rejects a missing, duplicate or empty version section before creating a tag. It also supplies the repository and exact commit to make repository-relative links usable from GitHub Release pages.
-4. Update README download guidance and current handoff information. Commit with the required author identity and the final smoke-test count. Push only with the maintainer's authorization.
+4. Update README download guidance and the version-specific release research record. Commit with the required author identity and the final smoke-test count. Push only with the maintainer's authorization.
 5. Confirm remote `main` is exactly the reviewed commit and its Build, Pages and applicable Homebrew checks pass. Dispatch the **Release** workflow on `main`, supplying the version and prerelease flag. A version suffix requires the prerelease flag. Release builds and validates the package but does not run the application smoke suite; the three exact-source local runs remain a prerequisite.
 
 The workflow checks out the dispatch commit and builds the Apple Silicon application. `CFBundleVersion` is the commit's Unix committer timestamp, identical between Build and Release workflows for the same commit. The numeric part of the requested version becomes `CFBundleShortVersionString`; the filename/tag retain a prerelease suffix if present. Do not substitute a workflow run number for the build number: Build and Release have independent sequences.
@@ -45,6 +45,12 @@ The workflow verifies the outer app signature, updater framework/helpers, runtim
 Finally it atomically creates a new `v<version>` tag at that exact commit and publishes the matching changelog section as release notes. Stable releases explicitly become latest. Prereleases omit the appcast, do not need the signing secret and use `--latest=false`, keeping the stable feed unchanged. Existing tags/releases are never overwritten.
 
 Tag creation and release creation are separate GitHub operations. If publishing fails after the tag is created, a normal rerun will reject the existing tag. Inspect the exact tag SHA and the successful run's verified assets before completing that same release; do not move/delete a published tag or rebuild different bytes under an existing version to bypass the check.
+
+## 0.2.1 preparation (2026-09-13)
+
+The maintainer authorized publication after terminal directory following and the documentation refresh. The final 102 Swift files passed three consecutive 3,435-check smoke runs with unchanged source hashes and empty stderr. The release app and local 0.2.1 DMG passed packaging checks. An isolated packaged app verified hidden task retention, deferred directory following, cancellation of quit while a hidden task ran, the compact terminal header, ZIP parent-directory following and narrow footer layout. Four real application screenshots were refreshed with the pointer outside the captured window. Exact verification is in [the 0.2.1 record](research/terminal-navigation-0.2.1.md).
+
+The source preparation retains 0.2.0 download/cask references and labels the new terminal behavior as upcoming until the real 0.2.1 release exists. After publishing and verifying the immutable 0.2.1 assets, update the cask from those actual bytes and change README, both website languages and the shared installation guide to 0.2.1. Record the exact tag, build, asset digest and workflow results; do not retag or alter 0.2.0.
 
 ## 0.2.0 preparation (2026-09-13)
 
@@ -82,7 +88,7 @@ python3 app/tools/update-homebrew.py \
   --auto-updates --output Casks/tursora.rb
 ```
 
-Review the generated version, exact SHA and immutable asset URL, run the cask tool checks, then commit/merge the cask follow-up and verify its Homebrew workflow. Remove the prepared/unpublished wording from README and the product page only after publication succeeds, and record Release / Homebrew / Pages URLs and scope in HANDOFF. Cask updates, Pages deployment and production update verification are independent steps; Release does not perform them automatically.
+Review the generated version, exact SHA and immutable asset URL, run the cask tool checks, then commit/merge the cask follow-up and verify its Homebrew workflow. Remove the prepared/unpublished wording from README and the product page only after publication succeeds, and record Release / Homebrew / Pages URLs and scope in the relevant release, Homebrew and Pages research records. Cask updates, Pages deployment and production update verification are independent steps; Release does not perform them automatically.
 
 ## Verify the published result
 
@@ -97,7 +103,7 @@ python3 app/tools/update-metadata.py verify-appcast /path/to/appcast.xml \
 
 Replace the example `0.2.0` archive name with the released version. The appcast metadata command validates fields and returns the archive signature; it is not itself a cryptographic signature verifier. The release script performs the separate Sparkle signature check. For release verification, also exercise a controlled older update-enabled app against the feed, checking download, installation and relaunch without replacing the user's active app. A successful metadata/signing test alone is not evidence that the live installer flow was exercised.
 
-Record the release URL, workflow result, exact commit and verification scope in the handoff. Publishing a release does not deploy the separate product website or change repository visibility. Pages uses its own workflow; see [site/README.md](../site/README.md).
+Record the release URL, workflow result, exact commit and verification scope in the version-specific release research record. Publishing a release does not deploy the separate product website or change repository visibility. Pages uses its own workflow; see [site/README.md](../site/README.md).
 
 Before 0.1.0, the changelog was a development log rather than a version history. Those entries are retained in [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md); they are not separate published releases.
 

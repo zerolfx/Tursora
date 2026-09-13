@@ -25,7 +25,7 @@
 |---|---|---|
 | **Folders 面板**（目录树，可与视图同步） | ✅ 已实现并验证 | Places 下方独立 NSOutlineView 树；F7、活动 pane 跟随、按需读取、隐藏 / Home 选项、上下比例与可见性会话记忆；没有任意停靠 / 浮动，见[记录](../research/folder-tree.md) |
 | Information 面板（预览 + 元数据 + 媒体自动播放、"悬停时显示"） | ❌ | (mac) Quick Look 覆盖预览；元数据面板可做成 Inspector |
-| Terminal 面板（内嵌终端，随目录同步，`switch_terminal_url_sync`） | ✅ 默认启用 | 原生 SwiftTerm 1.15.0 + PTY，工具栏 / 默认 F4；可设 shell、等宽字体和文本 / 背景配色。隐藏保留会话，终止前任务确认的追加验证见[生命周期](../research/terminal-session-lifecycle.md)。导航只更新手动 Restart 目标，不注入 cd，不做自动双向同步 |
+| Terminal 面板（内嵌终端，随目录同步，`switch_terminal_url_sync`） | ✅ 默认启用 | 原生 SwiftTerm 1.15.0 + PTY，工具栏 / 默认 F4；可设 shell、等宽字体和文本 / 背景配色。隐藏保留会话，终止前任务确认见[生命周期](../research/terminal-session-lifecycle.md)。zsh 通过私有请求在空的主提示符单向跟随活动 pane，保留运行程序与未提交输入；其他 shell 手动 Restart，不反向导航。顶部紧凑，底部无终端状态或容量；[0.2.1 范围与验证](../research/terminal-navigation-0.2.1.md) |
 | Places：隐藏条目 / 显示全部、"最近使用"与"搜索"分组 | 部分 | 我们有增删拖拽重排、推出 ✅ |
 | 面板锁定 / 布局记忆 | 部分 | 会话恢复已有侧栏宽度 / 折叠及分栏比例；本轮加入 Folders 可见性 / 高度比例 / 选项。面板锁定、任意停靠及终端布局恢复仍未实现 |
 
@@ -73,10 +73,10 @@
 | Dolphin 功能 | Tursora | 说明 |
 |---|---|---|
 | **偏好设置窗口**（通用/启动/视图模式/上下文菜单/废纸篓/确认对话框/预览） | ✅ General / Shortcuts / Terminal / Updates 与目录视图策略 | Startup 提供默认开的会话恢复开关及保存失败重试；另有扩展名、完整应用命令快捷键、终端外观 / Shell、终端与 ZIP 开关、每目录记忆 / 统一默认。独立更新页提供自动检查开关、可选下载安装和手动检查。更新是 Tursora 的 macOS 分发功能；其他行为策略仍待实现 |
-| **本地化** | 仅英文 | 中文界面 |
+| **本地化** | 应用界面仅英文；网站英文 / 中文 | 应用中文界面仍待实现；网站默认英文，提供独立中文页 |
 | 版本控制插件（git/svn 状态角标、命令） | ❌ | |
 | 服务菜单 / 文件动作插件 | ❌ | (mac) 对应 Finder 扩展 / Services 菜单 |
-| 快捷键自定义、工具栏自定义 | 应用命令快捷键 ✅；工具栏定制 ❌ | 可搜索所有主菜单命令及已有额外键盘动作，录制 / 清除 / 单项和全部重置、冲突归属提示；原生文本与 shell 控制不重定义。组合三轮 smoke 与实机范围见 [HANDOFF](../HANDOFF.md) |
+| 快捷键自定义、工具栏自定义 | 应用命令快捷键 ✅；工具栏定制 ❌ | 可搜索所有主菜单命令及已有额外键盘动作，录制 / 清除 / 单项和全部重置、冲突归属提示；原生文本与 shell 控制不重定义。组合三轮 smoke 与实机范围见[定制功能整合记录](../research/customization-integration.md) |
 | 完成通知（KNotification） | ❌ | (mac) `UNUserNotification` 需签名 bundle |
 | 窗口配色方案 | 不做 | 跟系统外观 |
 | 作为默认文件管理器 / "在 Tursora 中显示" | 部分（从 Dock 拖入文件夹 ✅） | |
@@ -112,7 +112,7 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 - [x] 直接 DMG 分发与 Tursora → Applications 拖拽安装布局，构建与签名工具检查。
 - [x] 签名私钥配置为 GitHub Actions secret，首个含 updater 的正式 0.2.0 与 appcast 已发布；字节与签名见[发布记录](../research/release-0.2.0.md)。
 - [x] 使用临时 QA key 与本机 feed 完成 Sparkle DMG 下载、验证、安装和重启；另有错误 key / 同长度篡改的离线签名负测。
-- [ ] 完成线上生产 feed 的下载、安装和重启验证；原 0.1.0 用户需先手动升级一次。Developer ID / Apple 公证尚无证书，后续独立接入。
+- [ ] 完成线上生产 feed 的下载、安装和重启验证。Developer ID / Apple 公证尚无证书，后续独立接入。
 - 勾选表示实现范围，不代表新版本或网站已经发布；本轮工具 / smoke / 实机检查见[软件更新记录](../research/app-updates.md)与[Pages 记录](../research/github-pages.md)。
 
 ## 2026-09-12 每目录视图属性
@@ -120,7 +120,7 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 - [x] 每目录记住模式、排序和方向、两种缩放、分组、隐藏和预览；新标签 / pane 与再次访问恢复。
 - [x] 独立默认值、统一策略、当前目录恢复默认；版本化存储与损坏回退，ZIP 逻辑页及临时路径不持久化。
 - [ ] 递归应用子目录、列布局持久化、按卷和文件身份跟随重命名 / 移动、特殊逻辑页的专用持久化。
-- 上述勾选表示实现范围；本功能三轮 smoke 与实机验证的最终记录见 [HANDOFF](../HANDOFF.md)，不沿用此前 739 项结果。
+- 上述勾选表示实现范围；本功能三轮 smoke 与实机验证见[目录视图验证记录](../research/computer-use-2026-09-12-directory-views.md)，不沿用此前 739 项结果。
 
 ## 2026-09-12 分栏路径与标签菜单
 
@@ -144,7 +144,14 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 - [x] 终端启动 shell、字体 / 字号、主题 / 文本背景色和工具栏入口。
 - [x] Places 旁的独立 Folders 树：本实现位于其下方，允许拖动高度，保持收藏可见。
 - [x] MIT 许可、免费开源说明和自有 Homebrew tap 配置；隔离安装 / 卸载通过。
-- [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG、实机与全部 29 张透明截图检查完成；阶段和范围见 [HANDOFF](../HANDOFF.md)。
+- [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG、实机与全部 29 张透明截图检查完成；阶段和范围见[定制功能整合记录](../research/customization-integration.md)。
 - [x] 隐藏保留终端与退出 / 关窗 / Restart 任务确认，101 份源码 3,329 项 smoke 连续三轮及实机追加验证通过；[生命周期范围](../research/terminal-session-lifecycle.md)。
 - [x] 公开 main 上的原始 tap 与 0.2.0 正式 release 已发布，下载字节、签名和安装布局核验通过。
 - [x] 0.2.0 cask 与安装文案 follow-up 的隔离安装 / 卸载、网站构建及引用检查通过；这是合入前本地范围。线上提交结果见 [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml)、[Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 及对应 PR；[发布记录](../research/release-0.2.0.md)。
+
+## 0.2.1 终端目录跟随与状态栏简化
+
+- [x] zsh 在安全提示符跟随文件浏览；私有数据通道保留 shell 输入，隐藏终端仍可跟随。其他 shell、双向同步及多个终端会话仍未实现。
+- [x] 终端只保留一行标题 / Start 或 Restart / Hide 操作，目录与错误详情通过提示及辅助功能说明呈现。
+- [x] 移除右下角全部终端状态和轮询，移除可用容量文本及文件系统查询；保留文件计数、上下文、缩放和操作进度。
+- 勾选表示实现范围；完整 smoke、打包实机与发布结果见[0.2.1 记录](../research/terminal-navigation-0.2.1.md)，不把 0.2.0 的三轮检查当作本轮验证。

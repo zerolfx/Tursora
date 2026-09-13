@@ -25,7 +25,7 @@ Apple 的 [NSMetadataQuery](https://developer.apple.com/documentation/foundation
 
 原独立搜索阶段的自动化、Spotlight 实机路径和打包应用 computer-use 结果保留在 [search-verification.md](search-verification.md)。其中原生 predicate 启动 / 完成结果均为零，未验证真实正向正文命中；本次入口调整不改变这一历史边界，也不把索引延迟当作稳定 smoke 前提。
 
-本轮 Dock 与后续输入法调整之前的截图阶段，组合源码完整 smoke **连续三轮通过，每轮 2,024 项**，三次均 exit 0、stderr 为空；这是包含搜索后端、文件操作与统一入口回归的组合套件总数。后续最终源码的结果以 [HANDOFF](../HANDOFF.md) 为准。
+本轮 Dock 与后续输入法调整之前的截图阶段，组合源码完整 smoke **连续三轮通过，每轮 2,024 项**，三次均 exit 0、stderr 为空；这是包含搜索后端、文件操作与统一入口回归的组合套件总数。后续 Dock / 输入法调整阶段的最终结果见 [Dock 研究记录](dock-menu.md)。
 
 `SearchEntrySmokeTests.swift` 覆盖两种视图、单一输入框、自动提交与立即执行、pane / 标签草稿、明确取消、空名称失焦、空保存条件、同目录提示和重开草稿；原搜索后端与文件操作用例保留。
 

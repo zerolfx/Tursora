@@ -1,6 +1,6 @@
 # 搜索输入与条件入口对照（2026-09-12）
 
-本记录核对本仓库固定版本的 Dolphin 源码、Apple 官方文档，并记录本轮已实现的 Tursora 统一搜索入口。Dolphin checkout 为 `5e457ee9e88aa6277fbf056cd5c32462c5318866`，查阅时工作树干净；没有运行 Dolphin 或据此声称完成视觉验证。下文区分上游事实、Tursora 的产品选择与实现状态；末节记录 2,024 项测试之后的打包应用截图阶段，后续 Dock / 输入法调整的最终结果以 [HANDOFF](../HANDOFF.md) 为准。既有后端与历史验证范围见 [search.md](search.md)、[search-verification.md](search-verification.md)。
+本记录核对本仓库固定版本的 Dolphin 源码、Apple 官方文档，并记录本轮已实现的 Tursora 统一搜索入口。Dolphin checkout 为 `5e457ee9e88aa6277fbf056cd5c32462c5318866`，查阅时工作树干净；没有运行 Dolphin 或据此声称完成视觉验证。下文区分上游事实、Tursora 的产品选择与实现状态；末节记录 2,024 项测试之后的打包应用截图阶段，后续 Dock / 输入法调整阶段的最终结果见 [Dock 研究记录](dock-menu.md)。既有后端与历史验证范围见 [search.md](search.md)、[search-verification.md](search-verification.md)。
 
 ## Dolphin 实际交互：输入执行搜索，按钮展开条件
 

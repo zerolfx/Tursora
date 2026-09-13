@@ -78,7 +78,7 @@ enum TerminalSmokeTests {
         check("terminal: a reported cwd has an explicit shell label", display.locationText.hasPrefix("Shell folder: ") && display.locationText.contains("second"))
         display.state = .ended
         let ended = display.locationText
-        check("terminal: ended sessions offer Start while preserving their status", ended.contains("Session ended") && display.actionTitle == "Start in Current Folder" && display.destinationText(directory).hasPrefix("Start in: ") && display.locationText == ended)
+        check("terminal: ended sessions offer Start while preserving their status", ended.contains("Session ended") && display.actionTitle == "Start Terminal" && display.destinationText(directory).hasPrefix("Start in: ") && display.locationText == ended)
         display.state = .failedToStart
         let failure = display.locationText
         check("terminal: failed starts survive destination changes", failure == "Could not start the terminal." && display.destinationText(destination).contains("second") && display.locationText == failure)
@@ -105,15 +105,15 @@ enum TerminalSmokeTests {
         defer { controller.shutdown(); window.close() }
         window.contentView?.layoutSubtreeIfNeeded()
         check("terminal: opening header never starts a shell in smoke mode", controller.terminalView == nil && !controller.isRunning)
-        check("terminal: first-open header exposes its start destination", controller.destinationLabel.stringValue.hasPrefix("Start in: ") && controller.restartButton.title == "Start in Current Folder")
+        check("terminal: compact header exposes Start through accessibility and tooltip", controller.restartButton.accessibilityLabel() == "Start Terminal" && controller.restartButton.toolTip?.contains(directory.path) == true && controller.restartButton.title.isEmpty)
 
         let original = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 560, height: 120))
         controller.installTerminal(original, in: directory)
         check("terminal: view installation is separate from process launch", original.process.shellPid == 0 && !controller.isRunning)
         controller.followDirectory(destination)
-        check("terminal: navigation changes only visible restart target", controller.sessionDirectory?.path == directory.path && controller.locationLabel.stringValue.hasPrefix("Started in: ") && controller.destinationLabel.stringValue == "Restart in: \((destination.path as NSString).abbreviatingWithTildeInPath)")
+        check("terminal: unsupported session keeps cwd and explains pending target in tooltip", controller.sessionDirectory?.path == directory.path && controller.titleLabel.toolTip?.contains("needs zsh integration") == true && controller.restartButton.toolTip?.contains(destination.path) == true)
         controller.hostCurrentDirectoryUpdate(source: original, directory: "file://fixture-mac.local/tmp/Shell%20Folder")
-        check("terminal: active source updates the labelled shell folder", controller.sessionDirectory?.path == "/tmp/Shell Folder" && controller.locationLabel.stringValue.hasPrefix("Shell folder: ") && controller.pendingDirectory == destination)
+        check("terminal: active source updates the accessible shell folder", controller.sessionDirectory?.path == "/tmp/Shell Folder" && controller.titleLabel.toolTip?.contains("Shell folder: /tmp/Shell Folder") == true && controller.pendingDirectory == destination)
         controller.hostCurrentDirectoryUpdate(source: original, directory: "file://other-mac.local/tmp/Foreign")
         check("terminal: remote-host report cannot alter visible shell state", controller.sessionDirectory?.path == "/tmp/Shell Folder")
 
@@ -121,20 +121,20 @@ enum TerminalSmokeTests {
         controller.installTerminal(replacement, in: destination)
         controller.hostCurrentDirectoryUpdate(source: original, directory: "file:///tmp/Stale")
         controller.processTerminated(source: original, exitCode: 0)
-        check("terminal: old view callbacks cannot replace a restarted session", controller.terminalView === replacement && controller.sessionDirectory?.path == destination.path && controller.locationLabel.stringValue.hasPrefix("Started in: ") && original.superview == nil)
+        check("terminal: old view callbacks cannot replace a restarted session", controller.terminalView === replacement && controller.sessionDirectory?.path == destination.path && controller.statusState == .running && original.superview == nil)
         controller.processTerminated(source: replacement, exitCode: 0)
-        let ended = controller.locationLabel.stringValue
+        let ended = controller.titleLabel.toolTip
         controller.followDirectory(directory)
         controller.hostCurrentDirectoryUpdate(source: replacement, directory: "file:///tmp/TooLate")
-        check("terminal: navigation and late cwd reports preserve natural exit", controller.locationLabel.stringValue == ended && ended.contains("Session ended") && controller.sessionDirectory?.path == destination.path && controller.restartButton.title == "Start in Current Folder")
-        check("terminal: natural exit keeps output view and shows the next target", controller.terminalView === replacement && replacement.superview != nil && controller.destinationLabel.stringValue.hasPrefix("Start in: ") && controller.pendingDirectory == directory)
+        check("terminal: navigation and late cwd reports preserve natural exit", controller.titleLabel.toolTip == ended && ended?.contains("Session ended") == true && controller.sessionDirectory?.path == destination.path && controller.restartButton.accessibilityLabel() == "Start Terminal")
+        check("terminal: natural exit keeps output view and next target in tooltip", controller.terminalView === replacement && replacement.superview != nil && controller.restartButton.toolTip?.contains(directory.path) == true && controller.pendingDirectory == directory)
 
         window.contentView?.layoutSubtreeIfNeeded()
         let bounds = controller.view.bounds
         let actionFrame = controller.view.convert(controller.restartButton.bounds, from: controller.restartButton)
-        let statusFrame = controller.view.convert(controller.locationLabel.bounds, from: controller.locationLabel)
-        check("terminal: two-line header fits the minimum browser width", bounds.contains(actionFrame) && bounds.contains(statusFrame) && bounds.contains(controller.destinationLabel.frame) && controller.destinationLabel.frame.width >= 500 && replacement.frame.height > 0,
-              "bounds=\(bounds) action=\(actionFrame) status=\(statusFrame) destination=\(controller.destinationLabel.frame) terminal=\(replacement.frame)")
+        let titleFrame = controller.view.convert(controller.titleLabel.bounds, from: controller.titleLabel)
+        check("terminal: single compact header leaves more room for output", bounds.contains(actionFrame) && bounds.contains(titleFrame) && replacement.frame.height >= 145 && abs(actionFrame.midY - titleFrame.midY) < 5,
+              "bounds=\(bounds) action=\(actionFrame) title=\(titleFrame) terminal=\(replacement.frame)")
         controller.shutdown()
         controller.hostCurrentDirectoryUpdate(source: replacement, directory: "file:///tmp/AfterClose")
         controller.processTerminated(source: replacement, exitCode: 1)

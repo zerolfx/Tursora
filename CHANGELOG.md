@@ -4,10 +4,20 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-13
+
+### Improved
+
+- The zsh terminal follows the active folder, tab or pane, including while hidden. Running commands, shell reads and unfinished input defer directory changes until a safe prompt. Other custom shells retain manual restart in the current folder.
+- A compact terminal header keeps restart and hide controls and removes the permanent Started in / Restart in rows. Hiding retains the shell and jobs; restarting, closing or quitting still asks before ending active jobs.
+- Removed terminal status, task counts and available disk capacity from the bottom bar, leaving space for file counts, context and zoom.
+
 ### Documentation
 
+- The website opens in English and offers a visible English / 中文 switch. Product descriptions use direct language and keep installation easy to find.
 - Installation guidance supports any writable destination, makes the targeted first-launch quarantine command visible, and adds a ready-to-paste agent instruction linked to the website's complete Markdown installation guide.
 - Homebrew installation now presents tap setup, explicit trust for the Tursora cask and installation together in one three-command block in README and the website; the Homebrew workflow follows the same sequence.
+- Screenshot instructions require moving the mouse pointer outside the captured window and inspecting for hover artifacts. Removed the obsolete handoff document and updated documentation entry points.
 
 ## [0.2.0] - 2026-09-13
 
@@ -69,8 +79,9 @@ First release of Tursora, a native macOS file manager built with Swift and AppKi
 
 ## Development history
 
-Earlier implementation notes and historical verification counts are preserved in [Development history](docs/DEVELOPMENT_HISTORY.md). Current verification and remaining limits are tracked in [Handoff](docs/HANDOFF.md).
+Earlier implementation notes and historical verification counts are preserved in [Development history](docs/DEVELOPMENT_HISTORY.md). Use the [documentation index](docs/README.md) to find feature-specific verification and remaining limits.
 
-[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/zerolfx/Tursora/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/zerolfx/Tursora/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/zerolfx/Tursora/releases/tag/v0.1.0

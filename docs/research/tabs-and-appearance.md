@@ -39,7 +39,7 @@ plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resou
 
 ## 验证状态
 
-本轮 Dock 与后续输入法调整之前的截图阶段，组合源码完整 smoke **连续三轮通过，每轮 2,024 项**，三次均 exit 0、stderr 为空。该数量是包含本专题的组合套件总数；之前 1,500 项三轮结果仅代表上一阶段，后续最终源码的结果以 [HANDOFF](../HANDOFF.md) 为准。
+本轮 Dock 与后续输入法调整之前的截图阶段，组合源码完整 smoke **连续三轮通过，每轮 2,024 项**，三次均 exit 0、stderr 为空。该数量是包含本专题的组合套件总数；之前 1,500 项三轮结果仅代表上一阶段，后续 Dock / 输入法调整阶段的最终结果见 [Dock 研究记录](dock-menu.md)。
 
 `TabAppearanceSmokeTests.swift` 覆盖窄宽窗口几何、居中标题与关闭目标、悬停不挤动文字、溢出滚动和当前标签可见性、过期菜单目标，以及滚动后的点击、分栏拖放、重排和重载取消。亮 / 暗与活动 / 非活动配色检查包含文字对比度、实际绘制像素及既有文字控件更新。
 

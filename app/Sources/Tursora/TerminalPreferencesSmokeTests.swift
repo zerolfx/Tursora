@@ -202,10 +202,10 @@ enum TerminalPreferencesSmokeTests {
                 try? FileManager.default.removeItem(at: shell)
                 check("a disappeared saved shell blocks the next launch without killing the current one", rejects { _ = try controller.launchConfiguration(in: root) } && controller.isRunning && terminal.process.shellPid == pid)
                 controller.processTerminated(source: terminal, exitCode: 0)
-                let ended = controller.locationLabel.stringValue
+                let ended = controller.titleLabel.toolTip
                 changed.fontSize = 14
                 save(changed, to: store)
-                check("appearance changes preserve the ended output and header", controller.locationLabel.stringValue == ended && ended.contains("Session ended") && controller.terminalView === terminal && output(terminal).contains("__PRESERVED_INPUT__"))
+                check("appearance changes preserve the ended output and header", controller.titleLabel.toolTip == ended && ended?.contains("Session ended") == true && controller.statusState == .ended && controller.terminalView === terminal && output(terminal).contains("__PRESERVED_INPUT__"))
                 TerminalProcessLifecycle.stop(terminal.process) {
                     var status: Int32 = 0
                     check("configured shell is reaped after explicit shutdown", waitpid(pid, &status, WNOHANG) == -1 && errno == ECHILD)

@@ -1,5 +1,7 @@
 # 终端设置与 Rascal 源码对照
 
+> 0.2.1 已取代本文早期的目录跟随与终端栏布局：zsh 在安全提示符单向跟随浏览目录，顶部精简为一行，底部不再显示终端状态或可用容量。当前行为与本轮验证见[0.2.1 记录](terminal-navigation-0.2.1.md)；本文原有检查数、截图与操作记录保留其历史阶段，隐藏保留和终止前确认仍有效。
+
 2026-09-13。Tursora 定制阶段基线 `b58c1ce`，提交 `eeaea1c`；后续用户要求隐藏保留会话，本页当前行为已同步该范围，新增验证以[会话生命周期](terminal-session-lifecycle.md)为准。本记录区分源码事实、实现后的行为与实测结果。
 
 ## 本轮终端设置
@@ -48,4 +50,4 @@ Settings 增加独立 Terminal 页，设置保存在应用 UserDefaults 的 `ter
 
 主任务已完成隔离打包应用实测：工具栏打开 / 收起与选中状态、F6 在文件区和终端内切换；多个命令间保留变量；字体与背景立即更新且输出保留；自定义 `/bin/bash` 在新会话生效，无效路径显示内联错误。字号输入 16 后按 Tab，stepper、预览及保存值同步，再恢复截图用 14。实际最小 560 × 380 窗口修复后终端按钮仍可见并能切换，返回 1100 × 740 正常；QA 副本浅色重开后 Terminal Settings 的路径、字体和颜色控件可读，恢复工作区未自动创建 shell。
 
-真实 Terminal / Terminal Settings 截图及其透明外沿已核对，内部保护像素不变；具体隔离、操作与阶段见[整合记录](customization-integration.md)和[截图审计](screenshot-audit-2026-09-13.md)。最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过（`smoke-7` / `8` / `9`），均 exit 0、stderr 为空、源码未变；交付 app / DMG 构建及签名、包内容和安装布局检查通过，精确清单见 [HANDOFF](../HANDOFF.md)。生产终端偏好未改，未发布本轮新版本。
+真实 Terminal / Terminal Settings 截图及其透明外沿已核对，内部保护像素不变；具体隔离、操作与阶段见[整合记录](customization-integration.md)和[截图审计](screenshot-audit-2026-09-13.md)。最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过（`smoke-7` / `8` / `9`），均 exit 0、stderr 为空、源码未变；交付 app / DMG 构建及签名、包内容和安装布局检查通过，精确清单见[定制功能整合记录](customization-integration.md)。生产终端偏好未改，未发布本轮新版本。

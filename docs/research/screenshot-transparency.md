@@ -34,7 +34,7 @@
 | 工具回归 | 重复运行和同图 mask 重放得到相同 PNG 字节；已有透明 PNG 原字节复制；已有输出、非白角、尺寸不符、symlink 同址比较图等拒绝测试通过。别名冲突在写主图前拒绝。 |
 | 放大检查 | 每张不同的成功图均检查原图、亮 / 暗棋盘底和四角 4× 放大图，没有明显连续白底残边。窗口内容未被重绘。 |
 
-新路径、分栏、标签、搜索、名称过滤和文本预览图来自 **2,024 项 smoke 连续三轮通过之后的打包应用截图阶段**。这不是后续 Dock 调整后的最终自动化结果。其他图片仍反映各自先前已验证的发布包阶段：每目录视图、文件任务、ZIP、Quick Look 等旧内容不会因为转换为 PNG 就成为本轮组合 UI 的实机证据。旧研究记录保留其原测试数和范围；部分 canonical 图片已替换，不能把当前图片当成旧阶段原始截图。具体归属见 [截图目录说明](../images/README.md#current-captures-and-historical-stages)，最新整体验证见 [HANDOFF](../HANDOFF.md)。
+新路径、分栏、标签、搜索、名称过滤和文本预览图来自 **2,024 项 smoke 连续三轮通过之后的打包应用截图阶段**。这不是后续 Dock 调整后的最终自动化结果。其他图片仍反映各自先前已验证的发布包阶段：每目录视图、文件任务、ZIP、Quick Look 等旧内容不会因为转换为 PNG 就成为本轮组合 UI 的实机证据。旧研究记录保留其原测试数和范围；部分 canonical 图片已替换，不能把当前图片当成旧阶段原始截图。具体归属见 [截图目录说明](../images/README.md#current-captures-and-historical-stages)，后续截图审计见[2026-09-13 记录](screenshot-audit-2026-09-13.md)，其他版本的整合验证可从[文档索引](../README.md)查找。
 
 本地临时证据位于 `/private/tmp/tursora-tabs-appearance-verification/`：`transparency-probe/final-verification.json` 为工具回归，`prepared-assets/independent-validation.json` 为旧候选审计，`final-prepared/batch-summary.json`、`independent-validation.json` 和 `visual-review.txt` 为新图检查。临时目录未作为永久仓库资源提交。
 

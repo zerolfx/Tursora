@@ -38,4 +38,4 @@
 
 README 安装段已前置，网站导航和首屏“安装指南”跳 `#installation`。新布局在桌面 / 390 px、安装图弹窗及 Escape 焦点恢复中通过；main 第一次部署的 8 个文件均 HTTP 200 且与本地构建逐字节相同。全部 29 张 canonical 图片透明圆角检查通过，General / Terminal 已更新，见[截图审计](screenshot-audit-2026-09-13.md)。
 
-公开 0.2.0 资产通过核验后才生成 cask，启用 `auto_updates true`，隔离 Homebrew 实际安装 / 卸载及最终文案和 Pages 部署另见 [Homebrew 记录](homebrew.md) 与 [HANDOFF](../HANDOFF.md)。这些步骤与 Release 分开核实，后续提交不会移动已发布标签。
+公开 0.2.0 资产通过核验后才生成 cask，启用 `auto_updates true`，隔离 Homebrew 实际安装 / 卸载及最终文案和 Pages 部署另见 [Homebrew 记录](homebrew.md)与 [Pages 记录](github-pages.md)。这些步骤与 Release 分开核实，后续提交不会移动已发布标签。

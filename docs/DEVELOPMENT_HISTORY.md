@@ -6,7 +6,7 @@ Historical entries record development dates and their smoke-test counts where av
 
 - Restyle tabs with a quiet continuous surface, centered titles, hover close controls and a fixed New Tab button. Keep long tab strips readable with horizontal scrolling and an overflow menu.
 - Follow system Light/Dark appearance, including existing completion popups, split-pane indicators and transfer card borders when appearance changes.
-- Keep split titles as `Left | Right` without focus parentheses; remove Finder handoff actions from file and sidebar context menus. Present split workflows rather than generic tab support in product copy.
+- Keep split titles as `Left | Right` without focus parentheses; remove actions that open items in Finder from file and sidebar context menus. Present split workflows rather than generic tab support in product copy.
 - Render text icon previews as readable leading excerpts with bounded UTF-8 / UTF-16 reads and backing-scale-aware caching; prevent stale preview callbacks from overwriting a zoomed or disabled preview.
 - Open only General and Preview by default in Get Info. Remember explicit disclosure choices separately from older automatically saved defaults.
 - Keep one toolbar query field: filter the current folder first, reveal Search Options after typing, and expand recursive conditions without another Search button or name input. Debounce queries per pane, support immediate Return and cancel pending work on navigation or close.
@@ -49,7 +49,7 @@ Historical entries record development dates and their smoke-test counts where av
 - Remember each folder's view mode, sorting and direction, separate list/icon zoom steps, grouping, hidden files and previews across navigation, new tabs/panes and application restarts.
 - Add Settings and View menu choices for remembering each folder or using one default, plus explicit commands to save the current settings as default and restore a folder. Existing same-folder panes remain independent during ordinary per-folder edits; unified edits and explicit default/policy/reset commands synchronize affected panes.
 - Store versioned, tolerant JSON in Application Support with immediate memory updates and coalesced atomic writes. Normalize local paths and symlinks; preserve unsupported files until an effective mutation. Keep ZIP logical locations, snapshot paths, filters, selections, scroll and history out of folder records.
-- Add isolated model/storage and browser smoke coverage. Revision-specific build, smoke, packaged-app and signature results are tracked in [HANDOFF](HANDOFF.md); the historical 739-check ZIP baseline does not verify this feature or the merged tree.
+- Add isolated model/storage and browser smoke coverage. Revision-specific build, smoke, packaged-app and signature results are tracked in [the directory-view verification record](research/computer-use-2026-09-12-directory-views.md); the historical 739-check ZIP baseline does not verify this feature or the merged tree.
 
 ## Unreleased — search
 
@@ -61,7 +61,7 @@ Historical entries record development dates and their smoke-test counts where av
 ## Unreleased — cleanup and product page
 
 - Remove an unused PlacesModel constant and simplify the archive readable-URL helper's always-enabled option without changing application behavior.
-- Consolidate current verification status in HANDOFF and keep detailed evidence in dated research records.
+- Keep verification scope and detailed evidence in dated feature research records.
 - Improve the product page's secondary-text contrast and prevent the header from clipping content after direct anchor navigation.
 - Add a Chinese product page for editable paths, tabs, split panes and read-only ZIP browsing, using actual application screenshots. A dependency-free Python builder produces portable static output and validates local references. Desktop and narrow-screen browser checks cover workflow selection, screenshot dialogs, direct fragments and the no-JavaScript fallback; the page is locally previewed and has not been deployed. See [the recorded scope](research/computer-use-2026-09-12-inline-zip.md#整理阶段与产品页).
 
@@ -104,7 +104,7 @@ Historical entries record development dates and their smoke-test counts where av
 ## 2026-09-11 — rename, documentation
 
 - Renamed from "Otter File Manager" to **Tursora**: target, bundle id `com.tursora.Tursora`, menu titles, env vars (`TURSORA_SMOKE_TEST`, `TURSORA_DND_DEBUG`), notification names, toolbar and autosave identifiers.
-- Documentation reorganised: `docs/SPEC.md`, `DECISIONS.md`, `ARCHITECTURE.md`, `DEVELOPMENT.md`, `SHORTCUTS.md`, `ROADMAP.md`, `HANDOFF.md`, `gaps/`, `research/`; `AGENTS.md` at the root.
+- Documentation reorganised: `docs/SPEC.md`, `DECISIONS.md`, `ARCHITECTURE.md`, `DEVELOPMENT.md`, `SHORTCUTS.md`, `ROADMAP.md`, `gaps/`, `research/`; `AGENTS.md` at the root.
 
 ## 2026-09-11 — Get Info
 

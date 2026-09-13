@@ -754,7 +754,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func updateStatus() {
         statusBar.update(itemCount: model.items.count,
                          totalCount: model.nameFilter.isEmpty ? nil : model.unfilteredCount,
-                         selectedCount: fileView.selectedItems.count, directory: isBrowsingArchive || isSearching ? nil : currentURL,
+                         selectedCount: fileView.selectedItems.count,
                          archiveStatus: archiveStatus, searchStatus: isSearching ? "Search Results" : nil)
         host?.selectionDidChange(in: self)
     }

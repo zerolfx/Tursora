@@ -2,6 +2,25 @@
 
 用户要求所有截图的原生窗口圆角外侧透明，不残留白底或其他底色，并明确授权确定性的截图 alpha 处理。真实界面内部不能因此修改；新功能截图须由最终打包应用实测后重拍。
 
+## 0.2.1 最终界面：四张 canonical 正式替换
+
+主任务在最终 0.2.1 release app 中捕获 `/private/tmp/tursora-0.2.1-qa-u1_phjba/screenshots/{terminal,split-panes,path-navigation,zip-browsing}.jpg`，四张均为 1100 × 740；捕获前，同一份 102 个 Swift 文件已完成 3 × 3,435 项 smoke，精确验证与操作范围见[0.2.1 记录](terminal-navigation-0.2.1.md)。处理前逐张检查真实原图，无鼠标指针或悬停提示；Terminal 使用主任务最后覆盖的已清除文本选区版本，保留实际 shell 光标。
+
+Terminal 展示默认深色外观、System Monospaced 12 pt、一行标题 / 重启 / 隐藏操作和 Source 中实际 pwd / ls 输出。分栏图为左侧 Seabreeze 列表、右侧 Source 图标；路径图显示 Design Archive 补全；ZIP 图为左侧 Delivery.zip 只读内容、右侧 Source 图标。四图均未展开 Folders；底部只保留文件上下文和缩放，不显示终端状态、动画、时长或可用容量。
+
+原始副本、旧 canonical、处理 PNG、逐图 stats、明暗对比图和完整验证 JSON 均保存在 `/private/tmp/tursora-021-screenshots-ouuu25vr/`。使用未修改的 `prepare-screenshots.swift`，临时 module cache 与输出均归本轮目录；四次处理 exit 0、stderr 为空。未降低阈值、拟合通用圆角或修改界面内部，PNG 编码后再次核对全部保护像素。
+
+| Canonical | 改变的角像素 | 保护像素 / RGBA 字节不变 | 全透明 / 半透明 | 测量边色回退 | PNG SHA-256 |
+|---|---:|---:|---:|---:|---|
+| `terminal.png` | 850 | 813,150 / 3,252,600 | 518 / 332 | 0 | `f6276b992c149cecec723c2c0450df36244b69ba696b21bd7767bd0ea9042e70` |
+| `split-panes.png` | 837 | 813,163 / 3,252,652 | 519 / 318 | 0 | `e8c56d538b662ea701f12a9978ba2b6428d6682e681d04a88582838b3c9698d0` |
+| `path-navigation.png` | 837 | 813,163 / 3,252,652 | 519 / 318 | 0 | `cbf111015f6ce7899bd92b32b5368bea6a8533343fbccfab609a09ab7652305c` |
+| `zip-browsing.png` | 837 | 813,163 / 3,252,652 | 519 / 318 | 0 | `82968cd19725609803ed95fc9207bc4db999de1af7ff15a9225f319adfbbbc86` |
+
+逐张检查原图、完整亮暗棋盘合成和四角 4 倍图，未见白色外沿残留；紫色系统标记、文字、控件及真实轮廓均保留。只替换这四张 canonical，与已检查暂存 PNG 逐字节相同；其余 25 张哈希不变，全目录 29 张通过 `screenshot_alpha.py`。逐图原始 / PNG 哈希与保护区统计见 `verification.json`，全量 alpha 结果见 `canonical-alpha.json`。网站构建、浏览器检查和正式部署由主任务分别记录，本轮图片处理不代替这些步骤。
+
+主任务另外实测隐藏前后同一 shell PID 68154、30 秒前台 sleep 期间导航等待、返回安全提示符后从 Seabreeze 跟随至 Source，以及隐藏任务的退出确认 Cancel 保留任务。截图只记录最后可见界面，不能用其中的 pwd 文本单独证明上述过程。下文的 0.2.0 状态栏、早期手动 Restart 与旧截图统计均保留原历史范围；当前 Terminal 和三张主工作流图以上述四张为准。
+
 ## 0.2.0 安装页静态检查（新增终端截图替换前）
 
 0.2.0 安装入口前置后，当前 `python3 site/build.py` 通过：**5 份资产、39 处引用、约 1,629 KiB，全部 29 张 canonical PNG 通过 alpha 门槛**。新增站点资产复用已验证的 `installation.png`；五份分发资产与源文件逐字节一致，未新增 canonical 图片或重新编码。

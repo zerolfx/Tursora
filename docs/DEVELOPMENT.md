@@ -177,7 +177,7 @@ Update documentation in the same change as the behavior it describes:
 - `SPEC.md` records what users can do, including disabled states and experimental limits.
 - `DECISIONS.md` records meaningful trade-offs; `SHORTCUTS.md` records new controls and key bindings.
 - Update `ARCHITECTURE.md` when ownership, routing or lifecycle changes, and close shipped items in the gap lists and roadmap.
-- `HANDOFF.md` and research records distinguish implemented behavior, automated checks, actual computer-use verification and remaining gaps. Replace pending verification only after performing it.
+- Feature and release research records distinguish implemented behavior, automated checks, actual computer-use verification and remaining gaps. Replace pending verification only after performing it.
 - Refresh the root README and its feature screenshots when the visible workflow changes. Screenshots must come from the packaged application with demonstration files, never personal documents or invented UI. Each advertised feature group must retain its own relevant screenshot. See [image maintenance](images/README.md).
 - Add a changelog entry with the resulting behavior. Historical research should remain historical; link to new evidence instead of rewriting old observations as current results.
 
@@ -192,7 +192,7 @@ python3 -m http.server 8080 --directory site/dist
 
 Open `http://localhost:8080` and stop the server with Control-C. The builder uses only the standard library, recreates `site/dist/`, and refuses a symlink at that location. Generated output is ignored by Git. It copies the required icon and three canonical screenshots without editing their pixels, then validates local references, fragments, IDs, alt attributes and the three workflow panels. Static validation does not replace browser review or verify live GitHub downloads.
 
-Use [site/README.md](../site/README.md) for the exact asset list and desktop/mobile, keyboard, dialog, reduced-motion and no-JavaScript review sequence. Record observed results in dated research and maintain current status in [HANDOFF](HANDOFF.md). Previewing or building the page does not deploy it; hosting and publication are separate actions.
+Use [site/README.md](../site/README.md) for the exact asset list and desktop/mobile, keyboard, dialog, reduced-motion and no-JavaScript review sequence. Record observed results, source revision and remaining gaps in the relevant dated research record, linked from [the documentation index](README.md). Previewing or building the page does not deploy it; hosting and publication are separate actions.
 
 ## Search-specific filesystem and UI pitfalls
 

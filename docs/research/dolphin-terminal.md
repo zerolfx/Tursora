@@ -1,5 +1,7 @@
 # Dolphin 终端面板与 Tursora 实验功能
 
+> 0.2.1 已取代本文早期的目录跟随与终端栏布局：zsh 在安全提示符单向跟随浏览目录，顶部精简为一行，底部不再显示终端状态或可用容量。当前行为与本轮验证见[0.2.1 记录](terminal-navigation-0.2.1.md)；本文原有检查数、截图与操作记录保留其历史阶段，隐藏保留和终止前确认仍有效。
+
 > 下文保留 2026-09-12 初版与验证记录；2026-09-13 起两项功能默认启用，开关保留，新增取消 / 重试及终端状态打磨见[后续记录](default-features-polish.md)。用户随后要求收起保留会话，已取代下文初版的收起终止规则；当前行为及新增验证见[会话生命周期](terminal-session-lifecycle.md)。
 
 2026-09-12。对照本地 `upstream/dolphin/src`；终端实现采用官方 [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm/tree/v1.15.0)，SPM 固定 `1.15.0`（`dd2fb8ac5b861e7bf617c872895e338f38165648`）。

@@ -98,7 +98,7 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 - [x] 复制 / 移动 / Duplicate 独立进度任务，支持大文件传输中暂停 / 继续 / 取消、安全 Replace 和成功项撤销；验证范围及不可暂停系统调用边界见[专项记录](../research/file-operation-tasks.md)。
 - [x] Connect to Server（⌘K）与系统挂载网络卷的浏览 / Eject；真实服务端互操作尚未实测。
 - [x] 基础设置窗口、扩展名显示开关、自定义名称过滤快捷键。
-- [x] 每目录视图记忆、统一默认、保存当前默认与恢复目录默认；列表 / 图标均保存，完整 Finder 视图选项对话框仍未实现。自动与实机验证见本功能 [HANDOFF](../HANDOFF.md)。
+- [x] 每目录视图记忆、统一默认、保存当前默认与恢复目录默认；列表 / 图标均保存，完整 Finder 视图选项对话框仍未实现。自动与实机验证见[目录视图验证记录](../research/computer-use-2026-09-12-directory-views.md)。
 - [x] 默认启用的终端面板与当前 pane ZIP 只读浏览实验；归档支持复制 / 拖出、Quick Look 与分享，不支持写回。
 - Tags、Import from iPhone 为明确不做的产品边界。
 
@@ -113,4 +113,4 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 - [x] 所有应用命令快捷键已可配置，包含菜单未绑定项、Return / Space 与标签备用键；支持冲突提示、清除、单项 / 全部重置。文本编辑、选择、补全及 shell 控制仍走原生视图。
 - [x] 终端 Shell / 等宽字体 / 字号 / 主题 / 自定义文本背景色及工具栏开关。
 - [x] Places 下方的 Folders 树是 Dolphin 式补充；保留 Finder 式收藏侧栏，不把两种导航混为一棵树。
-- [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG、实机与截图验证范围见 [HANDOFF](../HANDOFF.md)；远端 CI / 发布仍单独处理。
+- [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG、实机与截图验证范围见[定制功能整合记录](../research/customization-integration.md)；远端 CI / 发布仍单独处理。
