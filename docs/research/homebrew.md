@@ -26,6 +26,14 @@ brew install --cask zerolfx/tursora/tursora
 
 当前三步流程已由主任务在新的隔离信任目录中顺序验证：tap、`trust --cask`、install dry run 均 exit 0；信任 JSON 只有此 cask，没有 tap / formula / command 授权，用户 Homebrew 未变。证据为 `/private/tmp/tursora-three-step-install-3liuppa5/verification.json`。这是流程与信任范围检查，未重新安装应用；此前真实 DMG 安装 / 卸载及新增显式 trust 的 CI 结果分别记录。
 
+## 当前安装位置与普通账户说明
+
+用户明确安装位置不必统一。新增[英文纯 Markdown 安装指南](../../site/install.md)，站点地址为 `https://zerolfx.github.io/Tursora/install.md`，供用户或获得安装请求的 agent 按实际条件执行。先检查既有安装与用户意图，选用实际可写的 `/Applications`、`~/Applications` 或其他目录；不强制迁移已有应用。上面的三条命令沿用 Homebrew 默认目的地；若选择其他目录，将实际绝对目录赋给 `app_dir`，第三条添加 `--appdir="$app_dir"`。已有 Homebrew 管理的安装走正常版本检查 / 升级，直接 DMG 复制遇到同名应用则先确认冲突，不能默默覆盖。
+
+`--appdir` 只改变应用落点，不改变 tap / Caskroom 等 prefix 的权限。Homebrew 默认只有安装它的拥有者能修改 prefix；普通账户是否可用由实际权限决定。没有可用 Homebrew 时，直接下载正式 DMG 与同版校验文件，核对完整 SHA-256 后复制出只读镜像，不为了安装应用而擅自安装 Homebrew、提权或修改所有权。[Homebrew 参数](https://docs.brew.sh/Manpage#global-cask-options)、[默认权限](https://docs.brew.sh/FAQ#what-are-the-default-ownership-and-permissions-used-by-homebrew)。
+
+首次启动的定向命令为 `xattr -dr com.apple.quarantine "$app_path"`，`app_path` 必须是实际已安装、可信且通过下载校验的应用副本。仅删除该属性，不用 `sudo`，不清全部属性，不关闭系统策略；cask 本身仍保留 quarantine。普通账户与组织管理限制是两个问题，设备策略若仍阻止运行需 IT 处理，不能承诺该命令可绕过管理规则。[Apple 管理限制](https://support.apple.com/en-euro/guide/deployment/dep61dc030/web)。本节记录指南与一手资料核查，不新增非管理员账户安装或首次 Gatekeeper 启动的验证结论；部署结果另由主任务记录。
+
 ## 安装排错：仓库地址与单项信任
 
 2026-09-13 用户先报告找不到 `homebrew-tursora`，重试后报告 `untrusted tap`。没有收到完整原始命令 / 输出，不能断言用户具体省略了哪一步；以下是独立复现和已核对的 Homebrew 行为。

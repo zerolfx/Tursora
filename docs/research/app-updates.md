@@ -8,7 +8,7 @@
 
 Ed25519 公钥已写入 `app/Resources/SparklePublicKey.txt`，私钥保存在本机 Keychain 的 `com.tursora.Tursora` account。首次上传被自动审批拦截后，用户明确授权；`zerolfx/Tursora` 的 Actions secret `SPARKLE_PRIVATE_KEY` 已于 2026-09-13 00:48:20（Asia/Shanghai）成功配置，GitHub `updatedAt=2026-09-12T16:48:20Z`，secret 列表已核实名称与时间。上传前从现有 Keychain 导出到 mode-0600 临时文件，经 CryptoKit 派生公钥与 Resources 一致后通过 stdin 上传，trap 清理临时文件；私钥未进入源码或日志。后续 0.2.0 已发布；`0.1.0` 标签与资产仍保持原样。
 
-原版 `0.1.0` 没有更新器，仍保留已发布 ZIP；用户必须手动安装一次 0.2.0。正式 DMG 打开后将 Tursora 拖入 Applications，后续稳定版本可通过 updater 检查。首份正式 `appcast.xml` 已随 0.2.0 发布；历史完整更新测试使用一次性 QA key 与 loopback feed，不能据此宣称生产下载、安装和重启已完成端到端验证。网站配置与发布检查另见 [GitHub Pages](github-pages.md)。
+当前安装使用正式 0.2.0 DMG 或 Homebrew，应用可放在用户选定的可写目录，后续稳定版本可通过 updater 检查。用户已确认无需为 0.1.0 用户提供迁移流程，历史标签和 ZIP 保持原样。首份正式 `appcast.xml` 已随 0.2.0 发布；历史完整更新测试使用一次性 QA key 与 loopback feed，不能据此宣称生产下载、安装和重启已完成端到端验证。安装操作见[纯 Markdown 指南](../../site/install.md)，网站配置与发布检查另见 [GitHub Pages](github-pages.md)。
 
 ## 交互与偏好
 
@@ -66,11 +66,19 @@ Build 与 Release 的 bundle build 默认都取源码提交的 Unix committer ti
 
 ![最终 DMG 的真实 Finder 安装窗口](../images/features/installation.png)
 
-## 首次启动说明（2026-09-13）
+## 当前首次启动：实际可写位置与定向属性处理
+
+用户报告普通账户无法在系统设置中批准应用，并希望覆盖不同安装位置。[当前指南](../../site/install.md)按既有安装、实际可用 Homebrew 和选定可写目录选择路径；`/Applications`、`~/Applications` 或其他目录都可用，不要求统一落点。DMG 副本先核对同版官方 SHA-256，再复制到选定位置；不能修改只读镜像或默默覆盖同名应用。Homebrew 保留完整 URL → 单 cask trust → install 的顺序，自选目录通过 `--appdir` 指定。
+
+需要处理首次下载隔离时，只对实际可信副本执行 `xattr -dr com.apple.quarantine "$app_path"`；不使用 `sudo` 或全局策略命令。macOS 本机 `man xattr` 的 `-d` 指定属性、`-r` 递归范围仍是依据。Rascal 当前 README 使用 `-cr`，会清所有扩展属性，Tursora 保留更窄范围。[Apple DTS](https://developer.apple.com/forums/thread/813858)确认下载器添加 quarantine 以触发 Gatekeeper；据此解释本地编译与下载副本可能不同，不把“本地可运行”推断为已公证。普通账户自己的可写文件与组织策略分别处理；[Apple 设备管理](https://support.apple.com/en-euro/guide/deployment/dep61dc030/web)可限制用户批准应用，不能保证定向属性命令解决所有受管设备。读取指南本身不构成安装 / 启动授权，agent 需已有对应用户请求。
+
+本轮为说明与一手资料核查；未据此执行用户应用的属性修改，未新增普通账户安装或首次 Gatekeeper 实测。发布二进制、签名、版本与历史测试范围保持原样。
+
+## 早期首次启动说明（2026-09-13，历史）
 
 按用户要求参考 [Rascal 下载说明](https://github.com/chang-07/rascal#download)，采用下载 → 打开 DMG 拖入 Applications → 从 Applications 启动的顺序。编写首次启动说明时，Tursora 的正式版仍为 `0.1.0` ZIP，README / 网站如实保留过渡说明；0.2.0 发布后该文案与真实 Homebrew tap 已更新，见页首。Rascal 自有 [cask](https://github.com/chang-07/homebrew-tap/blob/main/Casks/rascal.rb) 将 ad-hoc / 未公证及隔离属性处理写在 `caveats`，没有在安装 hook 自动执行该命令；它的分发方式不作为 Tursora 已签名或已公证的证据。
 
-[Apple《Safely open apps on your Mac》](https://support.apple.com/en-us/102445)（页面日期 2026-05-27，本次读取 2026-09-13）给出的单应用处理顺序为：先尝试启动，再进入 System Settings → Privacy & Security 选择 Open Anyway，确认提示中选择 Open。条件是使用者确信来源可信且未被篡改。README 以此为主路径，网站只提供简短说明与 README `#first-launch` 链接，不扩展静态构建器的外链白名单。无法验证开发者和无法检查恶意软件的提示不能作为恶意软件实际检出、撤销授权或文件损坏的统一解释；损坏先重下及同版本 checksum 核对，恶意软件警告不按普通隔离属性问题处理。
+[Apple《Safely open apps on your Mac》](https://support.apple.com/en-us/102445)（页面日期 2026-05-27，本次读取 2026-09-13）给出的单应用处理顺序为：先尝试启动，再进入 System Settings → Privacy & Security 选择 Open Anyway，确认提示中选择 Open。条件是使用者确信来源可信且未被篡改。当时 README 以此为主路径，网站只提供简短说明与 README `#first-launch` 链接，没有扩展静态构建器的外链白名单。无法验证开发者和无法检查恶意软件的提示不能作为恶意软件实际检出、撤销授权或文件损坏的统一解释；损坏先重下及同版本 checksum 核对，恶意软件警告不按普通隔离属性问题处理。
 
 本机 macOS `man xattr` 明确 `-d` 删除指定名称的扩展属性、`-r` 递归处理目录内容、`-c` 清空全部扩展属性。因此 README 折叠终端备选使用 `xattr -dr com.apple.quarantine /Applications/Tursora.app`，没有照搬 Rascal 的 `-cr`。执行前提为官方 release 来源与同一版本 `SHA256SUMS.txt` 匹配；其作用仅是移除该应用下载隔离属性，不赋予 Developer ID / 公证，也不修复损坏。本轮只读取 man page 和编写说明，没有执行隔离属性命令、改变系统安全设置或实测首次 Gatekeeper 拦截；既有 77 份 Swift 源码、2,158 × 3 smoke 与正常更新实测的范围不因此扩大。
 

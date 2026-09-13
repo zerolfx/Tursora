@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f8fc">
-  <meta name="description" content="Tursora，一款免费、MIT 开源的原生 macOS 文件管理器。熟悉的 Finder 操作，加上可编辑路径、独立浏览的双窗格与 ZIP 浏览。">
-  <title>Tursora — 文件各就各位，思路不用来回</title>
+  <meta name="description" content="Tursora 是免费、MIT 开源的原生 macOS 文件管理器，可作为 Finder 的替代选择。支持双窗格、可编辑路径、内置终端和 ZIP 浏览。">
+  <title>Tursora — 免费开源的 macOS 文件管理器</title>
   <link rel="icon" type="image/png" href="assets/AppIcon.png">
   <link rel="stylesheet" href="styles.css">
   <script src="main.js" defer></script>
@@ -19,7 +19,7 @@
         <span>Tursora</span>
       </a>
       <div class="nav-links">
-        <a href="#workflows">使用体验</a>
+        <a href="#workflows">主要功能</a>
         <a class="nav-install" href="#installation">安装指南 <span aria-hidden="true">↓</span></a>
         <a class="nav-source" href="https://github.com/zerolfx/Tursora">GitHub <span aria-hidden="true">↗</span></a>
       </div>
@@ -30,9 +30,9 @@
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-intro">
         <div class="hero-copy">
-          <p class="eyebrow"><span class="small-line" aria-hidden="true"></span> 免费开源 · 原生 macOS 文件管理器</p>
-          <h1 id="hero-title">文件各就各位，<br><span>思路不用来回。</span></h1>
-          <p class="hero-description">保留 Finder 的熟悉手感，借来 Dolphin 的双窗格，<br class="desktop-break">再添上 Explorer 式 ZIP 浏览。<br class="desktop-break">让找文件、切目录、整理交付，接得更顺。</p>
+          <p class="eyebrow"><span class="small-line" aria-hidden="true"></span> 免费使用 · MIT 开源</p>
+          <h1 id="hero-title">免费开源的<br><span>macOS 文件管理器。</span></h1>
+          <p class="hero-description">Finder 的开源替代选择，使用原生 Mac 界面。<br class="desktop-break">支持双窗格、可编辑路径、内置终端和 ZIP 浏览。<br class="desktop-break">浏览、预览和整理文件，都在一个应用里完成。</p>
           <div class="hero-actions">
             <a class="button primary" href="#installation">安装指南 <span aria-hidden="true">↓</span></a>
             <a class="text-link" href="https://github.com/zerolfx/Tursora/releases/latest">免费下载 <span aria-hidden="true">↗</span></a>
@@ -41,7 +41,7 @@
         </div>
         <div class="hero-mark" aria-hidden="true">
           <img src="assets/AppIcon.png" width="188" height="188" alt="">
-          <span>两个窗格，一起向前。</span>
+          <span>原生界面 · 双窗格浏览</span>
         </div>
       </div>
       <figure class="hero-figure">
@@ -49,16 +49,16 @@
           <img src="assets/split-panes.png" width="1200" height="720" alt="Tursora 的真实双窗格界面：左侧预览源文件，右侧显示交付目录。" fetchpriority="high">
           <span class="image-expand" aria-hidden="true">查看大图 <span>↗</span></span>
         </a>
-        <figcaption><span class="caption-label">一个窗口，两个去处。</span> 源文件在左，目标目录在右。整理时，少一次往返。</figcaption>
+        <figcaption><span class="caption-label">双窗格浏览。</span> 同时查看两个目录，并把所选文件复制到另一侧。</figcaption>
       </figure>
-      <div class="native-note"><span>Swift + AppKit</span><i aria-hidden="true"></i><p>从窗口、快捷键到系统分享，沿用 Mac 的使用习惯。</p></div>
+      <div class="native-note"><span>原生 Mac 应用</span><i aria-hidden="true"></i><p>支持 Quick Look、系统分享与可自定义快捷键。</p></div>
     </section>
 
     <section class="workflows wrap" id="workflows" aria-labelledby="workflows-title">
       <div class="section-heading">
-        <p class="eyebrow">从一个路径，到整段工作</p>
-        <h2 id="workflows-title">让常做的事，<br class="mobile-break">更顺手一点。</h2>
-        <p>三种方式，放在同一个工作空间里。</p>
+        <p class="eyebrow">主要功能</p>
+        <h2 id="workflows-title">路径导航、双窗格<br class="mobile-break">与 ZIP 浏览</h2>
+        <p>编辑目录路径、并排操作两个文件夹，或读取 ZIP 内容。</p>
       </div>
       <div class="feature-tabs" data-tabs aria-label="选择一种文件管理方式">
         <a href="#feature-path" data-tab><span class="tab-number">01</span> 路径导航 <span class="tab-symbol" aria-hidden="true">↗</span></a>
@@ -69,7 +69,7 @@
         <article class="feature-panel" id="feature-path" data-panel>
           <div class="feature-copy">
             <p class="feature-index">01 / 路径导航</p>
-            <h3>知道路径，<br>就直接过去。</h3>
+            <h3>输入路径，<br>直接打开目录。</h3>
             <p>点击面包屑逐级浏览，也可以把完整路径直接输进去。目录补全跟着输入出现，不必一层层翻找。</p>
             <p class="feature-detail">分栏后，两边各有自己的路径栏。点击哪一侧，就在那里继续浏览；前进与后退也各自保留。</p>
             <div class="shortcut"><kbd>⌘ L</kbd><span>编辑当前路径</span></div>
@@ -85,9 +85,9 @@
         <article class="feature-panel" id="feature-panes" data-panel>
           <div class="feature-copy">
             <p class="feature-index">02 / 双窗格</p>
-            <h3>从这里，<br>到那里。</h3>
-            <p>把来源和去处并排放好，选择文件后直接复制到另一侧。</p>
-            <p class="feature-detail">两边的路径同时可见，分别浏览、分别过滤。来源保持在眼前，目标位置也能单独调整。</p>
+            <h3>并排浏览，<br>跨窗格复制文件。</h3>
+            <p>同时打开源文件夹和目标文件夹，选择文件后直接复制到另一侧。</p>
+            <p class="feature-detail">两个窗格各有独立的路径、导航历史和名称过滤。浏览一侧目录，不影响另一侧。</p>
             <div class="shortcut"><kbd>⇧ ⌘ D</kbd><span>展开或收起双窗格</span></div>
             <div class="shortcut"><kbd>⇧ ⌘ C</kbd><span>复制到另一窗格</span></div>
           </div>
@@ -96,13 +96,13 @@
               <img src="assets/split-panes.png" width="1200" height="720" alt="双窗格同时显示两个目录，左侧预览源文件，右侧是交付位置。" loading="lazy">
               <span class="image-expand" aria-hidden="true">查看大图 <span>↗</span></span>
             </a>
-            <figcaption>查看来源、确认去处，不用反复切换窗口。</figcaption>
+            <figcaption>同一窗口显示源文件夹和目标文件夹。</figcaption>
           </figure>
         </article>
         <article class="feature-panel" id="feature-zip" data-panel>
           <div class="feature-copy">
             <p class="feature-index">03 / ZIP 浏览 <span class="experiment-tag">默认启用</span></p>
-            <h3>包里的文件，<br>也在眼前。</h3>
+            <h3>在当前窗格，<br>浏览 ZIP 内容。</h3>
             <p>打开 ZIP，它会在当前窗格展开。沿用地址栏和分栏，预览文件，或把需要的内容复制出来。</p>
             <p class="feature-detail">归档内容只读。打开的是临时副本，编辑不会写回 ZIP；副本保留到 Tursora 退出。</p>
             <div class="shortcut"><kbd>⌘ ,</kbd><span>在设置中调整 ZIP 浏览</span></div>
@@ -122,24 +122,24 @@
 
     <section class="familiar wrap" aria-labelledby="familiar-title">
       <div class="familiar-intro">
-        <p class="eyebrow">熟悉感，留在细节里</p>
-        <h2 id="familiar-title">还是你习惯的<br>那个 Mac。</h2>
-        <p>新加的工作方式，也和日常操作接得上。</p>
+        <p class="eyebrow">文件操作与视图</p>
+        <h2 id="familiar-title">常用文件操作，<br>支持撤销。</h2>
+        <p>使用列表或图标视图，按需要分组、排序和过滤。</p>
       </div>
       <dl class="familiar-list">
-        <div><dt><span aria-hidden="true">↶</span> 整理，也留有退路</dt><dd>复制、移动、改名、移到废纸篓。常用文件操作和 ZIP 压缩、解压都支持撤销。</dd></div>
-        <div><dt><span aria-hidden="true">≡</span> 换个角度看文件</dt><dd>列表与图标视图，分组与排序，再用名称过滤收拢眼前的内容。</dd></div>
+        <div><dt><span aria-hidden="true">↶</span> 文件操作与撤销</dt><dd>复制、移动、改名、移到废纸篓。常用文件操作和 ZIP 压缩、解压都支持撤销。</dd></div>
+        <div><dt><span aria-hidden="true">≡</span> 列表、图标与过滤</dt><dd>切换列表与图标视图，按属性分组和排序，输入名称过滤当前目录。</dd></div>
       </dl>
     </section>
 
     <section class="experiments wrap" id="experiments" aria-labelledby="experiments-title">
       <div class="experiments-heading">
-        <p class="eyebrow">需要时，再打开</p>
-        <h2 id="experiments-title">终端与 ZIP，随手可用。</h2>
+        <p class="eyebrow">内置工具</p>
+        <h2 id="experiments-title">内置终端和 ZIP 浏览</h2>
         <p>0.2.0 默认启用终端入口和 ZIP 浏览，可在 <span lang="en">Tursora → Settings…</span> 中关闭；已有设置会保留。</p>
       </div>
       <div class="experiment-notes">
-        <div><h3>在文件旁边，接着用终端 <span>F4</span></h3><p>右下角 Terminal 显示运行、隐藏或结束状态及任务数，点击即可展开或收起；首次展开才启动 Shell。工具栏按钮、F4 或面板关闭按钮只收起终端，再展开继续原会话；设置中关闭入口也保留会话。可选 Shell、等宽字体和配色，快捷键也能自定义。退出、关窗或重启前，检测到任务会先确认。</p></div>
+        <div><h3>展开或收起内置终端 <span>F4</span></h3><p>右下角 Terminal 显示运行、隐藏或结束状态及任务数，点击即可展开或收起；首次展开才启动 Shell。工具栏按钮、F4 或面板关闭按钮只收起终端，再展开继续原会话；设置中关闭入口也保留会话。可选 Shell、等宽字体和配色，快捷键也能自定义。退出、关窗或重启前，检测到任务会先确认。</p></div>
         <div><h3>把 ZIP 当作只读目录浏览</h3><p>打开过程中可以取消，失败后可以重试或返回所在文件夹。仅支持普通 ZIP。打开的临时副本会在应用退出时清理；需要保留编辑，请在外部应用中“另存为”。不支持密码 ZIP 或直接写回归档。</p></div>
       </div>
     </section>
@@ -148,7 +148,7 @@
       <div class="download-copy" id="download">
         <img class="download-icon" src="assets/AppIcon.png" width="64" height="64" alt="" loading="lazy">
         <p class="eyebrow">安装指南 · 0.2.0</p>
-        <h2 id="download-title">安装 Tursora，<br>只需几步。</h2>
+        <h2 id="download-title">下载并安装<br>Tursora</h2>
         <p>Tursora 免费使用，以 MIT 许可证开源。<br class="desktop-break">欢迎下载，也欢迎阅读源码、修改和贡献。</p>
         <div class="download-actions">
           <a class="button primary" href="https://github.com/zerolfx/Tursora/releases/latest">免费下载 <span aria-hidden="true">↗</span></a>
@@ -159,7 +159,7 @@
             <img src="assets/installation.png" width="641" height="281" alt="实际 DMG 安装窗口，左侧 Tursora 与右侧 Applications 之间有向右的箭头。" loading="lazy">
             <span class="image-expand" aria-hidden="true">查看大图 <span>↗</span></span>
           </a>
-          <figcaption>打开 DMG，把左侧 Tursora 拖到右侧 Applications。</figcaption>
+          <figcaption>右侧 Applications 指向系统应用程序目录；也可将左侧应用复制到自己的文件夹。</figcaption>
         </figure>
       </div>
       <div class="download-info">
@@ -175,10 +175,13 @@
         <ol class="download-steps">
           <li>在<a class="inline-link" href="https://github.com/zerolfx/Tursora/releases/latest">最新正式版本</a>下载 <span lang="en">Tursora-0.2.0-macOS-arm64.dmg</span>；同页提供 SHA-256 校验文件，无需 GitHub 账号。</li>
           <li>双击打开 DMG。</li>
-          <li>把 <span lang="en">Tursora</span> 拖到 <span lang="en">Applications</span>。</li>
-          <li>从“应用程序”打开 Tursora。</li>
+          <li>将 <span lang="en">Tursora.app</span> 复制到可写入的目录：<code>/Applications</code>、<code>~/Applications</code> 或其他位置均可。</li>
+          <li>打开复制后的应用，不要直接在只读 DMG 内运行。</li>
         </ol>
-        <p class="install-note">若系统无法验证此应用，确认官方来源及下载可信后，可在“系统设置 → 隐私与安全性”中选择“仍要打开”，再确认打开。详见<a class="inline-link" href="https://github.com/zerolfx/Tursora#first-launch">首次启动说明</a>。</p>
+        <h3 class="install-method">首次打开：按实际路径处理</h3>
+        <p class="install-note">若 macOS 无法验证应用，确认官方来源并核对同版本 SHA-256 后，在终端执行以下命令；把路径换成实际安装位置：</p>
+        <pre class="install-code" aria-label="首次启动命令"><code>xattr -dr com.apple.quarantine "/Applications/Tursora.app"</code></pre>
+        <p class="install-note">不想手输路径？输入 <code>xattr -dr com.apple.quarantine</code> 和一个空格，将安装后的应用拖入终端，再按回车，然后打开应用。对自己拥有且可写入的副本，通常无需管理员密码。个人目录可用 <code>"$HOME/Applications/Tursora.app"</code>；组织管理的设备仍可能需要 IT 批准。<a class="inline-link" href="https://github.com/zerolfx/Tursora#first-launch">首次启动与权限说明</a></p>
         <h3 class="install-method">通过 Homebrew 安装</h3>
         <p class="install-note">按顺序执行以下三条命令：添加仓库、信任 Tursora 安装定义、安装应用。每条成功后再继续，保留第一条的完整仓库 URL：</p>
         <pre class="install-code" aria-label="Homebrew 安装命令"><code>brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
@@ -186,6 +189,10 @@ brew trust --cask zerolfx/tursora/tursora
 brew install --cask zerolfx/tursora/tursora</code></pre>
         <p class="install-note">若报错提示找不到 <span lang="en">zerolfx/homebrew-tursora</span>，Homebrew 使用了默认 tap 地址。请先完整执行上方含 URL 的第一条命令。Tap 安装已发布的 0.2.0 DMG，并校验固定 SHA-256。<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew">更新与卸载说明 <span aria-hidden="true">↗</span></a></p>
         <p class="install-note">第二条只信任 Tursora 的安装定义。若仍提示 <span lang="en">untrusted tap</span>，见<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew-troubleshooting">安装排错说明</a>。</p>
+        <p class="install-note">指定其他目录，可在第三条加上 <code>--appdir="$HOME/Applications"</code>，或替换为所需目录。若 Homebrew 自身的目录没有写入权限，直接用 DMG 安装即可。首次启动仍按上方步骤处理。</p>
+        <h3 class="install-method" id="agent-install">让 agent 帮你安装</h3>
+        <p class="install-note">复制这句话给能操作你电脑的 agent，按<a class="inline-link" href="install.md">安装说明（Markdown）</a>选择目录、核验下载并完成首次启动：</p>
+        <pre class="install-code" aria-label="复制给 agent 的安装指令"><code>请阅读 https://zerolfx.github.io/Tursora/install.md，帮我在这台 Mac 上安装 Tursora。选择可写入的目录，核验下载，并处理安装副本的首次启动。</code></pre>
         <a class="inline-link" href="https://github.com/zerolfx/Tursora#build-locally">也可以在本机构建 <span aria-hidden="true">↗</span></a>
       </div>
     </section>
@@ -196,7 +203,7 @@ brew install --cask zerolfx/tursora/tursora</code></pre>
 
   <footer class="site-footer wrap">
     <a class="brand" href="#top"><img src="assets/AppIcon.png" width="27" height="27" alt=""><span>Tursora</span></a>
-    <p>免费开源，为 macOS 而做。</p>
+    <p>免费开源的 macOS 文件管理器。</p>
     <div><a href="https://github.com/zerolfx/Tursora">GitHub</a><a href="https://github.com/zerolfx/Tursora/blob/main/README.md">项目说明</a></div>
   </footer>
 

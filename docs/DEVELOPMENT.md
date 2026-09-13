@@ -166,6 +166,8 @@ An editable server address must not submit when it merely loses focus. Otherwise
 
 ### Capturing the packaged application
 
+Before capturing, move the mouse pointer outside the target window and wait for hover tooltips to disappear. Inspect the saved image and recapture if the pointer or hover artifacts remain; do not remove them by editing UI pixels. Keep the terminal's ordinary text caret as part of the actual application state. This applies to all README and website screenshots, alongside the transparent-corner checks in screenshot maintenance.
+
 Use a verified window ID with `screencapture -x -o -l<windowID>` for the target application window and relevant menu state, then inspect the saved result. During the current screenshot pass, rectangle-based `-R` captures accidentally included a background application and were replaced. Do not assume screen coordinates identify the intended window, and never treat a saved image alone as proof of a completed interaction. See [the current computer-use record](research/computer-use-2026-09-12-inline-zip.md) and [screenshot maintenance](images/README.md).
 
 ## Keep documentation in step with development

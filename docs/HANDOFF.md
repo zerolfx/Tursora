@@ -2,11 +2,21 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
-## 当前：Homebrew 显式单项信任纳入主流程
+## 当前追加：安装说明简化与 0.2.1 终端改进
+
+用户要求安装兼顾不同权限与位置；README / 网站现说明 `/Applications`、`~/Applications` 和其他可写目录，并直接展示仅删除安装副本 `com.apple.quarantine` 的命令及拖入应用填路径的方法。无需把个人目录设为唯一位置，普通账号拥有且可写入的副本通常无需管理员设置；Homebrew 自身权限与组织策略分开说明。网站原样发布 `install.md`，README 前部和网站提供可交给 agent 的安装指令。D59 记录取舍，不修改 cask 的隔离行为。
+
+网站按维护者实际 About “A free and open-source MacOS file manager, an alternative to Finder. Native, simple, and versatile.” 改成直接介绍用途和功能的文案。截图规范已加入拍摄前移开鼠标、检查成图无指针和悬停提示、发现后重拍的要求；不通过涂改 UI 删除指针。
+
+用户随后明确要求终端随文件导航同步目录，右下角只在有执行任务时显示可点击的终端图标、转圈与耗时，并在完成后发布 **0.2.1**。这部分由终端与状态 agent 并行开发，尚待整合、三轮 smoke、打包实机与新截图验证；不能用下面 0.2.0 的通过记录当作新功能已验证。安装说明可先独立发布，不重发 0.2.0 二进制。
+
+安装文档本地检查：5 资产 / 41 引用 / 29 张截图 alpha 门槛通过，`install.md` 原样复制；独立 agent 验证 57 个本地链接以及 sh / zsh 中带空格路径和未设置变量保护。主任务以 UID 501 在自有无执行内容的应用形状 fixture 上验证指定属性递归删除、其他属性与文件字节不变，证据 `/private/tmp/tursora-0.2.1-qa-u1_phjba/attribute-verification.json`；这不是独立非管理员账号或受管理 Mac 的启动实测。网站实查 1200 / 390 px 首页及安装跳转，窄屏首次启动、Homebrew 三条命令和 agent 指令可读且无水平溢出；Markdown 链接作为文档下载，未称浏览器已渲染指南。安装区改为顶部对齐，避免新增长说明把左侧下载入口居中推低。线上部署另行核对。
+
+## 已完成：Homebrew 显式单项信任纳入主流程
 
 用户明确要求把信任和 tap / install 一起列出。当前 README、网站与维护文档统一依次执行完整 URL 的 tap、`brew trust --cask zerolfx/tursora/tursora`、完整名称 install；每步成功后继续，信任是文档主流程的必做步骤，只授予 Tursora cask。Homebrew 完整名称安装的自动信任已独立验证成功，因此不声称少一条必然失败；D58 记录此明确流程选择。
 
-主任务已验证本次三步版本：新的隔离信任目录按 tap → 单 cask trust → install dry run 顺序均 exit 0，只有此 cask 被信任；证据 `/private/tmp/tursora-three-step-install-3liuppa5/verification.json`，不把 dry run 记为重新安装应用。6 项 cask 测试与 Ruby 语法通过；网站构建 5 资产 / 40 引用 / 29 图 alpha 通过，README 两个安装代码块及网站均精确保留三条实际命令。101 份 Swift 源码哈希未变；下面两行流程及 83 项测试仍是此前阶段证据。显式 trust 的 CI 和线上部署由主任务另行核对，应用、cask 资产及 0.2.0 版本 / build 不变。
+主任务已验证本次三步版本：新的隔离信任目录按 tap → 单 cask trust → install dry run 顺序均 exit 0，只有此 cask 被信任；证据 `/private/tmp/tursora-three-step-install-3liuppa5/verification.json`，不把 dry run 记为重新安装应用。6 项 cask 测试与 Ruby 语法通过；网站构建 5 资产 / 40 引用 / 29 图 alpha 通过，README 两个安装代码块及网站均精确保留三条实际命令。该阶段 101 份 Swift 源码哈希未变；下面两行流程及 83 项测试仍是此前阶段证据。提交 `89ac22f` 的 Build / Homebrew / Pages 部署均已成功，线上 8 站点文件、README 和 cask 字节与该提交一致；Homebrew CI 确认仅 trust 此 cask 成功后再真安装 0.2.0，完整证据为同目录 `ci.json` 与 `live-verification.json`。应用、cask 资产及 0.2.0 版本 / build 不变。
 
 ## 历史阶段：安装排错与说明简化
 

@@ -2,7 +2,7 @@
   <img src="app/Resources/AppIcon.png" width="112" alt="Tursora's two-pane tail-fin icon">
 </p>
 <h1 align="center">Tursora</h1>
-<p align="center"><strong>Finder's familiar workflows. Useful ideas from Dolphin and Explorer.</strong></p>
+<p align="center"><strong>A free and open-source macOS file manager. Native, simple, and versatile.</strong></p>
 <p align="center"><strong>Free and open source · <a href="LICENSE">MIT licensed</a></strong></p>
 <p align="center">
   <a href="https://github.com/zerolfx/Tursora/actions/workflows/build.yml"><img src="https://github.com/zerolfx/Tursora/actions/workflows/build.yml/badge.svg" alt="Build"></a>
@@ -18,9 +18,9 @@
   <a href="https://zerolfx.github.io/Tursora/">Website</a>
 </p>
 
-Tursora is a **free, open-source native macOS file manager**, released under the [MIT license](LICENSE). Use it without a subscription, read the source, and adapt it to your workflow.
+Tursora is a **free, open-source native macOS file manager** and an alternative to Finder, released under the [MIT license](LICENSE). Use it without a subscription, read the source, and adapt it to your workflow.
 
-Its goal is simple: **keep what feels familiar in Finder, then add the file-management ideas that make Dolphin and Windows File Explorer useful.**
+Browse, preview and organize files with familiar Mac controls, split panes, editable paths, an integrated terminal and ZIP browsing. Tursora does not yet cover every Finder feature; see the [current differences](#what-finder-still-does-that-tursora-doesnt).
 
 <a id="installation"></a>
 
@@ -32,8 +32,14 @@ Its goal is simple: **keep what feels familiar in Finder, then add the file-mana
 
 1. From the release page, download **`Tursora-0.2.0-macOS-arm64.dmg`**. The same page includes `SHA256SUMS.txt` to verify the download.
 2. Open the DMG.
-3. Drag **Tursora → Applications** in the installer window.
-4. Open **Tursora from Applications**. If macOS cannot verify the app, follow the [First launch instructions](#first-launch) for a trusted download.
+3. Copy **Tursora.app** to a writable folder. The installer’s **Applications** shortcut points to `/Applications`; use `~/Applications` or another folder if you prefer or lack permission there.
+4. Open the installed copy. If macOS cannot verify the app, use the [simple Terminal method](#first-launch) with its actual path. For a copy you own and can write, this normally needs no administrator password.
+
+**Let an agent install it.** Paste this into an agent with access to your Mac:
+
+```text
+Read https://zerolfx.github.io/Tursora/install.md and install Tursora on this Mac. Choose a writable location, verify the download, and handle first launch for the installed copy.
+```
 
 **Prefer Homebrew?** Run these three commands in order: add the tap with the **entire repository URL**, trust the Tursora cask, then install:
 
@@ -46,6 +52,8 @@ brew install --cask zerolfx/tursora/tursora
 If an error says `zerolfx/homebrew-tursora` was not found, Homebrew used its default tap address. Run the first command above with the full URL before installing.
 
 The trust command allows Homebrew to load this cask's installation code. The tap installs the published 0.2.0 DMG with its verified SHA-256. See [Homebrew details](#homebrew) for updates and uninstalling, or [troubleshooting](#homebrew-troubleshooting) if installation fails.
+
+For a different destination, add `--appdir="$HOME/Applications"` (or your chosen folder) to the third command. If Homebrew itself needs permissions you do not have, use the DMG instead. Both methods use the same [first-launch steps](#first-launch).
 
 ## Features
 
@@ -227,10 +235,10 @@ Tursora currently has an English interface. Workspace restoration keeps location
 Requires **macOS 14 or later**. Downloadable builds currently target **Apple Silicon** and are **ad-hoc signed, not notarized**.
 
 1. **Download** from the [latest stable release](https://github.com/zerolfx/Tursora/releases/latest). Public downloads need no GitHub account; the same release includes `SHA256SUMS.txt` for checking your download.
-2. **Install:** open the DMG and drag **Tursora → Applications**, as shown below.
-3. **Launch Tursora from Applications.** If macOS blocks the first launch, follow the steps below.
+2. **Install:** open the DMG and copy **Tursora.app** to your chosen writable folder. The screenshot's Applications shortcut targets `/Applications`; `~/Applications` or another folder also works. For a personal Applications folder, create it with `mkdir -p "$HOME/Applications"`, then open it in Finder and copy the app there.
+3. **Launch the installed copy.** If macOS blocks the first launch, follow the steps below. Copy the app out of the read-only DMG before using it.
 
-**Development builds:** successful [Build runs](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) contain a DMG and checksum inside GitHub's artifact ZIP. Unpack that outer ZIP, open the DMG and drag Tursora to Applications. Older runs contain the previous application ZIP. Artifacts are kept for 14 days. See the [changelog](CHANGELOG.md) for version history.
+**Development builds:** successful [Build runs](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) contain a DMG and checksum inside GitHub's artifact ZIP. Unpack that outer ZIP, open the DMG and copy Tursora to a writable folder. Older runs contain the previous application ZIP. Artifacts are kept for 14 days. See the [changelog](CHANGELOG.md) for version history.
 
 <p><a href="docs/images/features/installation.png"><img src="docs/images/features/installation.png" width="640" alt="The DMG installer layout in Finder, with Tursora on the left and an arrow pointing to Applications on the right"></a></p>
 
@@ -244,6 +252,8 @@ brew trust --cask zerolfx/tursora/tursora
 brew install --cask zerolfx/tursora/tursora
 ```
 
+To choose another destination, replace the third command with `brew install --cask --appdir="$HOME/Applications" zerolfx/tursora/tursora`, substituting your preferred folder if needed. This only changes the app's destination: your account must also be able to use Homebrew's own directories. If it cannot, use the DMG without installing or changing Homebrew. See the [complete installation guide for agents](https://zerolfx.github.io/Tursora/install.md).
+
 The explicit repository URL is required on the first line. Without it, an untapped install looks for `zerolfx/homebrew-tursora`, which is not this repository. Update with `brew update` followed by `brew upgrade --cask --greedy zerolfx/tursora/tursora`; `--greedy` includes versions that also have the in-app updater. Uninstall with `brew uninstall --cask zerolfx/tursora/tursora`; your settings and workspace remain intact.
 
 This project maintains its own tap. An Apple Developer Program membership is not required to distribute it this way; **the downloaded app remains ad-hoc signed and not notarized**, and the [first-launch instructions](#first-launch) still apply. The cask keeps Homebrew's normal download quarantine and verifies the pinned SHA-256. Homebrew's official cask repository has separate [Gatekeeper acceptance requirements](https://docs.brew.sh/Acceptable-Casks#platform-compatibility-and-macos-security-protections).
@@ -256,26 +266,23 @@ If Homebrew reports `untrusted tap`, check that the second command in the instal
 
 ### First launch
 
-Current builds are ad-hoc signed and **not notarized by Apple**, so macOS may say that Apple could not verify Tursora. If you trust your download from this repository's official release:
+Current builds are ad-hoc signed and **not notarized by Apple**. If macOS cannot verify Tursora, first confirm that it came from [this repository's official release](https://github.com/zerolfx/Tursora/releases/latest) and matches that release's `SHA256SUMS.txt` (Homebrew checks the pinned SHA-256 automatically).
 
-1. Try opening `Tursora.app` from Applications once.
-2. Open **System Settings → Privacy & Security**, scroll to the blocked-app message and click **Open Anyway**.
-3. In the confirmation, click **Open**. macOS remembers this exception for the app. These steps follow [Apple's first-launch guidance](https://support.apple.com/en-us/102445).
-
-If macOS reports that the app is damaged, download it again and compare its SHA-256 hash with `SHA256SUMS.txt` from the same release before proceeding. A warning that it contains malware or will damage your computer is a different issue: stop and follow Apple's guidance above.
-
-<details>
-<summary>Terminal alternative for a trusted, verified download</summary>
-
-Use this only after confirming that the download came from [this repository's official release](https://github.com/zerolfx/Tursora/releases/latest) and that its SHA-256 matches that release's `SHA256SUMS.txt`. With Tursora installed in `/Applications`, run:
+**Use the installed app's actual path.** For `/Applications/Tursora.app`, run:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/Tursora.app
+xattr -dr com.apple.quarantine "/Applications/Tursora.app"
 ```
 
-This recursively removes only the download-quarantine attribute from this app bundle. It does not notarize the app or repair damaged files. Open Tursora from Applications afterward. Do not use this to dismiss a malware warning.
+For a personal installation, use `"$HOME/Applications/Tursora.app"` instead. **Any other location:** type `xattr -dr com.apple.quarantine` followed by a space in Terminal, drag your installed `Tursora.app` into Terminal to insert its path, then press Return. Open that copy afterward.
 
-</details>
+This removes only the app bundle's download-quarantine attribute. It normally needs **no `sudo` or administrator settings change when you own and can write the copy**. If you get `Permission denied` or `Operation not permitted`, check that the path points to your installed copy outside the DMG. Use a folder you can write; do not add `sudo` or change system protections. A managed Mac may enforce additional restrictions that require your organization's approval.
+
+Local builds usually lack the quarantine attribute attached by downloaders, which explains why a downloaded copy may encounter an extra check. Removing that attribute does not notarize the app or repair damaged files. See [Apple's explanation of download quarantine](https://developer.apple.com/forums/thread/813858).
+
+**Prefer the graphical route?** Try opening the app, then use **System Settings → Privacy & Security → Open Anyway** if your account is allowed to approve it, as described in [Apple's first-launch guidance](https://support.apple.com/en-us/102445). This is an alternative, not a required step before the Terminal method.
+
+For a damaged-app message, redownload and verify the checksum first. A warning that the app contains malware or will damage your computer is a different issue: stop and follow Apple's guidance above.
 
 ### Software updates
 

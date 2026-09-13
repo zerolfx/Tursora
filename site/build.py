@@ -90,7 +90,7 @@ def main():
         shutil.rmtree(DIST)
     (DIST / "assets").mkdir(parents=True)
     (DIST / "index.html").write_text(html, encoding="utf-8")
-    for filename in ("styles.css", "main.js"):
+    for filename in ("styles.css", "main.js", "install.md"):
         shutil.copy2(SITE / filename, DIST / filename)
     for filename, source in assets.items():
         shutil.copy2(source, DIST / "assets" / filename)

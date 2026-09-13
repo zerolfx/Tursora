@@ -6,6 +6,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ### Documentation
 
+- Installation guidance supports any writable destination, makes the targeted first-launch quarantine command visible, and adds a ready-to-paste agent instruction linked to the website's complete Markdown installation guide.
 - Homebrew installation now presents tap setup, explicit trust for the Tursora cask and installation together in one three-command block in README and the website; the Homebrew workflow follows the same sequence.
 
 ## [0.2.0] - 2026-09-13

@@ -301,15 +301,16 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 ## 21. 下载与安装
 
-- README 简介后、功能表前直接提供 0.2.0 安装步骤与 Homebrew 命令。网站首屏主按钮及导航中的“安装指南”是页内 `#installation` 跳转；“免费下载”单独指向真实最新稳定 release。安装区逐步说明下载 DMG、打开、拖入 Applications、从 Applications 启动，复用真实透明安装截图，并链接可信下载的首次启动说明。当前提供已发布的 0.2.0 DMG，不链接不存在的新版资产。
+- README 简介后、功能表前直接提供 0.2.0 安装步骤与 Homebrew 命令。网站首屏主按钮及导航中的“安装指南”是页内 `#installation` 跳转；“免费下载”单独指向真实最新稳定 release。安装区说明下载 DMG、打开、复制到所选可写目录、启动安装副本，复用真实透明安装截图，并直接展示可信下载的首次启动命令。当前提供已发布的 0.2.0 DMG，不链接不存在的新版资产。
 - 项目自己的 Homebrew tap 直接使用本仓库 `Casks/tursora.rb`。依次执行完整 URL 的 `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora`、仅授权此 cask 的 `brew trust --cask zerolfx/tursora/tursora`，最后 `brew install --cask zerolfx/tursora/tursora`，每步成功后继续。第一条显式 URL 不可省略；未安装 tap 时直接 install 会自动寻找默认 `zerolfx/homebrew-tursora`，其仓库不存在提示应先检查显式 tap 步骤。固定已发布版本与 SHA-256；当前 cask 用真实 `0.2.0` DMG，并标记 `auto_updates true`。不需要为自有 tap 先购买 Apple 会员，但安装包仍未公证；保留下载隔离，不在 cask 中执行绕过命令。官方 `homebrew/cask` 接纳条件与自有 tap 分开，见[Homebrew 依据与实装验证](research/homebrew.md)。
 - 按用户明确要求，README、网站及维护说明的主安装流程固定为 tap → 单 cask trust → install 三条命令，显式信任是文档流程中的必做步骤，不仅放在错误后的备选说明。Homebrew 的完整名称安装本身也可能自动授予同一单项信任，不能据此宣称省略 trust 在所有版本都会失败；不授予整个 tap 的信任，不关闭全局检查。此说明修订不修改已发布应用版本 / build 或重新发布二进制，取舍见 D58。
 - README、研究记录和网站的 canonical 截图必须是实际窗口 PNG，原生圆角外侧透明且边缘带抗锯齿；确定性处理保护内部像素，不能生成或修饰 UI。网站构建检查整个图片目录，不能靠 CSS 覆盖白底，见[本轮截图审计](research/screenshot-audit-2026-09-13.md)。
 
-- 当前及后续 release 直接提供 `Tursora-<version>-macOS-arm64.dmg` 与 SHA-256 校验文件，正式版另附更新 appcast。打开镜像后，窗口中左侧为 Tursora、右侧为 Applications，中间箭头指向目标；将应用拖入 Applications 完成安装。Applications 是 `/Applications` 的链接，没有额外安装脚本。
+- 当前及后续 release 直接提供 `Tursora-<version>-macOS-arm64.dmg` 与 SHA-256 校验文件，正式版另附更新 appcast。打开镜像后，窗口中左侧为 Tursora、右侧为 Applications，中间箭头指向目标；将应用拖入 Applications 完成安装。Applications 是 `/Applications` 的链接，没有额外安装脚本；安装目录不受此链接限制，也可选择 `~/Applications` 或其他可写位置。
 - 镜像预设 640 × 280 窗口、128 px 图标，布局在构建时直接写入 Finder 元数据。用户正常拖拽应用时由 macOS 执行复制；不修改文件管理器的 ZIP 浏览或普通文件操作行为。
 - 已发布标签和资产保持不变；当前安装流程只说明正式 DMG 与 Homebrew 安装，不提供旧版迁移步骤。
-- 安装说明按下载、拖入 Applications、从 Applications 启动排列。当前 ad-hoc 且未公证，可信下载被系统以无法验证开发者为由阻止时，按 Apple 指引先尝试打开，再到 System Settings → Privacy & Security → Open Anyway 并确认 Open。README 另提供折叠终端备选，仅在确认官方来源及同版本 SHA-256 一致后，移除该应用包的 `com.apple.quarantine` 属性；不清空全部扩展属性，不赋予公证或修复损坏。损坏提示先重下核验，恶意软件警告不按普通隔离提示处理。网站仅提供简短步骤与 README 详情链接；不执行系统安全设置变更。
+- 当前 ad-hoc 且未公证。README 和网站将按安装副本实际路径执行 `xattr -dr com.apple.quarantine` 提升为直接可见的首次启动方法；也可在命令后加空格、拖入已安装应用来填入路径。仅适用于确认官方来源及同版本 SHA-256 一致的副本，不清空全部扩展属性、不修复损坏或替代公证。用户拥有且可写入的应用通常无需管理员权限；只读 DMG、其他账号所有权、Homebrew 目录权限与组织策略分别处理，不使用 sudo 或修改系统策略。图形界面 Open Anyway 保留为账户允许时的可选途径。损坏提示先重下核验，恶意软件警告不按普通隔离提示处理。
+- README 前部及网站提供可直接交给 agent 的安装指令，指向 GitHub Pages 的 `/Tursora/install.md`；纯 Markdown 原样发布。指南依据实际权限选择 `/Applications`、`~/Applications` 或用户指定位置，使用现有可用 Homebrew 或官方 DMG；安装来源 / checksum、已存在应用及首次启动分开核对。Homebrew 自身不可写时用 DMG，不因应用目的地可写而假设 brew prefix 也可写。D59 记录范围，文档不替代真实非管理员账户或组织管理设备的实测。
 - 本轮没有可用 Developer ID 签名身份，用户也确认尚无证书，因此维持 ad-hoc 签名。Apple Developer Program 资格、Developer ID 证书与公证凭据就绪后再单独接入并验证签名 / 公证；不以 DMG 外观或 Sparkle 签名代替 Apple 信任。Mac App Store 分发与其 sandbox 设计另行评估。
 
 ## 22. 工作区会话恢复（工作连续性）
