@@ -1,9 +1,61 @@
 import Foundation
 import Darwin
 
+/// Cancels only one private browsing extraction. The worker still waits for
+/// its child to exit before removing any directory the child could write to.
+final class ArchivePreparationCancellation: @unchecked Sendable {
+    enum Checkpoint { case storageCreated(URL), beforeExtraction, beforePublication }
+    private let lock = NSLock()
+    private var cancelled = false
+    private var process: Process?
+    private let checkpointHandler: (@Sendable (Checkpoint) -> Void)?
+
+    init(checkpoint: (@Sendable (Checkpoint) -> Void)? = nil) { checkpointHandler = checkpoint }
+
+    var isCancelled: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return cancelled
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let running = process
+        lock.unlock()
+        // terminate sends a signal; it never waits for process completion.
+        if let running, running.isRunning { running.terminate() }
+    }
+
+    func checkCancellation() throws {
+        if isCancelled { throw ArchiveBrowsingSession.SessionError.cancelled }
+    }
+
+    func checkpoint(_ point: Checkpoint) throws {
+        try checkCancellation()
+        checkpointHandler?(point)
+        try checkCancellation()
+    }
+
+    func runProcess(_ child: Process) throws {
+        try checkCancellation()
+        try child.run()
+        lock.lock()
+        process = child
+        let shouldStop = cancelled
+        lock.unlock()
+        // Cancellation may arrive while Process.run is starting the child.
+        if shouldStop, child.isRunning { child.terminate() }
+    }
+
+    func finishProcess(_ child: Process) {
+        lock.lock(); defer { lock.unlock() }
+        if process === child { process = nil }
+    }
+}
+
 extension FileOperations {
     enum ArchiveError: LocalizedError {
-        case noSelection, duplicateNames, destinationInsideSelection, unsupportedArchive, emptyArchive
+        case noSelection, duplicateNames, destinationInsideSelection, unsupportedArchive, invalidArchive, emptyArchive
         case commandFailed(String)
 
         var errorDescription: String? {
@@ -12,6 +64,7 @@ extension FileOperations {
             case .duplicateNames: return "Items with the same name cannot be added to one archive."
             case .destinationInsideSelection: return "Choose a destination outside the folders being compressed."
             case .unsupportedArchive: return "Only ZIP archives can be extracted here."
+            case .invalidArchive: return "This file does not appear to be a valid ZIP archive."
             case .emptyArchive: return "The archive contains no files."
             case .commandFailed(let message): return message
             }
@@ -65,19 +118,22 @@ extension FileOperations {
     /// The read-only browser needs the exact archive hierarchy, including a
     /// single top-level folder, instead of the normal extraction presentation.
     static func extractArchiveContents(archive: URL, to directory: URL,
+                                       cancellation: ArchivePreparationCancellation? = nil,
                                        completion: @escaping (Result<URL, Error>) -> Void) {
-        extract(archive: archive, to: directory, preserveRoot: true, completion: completion)
+        extract(archive: archive, to: directory, preserveRoot: true, cancellation: cancellation, completion: completion)
     }
 
     private static func extract(archive: URL, to directory: URL, preserveRoot: Bool,
+                                cancellation: ArchivePreparationCancellation? = nil,
                                 completion: @escaping (Result<URL, Error>) -> Void) {
         archiveOperation(completion: completion) {
+            try cancellation?.checkpoint(.beforeExtraction)
             guard canExtractArchive(archive) else { throw ArchiveError.unsupportedArchive }
             let handle = try FileHandle(forReadingFrom: archive)
             defer { try? handle.close() }
             let signature = try handle.read(upToCount: 4)
             guard let signature, [Data([0x50, 0x4b, 0x03, 0x04]), Data([0x50, 0x4b, 0x05, 0x06])].contains(signature) else {
-                throw ArchiveError.unsupportedArchive
+                throw ArchiveError.invalidArchive
             }
             return try withArchiveWorkspace(in: directory) { workspace in
                 let output = workspace.appendingPathComponent("contents", isDirectory: true)
@@ -89,9 +145,11 @@ extension FileOperations {
                     "-x", "-f", archive.path, "-C", output.path,
                     "--no-same-owner", "--no-same-permissions", "--mac-metadata", "--no-acls", "--no-fflags",
                     "--passphrase", UUID().uuidString
-                ], workspace: workspace)
-                try propagateArchiveQuarantine(from: archive, to: output)
+                ], workspace: workspace, cancellation: cancellation)
+                try cancellation?.checkCancellation()
+                try propagateArchiveQuarantine(from: archive, to: output, cancellation: cancellation)
                 let items = try FileManager.default.contentsOfDirectory(at: output, includingPropertiesForKeys: nil)
+                try cancellation?.checkpoint(.beforePublication)
                 if preserveRoot {
                     return try publishArchiveItem(output, named: "Contents", in: directory)
                 }
@@ -115,7 +173,9 @@ extension FileOperations {
 
     /// An extracted application must retain the downloaded archive's quarantine.
     /// Never follow extracted symlinks while setting metadata on the new tree.
-    private static func propagateArchiveQuarantine(from archive: URL, to root: URL) throws {
+    private static func propagateArchiveQuarantine(from archive: URL, to root: URL,
+                                                    cancellation: ArchivePreparationCancellation? = nil) throws {
+        try cancellation?.checkCancellation()
         let attribute = "com.apple.quarantine"
         let length = getxattr(archive.path, attribute, nil, 0, 0, 0)
         if length < 0 {
@@ -130,6 +190,7 @@ extension FileOperations {
         guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil,
             errorHandler: { _, error in enumerationError = error; return false }) else { throw POSIXError(.EIO) }
         func mark(_ url: URL) throws {
+            try cancellation?.checkCancellation()
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             if attributes[.type] as? FileAttributeType == .typeSymbolicLink { return }
             let outcome = data.withUnsafeBytes { setxattr(url.path, attribute, $0.baseAddress, data.count, 0, XATTR_NOFOLLOW) }
@@ -149,7 +210,8 @@ extension FileOperations {
         return try work(workspace)
     }
 
-    private static func runArchiveTool(_ executable: String, arguments: [String], workspace: URL) throws {
+    private static func runArchiveTool(_ executable: String, arguments: [String], workspace: URL,
+                                        cancellation: ArchivePreparationCancellation? = nil) throws {
         let log = workspace.appendingPathComponent("tool-errors.txt")
         FileManager.default.createFile(atPath: log.path, contents: nil)
         let errors = try FileHandle(forWritingTo: log)
@@ -163,8 +225,11 @@ extension FileOperations {
         process.standardError = errors
         // Ignore inherited tool-specific switches such as TAR_READER_OPTIONS.
         process.environment = ["PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"]
-        try process.run()
+        if let cancellation { try cancellation.runProcess(process) }
+        else { try process.run() }
+        defer { cancellation?.finishProcess(process) }
         process.waitUntilExit()
+        try cancellation?.checkCancellation()
         guard process.terminationReason == .exit && process.terminationStatus == 0 else {
             let reader = try FileHandle(forReadingFrom: log)
             defer { try? reader.close() }

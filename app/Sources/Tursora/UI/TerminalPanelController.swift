@@ -34,6 +34,62 @@ struct TerminalLaunchConfiguration {
     }
 }
 
+/// Display state is explicit: navigation must not erase a process exit, and a
+/// launch directory is not evidence of the shell's current working directory.
+struct TerminalPanelPresentation: Equatable {
+    enum State: Equatable { case ready, running, ended, failedToStart }
+    var state: State = .ready
+    var startedDirectory: URL?
+    var reportedDirectory: URL?
+
+    var locationText: String {
+        switch state {
+        case .ready: return "Ready to start."
+        case .running:
+            if let reportedDirectory { return "Shell folder: \(Self.displayPath(reportedDirectory))" }
+            return startedDirectory.map { "Started in: \(Self.displayPath($0))" } ?? "Session running."
+        case .ended: return "Session ended. Output is kept below."
+        case .failedToStart: return "Could not start the terminal."
+        }
+    }
+
+    var actionTitle: String { state == .running ? "Restart in Current Folder" : "Start in Current Folder" }
+
+    func destinationText(_ pendingDirectory: URL) -> String {
+        "\(state == .running ? "Restart" : "Start") in: \(Self.displayPath(pendingDirectory))"
+    }
+
+    private static func displayPath(_ url: URL) -> String {
+        let path = (url.path as NSString).abbreviatingWithTildeInPath
+        return String(path.unicodeScalars.map { scalar -> Character in
+            CharacterSet.controlCharacters.contains(scalar) ? "�" : Character(String(scalar))
+        })
+    }
+
+    /// OSC 7 may use the machine's hostname. Accept only this host's names,
+    /// localhost, or no host; never interpret a remote file URL as local state.
+    static func localDirectory(_ value: String?, localHostNames: Set<String>) -> URL? {
+        // Parse before constructing a file URL: Foundation can normalize a
+        // relative file: path against the process cwd and discard decorations.
+        guard let value, let components = URLComponents(string: value),
+              components.scheme?.lowercased() == "file",
+              components.user == nil, components.password == nil, components.port == nil,
+              components.query == nil, components.fragment == nil, components.path.hasPrefix("/"),
+              !components.path.contains("\0"), components.path.utf8.count <= 32_768 else { return nil }
+        let host = components.host?.lowercased() ?? ""
+        let names = Set(localHostNames.map { $0.lowercased() })
+        guard host.isEmpty || host == "localhost" || names.contains(host) else { return nil }
+        return URL(fileURLWithPath: components.path, isDirectory: true).standardizedFileURL
+    }
+
+    static var localHostNames: Set<String> {
+        let hostname = ProcessInfo.processInfo.hostName.lowercased()
+        var names: Set<String> = [hostname]
+        if hostname.hasSuffix(".local") { names.insert(String(hostname.dropLast(6))) }
+        return names
+    }
+}
+
 /// SwiftTerm stops its exit monitor in terminate(), so the owner must reap on
 /// explicit shutdown. Only the session created by this PTY is ever signalled.
 enum TerminalProcessLifecycle {
@@ -73,11 +129,14 @@ enum TerminalProcessLifecycle {
 /// to an existing shell: even a foreground-shell check cannot detect `read`.
 final class TerminalPanelController: NSViewController, LocalProcessTerminalViewDelegate {
     private(set) var pendingDirectory: URL
-    private(set) var sessionDirectory: URL?
+    var sessionDirectory: URL? { presentation.reportedDirectory ?? presentation.startedDirectory }
     private(set) var terminalView: LocalProcessTerminalView?
     private let terminalContainer = NSView()
-    private let locationLabel = NSTextField(labelWithString: "")
-    private let restartButton = NSButton(title: "Restart in Current Folder", target: nil, action: nil)
+    let locationLabel = NSTextField(labelWithString: "")
+    let destinationLabel = NSTextField(labelWithString: "")
+    let restartButton = NSButton(title: "Restart in Current Folder", target: nil, action: nil)
+    private var presentation = TerminalPanelPresentation()
+    private let localHostNames: Set<String>
     private var isShutDown = false
     var onClose: (() -> Void)?
 
@@ -88,8 +147,9 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         return foreground > 0 && foreground != process.shellPid
     }
 
-    init(initialDirectory: URL) {
+    init(initialDirectory: URL, localHostNames: Set<String> = TerminalPanelPresentation.localHostNames) {
         pendingDirectory = initialDirectory
+        self.localHostNames = localHostNames
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -97,13 +157,18 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
 
     override func loadView() {
         view = NSView()
-        let title = NSTextField(labelWithString: "Terminal · Experimental")
+        let title = NSTextField(labelWithString: "Terminal")
         title.font = .systemFont(ofSize: 11, weight: .medium)
         title.textColor = .secondaryLabelColor
         locationLabel.font = .systemFont(ofSize: 11)
         locationLabel.textColor = .secondaryLabelColor
         locationLabel.lineBreakMode = .byTruncatingMiddle
         locationLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        destinationLabel.font = .systemFont(ofSize: 11)
+        destinationLabel.textColor = .secondaryLabelColor
+        destinationLabel.lineBreakMode = .byTruncatingMiddle
+        destinationLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        destinationLabel.translatesAutoresizingMaskIntoConstraints = false
         restartButton.bezelStyle = .rounded
         restartButton.controlSize = .small
         restartButton.target = self
@@ -119,15 +184,20 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         header.translatesAutoresizingMaskIntoConstraints = false
         terminalContainer.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(header)
+        view.addSubview(destinationLabel)
         view.addSubview(terminalContainer)
         NSLayoutConstraint.activate([
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
             header.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
             header.heightAnchor.constraint(equalToConstant: 24),
+            destinationLabel.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            destinationLabel.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+            destinationLabel.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 2),
+            destinationLabel.heightAnchor.constraint(equalToConstant: 15),
             terminalContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             terminalContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            terminalContainer.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 5),
+            terminalContainer.topAnchor.constraint(equalTo: destinationLabel.bottomAnchor, constant: 5),
             terminalContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         updateLocation()
@@ -140,7 +210,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
 
     /// Called by navigation; deliberately updates only the restart destination.
     func followDirectory(_ url: URL) {
-        guard url.isFileURL else { return }
+        guard TerminalPanelPresentation.localDirectory(url.absoluteString, localHostNames: localHostNames) != nil else { return }
         pendingDirectory = url
         if isViewLoaded { updateLocation() }
     }
@@ -158,7 +228,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
             terminalView.removeFromSuperview()
         }
         terminalView = nil
-        sessionDirectory = nil
+        presentation = TerminalPanelPresentation()
     }
 
     private func startIfNeeded() {
@@ -172,22 +242,36 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         let configuration = TerminalLaunchConfiguration.make(directory: directory, shell: TerminalLaunchConfiguration.userShell,
                                                               environment: ProcessInfo.processInfo.environment)
         let terminal = LocalProcessTerminalView(frame: terminalContainer.bounds)
+        installTerminal(terminal, in: directory)
+        terminal.startProcess(executable: configuration.executable, args: configuration.arguments,
+                              environment: configuration.environment, currentDirectory: directory.path)
+        if !terminal.process.running { presentation.state = .failedToStart }
+        updateLocation()
+        view.window?.makeFirstResponder(terminal)
+    }
+
+    /// Attaching a terminal view is separate from launching its process, so a
+    /// view and its delegate identity can be verified without a user shell.
+    func installTerminal(_ terminal: LocalProcessTerminalView, in directory: URL) {
+        guard !isShutDown, terminal !== terminalView else { return }
+        _ = view
+        if let previous = terminalView, previous !== terminal {
+            previous.processDelegate = nil
+            TerminalProcessLifecycle.stop(previous.process)
+            previous.removeFromSuperview()
+        }
         terminal.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         terminal.nativeBackgroundColor = .textBackgroundColor
         terminal.nativeForegroundColor = .textColor
         terminal.processDelegate = self
         terminalContainer.pinToEdges(terminal)
         terminalView = terminal
-        sessionDirectory = directory
-        terminal.startProcess(executable: configuration.executable, args: configuration.arguments,
-                              environment: configuration.environment, currentDirectory: directory.path)
+        presentation = TerminalPanelPresentation(state: .running, startedDirectory: directory)
         updateLocation()
-        if !terminal.process.running { locationLabel.stringValue = "Could not start the terminal." }
-        view.window?.makeFirstResponder(terminal)
     }
 
     @objc private func restartHere(_ sender: Any?) {
-        guard !SmokeTest.isRequested else { return }
+        guard !SmokeTest.isRequested, !isShutDown else { return }
         let destination = pendingDirectory
         let restart = { [weak self] in
             guard let self else { return }
@@ -208,21 +292,30 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     @objc private func closePanel(_ sender: Any?) { onClose?() }
 
     private func updateLocation() {
-        let shown = sessionDirectory ?? pendingDirectory
-        locationLabel.stringValue = (shown.path as NSString).abbreviatingWithTildeInPath
-        locationLabel.toolTip = "Closing the panel ends its session. Restart destination: \(pendingDirectory.path)"
+        locationLabel.stringValue = presentation.locationText
+        locationLabel.textColor = presentation.state == .failedToStart ? .systemRed : .secondaryLabelColor
+        locationLabel.toolTip = presentation.reportedDirectory.map { "Shell-reported folder: \($0.path)" }
+            ?? presentation.startedDirectory.map { "Started in \($0.path). The shell has not reported its current folder." }
+        destinationLabel.stringValue = presentation.destinationText(pendingDirectory)
+        destinationLabel.toolTip = "New shell destination: \(pendingDirectory.path). Browsing folders does not change the existing shell."
+        restartButton.title = presentation.actionTitle
+        restartButton.toolTip = presentation.state == .running
+            ? "Ends this shell and its foreground command, then starts in \(pendingDirectory.path)."
+            : "Starts a new shell in \(pendingDirectory.path)."
     }
 
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
         // Do not let terminal output trigger filesystem navigation.
-        guard let directory, let url = URL(string: directory), url.isFileURL else { return }
-        sessionDirectory = url
+        guard !isShutDown, source === terminalView, presentation.state == .running,
+              let url = TerminalPanelPresentation.localDirectory(directory, localHostNames: localHostNames) else { return }
+        presentation.reportedDirectory = url
         updateLocation()
     }
     func processTerminated(source: TerminalView, exitCode: Int32?) {
-        guard source === terminalView else { return }
-        locationLabel.stringValue = "Session ended — restart to open a new shell."
+        guard !isShutDown, source === terminalView else { return }
+        presentation.state = .ended
+        updateLocation()
     }
 }

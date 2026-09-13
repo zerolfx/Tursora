@@ -1,27 +1,27 @@
 import Foundation
+import Darwin
 
 /// A private extracted snapshot. Its URLs never replace the original archive,
 /// and every directory read or file launch rechecks the resolved containment.
 final class ArchiveBrowsingSession {
     private static let preparationLock = NSLock()
-    private static var pendingStorage: [URL: UInt64] = [:]
+    private static var pendingStorage: [URL: ArchivePreparationCancellation] = [:]
     private static var isShuttingDown = false
 
-    /// App exit also discards private directories whose extraction has not yet
-    /// completed. A late extractor can fail only within its removed workspace.
+    /// Stop child writers before their workers reclaim private directories.
+    /// ArchiveWorkspace's shutdown barrier waits for the resulting completions.
     static func shutdownPreparingSessions() {
         preparationLock.lock()
         isShuttingDown = true
         let pending = pendingStorage
-        pendingStorage.removeAll()
         preparationLock.unlock()
-        for (url, id) in pending { FileOperations.discardArchiveBrowsingSession(url, fileID: id) }
+        pending.values.forEach { $0.cancel() }
     }
 
-    fileprivate static func registerPreparation(_ url: URL, fileID: UInt64) -> Bool {
+    fileprivate static func registerPreparation(_ url: URL, cancellation: ArchivePreparationCancellation) -> Bool {
         preparationLock.lock(); defer { preparationLock.unlock() }
         guard !isShuttingDown else { return false }
-        pendingStorage[url] = fileID
+        pendingStorage[url] = cancellation
         return true
     }
 
@@ -42,10 +42,11 @@ final class ArchiveBrowsingSession {
     }
 
     enum SessionError: LocalizedError {
-        case closed, outsideArchive, notDirectory, unavailableItem
+        case closed, cancelled, outsideArchive, notDirectory, unavailableItem
         var errorDescription: String? {
             switch self {
             case .closed: return "This ZIP browsing session has ended."
+            case .cancelled: return "Opening the ZIP was cancelled."
             case .outsideArchive: return "This link points outside the ZIP and cannot be opened here."
             case .notDirectory: return "This item is not a folder."
             case .unavailableItem: return "This item is unavailable in the ZIP snapshot."
@@ -71,8 +72,13 @@ final class ArchiveBrowsingSession {
         storageFileID = fileID
     }
 
-    static func prepare(archive: URL, logicalArchiveURL: URL? = nil, completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) {
-        FileOperations.prepareArchiveBrowsingSession(archive: archive, logicalArchiveURL: logicalArchiveURL, completion: completion)
+    @discardableResult
+    static func prepare(archive: URL, logicalArchiveURL: URL? = nil,
+                        cancellation: ArchivePreparationCancellation = ArchivePreparationCancellation(),
+                        completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) -> ArchivePreparationCancellation {
+        FileOperations.prepareArchiveBrowsingSession(archive: archive, logicalArchiveURL: logicalArchiveURL,
+                                                      cancellation: cancellation, completion: completion)
+        return cancellation
     }
 
     static func containsPath(root: URL, candidate: URL) -> Bool {
@@ -89,7 +95,7 @@ final class ArchiveBrowsingSession {
         return url.standardizedFileURL
     }
 
-    func entries(in directory: URL) throws -> [Entry] {
+    func entries(in directory: URL, beforeReadingEntry: ((URL) throws -> Void)? = nil) throws -> [Entry] {
         let directory = try validatedURL(directory)
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
@@ -97,8 +103,21 @@ final class ArchiveBrowsingSession {
         }
         let urls = try FileManager.default.contentsOfDirectory(at: directory,
             includingPropertiesForKeys: nil)
-        return try urls.map { url in
-            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return try urls.compactMap { url -> Entry? in
+            let attributes: [FileAttributeKey: Any]
+            do {
+                try beforeReadingEntry?(url)
+                attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            } catch {
+                let failure = error as NSError
+                // Editors commonly replace a temporary document atomically.
+                // Only a vanished child is skipped; permissions/I/O errors
+                // still surface instead of silently hiding a damaged snapshot.
+                if (failure.domain == NSCocoaErrorDomain
+                    && [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(failure.code))
+                    || (failure.domain == NSPOSIXErrorDomain && failure.code == ENOENT) { return nil }
+                throw error
+            }
             let link = attributes[.type] as? FileAttributeType == .typeSymbolicLink
             let contained = (try? validatedURL(url)) != nil
             // Do not inspect an escaped link's target, even just for its icon or size.
@@ -124,31 +143,45 @@ final class ArchiveBrowsingSession {
 
 extension FileOperations {
     static func prepareArchiveBrowsingSession(archive: URL, logicalArchiveURL: URL? = nil,
+        cancellation: ArchivePreparationCancellation = ArchivePreparationCancellation(),
         completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let fm = FileManager.default
             let storage = fm.temporaryDirectory.appendingPathComponent("tursora-zip-session-" + UUID().uuidString)
+            var storageID: UInt64?
             do {
+                try cancellation.checkCancellation()
                 try fm.createDirectory(at: storage, withIntermediateDirectories: false,
                                        attributes: [.posixPermissions: 0o700])
                 let id = (try fm.attributesOfItem(atPath: storage.path)[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
-                guard ArchiveBrowsingSession.registerPreparation(storage, fileID: id) else {
-                    discardArchiveBrowsingSession(storage, fileID: id)
-                    DispatchQueue.main.async { completion(.failure(ArchiveBrowsingSession.SessionError.closed)) }
-                    return
+                storageID = id
+                guard ArchiveBrowsingSession.registerPreparation(storage, cancellation: cancellation) else {
+                    throw ArchiveBrowsingSession.SessionError.closed
                 }
-                extractArchiveContents(archive: archive, to: storage) { result in
-                    ArchiveBrowsingSession.finishPreparation(storage)
-                    switch result {
-                    case .success(let root):
-                        completion(.success(ArchiveBrowsingSession(archive: logicalArchiveURL ?? archive, storage: storage, root: root, fileID: id)))
-                    case .failure(let error):
-                        discardArchiveBrowsingSession(storage, fileID: id)
-                        completion(.failure(error))
+                try cancellation.checkpoint(.storageCreated(storage))
+                extractArchiveContents(archive: archive, to: storage, cancellation: cancellation) { result in
+                    DispatchQueue.global(qos: .utility).async {
+                        let prepared: Result<ArchiveBrowsingSession, Error>
+                        if cancellation.isCancelled {
+                            discardArchiveBrowsingSession(storage, fileID: id)
+                            prepared = .failure(ArchiveBrowsingSession.SessionError.cancelled)
+                        } else {
+                            switch result {
+                            case .success(let root):
+                                prepared = .success(ArchiveBrowsingSession(archive: logicalArchiveURL ?? archive, storage: storage, root: root, fileID: id))
+                            case .failure(let error):
+                                discardArchiveBrowsingSession(storage, fileID: id)
+                                prepared = .failure(error)
+                            }
+                        }
+                        ArchiveBrowsingSession.finishPreparation(storage)
+                        DispatchQueue.main.async { completion(prepared) }
                     }
                 }
             } catch {
-                try? fm.removeItem(at: storage)
+                ArchiveBrowsingSession.finishPreparation(storage)
+                if let storageID { discardArchiveBrowsingSession(storage, fileID: storageID) }
+                else { try? fm.removeItem(at: storage) }
                 DispatchQueue.main.async { completion(.failure(error)) }
             }
         }

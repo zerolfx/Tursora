@@ -125,6 +125,8 @@ enum ArchiveWorkspaceSmokeTests {
                 do { _ = try await prepare(corrupt, workspace: workspace) }
                 catch { corruptFailed = true }
                 check("corrupt archive preparation never registers a partial snapshot", corruptFailed && workspace.session(for: corrupt) == nil && (try? Data(contentsOf: corrupt)) == Data("not a ZIP".utf8))
+                try await systemAliasRecoveryChecks(archiveData: archiveData, folder: folder.lastPathComponent,
+                                                    nested: nested.lastPathComponent, note: note.lastPathComponent)
                 workspace.shutdownAll()
                 check("workspace shutdown closes snapshots without touching originals", session.isClosed && !fm.fileExists(atPath: session.storageURL.path) && fm.fileExists(atPath: archive.path) && fm.fileExists(atPath: note.path))
                 check("closed workspace rejects subsequent reads", (try? workspace.readableURL(for: logicalFolder)) == nil)
@@ -133,6 +135,43 @@ enum ArchiveWorkspaceSmokeTests {
                 check("archive workspace setup and operations", false, error.localizedDescription)
             }
         }
+    }
+
+    @MainActor private static func systemAliasRecoveryChecks(archiveData: Data, folder: String,
+                                                            nested: String, note: String) async throws {
+        let fm = FileManager.default
+        // Preserve this spelling: existing disk paths can standardize to /tmp,
+        // but the virtual ZIP descendants still have /private/tmp components.
+        let fixture = URL(fileURLWithPath: "/private/tmp/tursora-archive-system-alias-" + UUID().uuidString,
+                          isDirectory: true)
+        let workspace = ArchiveWorkspace()
+        defer { workspace.shutdownAll(); try? fm.removeItem(at: fixture) }
+        try fm.createDirectory(at: fixture, withIntermediateDirectories: false)
+        let archive = fixture.appendingPathComponent("Broken.zip")
+        let logicalNested = archive.appendingPathComponent(folder).appendingPathComponent(nested)
+        check("system alias retry fixture preserves the restored private path", logicalNested.path.hasPrefix("/private/tmp/"))
+        try Data("not a ZIP".utf8).write(to: archive)
+        var rejected = false
+        do { _ = try await prepare(archive, workspace: workspace) }
+        catch { rejected = true }
+        check("a broken ZIP under the system alias leaves its member target retryable",
+              rejected && workspace.session(for: logicalNested) == nil && !workspace.hasPendingPreparation(for: archive))
+        try archiveData.write(to: archive)
+        let session = try await prepare(archive, workspace: workspace)
+        let provider = ArchiveFileProvider(base: LocalFileProvider(), workspace: workspace)
+        let entries = try provider.listDirectory(logicalNested)
+        let physicalNested = try workspace.readableURL(for: logicalNested)
+        let expected = session.archiveURL.appendingPathComponent(folder).appendingPathComponent(nested)
+        check("repairing a ZIP restores members requested through the system parent alias",
+              workspace.session(for: logicalNested) === session && entries.map(\.name) == [note]
+              && (try? String(contentsOf: workspace.readableURL(for: logicalNested.appendingPathComponent(note)))) == "snapshot contents")
+        check("system alias member mapping round-trips without losing ZIP path components",
+              workspace.logicalURL(for: logicalNested).path == expected.path
+              && workspace.logicalURL(for: physicalNested).path == expected.path)
+        let fileAlias = fixture.appendingPathComponent("File Alias.zip")
+        try fm.createSymbolicLink(at: fileAlias, withDestinationURL: archive)
+        check("system parent aliases do not turn symlinks to original ZIP files into snapshot roots",
+              workspace.session(for: fileAlias) == nil && workspace.logicalURL(for: fileAlias) == fileAlias)
     }
 
     private static func prepare(_ archive: URL, workspace: ArchiveWorkspace) async throws -> ArchiveBrowsingSession {

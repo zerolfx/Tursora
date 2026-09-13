@@ -70,12 +70,23 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var searchPanelHeight: NSLayoutConstraint?
     private(set) var currentURL: URL?
     private var workspaceNavigationURL: URL
+    /// Startup panes need a name before loading succeeds. File actions still
+    /// use currentURL, and an existing listing keeps its own location on failure.
+    var chromeLocationURL: URL { currentURL ?? workspaceNavigationURL }
     var workspacePaneState: WorkspacePaneState {
         WorkspacePaneState(url: ArchiveWorkspace.shared.logicalURL(for: workspaceNavigationURL),
                            search: isSearching ? searchSession.request : nil)
     }
     private var navigationGeneration = 0
     private(set) var isPreparingArchive = false
+    private var archivePreparation: ArchivePreparationSubscription?
+    private var openingArchive: (source: URL, target: URL)?
+    private var failedArchive: (source: URL, target: URL)?
+    private var suspendedNavigation: URL?
+    var failedArchiveURL: URL? { failedArchive?.target }
+    let archiveNotice = ArchiveNavigationNotice()
+    private let archiveNoticeHost = NSView()
+    private var archiveNoticeHeight: NSLayoutConstraint?
     var fileOpener: (URL) -> Bool = { NSWorkspace.shared.open($0) }
     var archiveFileOpener: (URL) -> Bool = { NSWorkspace.shared.open($0) }
     var archiveSourceURL: URL? { currentURL.flatMap { ArchiveWorkspace.shared.session(for: $0)?.archiveURL } }
@@ -163,6 +174,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
     required init?(coder: NSCoder) { fatalError() }
     deinit {
+        archivePreparation?.cancel()
         NotificationCenter.default.removeObserver(self)
         if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
     }
@@ -292,6 +304,16 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             searchPanel.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             searchPanel.view.trailingAnchor.constraint(equalTo: view.trailingAnchor), searchHeight,
         ])
+        archiveNoticeHost.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(archiveNoticeHost)
+        let noticeHeight = archiveNoticeHost.heightAnchor.constraint(equalToConstant: 0)
+        archiveNoticeHeight = noticeHeight
+        archiveNotice.cancelButton.target = self
+        archiveNotice.cancelButton.action = #selector(cancelArchiveOpening(_:))
+        archiveNotice.retryButton.target = self
+        archiveNotice.retryButton.action = #selector(retryArchiveOpening(_:))
+        archiveNotice.enclosingFolderButton.target = self
+        archiveNotice.enclosingFolderButton.action = #selector(openArchiveEnclosingFolder(_:))
         view.addSubview(viewHost)
         view.addSubview(statusBar)
         let h = activeIndicator.heightAnchor.constraint(equalToConstant: 0)
@@ -301,7 +323,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             activeIndicator.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             activeIndicator.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             h,
-            viewHost.topAnchor.constraint(equalTo: searchPanel.view.bottomAnchor),
+            archiveNoticeHost.topAnchor.constraint(equalTo: searchPanel.view.bottomAnchor),
+            archiveNoticeHost.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            archiveNoticeHost.trailingAnchor.constraint(equalTo: view.trailingAnchor), noticeHeight,
+            viewHost.topAnchor.constraint(equalTo: archiveNoticeHost.bottomAnchor),
             viewHost.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             viewHost.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             viewHost.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
@@ -457,6 +482,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func prepareSearchDisplay() {
         saveViewState()
         navigationGeneration += 1
+        clearArchiveNotice()
         refreshDebounce?.cancel()
         watcher = nil
         lastError = nil
@@ -466,13 +492,16 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     // MARK: - Navigation
 
-    var canGoBack: Bool { isSearching || history.canGoBack }
+    var canGoBack: Bool { isPreparingArchive || isSearching || history.canGoBack }
     var canGoForward: Bool { history.canGoForward }
-    var canGoUp: Bool { currentURL.map { $0.path != "/" } ?? false }
+    var canGoUp: Bool { (currentURL ?? failedArchive?.source ?? openingArchive?.source).map { $0.path != "/" } ?? false }
 
     func navigate(to url: URL) {
         saveViewState()
         leaveSearchContext()
+        stopArchivePreparation()
+        clearArchiveNotice()
+        suspendedNavigation = nil
         let workspace = ArchiveWorkspace.shared
         let logical = workspace.logicalURL(for: url)
         workspaceNavigationURL = logical
@@ -487,16 +516,17 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         } else if AppPreferences.experimentalZIPBrowsingEnabled, let archive = workspace.archiveURL(containing: logical) {
             isPreparingArchive = true
             fileView.isReadOnly = true
+            openingArchive = (archive, logical)
             statusBar.beginBusy()
-            workspace.prepare(archive: archive) { [weak self] result in
-                guard let self else { return }
-                self.statusBar.endBusy()
-                guard self.navigationGeneration == generation else { return }
-                self.isPreparingArchive = false
-                self.fileView.isReadOnly = self.isBrowsingArchive
+            archiveNotice.showOpening(archive)
+            mountArchiveNotice()
+            updateStatus()
+            archivePreparation = workspace.prepare(archive: archive) { [weak self] result in
+                guard let self, self.navigationGeneration == generation else { return }
+                self.stopArchivePreparation()
                 switch result {
                 case .success: self.enterPreparedArchive(logical)
-                case .failure(let error): self.showArchiveError(error)
+                case .failure(let error): self.showArchiveError(error, archive: archive, target: logical)
                 }
             }
         } else {
@@ -512,22 +542,99 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             guard FileItem(url: physical)?.isNavigable == true else { throw ArchiveBrowsingSession.SessionError.notDirectory }
             history.push(logical)
             load(logical)
-        } catch { showArchiveError(error) }
+        } catch {
+            showArchiveError(error, archive: ArchiveWorkspace.shared.archiveURL(containing: logical) ?? logical,
+                             target: logical)
+        }
     }
 
-    private func showArchiveError(_ error: Error) {
+    private func mountArchiveNotice() {
+        _ = view
+        lastError = nil
+        errorLabel.isHidden = true
+        guard archiveNotice.superview == nil else { return }
+        archiveNoticeHeight?.isActive = false
+        archiveNoticeHost.pinToEdges(archiveNotice)
+    }
+
+    private func clearArchiveNotice() {
+        failedArchive = nil
+        archiveNotice.removeFromSuperview()
+        archiveNoticeHeight?.isActive = true
+    }
+
+    private func stopArchivePreparation() {
+        archivePreparation?.cancel()
+        archivePreparation = nil
+        openingArchive = nil
+        if isPreparingArchive { statusBar.endBusy() }
+        isPreparingArchive = false
+        fileView.isReadOnly = isBrowsingArchive
+    }
+
+    @objc func cancelArchiveOpening(_ sender: Any?) {
+        guard let openingArchive else { return }
+        navigationGeneration += 1
+        stopArchivePreparation()
+        clearArchiveNotice()
+        if let currentURL {
+            workspaceNavigationURL = ArchiveWorkspace.shared.logicalURL(for: currentURL)
+            onWorkspaceSessionChanged?()
+            updateStatus()
+        } else {
+            navigate(to: openingArchive.source.deletingLastPathComponent())
+        }
+        view.window?.makeFirstResponder(focusView)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if isPreparingArchive { cancelArchiveOpening(sender) }
+        else { super.cancelOperation(sender) }
+    }
+
+    @objc func retryArchiveOpening(_ sender: Any?) {
+        if let failedArchive { navigate(to: failedArchive.target) }
+    }
+
+    @objc func openArchiveEnclosingFolder(_ sender: Any?) {
+        if let failedArchive { navigate(to: failedArchive.source.deletingLastPathComponent()) }
+    }
+
+    /// Closed tabs retain controllers for Reopen Closed Tab. Stop the worker
+    /// now, then retry the requested location only if that tab is reopened.
+    func suspendPendingNavigation() {
+        if let openingArchive { suspendedNavigation = openingArchive.target }
+        else if navigationGeneration == 0 { suspendedNavigation = workspaceNavigationURL }
+        navigationGeneration += 1
+        stopArchivePreparation()
+        if suspendedNavigation != nil { clearArchiveNotice() }
+    }
+
+    func resumePendingNavigation() {
+        if let suspendedNavigation { navigate(to: suspendedNavigation) }
+    }
+
+    private func showArchiveError(_ error: Error, archive: URL? = nil, target: URL? = nil) {
         // Failed navigation leaves the existing directory on screen. Persist
         // that location, so a subsequent search keeps its true browsing origin.
         // With no prior directory (startup), retain the requested ZIP to retry.
         if let currentURL { workspaceNavigationURL = ArchiveWorkspace.shared.logicalURL(for: currentURL) }
-        lastError = error
-        errorLabel.stringValue = error.localizedDescription
-        errorLabel.isHidden = false
-        errorLabel.toolTip = error.localizedDescription
+        if let archive, let target {
+            failedArchive = (archive, target)
+            archiveNotice.showFailure(archive, error: error)
+            mountArchiveNotice()
+        } else {
+            lastError = error
+            errorLabel.stringValue = error.localizedDescription
+            errorLabel.isHidden = false
+            errorLabel.toolTip = error.localizedDescription
+        }
+        updateStatus()
         onWorkspaceSessionChanged?()
     }
 
     func goBack() {
+        if isPreparingArchive { cancelArchiveOpening(nil); return }
         if isSearching { closeSearch(); return }
         saveViewState()
         if let url = history.goBack() { load(url) }
@@ -539,9 +646,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     func goUp() {
-        guard let currentURL, canGoUp else { return }
-        let leftName = currentURL.lastPathComponent
-        navigate(to: currentURL.deletingLastPathComponent())
+        guard let location = currentURL ?? failedArchive?.source ?? openingArchive?.source, canGoUp else { return }
+        let leftName = location.lastPathComponent
+        navigate(to: location.deletingLastPathComponent())
         // Coming up out of a folder, the folder we left is the natural selection.
         pendingSelection = leftName
     }
@@ -573,6 +680,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc private func historyMenuItem(_ sender: NSMenuItem) { goToHistory(slot: sender.tag) }
 
     func reload() {
+        if failedArchive != nil { retryArchiveOpening(nil); return }
+        if isPreparingArchive { return }
         if isSearching { restartSearch(); return }
         if let currentURL, Self.persistenceKey(for: currentURL) != viewPropertiesKey {
             load(currentURL)
@@ -1280,7 +1389,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private func load(_ url: URL) {
         leaveSearchContext()
         navigationGeneration += 1
-        isPreparingArchive = false
+        stopArchivePreparation()
+        clearArchiveNotice()
+        suspendedNavigation = nil
         let destinationKey = Self.persistenceKey(for: url)
         let sameLocation = currentURL?.standardizedFileURL == url.standardizedFileURL
         let retargeted = sameLocation && viewPropertiesKey != destinationKey

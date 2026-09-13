@@ -1,5 +1,7 @@
 # Dolphin 终端面板与 Tursora 实验功能
 
+> 下文保留 2026-09-12 初版与验证记录；2026-09-13 起两项功能默认启用，开关保留，新增取消 / 重试及终端状态打磨见[后续记录](default-features-polish.md)。
+
 2026-09-12。对照本地 `upstream/dolphin/src`；终端实现采用官方 [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm/tree/v1.15.0)，SPM 固定 `1.15.0`（`dd2fb8ac5b861e7bf617c872895e338f38165648`）。
 
 ## 源码证据

@@ -12,23 +12,38 @@ enum SettingsSmokeTests {
         defer { defaults.removePersistentDomain(forName: domain) }
         let center = NotificationCenter()
         let store = AppPreferences.Store(defaults: defaults, notificationCenter: center)
-        check("settings: new installs show extensions with experiments disabled",
-              store.showFileExtensions && !store.experimentalTerminalEnabled && !store.experimentalZIPBrowsingEnabled)
+        check("settings: new installs show extensions with terminal and ZIP browsing enabled",
+              store.showFileExtensions && store.experimentalTerminalEnabled && store.experimentalZIPBrowsingEnabled)
         check("settings: filter defaults to Command F", store.filterShortcut == .defaultFilter)
         check("settings: workspace restoration defaults on", store.restoreWorkspaceOnLaunch)
+        let freshController = SettingsWindowController(preferences: store, workspaceStore: WorkspaceSessionStore(fileURL: nil))
+        check("settings UI: fresh controls enable both features without saving a choice",
+              freshController.terminalCheckbox.state == .on && freshController.zipCheckbox.state == .on
+              && defaults.object(forKey: "experimentalTerminalEnabled") == nil
+              && defaults.object(forKey: "experimentalZIPBrowsingEnabled") == nil)
+        freshController.close()
         let changes = Counter()
         let observer = center.addObserver(forName: .tursoraPreferencesChanged, object: store, queue: nil) { _ in
             changes.value += 1
         }
         defer { center.removeObserver(observer) }
-        store.showFileExtensions = false
+        check("settings: reading defaults does not write feature choices",
+              defaults.object(forKey: "experimentalTerminalEnabled") == nil
+              && defaults.object(forKey: "experimentalZIPBrowsingEnabled") == nil)
         store.experimentalTerminalEnabled = true
         store.experimentalZIPBrowsingEnabled = true
+        check("settings: explicit default choices are saved without unnecessary notifications",
+              defaults.object(forKey: "experimentalTerminalEnabled") as? Bool == true
+              && defaults.object(forKey: "experimentalZIPBrowsingEnabled") as? Bool == true
+              && changes.value == 0)
+        store.showFileExtensions = false
+        store.experimentalTerminalEnabled = false
+        store.experimentalZIPBrowsingEnabled = false
         let restored = AppPreferences.Store(defaults: defaults, notificationCenter: center)
         check("settings: all toggles persist across preference instances",
-              !restored.showFileExtensions && restored.experimentalTerminalEnabled && restored.experimentalZIPBrowsingEnabled)
+              !restored.showFileExtensions && !restored.experimentalTerminalEnabled && !restored.experimentalZIPBrowsingEnabled)
         check("settings: changes publish one notification each", changes.value == 3)
-        store.experimentalTerminalEnabled = true
+        store.experimentalTerminalEnabled = false
         check("settings: unchanged values do not cause redundant refreshes", changes.value == 3)
 
         let controlI = AppPreferences.Shortcut(keyEquivalent: "i", modifierFlags: .control)
@@ -70,16 +85,16 @@ enum SettingsSmokeTests {
 
         let controller = SettingsWindowController(preferences: store, workspaceStore: WorkspaceSessionStore(fileURL: nil))
         check("settings UI: controls reflect persisted preferences",
-              controller.extensionsCheckbox.state == .off && controller.terminalCheckbox.state == .on
-              && controller.zipCheckbox.state == .on && controller.shortcutRecorder.shortcut == controlI)
+              controller.extensionsCheckbox.state == .off && controller.terminalCheckbox.state == .off
+              && controller.zipCheckbox.state == .off && controller.shortcutRecorder.shortcut == controlI)
         controller.extensionsCheckbox.state = .on
         controller.toggleExtensions(controller.extensionsCheckbox)
-        controller.terminalCheckbox.state = .off
+        controller.terminalCheckbox.state = .on
         controller.toggleTerminal(controller.terminalCheckbox)
-        controller.zipCheckbox.state = .off
+        controller.zipCheckbox.state = .on
         controller.toggleZIPBrowsing(controller.zipCheckbox)
         check("settings UI: controls apply all three settings immediately",
-              store.showFileExtensions && !store.experimentalTerminalEnabled && !store.experimentalZIPBrowsingEnabled)
+              store.showFileExtensions && store.experimentalTerminalEnabled && store.experimentalZIPBrowsingEnabled)
         check("settings UI: startup option initially reflects the stored preference", controller.restoreWorkspaceCheckbox.state == .on)
         controller.restoreWorkspaceCheckbox.performClick(nil)
         check("settings UI: startup action persists and refreshes its control", !restored.restoreWorkspaceOnLaunch && controller.restoreWorkspaceCheckbox.state == .off)
@@ -95,9 +110,9 @@ enum SettingsSmokeTests {
         check("settings UI: Reset restores Command F and clears the error",
               store.filterShortcut == .defaultFilter && controller.shortcutRecorder.shortcut == .defaultFilter
               && controller.shortcutMessage.stringValue.isEmpty)
-        store.experimentalTerminalEnabled = true
-        check("settings UI: external preference changes refresh controls", controller.terminalCheckbox.state == .on)
         store.experimentalTerminalEnabled = false
+        check("settings UI: external preference changes refresh controls", controller.terminalCheckbox.state == .off)
+        store.experimentalTerminalEnabled = true
         controller.shortcutRecorder.startRecording(nil)
         let recordedEvent = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .control,
                                             timestamp: 0, windowNumber: 0, context: nil,

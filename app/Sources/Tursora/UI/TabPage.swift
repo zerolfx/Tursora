@@ -85,6 +85,7 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
         let wasActive = pane === active
         pane.addressBar.endEditing(returnFocus: false)
         pane.searchPanel.cancelPendingSearch()
+        pane.suspendPendingNavigation()
         panes.remove(at: i)
         if isViewLoaded { detach(pane) }
         removeMonitor()

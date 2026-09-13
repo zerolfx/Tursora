@@ -220,7 +220,8 @@ enum WorkspaceSessionSmokeTests {
         let archiveBytes = try Data(contentsOf: archive)
         let logical = archive.appendingPathComponent(source.lastPathComponent).appendingPathComponent(nested.lastPathComponent)
         let views = DirectoryViewPropertiesStore(fileURL: fixture.appendingPathComponent("zip-session-views.json"))
-        let originalPreference = AppPreferences.experimentalZIPBrowsingEnabled
+        let zipKey = "experimentalZIPBrowsingEnabled"
+        let originalPreference = UserDefaults.standard.object(forKey: zipKey)
         var windows: [MainWindowController] = []
         var extracted: [ArchiveBrowsingSession] = []
         defer {
@@ -228,9 +229,10 @@ enum WorkspaceSessionSmokeTests {
             // Release only snapshots prepared by this fixture. Closing the
             // shared registry would disable subsequent archive smoke tests.
             extracted.forEach { $0.close() }
-            AppPreferences.experimentalZIPBrowsingEnabled = originalPreference
+            restorePreference(originalPreference, forKey: zipKey)
         }
-        AppPreferences.experimentalZIPBrowsingEnabled = true
+        restorePreference(nil, forKey: zipKey)
+        check("ZIP sessions restore with the fresh browsing default", AppPreferences.experimentalZIPBrowsingEnabled)
         let original = makeWindow(at: folders[0], store: views)
         windows.append(original)
         await listed(original.browser, at: folders[0])
@@ -398,6 +400,11 @@ enum WorkspaceSessionSmokeTests {
     }
 
     @MainActor private static func applicationLifecycle(folders: [URL], fixture: URL) async throws {
+        let terminalKey = "experimentalTerminalEnabled"
+        let originalTerminalPreference = UserDefaults.standard.object(forKey: terminalKey)
+        defer { restorePreference(originalTerminalPreference, forKey: terminalKey) }
+        restorePreference(nil, forKey: terminalKey)
+        check("workspace lifecycle uses the fresh enabled terminal preference", AppPreferences.experimentalTerminalEnabled)
         let domain = "com.tursora.workspace-smoke." + UUID().uuidString
         let defaults = UserDefaults(suiteName: domain)!
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -427,6 +434,7 @@ enum WorkspaceSessionSmokeTests {
         let first = delegate(store)
         first.beginWorkspaceSession(showWindows: false)
         check("launch restores every saved window without an extra Home", first.windowControllers.count == 2 && first.currentWorkspaceState.windows.map { $0.tabs[0].panes[0].url } == [folders[1], folders[3]])
+        check("restoring windows and split panes never creates a default-enabled terminal", first.windowControllers.allSatisfy { $0.terminalPanel == nil })
         check("launch restores the active window index", first.currentWorkspaceState.activeWindowIndex == 1)
         check("launch retains split focus and custom title", first.windowControllers[0].tabs.currentPage.activeIndex == 1 && first.windowControllers[0].tabs.currentPage.customTitle == "Comparison")
         let windowIDs = first.windowControllers.map(ObjectIdentifier.init)
@@ -436,6 +444,7 @@ enum WorkspaceSessionSmokeTests {
         let backgroundPane = first.windowControllers[0].tabs.currentPage.panes[0]
         backgroundPane.navigate(to: folders[4])
         await listed(backgroundPane, at: folders[4])
+        check("background navigation leaves every terminal panel uncreated", first.windowControllers.allSatisfy { $0.terminalPanel == nil })
         await wait("background navigation is saved by the app debounce") {
             guard case .loaded(let value) = store.load() else { return false }
             return value.windows[0].tabs[0].panes[0].url == folders[4]
@@ -459,6 +468,9 @@ enum WorkspaceSessionSmokeTests {
         first.prepareWorkspaceForTermination()
         check("immediate quit saves the final location before asynchronous listing", loaded(store)?.windows[0].tabs[0].panes[0].url == folders[1])
         let quittingData = try Data(contentsOf: file)
+        backgroundPane.navigate(to: folders[2])
+        first.prepareWorkspaceForTermination()
+        check("repeated termination preparation cannot overwrite the first quit snapshot", try Data(contentsOf: file) == quittingData)
         first.windowControllers.forEach { $0.close() }
         try? await Task.sleep(nanoseconds: 500_000_000)
         check("quit cleanup cannot replace the saved windows with an empty session", try Data(contentsOf: file) == quittingData)
@@ -474,6 +486,8 @@ enum WorkspaceSessionSmokeTests {
         let empty = delegate(WorkspaceSessionStore(fileURL: file))
         empty.beginWorkspaceSession(showWindows: false)
         check("an explicitly empty session launches one Home window", empty.windowControllers.count == 1 && empty.currentWorkspaceState.windows[0].tabs[0].panes[0].url == folders[0])
+        await listed(empty.windowControllers[0].browser, at: folders[0])
+        check("launching Home with the terminal enabled keeps its panel uncreated", empty.windowControllers[0].terminalPanel == nil)
         empty.prepareWorkspaceForTermination()
         empty.windowControllers.forEach { $0.close() }
 
@@ -481,9 +495,12 @@ enum WorkspaceSessionSmokeTests {
         check("explicit-open fixture saves its old workspace", explicitStore.save(session))
         let explicit = delegate(explicitStore)
         let requested = explicit.newWindow(at: folders[4], show: false, cascade: false)
+        await listed(requested.browser, at: folders[4])
+        check("an explicit new window does not eagerly construct a terminal", requested.terminalPanel == nil)
         explicit.beginWorkspaceSession(showWindows: false)
         check("a prelaunch explicit request coexists with restored windows", explicit.windowControllers.count == 3 && explicit.windowControllers[0] === requested)
         check("the explicit request remains the active launch destination", explicit.currentWorkspaceState.activeWindowIndex == 0 && requested.workspaceSessionState.tabs[0].panes[0].url == folders[4])
+        check("combining an explicit window with a restored workspace leaves all terminals uncreated", explicit.windowControllers.allSatisfy { $0.terminalPanel == nil })
         explicit.prepareWorkspaceForTermination()
         explicit.windowControllers.forEach { $0.close() }
 
@@ -585,6 +602,12 @@ enum WorkspaceSessionSmokeTests {
 
     private static func frame(_ state: WorkspaceWindowFrame) -> NSRect {
         NSRect(x: state.x, y: state.y, width: state.width, height: state.height)
+    }
+
+    private static func restorePreference(_ value: Any?, forKey key: String) {
+        if let value { UserDefaults.standard.set(value, forKey: key) }
+        else { UserDefaults.standard.removeObject(forKey: key) }
+        NotificationCenter.default.post(name: .tursoraPreferencesChanged, object: AppPreferences.shared)
     }
 
     @MainActor private static func allListed(_ wc: MainWindowController, state: WorkspaceWindowState) async {

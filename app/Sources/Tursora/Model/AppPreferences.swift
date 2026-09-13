@@ -127,11 +127,11 @@ enum AppPreferences {
             set { set(newValue, forKey: Key.workspace, oldValue: restoreWorkspaceOnLaunch) }
         }
         var experimentalTerminalEnabled: Bool {
-            get { defaults.bool(forKey: Key.terminal) }
+            get { defaults.object(forKey: Key.terminal) == nil ? true : defaults.bool(forKey: Key.terminal) }
             set { set(newValue, forKey: Key.terminal, oldValue: experimentalTerminalEnabled) }
         }
         var experimentalZIPBrowsingEnabled: Bool {
-            get { defaults.bool(forKey: Key.zip) }
+            get { defaults.object(forKey: Key.zip) == nil ? true : defaults.bool(forKey: Key.zip) }
             set { set(newValue, forKey: Key.zip, oldValue: experimentalZIPBrowsingEnabled) }
         }
         var filterShortcut: Shortcut {
@@ -157,9 +157,12 @@ enum AppPreferences {
         }
 
         private func set(_ value: Bool, forKey key: String, oldValue: Bool) {
-            guard oldValue != value else { return }
-            defaults.set(value, forKey: key)
-            notify()
+            // Record explicit choices even when they match today's default.
+            // Future default changes must not overwrite that intent.
+            if defaults.object(forKey: key) == nil || defaults.bool(forKey: key) != value {
+                defaults.set(value, forKey: key)
+            }
+            if oldValue != value { notify() }
         }
         private func notify() { notificationCenter.post(name: .tursoraPreferencesChanged, object: self) }
     }

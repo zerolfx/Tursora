@@ -101,19 +101,19 @@
         </article>
         <article class="feature-panel" id="feature-zip" data-panel>
           <div class="feature-copy">
-            <p class="feature-index">03 / ZIP 浏览 <span class="experiment-tag">可选实验</span></p>
+            <p class="feature-index">03 / ZIP 浏览 <span class="experiment-tag">默认启用</span></p>
             <h3>包里的文件，<br>也在眼前。</h3>
-            <p>启用后，ZIP 会在当前窗格展开。沿用地址栏和分栏，预览文件，或把需要的内容复制出来。</p>
+            <p>打开 ZIP，它会在当前窗格展开。沿用地址栏和分栏，预览文件，或把需要的内容复制出来。</p>
             <p class="feature-detail">归档内容只读。打开的是临时副本，编辑不会写回 ZIP；副本保留到 Tursora 退出。</p>
-            <div class="shortcut"><kbd>⌘ ,</kbd><span>在设置中启用 ZIP 浏览</span></div>
-            <a class="inline-link" href="#experiments">了解实验功能的边界 <span aria-hidden="true">↗</span></a>
+            <div class="shortcut"><kbd>⌘ ,</kbd><span>在设置中调整 ZIP 浏览</span></div>
+            <a class="inline-link" href="#experiments">了解终端与 ZIP 的使用方式 <span aria-hidden="true">↗</span></a>
           </div>
           <figure>
             <a class="screenshot-link" href="assets/zip-browsing.png" data-viewer data-title="ZIP 浏览：在同一窗格中读取归档内容" aria-label="查看 ZIP 浏览完整截图">
               <img src="assets/zip-browsing.png" width="1241" height="590" alt="ZIP 内容在 Tursora 原有窗格中显示，地址栏保留归档路径，状态栏标记只读。" loading="lazy">
               <span class="image-expand" aria-hidden="true">查看大图 <span>↗</span></span>
             </a>
-            <figcaption>默认关闭；未启用时，打开 ZIP 仍会解压到原文件旁。</figcaption>
+            <figcaption>默认启用，可在设置中关闭；需要解压时，选择原 ZIP 使用 Extract。</figcaption>
           </figure>
         </article>
       </div>
@@ -135,12 +135,12 @@
     <section class="experiments wrap" id="experiments" aria-labelledby="experiments-title">
       <div class="experiments-heading">
         <p class="eyebrow">需要时，再打开</p>
-        <h2 id="experiments-title">两项实验，由你选择。</h2>
-        <p>终端面板和 ZIP 浏览均默认关闭，在 <span lang="en">Tursora → Settings…</span> 中启用。</p>
+        <h2 id="experiments-title">终端与 ZIP，随手可用。</h2>
+        <p>终端入口和 ZIP 浏览均默认启用，可在 <span lang="en">Tursora → Settings…</span> 中关闭；已有设置会保留。本次改进将在下一版发布，0.1.0 中可在设置中开启这两项功能。</p>
       </div>
       <div class="experiment-notes">
-        <div><h3>在文件旁边，接着用终端 <span>F4</span></h3><p>启用后，按 F4 展开集成终端。切换目录只更新手动重启的目标，不向运行中的 Shell 注入命令；隐藏面板会结束会话。</p></div>
-        <div><h3>把 ZIP 当作只读目录浏览</h3><p>仅支持普通 ZIP。打开的临时副本会在应用退出时清理；需要保留编辑，请在外部应用中“另存为”。不支持密码 ZIP 或直接写回归档。</p></div>
+        <div><h3>在文件旁边，接着用终端 <span>F4</span></h3><p>按 F4 展开集成终端时才启动 Shell。切换目录会显示手动重启的目标，不向运行中的 Shell 注入命令；隐藏面板会结束会话。</p></div>
+        <div><h3>把 ZIP 当作只读目录浏览</h3><p>打开过程中可以取消，失败后可以重试或返回所在文件夹。仅支持普通 ZIP。打开的临时副本会在应用退出时清理；需要保留编辑，请在外部应用中“另存为”。不支持密码 ZIP 或直接写回归档。</p></div>
       </div>
     </section>
 

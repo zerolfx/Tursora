@@ -2,10 +2,11 @@ import AppKit
 import Darwin
 import SwiftTerm
 
-/// Exercises the PTY without creating a terminal view or reading user rc files.
+/// Header/delegate checks use terminal views without processes. PTY checks use
+/// an isolated /bin/sh and never read the user's shell configuration.
 enum TerminalSmokeTests {
     static func run(completion: @escaping () -> Void) {
-        print("== experimental terminal ==")
+        print("== terminal ==")
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-terminal-" + UUID().uuidString)
         let directory = root.appendingPathComponent("quoted ' folder; $HOME", isDirectory: true)
         do {
@@ -15,6 +16,7 @@ enum TerminalSmokeTests {
         check("terminal: directory and shell are separate argv values", configuration.arguments[3] == directory.path && configuration.arguments[4] == "/bin/sh" && !configuration.arguments[1].contains(directory.path))
         check("terminal: wrapper refuses a failed directory change", configuration.arguments[1].contains("cd -- \"$1\" || exit 1"))
         check("terminal: terminal capabilities are explicit", configuration.environment.contains("TERM=xterm-256color") && configuration.environment.contains("COLORTERM=truecolor"))
+        presentationChecks(in: directory)
         let controller = TerminalPanelController(initialDirectory: directory)
         _ = controller.view
         controller.followDirectory(root)
@@ -23,6 +25,7 @@ enum TerminalSmokeTests {
         controller.shutdown()
         controller.shutdown()
         check("terminal: shutdown before launch is idempotent", !controller.isRunning)
+        headerChecks(in: directory, destination: root)
 
         let probe = PTYProbe()
         probe.process.startProcess(executable: "/bin/sh", args: ["-f", "-i"], environment: [
@@ -64,6 +67,78 @@ enum TerminalSmokeTests {
                 }
             }
         }
+    }
+
+    private static func presentationChecks(in directory: URL) {
+        let destination = directory.appendingPathComponent("second", isDirectory: true)
+        var display = TerminalPanelPresentation(state: .running, startedDirectory: directory)
+        check("terminal: launch path is labelled as initial rather than current cwd", display.locationText.hasPrefix("Started in: ") && display.reportedDirectory == nil)
+        check("terminal: restart destination is visible independently of shell location", display.destinationText(destination).hasPrefix("Restart in: ") && display.destinationText(destination).contains("second") && !display.locationText.contains("second"))
+        display.reportedDirectory = destination
+        check("terminal: a reported cwd has an explicit shell label", display.locationText.hasPrefix("Shell folder: ") && display.locationText.contains("second"))
+        display.state = .ended
+        let ended = display.locationText
+        check("terminal: ended sessions offer Start while preserving their status", ended.contains("Session ended") && display.actionTitle == "Start in Current Folder" && display.destinationText(directory).hasPrefix("Start in: ") && display.locationText == ended)
+        display.state = .failedToStart
+        let failure = display.locationText
+        check("terminal: failed starts survive destination changes", failure == "Could not start the terminal." && display.destinationText(destination).contains("second") && display.locationText == failure)
+        display = TerminalPanelPresentation(state: .running, startedDirectory: URL(fileURLWithPath: "/tmp/folder\nnext"))
+        check("terminal: path control characters cannot add header lines", !display.locationText.contains("\n") && display.locationText.contains("�"))
+
+        let hosts: Set<String> = ["fixture-mac.local", "fixture-mac"]
+        let valid = ["file:///tmp/Folder%20Name", "file://localhost/tmp/Folder%20Name", "file://FIXTURE-MAC.local/tmp/Folder%20Name"]
+        check("terminal: local and known-host OSC paths decode safely", valid.allSatisfy { TerminalPanelPresentation.localDirectory($0, localHostNames: hosts)?.path == "/tmp/Folder Name" })
+        let invalid = ["https://localhost/tmp", "file://other-mac.local/tmp", "file://user@localhost/tmp", "file://localhost:42/tmp", "file:///tmp/%00bad", "file:///tmp/name?query", "file:///tmp/name#fragment", "relative/path", "file:relative"]
+        check("terminal: remote, decorated and malformed OSC paths are ignored", invalid.allSatisfy { TerminalPanelPresentation.localDirectory($0, localHostNames: hosts) == nil })
+        check("terminal: missing cwd reports do not invent a location", TerminalPanelPresentation.localDirectory(nil, localHostNames: hosts) == nil)
+    }
+
+    private static func headerChecks(in directory: URL, destination: URL) {
+        let controller = TerminalPanelController(initialDirectory: directory, localHostNames: ["fixture-mac.local"])
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 180),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = controller
+        // Installing a controller adopts its fitting size. Set the intended
+        // browser width afterwards before asserting its actual header layout.
+        window.setContentSize(NSSize(width: 560, height: 180))
+        defer { controller.shutdown(); window.close() }
+        window.contentView?.layoutSubtreeIfNeeded()
+        check("terminal: opening header never starts a shell in smoke mode", controller.terminalView == nil && !controller.isRunning)
+        check("terminal: first-open header exposes its start destination", controller.destinationLabel.stringValue.hasPrefix("Start in: ") && controller.restartButton.title == "Start in Current Folder")
+
+        let original = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 560, height: 120))
+        controller.installTerminal(original, in: directory)
+        check("terminal: view installation is separate from process launch", original.process.shellPid == 0 && !controller.isRunning)
+        controller.followDirectory(destination)
+        check("terminal: navigation changes only visible restart target", controller.sessionDirectory?.path == directory.path && controller.locationLabel.stringValue.hasPrefix("Started in: ") && controller.destinationLabel.stringValue == "Restart in: \((destination.path as NSString).abbreviatingWithTildeInPath)")
+        controller.hostCurrentDirectoryUpdate(source: original, directory: "file://fixture-mac.local/tmp/Shell%20Folder")
+        check("terminal: active source updates the labelled shell folder", controller.sessionDirectory?.path == "/tmp/Shell Folder" && controller.locationLabel.stringValue.hasPrefix("Shell folder: ") && controller.pendingDirectory == destination)
+        controller.hostCurrentDirectoryUpdate(source: original, directory: "file://other-mac.local/tmp/Foreign")
+        check("terminal: remote-host report cannot alter visible shell state", controller.sessionDirectory?.path == "/tmp/Shell Folder")
+
+        let replacement = LocalProcessTerminalView(frame: original.frame)
+        controller.installTerminal(replacement, in: destination)
+        controller.hostCurrentDirectoryUpdate(source: original, directory: "file:///tmp/Stale")
+        controller.processTerminated(source: original, exitCode: 0)
+        check("terminal: old view callbacks cannot replace a restarted session", controller.terminalView === replacement && controller.sessionDirectory?.path == destination.path && controller.locationLabel.stringValue.hasPrefix("Started in: ") && original.superview == nil)
+        controller.processTerminated(source: replacement, exitCode: 0)
+        let ended = controller.locationLabel.stringValue
+        controller.followDirectory(directory)
+        controller.hostCurrentDirectoryUpdate(source: replacement, directory: "file:///tmp/TooLate")
+        check("terminal: navigation and late cwd reports preserve natural exit", controller.locationLabel.stringValue == ended && ended.contains("Session ended") && controller.sessionDirectory?.path == destination.path && controller.restartButton.title == "Start in Current Folder")
+        check("terminal: natural exit keeps output view and shows the next target", controller.terminalView === replacement && replacement.superview != nil && controller.destinationLabel.stringValue.hasPrefix("Start in: ") && controller.pendingDirectory == directory)
+
+        window.contentView?.layoutSubtreeIfNeeded()
+        let bounds = controller.view.bounds
+        let actionFrame = controller.view.convert(controller.restartButton.bounds, from: controller.restartButton)
+        let statusFrame = controller.view.convert(controller.locationLabel.bounds, from: controller.locationLabel)
+        check("terminal: two-line header fits the minimum browser width", bounds.contains(actionFrame) && bounds.contains(statusFrame) && bounds.contains(controller.destinationLabel.frame) && controller.destinationLabel.frame.width >= 500 && replacement.frame.height > 0,
+              "bounds=\(bounds) action=\(actionFrame) status=\(statusFrame) destination=\(controller.destinationLabel.frame) terminal=\(replacement.frame)")
+        controller.shutdown()
+        controller.hostCurrentDirectoryUpdate(source: replacement, directory: "file:///tmp/AfterClose")
+        controller.processTerminated(source: replacement, exitCode: 1)
+        check("terminal: closed panel rejects late source callbacks", controller.terminalView == nil && controller.sessionDirectory == nil && !controller.isRunning)
     }
 
     private final class PTYProbe: LocalProcessDelegate {
@@ -110,8 +185,8 @@ enum TerminalSmokeTests {
         }
         poll()
     }
-    private static func check(_ name: String, _ condition: Bool) {
-        if condition { print("ok  \(name)") } else { fail(name, "") }
+    private static func check(_ name: String, _ condition: Bool, _ detail: String = "") {
+        if condition { print("ok  \(name)") } else { fail(name, detail) }
     }
     private static func fail(_ name: String, _ detail: String) -> Never {
         print("FAIL \(name) \(detail)")

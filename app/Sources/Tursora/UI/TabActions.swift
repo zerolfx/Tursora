@@ -57,7 +57,7 @@ extension TabPage {
             let name = pane.searchSession.request?.trimmedName ?? ""
             return name.isEmpty ? "Search Results" : "Search: \(name)"
         }
-        guard let url = pane.currentURL else { return "…" }
+        let url = pane.chromeLocationURL
         return pane.isBrowsingArchive ? url.lastPathComponent : provider.displayName(for: url)
     }
 
@@ -71,7 +71,7 @@ extension TabPage {
 
     var tabToolTip: String {
         let locations = panes.enumerated().map { index, pane in
-            let path = pane.currentURL.map { ArchiveWorkspace.shared.logicalURL(for: $0).path } ?? "…"
+            let path = ArchiveWorkspace.shared.logicalURL(for: pane.chromeLocationURL).path
             let location = pane.isSearching
                 ? "\(paneTitle(pane)) — \(pane.searchSession.request?.effectiveRootURL.path ?? path)"
                 : path

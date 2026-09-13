@@ -106,6 +106,7 @@ final class TabsController: NSViewController {
         for page in pages + closedTabs {
             page.panes.forEach {
                 $0.addressBar.endEditing(returnFocus: false)
+                $0.suspendPendingNavigation()
                 $0.searchPanel.cancelPendingSearch()
                 $0.searchSession.cancel()
             }
@@ -120,7 +121,7 @@ final class TabsController: NSViewController {
         }
         applyVisibility()
         refreshChrome()
-        if let url = current.currentURL { onCurrentLocationChanged?(url) }
+        onCurrentLocationChanged?(current.chromeLocationURL)
         view.window?.makeFirstResponder(current.focusView)
     }
 
@@ -142,7 +143,10 @@ final class TabsController: NSViewController {
         page.panes.forEach { $0.addressBar.endEditing(returnFocus: false) }
         detach(page)
         closedTabs.append(page)
-        page.panes.forEach { $0.searchPanel.cancelPendingSearch() }
+        page.panes.forEach {
+            $0.suspendPendingNavigation()
+            $0.searchPanel.cancelPendingSearch()
+        }
         if closedTabs.count > maxClosedTabs { closedTabs.removeFirst() }
         // Closing a background page must not change the current page. When
         // closing the current one, prefer its right neighbour, then its left.
@@ -166,6 +170,7 @@ final class TabsController: NSViewController {
         pages.append(page)
         if isViewLoaded { attach(page) }
         selectTab(at: pages.count - 1)
+        page.panes.forEach { $0.resumePendingNavigation() }
         for pane in page.panes where pane.searchPanel.isShowingOptions {
             if pane.searchPanel.currentRequest != pane.searchSession.request {
                 pane.searchPanel.scheduleSearch()
@@ -184,7 +189,7 @@ final class TabsController: NSViewController {
         applyVisibility()
         refreshChrome()
         guard changed else { return }
-        if let url = current.currentURL { onCurrentLocationChanged?(url) }
+        onCurrentLocationChanged?(current.chromeLocationURL)
         view.window?.makeFirstResponder(current.focusView)
     }
 
@@ -286,7 +291,7 @@ final class TabsController: NSViewController {
 
     private func afterPaneChange() {
         refreshChrome()
-        if let url = current.currentURL { onCurrentLocationChanged?(url) }
+        onCurrentLocationChanged?(current.chromeLocationURL)
     }
 
     // MARK: - Private
@@ -295,7 +300,12 @@ final class TabsController: NSViewController {
         let page = TabPage(provider: provider, initialURL: url, host: host, viewPropertiesStore: viewPropertiesStore)
         page.onWorkspaceSessionChanged = { [weak self, weak page] in
             guard let self, let page, self.pages.contains(where: { $0 === page }) else { return }
-            self.onWorkspaceSessionChanged?()
+            if page.panes.contains(where: { $0.currentURL == nil }) {
+                self.refreshChrome()
+                if page === self.currentPage {
+                    self.onCurrentLocationChanged?(page.active.chromeLocationURL)
+                }
+            } else { self.onWorkspaceSessionChanged?() }
         }
         page.onPaneLocationChanged = { [weak self, weak page] pane, url in
             guard let self, let page, self.pages.contains(where: { $0 === page }) else { return }
@@ -308,7 +318,7 @@ final class TabsController: NSViewController {
             guard let self, let page, self.pages.contains(where: { $0 === page }) else { return }
             self.refreshChrome()
             guard page === self.currentPage else { return }
-            if let url = pane.currentURL { self.onCurrentLocationChanged?(url) }
+            self.onCurrentLocationChanged?(pane.chromeLocationURL)
         }
         return page
     }

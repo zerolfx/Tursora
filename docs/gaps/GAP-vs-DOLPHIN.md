@@ -25,7 +25,7 @@
 |---|---|---|
 | **Folders 面板**（目录树，可与视图同步） | ❌ | `NSOutlineView` 树 |
 | Information 面板（预览 + 元数据 + 媒体自动播放、"悬停时显示"） | ❌ | (mac) Quick Look 覆盖预览；元数据面板可做成 Inspector |
-| Terminal 面板（内嵌终端，随目录同步，`switch_terminal_url_sync`） | ✅ 实验，默认关闭 | 原生 SwiftTerm 1.15.0 + PTY，F4；导航只更新手动 Restart 目标，不注入 cd，不做自动双向同步 |
+| Terminal 面板（内嵌终端，随目录同步，`switch_terminal_url_sync`） | ✅ 默认启用 | 原生 SwiftTerm 1.15.0 + PTY，F4；导航只更新手动 Restart 目标，不注入 cd，不做自动双向同步 |
 | Places：隐藏条目 / 显示全部、"最近使用"与"搜索"分组 | 部分 | 我们有增删拖拽重排、推出 ✅ |
 | 面板锁定 / 布局记忆 | 部分 | 会话恢复已实现侧栏宽度 / 折叠及分栏比例记忆，本轮验证待完成；面板锁定与终端布局恢复仍未实现 |
 
@@ -66,7 +66,7 @@
 | Dolphin 功能 | Tursora | 说明 |
 |---|---|---|
 | sftp / smb / webdav / ftp / fish | SMB / WebDAV 等系统挂载 ✅；SFTP / FTP / fish ❌ | NetFS 连接后复用本地浏览，另支持 NFS / legacy AFP；没有 KIO 后端，真实服务端仍待验证 |
-| `archive://` 浏览压缩包、`trash:/`、`recentlyused:/`、MTP、iOS(afc) | ZIP 浏览 ✅ 实验；其他 ❌ | ZIP 默认关闭，启用后在当前 pane 只读浏览，复用历史 / 地址栏 / 两种视图 / 分组 / 名称过滤，支持复制与拖出；使用临时副本，不实现 KIO 虚拟协议或归档写回 |
+| `archive://` 浏览压缩包、`trash:/`、`recentlyused:/`、MTP、iOS(afc) | ZIP 浏览 ✅；其他 ❌ | ZIP 默认启用，启用后在当前 pane 只读浏览，复用历史 / 地址栏 / 两种视图 / 分组 / 名称过滤，支持复制与拖出；使用临时副本，不实现 KIO 虚拟协议或归档写回 |
 
 ## F. 集成、设置与外观
 

@@ -14,7 +14,7 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 | **Get Info**（⌘I）/ Show Inspector（⌥⌘I）/ Get Summary Info（⌃⌘I） | ✅ 已做 | — | 默认 General / Preview 展开、其余折叠，记住显式选择；[证据](../research/info-disclosures.md)。未做：Stationery pad、ACL、改 owner/group（要提权，无公开 API → 单独算 L）、Apply to enclosed items |
 | **Rename（多选 = 批量重命名对话框）** | 单选 ✅ 批量 ❌ | M | 替换文本 / 添加文本 / 格式三种模式；连锁改名（a→b 而 b 也在批里）要两遍临时名 |
 | **New Folder with Selection**（⌃⌘N） | ❌ | S | createDirectory + 现有 transfer；撤销要合成一个组 |
-| **Compress** / Compress with password | 普通 ZIP ✅；密码 ❌ | 密码 M | 压缩 / 解压支持重名保留、撤销重做；可选当前 pane 只读 ZIP 浏览默认关闭（浏览交互参考 Windows） |
+| **Compress** / Compress with password | 普通 ZIP ✅；密码 ❌ | 密码 M | 压缩 / 解压支持重名保留、撤销重做；可选当前 pane 只读 ZIP 浏览默认启用（浏览交互参考 Windows） |
 | **Make Alias**（⌃⌘A）/ Show Original（⌘R） | ❌ | M | `URL.bookmarkData(options: .suitableForBookmarkFile)` + `writeBookmarkData`；⌘R 与我们的 Reload 冲突 |
 | Always Open With（⌥ + Open With） | ❌ | S | `setDefaultApplication(at:toOpen:)`（已在 Get Info 的 Change All 用上）；上下文菜单要保留备选项对 |
 | **Show Package Contents** | ❌ | S | 右键 .app 直接 navigate 进包目录 |
@@ -74,7 +74,7 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
 | **Spring-loaded folders** | ❌ | M | `NSSpringLoadingDestination`，列表、图标、侧栏、面包屑四处；NSOutlineView 自带的悬停展开不能重复触发 |
-| **Finder 设置窗口** | ✅ 基础设置与目录视图策略 | 扩展项 M–L | 扩展名显示、过滤快捷键、每目录记忆 / 统一默认、默认关闭的终端 / ZIP 浏览实验；废纸篓策略、Keep folders on top 等未实现 |
+| **Finder 设置窗口** | ✅ 基础设置与目录视图策略 | 扩展项 M–L | 扩展名显示、过滤快捷键、每目录记忆 / 统一默认、默认启用的终端 / ZIP 浏览实验；废纸篓策略、Keep folders on top 等未实现 |
 | 显示/隐藏文件扩展名 + 改扩展名警告 | 显示开关 ✅；警告 ❌ | 警告 M | 全局只改列表 / 图标标签，普通文件夹名不变；重命名、排序、过滤保留真名；不是 Finder 逐文件 flag 策略的完整复制 |
 | Quick Actions（Rotate / Markup / Create PDF） | ❌ | L | Finder 的注册表是私有的，Markup 无公开 API；只能自己实现 Rotate/Create PDF |
 | 右键 ▸ Services 菜单 | ❌ | S | `NSApp.servicesMenu`；一个 NSMenu 只能有一个父菜单，上下文菜单要复制 |
@@ -99,7 +99,7 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 - [x] Connect to Server（⌘K）与系统挂载网络卷的浏览 / Eject；真实服务端互操作尚未实测。
 - [x] 基础设置窗口、扩展名显示开关、自定义名称过滤快捷键。
 - [x] 每目录视图记忆、统一默认、保存当前默认与恢复目录默认；列表 / 图标均保存，完整 Finder 视图选项对话框仍未实现。自动与实机验证见本功能 [HANDOFF](../HANDOFF.md)。
-- [x] 默认关闭的终端面板与当前 pane ZIP 只读浏览实验；归档支持复制 / 拖出、Quick Look 与分享，不支持写回。
+- [x] 默认启用的终端面板与当前 pane ZIP 只读浏览实验；归档支持复制 / 拖出、Quick Look 与分享，不支持写回。
 - Tags、Import from iPhone 为明确不做的产品边界。
 
 ## 2026-09-12 标签栏与外观

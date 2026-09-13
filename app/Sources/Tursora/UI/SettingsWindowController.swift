@@ -176,9 +176,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             folderViewSaveMessage, retryFolderViewSave, separator(),
             heading("Keyboard"), shortcutRow,
             detail("Click the shortcut, then press a new combination with Command or Control. Filters names in the current folder."),
-            shortcutMessage, separator(), heading("Experimental"),
-            terminalCheckbox, detail("Show a terminal alongside your files. Off by default."),
-            zipCheckbox, detail("Browse ZIP files read-only in the current pane instead of extracting them. Off by default."),
+            shortcutMessage, separator(), heading("Terminal & ZIP"),
+            terminalCheckbox, detail("Press F4 to open a terminal alongside your files. The shell starts only when you open the panel."),
+            zipCheckbox, detail("Open ZIP files read-only in the current pane. Use Extract when you want to unpack the archive."),
         ]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical

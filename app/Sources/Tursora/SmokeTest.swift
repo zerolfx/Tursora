@@ -35,6 +35,8 @@ enum SmokeTest {
         }
         AppPreferences.showFileExtensions = true
         AppPreferences.restoreWorkspaceOnLaunch = true
+        // Exercise the legacy opt-out routes in the general suite. Dedicated
+        // ZIP and workspace suites remove these keys to cover fresh defaults.
         AppPreferences.experimentalTerminalEnabled = false
         AppPreferences.experimentalZIPBrowsingEnabled = false
         AppPreferences.shared.resetFilterShortcut()
@@ -61,6 +63,7 @@ enum SmokeTest {
             TextThumbnailSmokeTests.run {
             TransferSmokeTests.run(wc) { ArchiveSmokeTests.run {
                 ArchiveWorkspaceSmokeTests.run {
+                    ArchivePreparationSmokeTests.run {
                     ArchiveBrowserSmokeTests.run {
                         SplitToolbarSmokeTests.run {
                             TerminalSmokeTests.run {
@@ -81,6 +84,7 @@ enum SmokeTest {
                                 }
                             }
                         }
+                    }
                     }
                 }
             } }
@@ -232,8 +236,8 @@ enum SmokeTest {
         try! Data("nested".utf8).write(to: nestedFile)
         let b = wc.tabs.newTab(at: directory)
         awaitInitialListing(b.model) {
-            check("terminal starts disabled without a panel", wc.terminalPanel == nil && !AppPreferences.experimentalTerminalEnabled)
-            check("ZIP browsing starts disabled", !AppPreferences.experimentalZIPBrowsingEnabled)
+            check("explicit terminal opt-out leaves no panel", wc.terminalPanel == nil && !AppPreferences.experimentalTerminalEnabled)
+            check("explicit ZIP browsing opt-out remains effective", !AppPreferences.experimentalZIPBrowsingEnabled)
             func menuItem(_ action: Selector, in menu: NSMenu?) -> NSMenuItem? {
                 for item in menu?.items ?? [] {
                     if item.action == action { return item }
@@ -1564,7 +1568,7 @@ enum SmokeTest {
                             active.fileView.select(names: [zip.lastPathComponent])
                             let extract = menu.items.first { ($0.representedObject as? String) == MainMenu.FileAction.extract.rawValue }!
                             check("\(mode): ZIP enables extraction in both menus", wc.validateMenuItem(extract) && active.buildContextMenu(for: active.fileView.selectedItems).items.contains { $0.title == "Extract" })
-                            if mode == .icons { wc.openSelection(nil) } else { wc.performFileAction(extract) }
+                            wc.performFileAction(extract)
                             awaitCondition("\(mode): extraction publishes a non-overwriting result", condition: { fm.fileExists(atPath: extracted.path) && undo.undoActionName == "Extract" }) {
                                 check("\(mode): extraction contents and archive preserved", (try? String(contentsOf: extracted)) == "archive UI contents" && fm.fileExists(atPath: zip.path))
                                 undo.undo()

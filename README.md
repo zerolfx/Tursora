@@ -10,7 +10,7 @@
 </p>
 <p align="center">
   <a href="#features">Features</a> ·
-  <a href="#experiments">Experiments</a> ·
+  <a href="#terminal-and-zip">Terminal &amp; ZIP</a> ·
   <a href="#what-finder-still-does-that-tursora-doesnt">Finder differences</a> ·
   <a href="#get-tursora">Get Tursora</a> ·
   <a href="https://zerolfx.github.io/Tursora/">Website</a>
@@ -18,13 +18,13 @@
 
 Tursora is a native macOS file manager built around a simple goal: **keep what feels familiar in Finder, then add the file-management ideas that make Dolphin and Windows File Explorer useful.**
 
-That means Quick Look, macOS sharing, familiar file operations and a native AppKit interface—with Dolphin-inspired split panes, editable paths, instant filtering, recursive search and folder-specific view settings. Optional experiments add an integrated terminal and Explorer-style ZIP navigation in the same pane.
+That means Quick Look, macOS sharing, familiar file operations and a native AppKit interface—with Dolphin-inspired split panes, editable paths, instant filtering, recursive search and folder-specific view settings. An integrated terminal and Explorer-style ZIP navigation in the same pane are enabled by default and can be turned off in Settings.
 
 Tursora is an early project, and it does not yet cover everything Finder can do. The [differences below](#what-finder-still-does-that-tursora-doesnt) are part of the picture.
 
 ## Features
 
-Click a screenshot to view it at full size.
+The features below describe current development. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size.
 
 <table>
   <thead>
@@ -97,7 +97,7 @@ Click a screenshot to view it at full size.
     <tr>
       <td>
         <strong>Compress a selection. Extract beside the original.</strong>
-        <p>Create a ZIP from selected files, or extract one beside the original. Numbered names avoid overwrites; both actions support undo. Opening a ZIP extracts it by default, unless <a href="#browse-zips-like-folders">ZIP browsing</a> is enabled.</p>
+        <p>Create a ZIP from selected files, or extract one beside the original. Numbered names avoid overwrites; both actions support undo. Opening a ZIP uses <a href="#browse-zips-like-folders">ZIP browsing</a> by default. Choose Extract to unpack it, or turn off ZIP browsing to make Open extract instead.</p>
         <p>Supports ordinary ZIP archives. Password-protected ZIPs and other archive formats are not supported.</p>
       </td>
       <td><a href="docs/images/features/compress-extract.png"><img src="docs/images/features/compress-extract.png" width="600" alt="The More menu exposing archive actions for a selected ZIP"></a></td>
@@ -120,19 +120,22 @@ Click a screenshot to view it at full size.
     <tr>
       <td>
         <strong>A few useful preferences</strong>
-        <p>General lets you reopen the previous workspace, choose per-folder views or a shared default, show or hide extensions, record a filtering shortcut, and enable experiments. Shortcut recording checks conflicts. Hidden extensions affect display only; renaming always shows the full filename. Updates offers daily automatic checks, optional automatic installation and a manual check. Workspace restoration is on in this actual capture; both experiments are off, matching their defaults.</p>
+        <p>General lets you reopen the previous workspace, choose per-folder views or a shared default, show or hide extensions, record a filtering shortcut, and configure the terminal and ZIP browsing. Shortcut recording checks conflicts. Hidden extensions affect display only; renaming always shows the full filename. Updates offers daily automatic checks, optional automatic installation and a manual check. Workspace restoration, terminal access and ZIP browsing default on; the shell starts only when you open its panel.</p>
       </td>
       <td>
-        <a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="General settings with startup workspace restoration, folder view policy, shortcut recording and both experiments disabled"></a>
+        <a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="General settings with startup workspace restoration, folder view policy, shortcut recording and terminal and ZIP browsing enabled"></a>
         <a href="docs/images/features/updates.png"><img src="docs/images/features/updates.png" width="600" alt="Updates settings with automatic checks, optional download and installation, a manual check and last-check status"></a>
       </td>
     </tr>
   </tbody>
 </table>
 
-## Experiments
+<a id="experiments"></a>
+<a id="terminal-and-zip"></a>
 
-Both experiments are **off by default**. Enable them in **Tursora → Settings…** (`⌘,`).
+## Terminal & ZIP
+
+Both features are **enabled by default**. Change them in **Tursora → Settings…** (`⌘,`). Existing saved choices are preserved. These defaults apply to the next release; in 0.1.0, enable both features in Settings.
 
 <table>
   <thead>
@@ -143,15 +146,15 @@ Both experiments are **off by default**. Enable them in **Tursora → Settings�
       <td>
         <strong>A terminal in your workspace</strong>
         <p>Press <code>F4</code> for an interactive <a href="https://github.com/migueldeicaza/SwiftTerm">SwiftTerm</a> terminal beneath the files. It starts in the active folder, or beside the original ZIP when browsing an archive.</p>
-        <p>Navigation updates the target for <strong>Restart in Current Folder</strong> without injecting shell commands. Restarting, hiding the panel, closing the window or disabling the experiment ends its shell session.</p>
+        <p>Navigation shows the target for <strong>Restart in Current Folder</strong> without injecting shell commands. The header distinguishes the start location from a shell-reported folder and keeps the ended state after a shell exits. Restarting, hiding the panel, closing the window or disabling terminal access ends its shell session.</p>
       </td>
-      <td><a href="docs/images/features/terminal.png"><img src="docs/images/features/terminal.png" width="600" alt="The integrated terminal running in the same directory as the file pane"></a></td>
+      <td><a href="docs/images/features/terminal.png"><img src="docs/images/features/terminal.png" width="600" alt="The integrated terminal preserving its shell directory while the file pane shows a different restart destination"></a></td>
     </tr>
     <tr>
       <td>
         <a id="browse-zips-like-folders"></a><strong>Browse ZIPs like folders</strong>
-        <p>Open a ZIP in the current pane and navigate with the address bar, Back, Forward and Up. Use split panes, list or icon views, sorting, grouping and filtering. Preview, open, share, copy or drag members into regular folders.</p>
-        <p><strong>Archives are read-only.</strong> Opened files are temporary copies kept until quit; edits do not update the ZIP, so use Save As to keep them. Nested ZIPs open in the default app. Disabling the experiment restores extraction for new opens; existing archive pages stay read-only. Explicit Extract remains available on the original ZIP.</p>
+        <p>Open a ZIP in the current pane and navigate with the address bar, Back, Forward and Up. Use split panes, list or icon views, sorting, grouping and filtering. Cancel while a ZIP opens; if opening fails, retry or return to its enclosing folder. Preview, open, share, copy or drag members into regular folders.</p>
+        <p><strong>Archives are read-only.</strong> Opened files are temporary copies kept until quit; edits do not update the ZIP, so use Save As to keep them. Nested ZIPs open in the default app. Disabling ZIP browsing restores extraction for new opens; existing archive pages stay read-only. Explicit Extract remains available on the original ZIP.</p>
       </td>
       <td><a href="docs/images/features/zip-browsing.png"><img src="docs/images/features/zip-browsing.png" width="600" alt="A ZIP folder opened in the current pane with its normal breadcrumb and read-only status"></a></td>
     </tr>

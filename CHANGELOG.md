@@ -4,6 +4,12 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Improved
+
+- Terminal access and ZIP browsing are enabled by default while preserving saved opt-outs. Settings explains lazy terminal startup and explicit ZIP extraction.
+- ZIP opening shows progress and cancellation, shares preparation across panes, and cancels unused workers before cleaning temporary files. Failed opens can retry or open the enclosing folder, including restored tabs; startup titles retain their requested names and retry handles system path aliases. Disappearing temporary members no longer break the whole listing.
+- Terminal headers distinguish startup and reported shell folders, show the restart destination, preserve exit/failure status through navigation, and reject stale directory reports from previous sessions.
+
 ### Added
 
 - Workspace restoration on launch, enabled by default: reopen windows, ordered and named tabs, split panes, active locations and layout, and rerun existing search requests. General settings can disable restoration and clear the saved workspace; saving failures appear inline with a retry action. Navigation history, filters, selection, terminal sessions, transfers and undo are not restored.

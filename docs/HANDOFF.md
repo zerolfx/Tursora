@@ -2,6 +2,12 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
+## 本轮：默认启用终端与 ZIP 浏览
+
+用户要求两项功能默认开启并打磨。缺少偏好记录时默认 true，保留既有显式关闭；General 改为 Terminal & ZIP，F4 展开时才创建 shell。ZIP 加入命名的准备状态 / Cancel、失败 Retry / Open Enclosing Folder，以及启动恢复失败的 Reload 重试。最后等待者取消底层准备并清理未完成副本，关闭后重开标签再准备原目标；退出先保存一次逻辑工作区，再等传输与归档清理。
+
+终端区分 Started in / Shell folder，始终显示启动或重启目标；自然退出保留输出和 ended 状态，拒绝旧实例与无效地址报告。实现、取舍及验证进度见[本轮记录](research/default-features-polish.md)，SPEC §16–18、D49。实机发现并修复系统路径别名下的 ZIP 修复重试及启动失败标题；最终 83 份 Swift 源码 2,566 项连续三轮通过，stderr 为空且源码哈希一致。debug / release、strict codesign / plist 通过；最终包已实测坏 ZIP 修复后重试子目录、两个失败标签的标题与切换、正常退出重开及不启动 shell。General / 终端 / ZIP 恢复真实截图和网站默认说明已更新；QA 已退出，锁已释放。未发布新版本。
+
 ## 本轮：工作区会话恢复
 
 用户将“退出应用后双窗格、多标签丢失”列为高优先级。本轮已实现默认开启的会话恢复选项，保存浏览窗口、标签顺序 / 名称 / 当前项、双 pane 位置与活动侧、分栏比例、侧栏状态和窗口几何 / 最小化。普通目录视图继续读取每目录视图库；已执行搜索重新查询，ZIP 只记逻辑位置并重新准备。失效目录保留路径并显示内联错误，不静默丢掉工作区。
@@ -73,7 +79,7 @@ CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开�
 
 - 2026-09-12 历史基线：此前 42 个提交已 squash 成一个基线并 force-push，工作树内容保留。图标采用两块蓝色玻璃窗格形成抽象尾鳍，前景宽度约为画布的 67%；当时背景满版、依赖系统圆角的做法已由本轮透明轮廓导出取代。原画保存在 `app/Resources/AppIcon-artwork.png`，导出的 PNG / ICNS 位于同目录，打包嵌入后者。
 
-- **Tursora**（原名 Otter File Manager，2026-09-11 改名）是 Swift + AppKit 原生 macOS 文件管理器，无 Xcode 工程，Command Line Tools 即可构建；终端使用 SPM 固定的 SwiftTerm 1.15.0。基础功能包括：地址栏（面包屑 + 兄弟目录菜单 + 行内补全）、标签页、Dolphin 式分栏、列表 / 图标视图与缩放预览、文件操作与撤销、拖放、Quick Look、过滤、Finder 的分组、Finder 的 Get Info / Inspector / Summary。现已加入 ZIP 压缩 / 解压、系统分享、NetFS 服务器连接与设置；终端面板、ZIP 只读浏览是默认关闭的实验功能。规格见 [SPEC.md](SPEC.md)。
+- **Tursora**（原名 Otter File Manager，2026-09-11 改名）是 Swift + AppKit 原生 macOS 文件管理器，无 Xcode 工程，Command Line Tools 即可构建；终端使用 SPM 固定的 SwiftTerm 1.15.0。基础功能包括：地址栏（面包屑 + 兄弟目录菜单 + 行内补全）、标签页、Dolphin 式分栏、列表 / 图标视图与缩放预览、文件操作与撤销、拖放、Quick Look、过滤、Finder 的分组、Finder 的 Get Info / Inspector / Summary。现已加入 ZIP 压缩 / 解压、系统分享、NetFS 服务器连接与设置；终端面板、ZIP 只读浏览默认启用，可在设置中关闭。规格见 [SPEC.md](SPEC.md)。
 - 三项功能 PR #1 / #2 / #3 已合并到 `main`，提交信息重写后的整合基线为 `5a6d786`。发布包 `app/build/Tursora.app` 由 `app/tools/make-app.sh` 生成，ad-hoc 签名，未上架、未公证。
 - 仓库：https://github.com/zerolfx/Tursora（已公开）。`upstream/` 是 git-ignored 的 KDE 源码 checkout，只有 Phase 0 审计和对照 Dolphin 语义时用到；缺了可以重新 clone（版本 pin 在 [audit/00-ground-truth.md](audit/00-ground-truth.md)）。
 
@@ -105,7 +111,7 @@ CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开�
 - 快捷键与 Finder 有几处冲突（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌥⌘S），是有意的，见 [DECISIONS.md](DECISIONS.md) D9。
 - 已有 General / Updates 设置：扩展名只改显示、过滤快捷键可录制，每目录 / 统一默认视图策略已实现；软件更新开关与发布进度见页首。会话恢复已实现，当前验证进度见页首；其他偏好策略、本地化仍未实现。
 - 搜索支持普通目录递归名称与 Spotlight 正文，正文受索引 / importer / 权限限制，真实正向正文命中尚未验证。单次最多展示 50,000 项，Spotlight 最多检查 50,000 个候选；没有 ZIP 内搜索、Tags / 评分条件、Finder `.savedSearch` 互通或实时结果增量。
-- 实验性终端 F4 开关默认关闭；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认关闭，启用后 Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭实验开关后已有页仍只读，新打开 ZIP 恢复 Extract。
+- 终端 F4 入口默认启用，只有展开面板才启动 shell；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认启用，Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭 ZIP 浏览开关后已有页仍只读，新打开 ZIP 恢复 Extract。
 - 归档与服务器新增功能边界：仅普通 ZIP；远程走系统 NetFS 挂载，不含自建 SFTP / 重连；真实服务器读写还未验证。`FileOperations.report` 和 Eject 错误路径已防止 smoke 模式弹模态框。
 
 ## 下一步

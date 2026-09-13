@@ -99,9 +99,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showFileOperations(_ sender: Any?) { TransferTasksWindowController.shared.show() }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard TransferTasksWindowController.shared.hasActiveTasks else { return .terminateNow }
-        TransferTasksWindowController.shared.cancelAll {
-            sender.reply(toApplicationShouldTerminate: true)
+        // Save pending logical ZIP destinations before cancelling workers.
+        prepareWorkspaceForTermination()
+        // Reply only after AppKit has received terminateLater, even when there
+        // are no workers. Temporary roots outlive their extraction processes.
+        DispatchQueue.main.async {
+            TransferTasksWindowController.shared.cancelAll {
+                ArchiveWorkspace.shared.shutdownAll {
+                    sender.reply(toApplicationShouldTerminate: true)
+                }
+            }
         }
         return .terminateLater
     }
@@ -259,6 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func prepareWorkspaceForTermination() {
+        guard !isTerminating else { return }
         isTerminating = true
         if preferences.restoreWorkspaceOnLaunch { saveWorkspaceNow() }
         else { workspaceStore.flush() } // Retry a previously failed clear on quit.

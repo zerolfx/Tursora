@@ -1,54 +1,183 @@
 import Foundation
 
+/// A pane cancels its own request without cancelling another pane's request
+/// for the same ZIP. Cancellation suppresses even an already queued delivery.
+final class ArchivePreparationSubscription {
+    private let lock = NSLock()
+    private var cancelled = false
+    private var delivered = false
+    private var cancellation: (() -> Void)?
+
+    func cancel() {
+        lock.lock()
+        guard !cancelled, !delivered else { lock.unlock(); return }
+        cancelled = true
+        let action = cancellation
+        cancellation = nil
+        lock.unlock()
+        action?()
+    }
+
+    fileprivate func onCancel(_ action: @escaping () -> Void) {
+        lock.lock()
+        let runNow = cancelled
+        if !cancelled, !delivered { cancellation = action }
+        lock.unlock()
+        if runNow { action() }
+    }
+
+    fileprivate func deliver(_ result: Result<ArchiveBrowsingSession, Error>,
+                             to completion: (Result<ArchiveBrowsingSession, Error>) -> Void) {
+        lock.lock()
+        guard !cancelled, !delivered else { lock.unlock(); return }
+        delivered = true
+        cancellation = nil
+        lock.unlock()
+        completion(result)
+    }
+}
+
 /// Keeps read-only snapshots alive while navigation uses paths under the
 /// original ZIP. The registry is safe to query from directory-loading queues.
 final class ArchiveWorkspace {
+    typealias Preparer = (URL, URL, @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) -> ArchivePreparationCancellation
     static let shared = ArchiveWorkspace()
     private let lock = NSLock()
     private var sessions: [URL: ArchiveBrowsingSession] = [:]
-    private var pending: [URL: [(Result<ArchiveBrowsingSession, Error>) -> Void]] = [:]
+    private struct Waiter {
+        let subscription: ArchivePreparationSubscription
+        let completion: (Result<ArchiveBrowsingSession, Error>) -> Void
+    }
+    private final class Job {
+        let id = UUID()
+        let archive: URL
+        var waiters: [UUID: Waiter] = [:]
+        var cancellation: ArchivePreparationCancellation?
+        var cancelled = false
+        var finished = false
+        init(archive: URL) { self.archive = archive }
+    }
+    private var pending: [URL: Job] = [:]
+    private var inFlight: [UUID: Job] = [:]
+    private var shutdownCompletions: [() -> Void] = []
+    private let preparer: Preparer
     private var closed = false
 
-    func prepare(archive: URL, completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) {
+    init(preparer: @escaping Preparer = { source, logical, completion in
+        ArchiveBrowsingSession.prepare(archive: source, logicalArchiveURL: logical, completion: completion)
+    }) { self.preparer = preparer }
+
+    @discardableResult
+    func prepare(archive: URL, completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) -> ArchivePreparationSubscription {
         let logical = URL(fileURLWithPath: logicalURL(for: archive).standardizedFileURL.path, isDirectory: false)
+        let subscription = ArchivePreparationSubscription()
+        let waiterID = UUID()
+        let waiter = Waiter(subscription: subscription, completion: completion)
         lock.lock()
         if closed {
             lock.unlock()
-            DispatchQueue.main.async { completion(.failure(ArchiveBrowsingSession.SessionError.closed)) }
-            return
+            DispatchQueue.main.async { subscription.deliver(.failure(ArchiveBrowsingSession.SessionError.closed), to: completion) }
+            return subscription
         }
         if let existing = sessions[logical], !existing.isClosed {
             lock.unlock()
-            DispatchQueue.main.async { completion(.success(existing)) }
-            return
+            DispatchQueue.main.async { [self] in
+                lock.lock(); let ended = closed; lock.unlock()
+                subscription.deliver(ended ? .failure(ArchiveBrowsingSession.SessionError.closed) : .success(existing), to: completion)
+            }
+            return subscription
         }
-        if pending[logical] != nil {
-            pending[logical]!.append(completion)
-            lock.unlock()
-            return
-        }
-        pending[logical] = [completion]
+        let existingJob = pending[logical]
+        let job = existingJob ?? Job(archive: logical)
+        job.waiters[waiterID] = waiter
+        pending[logical] = job
+        inFlight[job.id] = job
         lock.unlock()
+        subscription.onCancel { [weak self, weak job] in
+            guard let self, let job else { return }
+            self.cancel(waiterID, in: job, archive: logical)
+        }
+        if existingJob != nil { return subscription }
 
         // A nested ZIP can itself live in an already prepared snapshot.
         let source: URL
         do { source = try readableURL(for: logical) }
-        catch { finish(logical, result: .failure(error)); return }
-        ArchiveBrowsingSession.prepare(archive: source, logicalArchiveURL: logical) { [self] result in
-            finish(logical, result: result)
+        catch { finish(logical, job: job, result: .failure(error)); return subscription }
+        let cancellation = preparer(source, logical) { [self, job] result in
+            finish(logical, job: job, result: result)
+        }
+        lock.lock()
+        job.cancellation = cancellation
+        let shouldCancel = job.cancelled && !job.finished
+        lock.unlock()
+        if shouldCancel { cancellation.cancel() }
+        return subscription
+    }
+
+    /// Includes cancelled workers until their child and private storage have
+    /// finished cleanup, which makes cancellation observable without sleeps.
+    func hasPendingPreparation(for archive: URL) -> Bool {
+        let path = logicalURL(for: archive).standardizedFileURL.path
+        lock.lock(); defer { lock.unlock() }
+        return inFlight.values.contains { $0.archive.path == path }
+    }
+
+    private func cancel(_ waiter: UUID, in job: Job, archive: URL) {
+        lock.lock()
+        guard pending[archive] === job else { lock.unlock(); return }
+        job.waiters[waiter] = nil
+        guard job.waiters.isEmpty else { lock.unlock(); return }
+        pending[archive] = nil
+        job.cancelled = true
+        let cancellation = job.cancellation
+        lock.unlock()
+        cancellation?.cancel()
+    }
+
+    private func finish(_ archive: URL, job: Job, result: Result<ArchiveBrowsingSession, Error>) {
+        lock.lock()
+        guard !job.finished else { lock.unlock(); return }
+        job.finished = true
+        lock.unlock()
+        // Keep the subscriptions pending until the main-thread delivery. A
+        // final cancellation after extraction but before this turn still owns
+        // the new snapshot and must discard it instead of leaving it cached.
+        DispatchQueue.main.async { [self] in settle(archive, job: job, result: result) }
+    }
+
+    private func settle(_ archive: URL, job: Job, result: Result<ArchiveBrowsingSession, Error>) {
+        lock.lock()
+        let discarded = closed || job.cancelled || pending[archive] !== job
+        let waiters = discarded ? [] : Array(job.waiters.values)
+        job.waiters.removeAll()
+        if pending[archive] === job { pending[archive] = nil }
+        if !discarded, case .success(let session) = result { sessions[archive] = session }
+        lock.unlock()
+        // A cancelled old job can finish after a same-URL retry. Its private
+        // result must be cleaned without touching the new pending job/session.
+        if discarded, case .success(let session) = result {
+            DispatchQueue.global(qos: .utility).async { [self] in
+                session.close()
+                complete(job)
+            }
+        } else { complete(job) }
+        // Publish and deliver in the same main-thread turn, so a pane cannot
+        // cancel between registration and receiving its prepared session.
+        for waiter in waiters {
+            lock.lock(); let ended = closed; lock.unlock()
+            let delivered: Result<ArchiveBrowsingSession, Error> = ended
+                ? .failure(ArchiveBrowsingSession.SessionError.closed) : result
+            waiter.subscription.deliver(delivered, to: waiter.completion)
         }
     }
 
-    private func finish(_ archive: URL, result: Result<ArchiveBrowsingSession, Error>) {
+    private func complete(_ job: Job) {
         lock.lock()
-        let callbacks = pending.removeValue(forKey: archive) ?? []
-        let discarded = closed
-        if !discarded, case .success(let session) = result { sessions[archive] = session }
+        inFlight[job.id] = nil
+        let completions = closed && inFlight.isEmpty ? shutdownCompletions : []
+        if !completions.isEmpty { shutdownCompletions.removeAll() }
         lock.unlock()
-        if discarded, case .success(let session) = result { session.close() }
-        let delivered: Result<ArchiveBrowsingSession, Error> = discarded
-            ? .failure(ArchiveBrowsingSession.SessionError.closed) : result
-        DispatchQueue.main.async { callbacks.forEach { $0(delivered) } }
+        if !completions.isEmpty { DispatchQueue.main.async { completions.forEach { $0() } } }
     }
 
     private struct Record {
@@ -86,6 +215,10 @@ final class ArchiveWorkspace {
         // URL loses ownership when alias/escape points outside the snapshot.
         // Once an ancestor enters private storage, preserve all remaining path
         // components and let validatedURL reject any subsequent escaping link.
+        let archiveParents = retained.map { archive, session in
+            (archive: archive, session: session,
+             parent: archive.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL)
+        }
         var ancestor = URL(fileURLWithPath: "/", isDirectory: true)
         for component in location.pathComponents.dropFirst() {
             ancestor.appendPathComponent(component)
@@ -97,6 +230,18 @@ final class ArchiveWorkspace {
                     return Record(archive: archive, session: session,
                                   physical: Self.remap(location, from: ancestor, to: resolved))
                 }
+            }
+            // An existing ZIP can standardize /private/tmp to /tmp while its
+            // virtual child cannot. Match aliases of its containing directory,
+            // then keep the ZIP name and member components lexical. Resolving
+            // the ZIP itself would wrongly claim ordinary symlinks to the file.
+            let suffix = location.pathComponents.dropFirst(ancestor.pathComponents.count)
+            for record in archiveParents where resolved.path == record.parent.path
+                && suffix.first == record.archive.lastPathComponent {
+                let physical = suffix.dropFirst().reduce(record.session.rootURL) {
+                    $0.appendingPathComponent($1)
+                }.standardizedFileURL
+                return Record(archive: record.archive, session: record.session, physical: physical)
             }
         }
         return nil
@@ -168,17 +313,29 @@ final class ArchiveWorkspace {
 
     /// Called at app exit. Late preparation callbacks discard their snapshots;
     /// test-owned registries can also close without affecting the shared one.
-    func shutdownAll() {
+    func shutdownAll(completion: (() -> Void)? = nil) {
+        precondition(Thread.isMainThread, "Archive workspace shutdown must run on the main thread")
         lock.lock()
         closed = true
         let retained = Array(sessions.values)
         sessions.removeAll()
-        let callbacks = pending.values.flatMap { $0 }
+        let jobs = Array(inFlight.values)
+        jobs.forEach { $0.cancelled = true }
+        let cancellations = jobs.compactMap(\.cancellation)
+        let waiters = pending.values.flatMap { $0.waiters.values }
+        pending.values.forEach { $0.waiters.removeAll() }
         pending.removeAll()
+        if let completion { shutdownCompletions.append(completion) }
+        let completed = inFlight.isEmpty ? shutdownCompletions : []
+        if !completed.isEmpty { shutdownCompletions.removeAll() }
         lock.unlock()
+        cancellations.forEach { $0.cancel() }
         if self === Self.shared { ArchiveBrowsingSession.shutdownPreparingSessions() }
         retained.forEach { $0.close() }
-        DispatchQueue.main.async { callbacks.forEach { $0(.failure(ArchiveBrowsingSession.SessionError.closed)) } }
+        DispatchQueue.main.async {
+            waiters.forEach { $0.subscription.deliver(.failure(ArchiveBrowsingSession.SessionError.closed), to: $0.completion) }
+            completed.forEach { $0() }
+        }
     }
 }
 

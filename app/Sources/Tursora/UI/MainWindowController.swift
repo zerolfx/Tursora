@@ -391,6 +391,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     var splitToolbarButtonForTesting: NSButton? { splitButton }
+    var backToolbarButtonForTesting: NSButton? { backButton }
 
     private var splitActionTitle: String {
         tabs.isSplit ? (tabs.currentPage.activeSide == .left ? "Close Left Pane" : "Close Right Pane") : "Split View"
@@ -414,6 +415,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self, e.window === self.window else { return e }
             let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if e.keyCode == 53, flags.isEmpty, self.browser.isPreparingArchive,
+               self.window?.firstResponder === self.browser.focusView {
+                self.browser.cancelArchiveOpening(nil)
+                return nil
+            }
             if e.keyCode == 48, flags.contains(.control) {                 // Tab
                 flags.contains(.shift) ? self.tabs.selectPrevious() : self.tabs.selectNext()
                 return nil
@@ -597,7 +603,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func selectionDidChange(in pane: BrowserViewController) {
         guard pane === browser else { return }
-        shareItem?.isEnabled = !sharingItems.isEmpty
+        validateNavigation()
     }
 
     private func validateFileAction(_ item: NSMenuItem) -> Bool {
@@ -803,7 +809,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func windowWillClose(_ notification: Notification) {
-        tabs.pages.flatMap(\.panes).forEach { $0.searchPanel.cancelPendingSearch() }
+        tabs.pages.flatMap(\.panes).forEach {
+            $0.suspendPendingNavigation()
+            $0.searchPanel.cancelPendingSearch()
+        }
         removeEventMonitors()
         hideTerminal()
         if let preferencesObserver { NotificationCenter.default.removeObserver(preferencesObserver) }
