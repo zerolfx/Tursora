@@ -54,10 +54,10 @@ enum SettingsSmokeTests {
               AppPreferences.Shortcut(keyEquivalent: "f", modifierFlags: []).validationError() != nil
               && AppPreferences.Shortcut(keyEquivalent: "f", modifierFlags: .shift).validationError() != nil
               && AppPreferences.Shortcut(keyEquivalent: "f", modifierFlags: .option).validationError() != nil)
-        check("settings: navigation/function keys cannot replace file-view shortcuts",
-              ["\t", " ", "\r", "\u{f707}"].allSatisfy {
-                  AppPreferences.Shortcut(keyEquivalent: $0, modifierFlags: .command).validationError() != nil
-              })
+        check("settings: function keys can be assigned while terminal and system shortcuts conflict",
+              AppPreferences.Shortcut(keyEquivalent: "\u{f70b}", modifierFlags: []).validationError() == nil
+              && AppPreferences.Shortcut(keyEquivalent: "\u{f707}", modifierFlags: []).validationError() != nil
+              && AppPreferences.Shortcut(keyEquivalent: " ", modifierFlags: .command).validationError() != nil)
         check("settings: existing app and system shortcuts are reserved",
               [("q", NSEvent.ModifierFlags.command), (",", .command), ("k", .command), ("1", .command),
                ("s", [.control, .command]), ("z", [.shift, .command]), ("`", .command)].allSatisfy {

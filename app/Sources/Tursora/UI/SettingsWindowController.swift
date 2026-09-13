@@ -1,6 +1,6 @@
 import AppKit
 
-final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTabViewDelegate {
     private static let shared = SettingsWindowController()
 
     static func show() {
@@ -17,8 +17,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     let generalScrollView = NSScrollView()
     let terminalCheckbox = NSButton(checkboxWithTitle: "Terminal panel", target: nil, action: nil)
     let zipCheckbox = NSButton(checkboxWithTitle: "Browse ZIP archives", target: nil, action: nil)
-    let shortcutRecorder = ShortcutRecorderButton()
-    let shortcutMessage = NSTextField(wrappingLabelWithString: "")
+    let shortcutsController: ShortcutsSettingsViewController
+    let terminalSettingsController = TerminalSettingsViewController()
+    var shortcutRecorder: ShortcutRecorderButton { shortcutsController.recorder }
+    var shortcutMessage: NSTextField { shortcutsController.message }
     let folderViewSaveMessage = NSTextField(wrappingLabelWithString: "")
     let retryFolderViewSave = NSButton(title: "Retry Saving View Settings", target: nil, action: nil)
     let folderViewPolicy = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -40,11 +42,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
          viewPropertiesStore: DirectoryViewPropertiesStore = .shared,
          updater: AppUpdater = .shared,
          workspaceStore: WorkspaceSessionStore = .shared) {
+        self.shortcutsController = ShortcutsSettingsViewController(store: preferences.shortcuts)
         self.workspaceStore = workspaceStore
         self.updater = updater
         self.viewPropertiesStore = viewPropertiesStore
         self.preferences = preferences
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 705),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 745),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Settings"
         window.isReleasedWhenClosed = false
@@ -72,6 +75,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func buildContent() {
         guard let windowContent = window?.contentView else { return }
+        settingsTabs.delegate = self
         settingsTabs.translatesAutoresizingMaskIntoConstraints = false
         windowContent.addSubview(settingsTabs)
         NSLayoutConstraint.activate([
@@ -100,6 +104,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ])
         general.view = generalScrollView
         settingsTabs.addTabViewItem(general)
+        let shortcuts = NSTabViewItem(identifier: "shortcuts")
+        shortcuts.label = "Shortcuts"
+        shortcuts.view = shortcutsController.view
+        settingsTabs.addTabViewItem(shortcuts)
+        let terminal = NSTabViewItem(identifier: "terminal")
+        terminal.label = "Terminal"
+        let terminalScroll = NSScrollView()
+        terminalScroll.hasVerticalScroller = true
+        terminalScroll.autohidesScrollers = true
+        terminalScroll.drawsBackground = false
+        let terminalContent = terminalSettingsController.view
+        terminalContent.translatesAutoresizingMaskIntoConstraints = false
+        terminalScroll.documentView = terminalContent
+        NSLayoutConstraint.activate([
+            terminalContent.leadingAnchor.constraint(equalTo: terminalScroll.contentView.leadingAnchor),
+            terminalContent.topAnchor.constraint(equalTo: terminalScroll.contentView.topAnchor),
+            terminalContent.widthAnchor.constraint(equalTo: terminalScroll.contentView.widthAnchor),
+            terminalContent.heightAnchor.constraint(greaterThanOrEqualTo: terminalScroll.contentView.heightAnchor),
+        ])
+        terminal.view = terminalScroll
+        settingsTabs.addTabViewItem(terminal)
         let updates = NSTabViewItem(identifier: "updates")
         updates.label = "Updates"
         let updateContent = NSView()
@@ -142,28 +167,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         terminalCheckbox.action = #selector(toggleTerminal(_:))
         zipCheckbox.target = self
         zipCheckbox.action = #selector(toggleZIPBrowsing(_:))
-        shortcutRecorder.onChange = { [weak self] shortcut in
-            guard let self else { return nil }
-            do {
-                try self.preferences.setFilterShortcut(shortcut, menu: NSApp.mainMenu)
-                self.shortcutMessage.stringValue = ""
-                return nil
-            } catch {
-                self.shortcutMessage.stringValue = error.localizedDescription
-                return error.localizedDescription
-            }
-        }
-        shortcutRecorder.setAccessibilityLabel("Filter by Name shortcut")
-        let reset = NSButton(title: "Reset", target: self, action: #selector(resetShortcut(_:)))
-        reset.bezelStyle = .rounded
-        reset.toolTip = "Restore ⌘F"
-        let shortcutRow = NSStackView(views: [NSTextField(labelWithString: "Filter by Name"), NSView(), shortcutRecorder, reset])
-        shortcutRow.orientation = .horizontal
-        shortcutRow.spacing = 10
-        shortcutRecorder.widthAnchor.constraint(greaterThanOrEqualToConstant: 145).isActive = true
-        shortcutMessage.font = .systemFont(ofSize: 12)
-        shortcutMessage.textColor = .systemRed
-        shortcutMessage.heightAnchor.constraint(greaterThanOrEqualToConstant: 30).isActive = true
 
         let rows: [NSView] = [
             heading("Startup"), restoreWorkspaceCheckbox,
@@ -174,10 +177,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             heading("Folder View Settings"), folderViewPolicy,
             detail("Remember view mode, sorting, icon sizes, groups, hidden files and previews. Use View → Folder View Settings to save a default or reset a folder. In Remember Each Folder mode, open panes keep their own view until you revisit the folder."),
             folderViewSaveMessage, retryFolderViewSave, separator(),
-            heading("Keyboard"), shortcutRow,
-            detail("Click the shortcut, then press a new combination with Command or Control. Filters names in the current folder."),
-            shortcutMessage, separator(), heading("Terminal & ZIP"),
-            terminalCheckbox, detail("Press F4 to open a terminal alongside your files. The shell starts only when you open the panel."),
+            heading("Terminal & ZIP"),
+            terminalCheckbox, detail("Use the toolbar Terminal button to open a terminal alongside your files. Customize its shell and appearance in Terminal, and its shortcut in Shortcuts."),
             zipCheckbox, detail("Open ZIP files read-only in the current pane. Use Extract when you want to unpack the archive."),
         ]
         let stack = NSStackView(views: rows)
@@ -218,7 +219,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         extensionsCheckbox.state = preferences.showFileExtensions ? .on : .off
         terminalCheckbox.state = preferences.experimentalTerminalEnabled ? .on : .off
         zipCheckbox.state = preferences.experimentalZIPBrowsingEnabled ? .on : .off
-        shortcutRecorder.shortcut = preferences.filterShortcut
+        shortcutsController.refresh()
     }
 
     private func buildUpdates(in content: NSView) {
@@ -288,14 +289,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc func toggleTerminal(_ sender: NSButton) { preferences.experimentalTerminalEnabled = sender.state == .on }
     @objc func toggleZIPBrowsing(_ sender: NSButton) { preferences.experimentalZIPBrowsingEnabled = sender.state == .on }
     @objc func resetShortcut(_ sender: Any?) {
-        shortcutRecorder.stopRecording()
-        preferences.resetFilterShortcut()
-        shortcutMessage.stringValue = ""
-        refreshControls()
+        shortcutsController.resetSelected(sender)
     }
 
     func windowWillClose(_ notification: Notification) { shortcutRecorder.stopRecording() }
     func windowDidResignKey(_ notification: Notification) { shortcutRecorder.stopRecording() }
+    func tabView(_ tabView: NSTabView, willSelect tabViewItem: NSTabViewItem?) { shortcutRecorder.stopRecording() }
+    func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        guard tabViewItem?.identifier as? String == "shortcuts" else { return }
+        window?.contentView?.layoutSubtreeIfNeeded()
+        shortcutsController.revealSelectedCommand()
+    }
     deinit {
         if let observer { preferences.notificationCenter.removeObserver(observer) }
         if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
@@ -361,11 +365,11 @@ final class ShortcutRecorderButton: NSButton {
     }
 
     private func capture(_ event: NSEvent) {
-        if event.keyCode == 53 { stopRecording(); return }
+        if event.keyCode == 53 && event.modifierFlags.intersection(AppPreferences.Shortcut.supportedModifiers).isEmpty { stopRecording(); return }
         // The keyboard layout, rather than a US-keyboard table, determines the
         // unmodified character. Modifiers are persisted separately for NSMenu.
-        let key = event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers ?? ""
-        _ = record(keyEquivalent: key, modifierFlags: event.modifierFlags)
+        let shortcut = AppPreferences.Shortcut.from(event)
+        _ = record(keyEquivalent: shortcut.keyEquivalent, modifierFlags: shortcut.modifierFlags)
     }
 
     override func keyDown(with event: NSEvent) {

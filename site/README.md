@@ -4,6 +4,10 @@ A Chinese, dependency-free static product page. Product screenshots come from th
 
 The page presents three workflows: path navigation, split panes with independent paths, and ZIP browsing, enabled by default. App tabs remain supported but are not promoted as a standalone advantage over Finder.
 
+The hero and download area identify Tursora as free and open source under the project's [MIT license](../LICENSE). The download area links to the repository's Homebrew instructions; the custom tap is defined in `Casks/tursora.rb` and requires publication to `main` before the documented public tap command can discover it. See [Homebrew verification](../docs/research/homebrew.md).
+
+The 2026-09-13 customization-stage build passes with four canonical assets, 36 references and approximately 1,560 KiB. All 29 screenshots in the canonical directory pass the build's alpha gate; all have separate light/dark contact review, and the three site screenshots are copied byte-for-byte. Local browser checks passed at 1200 × 850 and 390 × 844 with no horizontal overflow: free/open-source, MIT and download instructions were visible, the ZIP tab and narrow image viewer worked, and Escape restored the originating link's focus. Visible images loaded; initially hidden lazy images were excluded from that initial-load assertion. The owned tab and loopback server were closed. Exact evidence is in the [screenshot audit](../docs/research/screenshot-audit-2026-09-13.md); these checks do not establish deployment, a live GitHub README review or application smoke results.
+
 ## Build and preview
 
 Run from the repository root with Python 3.9 or later:
@@ -38,11 +42,15 @@ Canonical assets:
 
 All four canonical assets are required. The screenshots and icon are never modified by the build; the split screenshot is shared between the hero and its workflow panel rather than copied twice. The technical tab screenshot remains in `docs/images/features/` but is not included in the product-page build.
 
+Before copying assets, the build validates **every** PNG in `docs/images/features/` with the standard-library `app/tools/screenshot_alpha.py` checker, including README/research images not exported by this site. Non-PNG bytes, missing RGBA, opaque corners or absent antialiasing fail the build. The Pages trigger covers that whole directory and the checker, so a later screenshot refresh cannot silently restore an opaque matte. This verifies file transparency, not the authenticity of window shape or unchanged UI interiors; those still require the preparation statistics and visual review below.
+
 ## Screenshot pipeline
 
 Canonical feature screenshots are PNGs prepared from real app captures. The user authorized deterministic removal of the white exterior around native window corners with `app/tools/prepare-screenshots.swift`; no UI imagery is generated. Preparation happens before the site build, and all protected pixels must match the raw capture as decoded by macOS ImageIO. JPEG edge alpha is estimated, not recovered original metadata. Keep the raw captures and comparison sheets outside `docs/images/features/`, review them on light and dark backgrounds, then update the canonical assets and rebuild. See [the capture commands](../docs/images/README.md#capture-and-preparation-workflow) and [the transparency evidence](../docs/research/screenshot-transparency.md).
 
 Use `--mask-from` only for a visually verified capture pair with exactly matching window geometry, crop, dimensions, and scale; the tool cannot establish registration from equal dimensions. Unsuitable captures are refused. Existing outputs and symlink aliases that collide with the input or comparison image are refused as well. Do not weaken these checks to make a promotional image pass.
+
+The conservative measured-edge fallback documented in the [2026-09-13 audit](../docs/research/screenshot-audit-2026-09-13.md) can handle colored system badges near a neutral dark frame without changing those badges. It does not relax geometric, contrast or residual checks.
 
 The screenshot links, images, and image viewer have transparent backgrounds. Their containers constrain overflow and retain display corner rounding; the viewer heading is a separate block. These CSS rules do not alter screenshot pixels or add a dark theme to the product page. Canonical images may come from different verified app stages: the path and split captures are current, while ZIP retains its earlier verified packaged-app content. The [image inventory](../docs/images/README.md#current-captures-and-historical-stages) records those boundaries.
 

@@ -12,6 +12,7 @@ enum SmokeTest {
     private static var savedPreferences: [String: Any] = [:]
     private static let infoSectionKeys = ["general", "moreInfo", "name", "comments", "openWith", "preview", "sharing", "smoke-layout"]
     private static let appPreferenceKeys = ["viewMode", "zoom.details", "zoom.icons", "groupKey", "lastGroupKey", "showPreviews", "showFileExtensions", "restoreWorkspaceOnLaunch", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
+        + [ShortcutStore.defaultsKey, "terminalPreferences.v1"]
         + infoSectionKeys.flatMap { ["InfoSection.\($0)", InfoSection.explicitPreferenceKey(for: $0)] }
     static func restorePreferences() {
         for key in appPreferenceKeys { UserDefaults.standard.set(savedPreferences[key], forKey: key) }
@@ -39,6 +40,7 @@ enum SmokeTest {
         // ZIP and workspace suites remove these keys to cover fresh defaults.
         AppPreferences.experimentalTerminalEnabled = false
         AppPreferences.experimentalZIPBrowsingEnabled = false
+        AppPreferences.shared.shortcuts.resetAll()
         AppPreferences.shared.resetFilterShortcut()
         // A failed earlier run may have left preferences behind; start from defaults.
         ViewPreferences.groupKey = .none
@@ -66,7 +68,7 @@ enum SmokeTest {
                     ArchivePreparationSmokeTests.run {
                     ArchiveBrowserSmokeTests.run {
                         SplitToolbarSmokeTests.run {
-                            TerminalSmokeTests.run {
+                            FolderTreeSmokeTests.run { ShortcutSmokeTests.run { TerminalToolbarSmokeTests.run { TerminalSmokeTests.run { TerminalPreferencesSmokeTests.run {
                                 SearchEntrySmokeTests.run {
                                 SearchSmokeTests.run {
                                     IntegratedSearchSmokeTests.run {
@@ -82,7 +84,7 @@ enum SmokeTest {
                                     }
                                 }
                                 }
-                            }
+                            } } } } }
                         }
                     }
                     }

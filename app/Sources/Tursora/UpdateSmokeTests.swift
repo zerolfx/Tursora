@@ -74,7 +74,7 @@ enum UpdateSmokeTests {
                   && $0.checkForUpdatesButton.isEnabled && $0.updateStatus.stringValue == updater.statusText
               })
         check("updates UI: General stays the initial tab and Updates is independently selectable",
-              first.settingsTabs.tabViewItems.map(\.label) == ["General", "Updates"]
+              first.settingsTabs.tabViewItems.map(\.label) == ["General", "Shortcuts", "Terminal", "Updates"]
               && first.settingsTabs.selectedTabViewItem?.identifier as? String == "general")
         first.settingsTabs.selectTabViewItem(withIdentifier: "updates")
         first.window?.contentView?.layoutSubtreeIfNeeded()

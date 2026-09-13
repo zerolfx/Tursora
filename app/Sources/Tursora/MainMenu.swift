@@ -7,24 +7,80 @@ import AppKit
 enum MainMenu {
 
     static func build() -> NSMenu {
-        let menu = NSMenu()
+        ShortcutDispatcher.installInputProtection()
+        let menu = makeMenu(registerSystemMenus: true)
+        applyPreferences(to: menu)
+        return menu
+    }
+
+    /// Builds the same declarations without mutating NSApp or reading settings.
+    /// This keeps the shortcut catalog complete when commands are added later.
+    static func shortcutDefinitions() -> [ShortcutAction] {
+        var result: [ShortcutAction] = []
+        func visit(_ menu: NSMenu, category: String) {
+            for item in menu.items {
+                if let submenu = item.submenu {
+                    visit(submenu, category: category.isEmpty ? item.title : category + " → " + item.title)
+                } else if let action = item.action {
+                    result.append(ShortcutAction(id: item.identifier!.rawValue, title: item.title,
+                        category: category, selector: NSStringFromSelector(action),
+                        representedObject: item.representedObject as? String,
+                        defaultShortcut: item.keyEquivalent.isEmpty ? nil : .init(keyEquivalent: item.keyEquivalent,
+                            modifierFlags: item.keyEquivalentModifierMask), context: .application))
+                }
+            }
+        }
+        visit(makeMenu(registerSystemMenus: false), category: "")
+        return result
+    }
+
+    private static func makeMenu(registerSystemMenus: Bool) -> NSMenu {
+        let menu = ShortcutMenu()
         menu.addItem(appMenu())
         menu.addItem(fileMenu())
         menu.addItem(editMenu())
         menu.addItem(viewMenu())
         menu.addItem(goMenu())
-        menu.addItem(windowMenu())
-        menu.addItem(helpMenu())
-        applyPreferences(to: menu)
+        menu.addItem(windowMenu(registerSystemMenus: registerSystemMenus))
+        menu.addItem(helpMenu(registerSystemMenus: registerSystemMenus))
+        assignShortcutIdentifiers(in: menu)
         return menu
     }
 
-    static func applyPreferences(to menu: NSMenu) {
+    private static func assignShortcutIdentifiers(in menu: NSMenu) {
         for item in menu.items {
-            if let submenu = item.submenu { applyPreferences(to: submenu) }
-            if item.action == #selector(MainWindowController.focusFilter(_:)) {
-                item.keyEquivalent = AppPreferences.filterShortcut.keyEquivalent
-                item.keyEquivalentModifierMask = AppPreferences.filterShortcut.modifierFlags
+            if let submenu = item.submenu { assignShortcutIdentifiers(in: submenu) }
+            guard let action = item.action else { continue }
+            var id = "menu." + NSStringFromSelector(action).replacingOccurrences(of: ":", with: "")
+            if let argument = item.representedObject as? String { id += "." + argument }
+            if item.title == "Go to Folder…" { id += ".goToFolder" }
+            item.identifier = NSUserInterfaceItemIdentifier(id)
+        }
+    }
+
+    static func applyPreferences(to menu: NSMenu, shortcuts: ShortcutStore = AppPreferences.shared.shortcuts) {
+        for item in menu.items {
+            if let submenu = item.submenu { applyPreferences(to: submenu, shortcuts: shortcuts) }
+            if let id = item.identifier?.rawValue, ShortcutCatalog.action(id) != nil {
+                let binding = shortcuts.shortcut(for: id)
+                item.keyEquivalent = binding?.keyEquivalent ?? ""
+                item.keyEquivalentModifierMask = binding?.modifierFlags ?? []
+                // Arbitrary bindings cannot remain AppKit alternates: alternates
+                // require adjacent rows sharing an equivalent and base modifiers.
+                if ["menu.showInspector", "menu.getSummaryInfo"].contains(id) {
+                    let info = shortcuts.shortcut(for: "menu.getInfo")
+                    func compatible(_ value: AppPreferences.Shortcut?) -> Bool {
+                        guard let value, let info else { return false }
+                        return value.keyEquivalent == info.keyEquivalent
+                            && value.modifierFlags.isSuperset(of: info.modifierFlags)
+                            && value.modifierFlags != info.modifierFlags
+                    }
+                    // Summary can join Get Info only through the immediately
+                    // preceding compatible Inspector alternate. An independently
+                    // rebound/cleared Inspector starts a new menu row instead.
+                    item.isAlternate = compatible(binding) && (id == "menu.showInspector"
+                        || compatible(shortcuts.shortcut(for: "menu.showInspector")))
+                }
             }
             if item.action == #selector(MainWindowController.toggleTerminal(_:)) {
                 item.isHidden = !AppPreferences.experimentalTerminalEnabled
@@ -127,7 +183,7 @@ enum MainMenu {
         add(menu, "Reload", #selector(MainWindowController.reload(_:)), "r", symbol: "arrow.clockwise")
         menu.addItem(.separator())
         add(menu, "Use Groups", #selector(MainWindowController.toggleGroups(_:)), "0", [.command, .control], symbol: "square.grid.3x1.below.line.grid.1x2")
-        menu.addItem(groupByMenuItem())
+        menu.addItem(groupByMenuItem(applyBindings: false))
         let (sortItem, sortMenu) = submenu("Sort By")
         for (title, key) in [("Name", "name"), ("Date Modified", "dateModified"), ("Size", "size"), ("Kind", "kind")] {
             add(sortMenu, title, #selector(MainWindowController.sortBy(_:)), "", []).representedObject = key
@@ -149,6 +205,7 @@ enum MainMenu {
         menu.addItem(.separator())
         add(menu, "Show Terminal", #selector(MainWindowController.toggleTerminal(_:)), key(NSF4FunctionKey), [])
         add(menu, "Show Sidebar", #selector(MainWindowController.toggleSidebar(_:)), "s", [.command, .control], symbol: "sidebar.leading")
+        add(menu, "Show Folders", #selector(MainWindowController.toggleFoldersPanel(_:)), key(NSF7FunctionKey), [], symbol: "list.bullet.indent")
         return item
     }
 
@@ -182,11 +239,11 @@ enum MainMenu {
     }
 
     /// Finder's Group By submenu, also used by the toolbar's Group button.
-    static func groupByMenuItem() -> NSMenuItem {
+    static func groupByMenuItem(applyBindings: Bool = true) -> NSMenuItem {
         let (item, menu) = submenu("Group By")
         item.image = MenuIcons.image("arrow.up.arrow.down")
         let keys: [(GroupKey, String)] = [
-            (.none, "0"), (.name, "1"), (.kind, "2"), (.application, ""), (.dateLastOpened, "3"),
+            (.none, ""), (.name, "1"), (.kind, "2"), (.application, ""), (.dateLastOpened, "3"),
             (.dateAdded, "4"), (.dateModified, "5"), (.dateCreated, "6"), (.size, "7"),
         ]
         for (key, shortcut) in keys {
@@ -194,6 +251,8 @@ enum MainMenu {
             mi.representedObject = key.rawValue
             if key == .none { menu.addItem(.separator()) }
         }
+        assignShortcutIdentifiers(in: menu)
+        if applyBindings { applyPreferences(to: menu) }
         return item
     }
 
@@ -211,7 +270,7 @@ enum MainMenu {
         return item
     }
 
-    private static func windowMenu() -> NSMenuItem {
+    private static func windowMenu(registerSystemMenus: Bool) -> NSMenuItem {
         let (item, menu) = submenu("Window")
         add(menu, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
         add(menu, "Zoom", #selector(NSWindow.performZoom(_:)))
@@ -222,14 +281,23 @@ enum MainMenu {
         add(menu, "File Operations", #selector(AppDelegate.showFileOperations(_:)))
         menu.addItem(.separator())
         add(menu, "Bring All to Front", #selector(NSApplication.arrangeInFront(_:)))
-        NSApp.windowsMenu = menu
+        if registerSystemMenus { NSApp.windowsMenu = menu }
         return item
     }
 
-    private static func helpMenu() -> NSMenuItem {
+    private static func helpMenu(registerSystemMenus: Bool) -> NSMenuItem {
         let (item, menu) = submenu("Help")
-        NSApp.helpMenu = menu
+        if registerSystemMenus { NSApp.helpMenu = menu }
         return item
+    }
+}
+
+/// NSEvent and NSMenu use different Backspace / Forward Delete characters.
+/// Normalize a copy solely for menu matching, leaving the responder's original
+/// editing / terminal event intact when no enabled menu item handles it.
+private final class ShortcutMenu: NSMenu {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        super.performKeyEquivalent(with: AppPreferences.Shortcut.eventForMenu(event))
     }
 }
 

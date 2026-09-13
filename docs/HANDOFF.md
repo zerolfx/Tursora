@@ -2,6 +2,24 @@
 
 给接手这个项目的人或 agent。先读这一页，再按 [README.md](README.md) 的索引找细节。
 
+## 本轮：快捷键、终端设置、目录树与免费开源分发
+
+当前整合分支 `codex/customization-and-distribution` 从 `b58c1ce` 开始。用户要求协调 agent 开发：所有应用快捷键可定制、终端 Shell / 字体 / 颜色设置、工具栏直接展开 / 收起终端、参考 Dolphin 的 Places 与目录树、README 强调免费开源、截图圆角外透明以及 Homebrew 分发；用户已明确选择 MIT 许可证。
+
+- Settings 现分 General / Shortcuts / Terminal / Updates。Shortcuts 覆盖主菜单已有及未绑定命令、文件 Return / Space、标签定位与循环、备用缩放及归档取消；持久化录制 / 清除 / 单项或全部重置，保留原 Filter 绑定，冲突说明归属。文本、Info / Settings 编辑器与 SwiftTerm 的原生 Control / 功能键受保护，终端开关除外；默认绑定和精确范围见 [SHORTCUTS](SHORTCUTS.md)、[快捷键记录](research/custom-shortcuts.md)。
+- Terminal 默认系统登录 Shell、系统等宽 12 pt、跟随外观；可选绝对可执行 Shell、已安装等宽字体 / 8–36 pt、Dark / Light / Custom 文本背景色。字体和颜色即时应用到所有已打开 PTY，Shell 下次启动才用。工具栏终端按钮及溢出菜单反映本窗口展开状态；收起仍终止会话。Tursora 是 SwiftTerm + 真实 PTY，Rascal 当前是逐条 Process + Pipe 命令面板，源码依据与边界见[终端记录](research/terminal-customization.md)。
+- View → Show Folders 默认 F7，在收藏与位置下方展开独立目录树，单层后台读取、活动 pane 跟随、独立隐藏 / Home 限制选项、右键打开到新标签 / 另一侧、文件拖入走既有任务。按窗口恢复可见性、上下比例及选项；隐藏树或收起侧栏停用监听。Dolphin 两种面板的区别、固定左侧布局取舍见[目录树记录](research/folder-tree.md)。
+- 根目录 MIT 许可与 README / 网站免费开源说明已加入，第三方声明保留。Homebrew cask 复用本公开仓库，固定已发布 `0.1.0` ZIP，实际下载字节 / 校验文件 / GitHub digest 一致；独立临时 Homebrew 6.0.22 中真安装、包版本 / arm64 / strict codesign / 保留 quarantine 与卸载通过。公开 main 的 tap、远端工作流仍需最终发布；不声称官方 homebrew/cask 已接纳，不把 brew 安装当作 Apple 公证。维护工具与依据见[Homebrew](research/homebrew.md)。
+- 新增标准库 PNG 检查和 Pages 门槛覆盖整个 canonical 目录；透明化处理器沿用实测边缘、原残差阈值和窄范围，保护真实内部，83 项 Python 工具测试通过。**全部 29 张截图通过 alpha 与逐张明暗 / 四角检查**：原有 20 张字节未改，六张旧不透明图真实重拍，并新增 Shortcuts / Terminal Settings / Folders。安装图使用同一 Finder 窗口配准参考，真实白色示意内部保留。网站完整构建（4 资产、36 引用）及 1200 / 390 px 浏览器复查通过，包含 ZIP 页签、透明图暗色弹窗和 Escape 焦点恢复；自有页签及服务器已关闭。来源、像素统计和阶段边界见[截图记录](research/screenshot-audit-2026-09-13.md)。
+
+实机修复覆盖字号 Tab 提交、功能键录制、非美式 `+`、目录别名、树选区 / 异步回调与窄窗地址栏布局。树的展开权限查询现无副作用，实际展开后才加载；面包屑省略控件在多次 layout 中保持稳定。Backspace / Forward Delete 菜单匹配只规范化事件副本，保留原生输入。详细边界见[整合记录](research/customization-integration.md)和[快捷键记录](research/custom-shortcuts.md)。Settings 图实际演示终端自定义 F6、`/bin/zsh`、Menlo 14 pt 与配色；Updates 自动检查开、自动安装关，图片保留各自真实拍摄阶段。
+
+修复后打包应用实机检查已完成：真实 560 × 380 最小窗口的长路径、分栏、树与终端按钮保持响应，再恢复 1100 × 740；正常退出并仅将 QA 进程切为浅色后重开，恢复 Folders 可见性 / 分隔比例、两个标签及分栏，未启动 shell，浅色 Terminal Settings 控件可读。受控自动化另覆盖 560 × 360，不能混写为实机窗口尺寸。
+
+**最终 95 份 Swift 源码：3,194 项 smoke 连续三轮通过**。`smoke-7` / `8` / `9` 分别用时 196.1 / 190.5 / 190.9 秒，均 exit 0、stderr 为空、源码未变；三份源码清单和当前文件均与 `/private/tmp/tursora-customization-qa/delivery-sources.json` 一致。逐轮 `.json` / `.out` / `.err` 与 `*-sources.json` 保存在同目录；此前 2,566 / 3,160 等历史项数不代表这份源码。
+
+交付 release app 与本地 DMG 构建通过，strict codesign、Info.plist、arm64、根 MIT 许可证打包、DMG 只读挂载 / 安装布局核对通过；日志 `package-delivery.out`、`dmg-delivery.out`。本地 DMG 的 `0.1.0` 文件名来自当前开发包版本，不是新公开 release，也未替换已发布的 `0.1.0` ZIP。最终菜单复查与 QA 清理见[整合记录](research/customization-integration.md)。尚未推送分支、发布本轮 tap / 新版本或部署网站，远端 CI 结果需发布后单独核对。
+
 ## 本轮：默认启用终端与 ZIP 浏览
 
 用户要求两项功能默认开启并打磨。缺少偏好记录时默认 true，保留既有显式关闭；General 改为 Terminal & ZIP，F4 展开时才创建 shell。ZIP 加入命名的准备状态 / Cancel、失败 Retry / Open Enclosing Folder，以及启动恢复失败的 Reload 重试。最后等待者取消底层准备并清理未完成副本，关闭后重开标签再准备原目标；退出先保存一次逻辑工作区，再等传输与归档清理。
@@ -109,9 +127,9 @@ CHANGELOG 已改为版本历史，保留 Unreleased 供后续更新；此前开�
 - 分组的 Size 桶边界与 Kind 组顺序仍是推断，"Earlier" 键未用。
 - Finder 的 Get Info 里 Stationery pad、ACL、改 owner / group、Apply to enclosed items 没做。
 - 快捷键与 Finder 有几处冲突（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌥⌘S），是有意的，见 [DECISIONS.md](DECISIONS.md) D9。
-- 已有 General / Updates 设置：扩展名只改显示、过滤快捷键可录制，每目录 / 统一默认视图策略已实现；软件更新开关与发布进度见页首。会话恢复已实现，当前验证进度见页首；其他偏好策略、本地化仍未实现。
+- 已有 General / Shortcuts / Terminal / Updates 设置：扩展名只改显示、所有应用命令快捷键可配置、终端 Shell / 字体 / 颜色可配置，每目录 / 统一默认视图策略已实现；本轮验证与发布进度见页首。会话恢复已实现，当前验证进度见页首；其他偏好策略、本地化仍未实现。
 - 搜索支持普通目录递归名称与 Spotlight 正文，正文受索引 / importer / 权限限制，真实正向正文命中尚未验证。单次最多展示 50,000 项，Spotlight 最多检查 50,000 个候选；没有 ZIP 内搜索、Tags / 评分条件、Finder `.savedSearch` 互通或实时结果增量。
-- 终端 F4 入口默认启用，只有展开面板才启动 shell；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认启用，Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭 ZIP 浏览开关后已有页仍只读，新打开 ZIP 恢复 Extract。
+- 终端工具栏 / 默认 F4 入口默认启用，只有展开面板才启动 shell；每窗口一个 PTY，浏览导航只更新手动 Restart 目标，Restart / 关闭面板会结束会话；在 ZIP 内启动 / Restart 使用原 ZIP 所在目录。ZIP 浏览默认启用，Open 在当前 pane 进入；地址栏保留原 ZIP 加内部目录的逻辑路径。归档只读，复制 / 拖出只复制，Quick Look / Share / Open 使用临时副本，不写回归档，副本保留到退出。关闭 ZIP 浏览开关后已有页仍只读，新打开 ZIP 恢复 Extract。
 - 归档与服务器新增功能边界：仅普通 ZIP；远程走系统 NetFS 挂载，不含自建 SFTP / 重连；真实服务器读写还未验证。`FileOperations.report` 和 Eject 错误路径已防止 smoke 模式弹模态框。
 
 ## 下一步

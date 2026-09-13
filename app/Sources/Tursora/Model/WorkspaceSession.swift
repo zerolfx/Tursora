@@ -64,15 +64,25 @@ struct WorkspaceWindowState: Codable, Equatable {
     var sidebarWidth: Double = 190
     var sidebarCollapsed: Bool = false
     var isMiniaturized: Bool = false
+    var foldersVisible: Bool = false
+    var foldersFraction: Double = 0.45
+    var foldersShowHidden: Bool = false
+    var foldersLimitToHome: Bool = true
 
     init(tabs: [WorkspaceTabState], selectedTabIndex: Int = 0, frame: WorkspaceWindowFrame? = nil,
-         sidebarWidth: Double = 190, sidebarCollapsed: Bool = false, isMiniaturized: Bool = false) {
+         sidebarWidth: Double = 190, sidebarCollapsed: Bool = false, isMiniaturized: Bool = false,
+         foldersVisible: Bool = false, foldersFraction: Double = 0.45,
+         foldersShowHidden: Bool = false, foldersLimitToHome: Bool = true) {
         self.tabs = tabs
         self.selectedTabIndex = selectedTabIndex
         self.frame = frame
         self.sidebarWidth = sidebarWidth
         self.sidebarCollapsed = sidebarCollapsed
         self.isMiniaturized = isMiniaturized
+        self.foldersVisible = foldersVisible
+        self.foldersFraction = foldersFraction
+        self.foldersShowHidden = foldersShowHidden
+        self.foldersLimitToHome = foldersLimitToHome
     }
 
     func sanitized() -> Self? {
@@ -81,11 +91,15 @@ struct WorkspaceWindowState: Codable, Equatable {
         guard !kept.values.isEmpty else { return nil }
         return Self(tabs: kept.values, selectedTabIndex: kept.selected, frame: frame?.sanitized,
                     sidebarWidth: sidebarWidth.isFinite ? min(600, max(100, sidebarWidth)) : 190,
-                    sidebarCollapsed: sidebarCollapsed, isMiniaturized: isMiniaturized)
+                    sidebarCollapsed: sidebarCollapsed, isMiniaturized: isMiniaturized,
+                    foldersVisible: foldersVisible,
+                    foldersFraction: foldersFraction.isFinite ? min(0.8, max(0.2, foldersFraction)) : 0.45,
+                    foldersShowHidden: foldersShowHidden, foldersLimitToHome: foldersLimitToHome)
     }
 
     private enum CodingKeys: String, CodingKey {
         case tabs, selectedTabIndex, frame, sidebarWidth, sidebarCollapsed, isMiniaturized
+        case foldersVisible, foldersFraction, foldersShowHidden, foldersLimitToHome
     }
 
     init(from decoder: Decoder) throws {
@@ -101,6 +115,11 @@ struct WorkspaceWindowState: Codable, Equatable {
         sidebarWidth = width.isFinite ? min(600, max(100, width)) : 190
         sidebarCollapsed = (try? values.decode(Bool.self, forKey: .sidebarCollapsed)) ?? false
         isMiniaturized = (try? values.decode(Bool.self, forKey: .isMiniaturized)) ?? false
+        foldersVisible = (try? values.decode(Bool.self, forKey: .foldersVisible)) ?? false
+        let fraction = (try? values.decode(Double.self, forKey: .foldersFraction)) ?? 0.45
+        foldersFraction = fraction.isFinite ? min(0.8, max(0.2, fraction)) : 0.45
+        foldersShowHidden = (try? values.decode(Bool.self, forKey: .foldersShowHidden)) ?? false
+        foldersLimitToHome = (try? values.decode(Bool.self, forKey: .foldersLimitToHome)) ?? true
     }
 }
 

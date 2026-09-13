@@ -50,6 +50,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Framewor
 cp "$BIN" "$APP/Contents/MacOS/$EXEC_NAME"
 python3 "$ROOT/tools/update-metadata.py" prepare-executable "$APP/Contents/MacOS/$EXEC_NAME"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+cp "$ROOT/../LICENSE" "$APP/Contents/Resources/Tursora-LICENSE.txt"
 # SwiftTerm 1.15.0 probes Bundle.main.resourceURL directly, intentionally
 # avoiding SwiftPM's generated Bundle.module accessor and its build-path fallback.
 cp -R "$SWIFTTERM_RESOURCES" "$APP/Contents/Resources/"

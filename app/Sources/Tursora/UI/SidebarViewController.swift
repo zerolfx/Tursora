@@ -1,10 +1,18 @@
 import AppKit
 
 /// Quick-navigation sidebar: a source-list NSOutlineView over PlacesModel.
-final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
+final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSSplitViewDelegate {
 
     let places: PlacesModel
     let outlineView = SidebarOutlineView()
+    private let folderProvider: FileProvider
+    private let panelsSplit = NSSplitView()
+    private(set) var foldersPanel: FoldersPanelController?
+    private(set) var foldersVisible = false
+    var foldersFraction: Double = 0.45
+    var onFoldersChanged: (() -> Void)?
+    private var foldersLocation: URL?
+    private var isArrangingPanels = false
 
     var onSelectPlace: ((URL) -> Void)?
     var onOpenInNewTab: ((URL) -> Void)?
@@ -65,8 +73,9 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private static let headerID = NSUserInterfaceItemIdentifier("header")
     private static let placeID = NSUserInterfaceItemIdentifier("place")
 
-    init(places: PlacesModel) {
+    init(places: PlacesModel, provider: FileProvider = LocalFileProvider()) {
         self.places = places
+        self.folderProvider = provider
         super.init(nibName: nil, bundle: nil)
         rebuildNodes()
         NotificationCenter.default.addObserver(self, selector: #selector(placesChanged),
@@ -113,7 +122,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
-        view.pinToEdges(scroll)
+        panelsSplit.isVertical = false
+        panelsSplit.dividerStyle = .thin
+        panelsSplit.delegate = self
+        panelsSplit.addArrangedSubview(scroll)
+        view.pinToEdges(panelsSplit)
     }
 
     override func viewDidLoad() {
@@ -134,6 +147,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
     /// Highlight the place matching `url`, or clear the highlight if none does.
     func syncSelection(to url: URL) {
+        foldersLocation = url
+        foldersPanel?.follow(url)
         isSyncingSelection = true
         defer { isSyncingSelection = false }
         let target = url.standardizedFileURL
@@ -147,6 +162,56 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             }
         }
         outlineView.deselectAll(nil)
+    }
+
+    /// Places remains at the top; the optional folder tree has its own scroll
+    /// area and divider, without narrowing either file pane.
+    func setFoldersPanelVisible(_ visible: Bool, active: Bool = true) {
+        _ = view
+        guard foldersVisible != visible else {
+            foldersPanel?.setActive(visible && active)
+            return
+        }
+        isArrangingPanels = true
+        defer { isArrangingPanels = false }
+        foldersVisible = visible
+        if visible {
+            if foldersPanel == nil {
+                let panel = FoldersPanelController(provider: folderProvider)
+                panel.onOpen = { [weak self] url in self?.onSelectPlace?(url) }
+                panel.onOpenInNewTab = { [weak self] url in self?.onOpenInNewTab?(url) }
+                panel.onOpenInOtherPane = { [weak self] url in self?.onOpenInOtherPane?(url) }
+                panel.onDropFiles = { [weak self] urls, destination, operation in self?.onDropFiles?(urls, destination, operation) }
+                panel.onClose = { [weak self] in self?.setFoldersPanelVisible(false); self?.onFoldersChanged?() }
+                panel.onOptionsChanged = { [weak self] in self?.onFoldersChanged?() }
+                addChild(panel)
+                foldersPanel = panel
+            }
+            guard let panel = foldersPanel else { return }
+            panel.view.frame = NSRect(x: 0, y: 0, width: view.bounds.width, height: max(140, view.bounds.height * foldersFraction))
+            panelsSplit.addArrangedSubview(panel.view)
+            view.layoutSubtreeIfNeeded()
+            panelsSplit.setPosition(panelsSplit.bounds.height * (1 - foldersFraction), ofDividerAt: 0)
+            panel.follow(foldersLocation ?? folderProvider.homeURL)
+            panel.setActive(active)
+        } else if let panel = foldersPanel {
+            panel.setActive(false)
+            panelsSplit.removeArrangedSubview(panel.view)
+            panel.view.removeFromSuperview()
+            panelsSplit.adjustSubviews()
+            if let responder = view.window?.firstResponder as? NSView, responder.isDescendant(of: panel.view) {
+                view.window?.makeFirstResponder(outlineView)
+            }
+        }
+    }
+
+    func setFoldersActive(_ active: Bool) { foldersPanel?.setActive(foldersVisible && active) }
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat { min(100, splitView.bounds.height * 0.3) }
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat { max(100, splitView.bounds.height - 140) }
+    func splitViewDidResizeSubviews(_ notification: Notification) {
+        guard foldersVisible, !isArrangingPanels, let panel = foldersPanel, panelsSplit.bounds.height > 0 else { return }
+        let fraction = min(0.8, max(0.2, panel.view.frame.height / panelsSplit.bounds.height))
+        if abs(foldersFraction - fraction) > 0.005 { foldersFraction = fraction; onFoldersChanged?() }
     }
 
     // MARK: - Context menu

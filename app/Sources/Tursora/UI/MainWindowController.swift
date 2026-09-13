@@ -13,6 +13,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private(set) var terminalPanel: TerminalPanelController?
     private var terminalItem: NSSplitViewItem?
     private var preferencesObserver: NSObjectProtocol?
+    private var shortcutsObserver: NSObjectProtocol?
     private var displayedExtensions = AppPreferences.showFileExtensions
     private let splitViewController = NSSplitViewController()
     private var backButton: LongPressMenuButton?
@@ -20,6 +21,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var viewModeControl: NSSegmentedControl?
     private var splitButton: NSButton?
     private var splitToolbarItem: NSToolbarItem?
+    private var terminalButton: NSButton?
+    private var terminalToolbarItem: NSToolbarItem?
     private var shareItem: NSSharingServicePickerToolbarItem?
     private var searchItem: NSSearchToolbarItem?
     private var isSynchronizingSearchField = false
@@ -42,6 +45,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         static let up = NSToolbarItem.Identifier("tursora.up")
         static let viewMode = NSToolbarItem.Identifier("tursora.viewMode")
         static let split = NSToolbarItem.Identifier("tursora.split")
+        static let terminal = NSToolbarItem.Identifier("tursora.terminal")
         static let search = NSToolbarItem.Identifier("tursora.search")
         static let share = NSToolbarItem.Identifier("tursora.share")
         static let more = NSToolbarItem.Identifier("tursora.more")
@@ -52,7 +56,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
          viewPropertiesStore: DirectoryViewPropertiesStore = .shared) {
         self.provider = provider
         self.places = places
-        self.sidebar = SidebarViewController(places: places)
+        self.sidebar = SidebarViewController(places: places, provider: provider)
         self.tabs = TabsController(provider: provider, initialURL: initialURL, host: nil, viewPropertiesStore: viewPropertiesStore)
 
         let window = NSWindow(
@@ -114,8 +118,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         sidebar.onOpenInNewTab = { [weak self] url in self?.tabs.newTab(at: url) }
         sidebar.onOpenInOtherPane = { [weak self] url in self?.tabs.openInOtherPane(url) }
         sidebar.onDropFiles = { [weak self] urls, dest, op in self?.browser.dropFiles(urls, to: dest, op: op) }
+        sidebar.onFoldersChanged = { [weak self] in
+            guard let self, !self.isRestoringWorkspace else { return }
+            self.onSessionChanged?()
+        }
         window.initialFirstResponder = browser.focusView
         installEventMonitors()
+        shortcutsObserver = NotificationCenter.default.addObserver(forName: .tursoraShortcutsChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.validateNavigation()
+        }
         preferencesObserver = NotificationCenter.default.addObserver(forName: .tursoraPreferencesChanged, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
             if self.displayedExtensions != AppPreferences.showFileExtensions {
@@ -129,6 +140,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 }
             }
             if !AppPreferences.experimentalTerminalEnabled { self.hideTerminal() }
+            self.syncTerminalToolbar()
         }
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -142,7 +154,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                                     selectedTabIndex: tabs.currentIndex, frame: frame,
                                     sidebarWidth: capturedSidebarWidth,
                                     sidebarCollapsed: isSidebarCollapsed,
-                                    isMiniaturized: window?.isMiniaturized ?? false)
+                                    isMiniaturized: window?.isMiniaturized ?? false,
+                                    foldersVisible: sidebar.foldersVisible, foldersFraction: sidebar.foldersFraction,
+                                    foldersShowHidden: sidebar.foldersPanel?.model.showsHiddenFolders ?? false,
+                                    foldersLimitToHome: sidebar.foldersPanel?.model.limitsToHome ?? true)
     }
 
     /// The application owns window ordering and minimization after every
@@ -164,6 +179,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         splitViewController.splitView.setPosition(rememberedSidebarWidth, ofDividerAt: 0)
         item.isCollapsed = state.sidebarCollapsed
         rememberedSidebarCollapsed = state.sidebarCollapsed
+        sidebar.foldersFraction = state.foldersFraction
+        if state.foldersVisible || state.foldersShowHidden || !state.foldersLimitToHome {
+            sidebar.setFoldersPanelVisible(true, active: false)
+            sidebar.foldersPanel?.model.showsHiddenFolders = state.foldersShowHidden
+            sidebar.foldersPanel?.model.limitsToHome = state.foldersLimitToHome
+            sidebar.setFoldersPanelVisible(state.foldersVisible, active: !state.sidebarCollapsed)
+        } else { sidebar.setFoldersPanelVisible(false) }
         tabs.restoreWorkspaceTabs(state.tabs, selectedIndex: state.selectedTabIndex)
         window?.contentView?.layoutSubtreeIfNeeded()
         window?.initialFirstResponder = browser.focusView
@@ -191,7 +213,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         window.title = provider.displayName(for: representedURL)
         window.subtitle = ""
         window.representedURL = representedURL
-        sidebar.syncSelection(to: url)
+        sidebar.syncSelection(to: browser.archiveSourceURL?.deletingLastPathComponent() ?? url)
         terminalPanel?.followDirectory(terminalWorkingDirectory)
         validateNavigation()
         syncFilterUI()
@@ -209,6 +231,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         terminalItem = item
         contentSplitController.addSplitViewItem(item)
         contentSplitController.splitView.setPosition(max(180, contentSplitController.view.bounds.height * 0.68), ofDividerAt: 0)
+        syncTerminalToolbar()
         panel.focus()
     }
 
@@ -222,6 +245,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if let terminalItem { contentSplitController.removeSplitViewItem(terminalItem) }
         terminalItem = nil
         terminalPanel = nil
+        syncTerminalToolbar()
         window?.makeFirstResponder(browser.focusView)
     }
 
@@ -380,7 +404,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         backButton?.isEnabled = browser.canGoBack
         forwardButton?.isEnabled = browser.canGoForward
         viewModeControl?.selectedSegment = browser.viewMode == .icons ? 0 : 1
+        viewModeControl?.setToolTip(shortcutTooltip("as Icons", action: "menu.viewAsIcons"), forSegment: 0)
+        viewModeControl?.setToolTip(shortcutTooltip("as List", action: "menu.viewAsList"), forSegment: 1)
         syncSplitToolbar()
+        syncTerminalToolbar()
         shareItem?.isEnabled = !sharingItems.isEmpty
         window?.toolbar?.validateVisibleItems()
     }
@@ -392,6 +419,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     var splitToolbarButtonForTesting: NSButton? { splitButton }
     var backToolbarButtonForTesting: NSButton? { backButton }
+    var terminalToolbarButtonForTesting: NSButton? { terminalButton }
+
+    private func syncTerminalToolbar() {
+        let enabled = AppPreferences.experimentalTerminalEnabled
+        let title = terminalPanel == nil ? "Show Terminal" : "Hide Terminal"
+        let state: NSControl.StateValue = terminalPanel == nil ? .off : .on
+        terminalButton?.state = state
+        terminalButton?.isEnabled = enabled
+        terminalButton?.toolTip = enabled ? shortcutTooltip(title, action: "menu.toggleTerminal") : "Enable Terminal in Settings to open a shell here."
+        terminalButton?.setAccessibilityLabel(title)
+        terminalToolbarItem?.label = title
+        terminalToolbarItem?.toolTip = terminalButton?.toolTip
+        terminalToolbarItem?.isEnabled = enabled
+        terminalToolbarItem?.menuFormRepresentation?.title = title
+        terminalToolbarItem?.menuFormRepresentation?.state = state
+        terminalToolbarItem?.menuFormRepresentation?.isEnabled = enabled
+    }
 
     private var splitActionTitle: String {
         tabs.isSplit ? (tabs.currentPage.activeSide == .left ? "Close Left Pane" : "Close Right Pane") : "Split View"
@@ -399,7 +443,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     private func syncSplitToolbar() {
         splitButton?.state = tabs.isSplit ? .on : .off
-        splitButton?.toolTip = "\(splitActionTitle) (⇧⌘D)"
+        splitButton?.toolTip = shortcutTooltip(splitActionTitle, action: "menu.toggleSplit")
         splitButton?.setAccessibilityLabel(splitActionTitle)
         splitToolbarItem?.label = splitActionTitle
         splitToolbarItem?.toolTip = splitButton?.toolTip
@@ -407,32 +451,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         splitToolbarItem?.menuFormRepresentation?.state = tabs.isSplit ? .on : .off
     }
 
+    private func shortcutTooltip(_ title: String, action: String) -> String {
+        guard let shortcut = AppPreferences.shared.shortcuts.shortcut(for: action) else { return title }
+        return "\(title) (\(shortcut.displayString))"
+    }
+
     // MARK: - Keyboard & mouse that menus cannot express
 
     private func installEventMonitors() {
-        // ⌃Tab / ⌃⇧Tab cycle tabs; ⌘1…⌘9 jump (⌘9 = last). These have no
-        // single menu-item representation, so they are handled here.
+        // The same persistent catalog owns menu and contextual bindings.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self, e.window === self.window else { return e }
-            let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if e.keyCode == 53, flags.isEmpty, self.browser.isPreparingArchive,
-               self.window?.firstResponder === self.browser.focusView {
-                self.browser.cancelArchiveOpening(nil)
-                return nil
-            }
-            if e.keyCode == 48, flags.contains(.control) {                 // Tab
-                flags.contains(.shift) ? self.tabs.selectPrevious() : self.tabs.selectNext()
-                return nil
-            }
-            if flags == .command, e.charactersIgnoringModifiers == "=" {      // ⌘= zooms in like ⌘+
-                self.browser.zoomIn(nil); return nil
-            }
-            if flags == .command, let ch = e.charactersIgnoringModifiers, let n = Int(ch), (1...9).contains(n) {
-                let index = n == 9 ? self.tabs.count - 1 : n - 1
-                if index < self.tabs.count { self.tabs.selectTab(at: index) }
-                return nil
-            }
-            return e
+            return ShortcutDispatcher.handle(e, in: self) ? nil : e
         }
         // Mouse buttons 4/5 (buttonNumber 3/4) — back/forward, as in every browser.
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self] e in
@@ -546,6 +576,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         switch item.action {
         case #selector(toggleTerminal(_:)):
             item.title = terminalPanel == nil ? "Show Terminal" : "Hide Terminal"
+            item.state = terminalPanel == nil ? .off : .on
             return AppPreferences.experimentalTerminalEnabled
         case #selector(goBack(_:)):     return browser.canGoBack
         case #selector(goForward(_:)):  return browser.canGoForward
@@ -571,6 +602,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(toggleSidebar(_:)):
             item.title = isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"
             return true
+        case #selector(toggleFoldersPanel(_:)):
+            item.title = isFoldersPanelVisible ? "Hide Folders" : "Show Folders"
+            item.state = isFoldersPanelVisible ? .on : .off
+            return true
         case #selector(showSearch(_:)): return browser.currentURL != nil && !browser.isBrowsingArchive && !browser.isPreparingArchive
         case #selector(focusFilter(_:)):
             item.state = browser.isFiltering ? .on : .off; return true
@@ -593,6 +628,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case ToolbarID.forward: return browser.canGoForward
         case ToolbarID.up:      return browser.canGoUp
         case ToolbarID.share:   return !sharingItems.isEmpty
+        case ToolbarID.terminal: return AppPreferences.experimentalTerminalEnabled
         default: return true
         }
     }
@@ -645,10 +681,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     var isSidebarCollapsed: Bool { splitViewController.splitViewItems[0].isCollapsed }
+    var isFoldersPanelVisible: Bool { sidebar.foldersVisible && !isSidebarCollapsed }
+
+    @objc func toggleFoldersPanel(_ sender: Any?) {
+        let show = !isFoldersPanelVisible
+        if show, isSidebarCollapsed { toggleSidebar(nil) }
+        sidebar.setFoldersPanelVisible(show)
+        if let url = browser.archiveSourceURL?.deletingLastPathComponent() ?? browser.currentURL { sidebar.foldersPanel?.follow(url) }
+        onSessionChanged?()
+    }
 
     @objc func toggleSidebar(_ sender: Any?) {
         let item = splitViewController.splitViewItems[0]
         item.isCollapsed.toggle()
+        sidebar.setFoldersActive(!item.isCollapsed)
         sidebarSessionGeometryChanged()
         // Restoring focus avoids leaving it in an invisible outline view.
         if item.isCollapsed { window?.makeFirstResponder(browser.focusView) }
@@ -657,7 +703,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: - NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.sidebar, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.split, ToolbarID.viewMode, ToolbarID.group, ToolbarID.share, ToolbarID.more, ToolbarID.search]
+        [ToolbarID.sidebar, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.split, ToolbarID.terminal, ToolbarID.viewMode, ToolbarID.group, ToolbarID.share, ToolbarID.more, ToolbarID.search]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -697,6 +743,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             splitButton = button
             splitToolbarItem = item
             syncSplitToolbar()
+            return item
+        case ToolbarID.terminal:
+            let button = NSButton(image: NSImage(systemSymbolName: "terminal", accessibilityDescription: "Terminal")!,
+                                  target: self, action: #selector(toggleTerminal(_:)))
+            button.bezelStyle = .texturedRounded
+            button.setButtonType(.pushOnPushOff)
+            button.imagePosition = .imageOnly
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.paletteLabel = "Terminal"
+            item.view = button
+            item.target = self
+            item.action = #selector(toggleTerminal(_:))
+            item.autovalidates = false
+            item.visibilityPriority = .high
+            let overflow = NSMenuItem(title: "Show Terminal", action: #selector(toggleTerminal(_:)), keyEquivalent: "")
+            overflow.target = self
+            item.menuFormRepresentation = overflow
+            terminalButton = button
+            terminalToolbarItem = item
+            syncTerminalToolbar()
             return item
         case ToolbarID.share:
             let item = NSSharingServicePickerToolbarItem(itemIdentifier: id)
@@ -744,8 +810,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 NSImage(systemSymbolName: "list.bullet", accessibilityDescription: "List")!,
             ], trackingMode: .selectOne, target: self, action: #selector(viewModeChanged(_:)))
             control.segmentStyle = .automatic
-            control.setToolTip("as Icons (⌘⌥1)", forSegment: 0)
-            control.setToolTip("as List (⌘⌥2)", forSegment: 1)
+            control.setToolTip(shortcutTooltip("as Icons", action: "menu.viewAsIcons"), forSegment: 0)
+            control.setToolTip(shortcutTooltip("as List", action: "menu.viewAsList"), forSegment: 1)
             control.selectedSegment = browser.viewMode == .icons ? 0 : 1
             viewModeControl = control
             let item = NSToolbarItem(itemIdentifier: id)
@@ -815,6 +881,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         removeEventMonitors()
         hideTerminal()
+        sidebar.setFoldersActive(false)
+        if let shortcutsObserver { NotificationCenter.default.removeObserver(shortcutsObserver) }
+        shortcutsObserver = nil
         if let preferencesObserver { NotificationCenter.default.removeObserver(preferencesObserver) }
         preferencesObserver = nil
         if let sidebarResizeObserver { NotificationCenter.default.removeObserver(sidebarResizeObserver) }

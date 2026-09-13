@@ -6,12 +6,20 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ### Improved
 
+- Narrow split panes keep stable breadcrumb controls instead of repeatedly rebuilding the overflow button. Folder-tree accessibility queries leave collapsed directories unopened, and selection stays visible after resizing.
+- Terminal font-size edits also apply when leaving the field with Tab; the Folders tree follows macOS temporary-directory aliases through their real system ancestors without enabling unrelated hidden folders.
 - Terminal access and ZIP browsing are enabled by default while preserving saved opt-outs. Settings explains lazy terminal startup and explicit ZIP extraction.
 - ZIP opening shows progress and cancellation, shares preparation across panes, and cancels unused workers before cleaning temporary files. Failed opens can retry or open the enclosing folder, including restored tabs; startup titles retain their requested names and retry handles system path aliases. Disappearing temporary members no longer break the whole listing.
 - Terminal headers distinguish startup and reported shell folders, show the restart destination, preserve exit/failure status through navigation, and reject stale directory reports from previous sessions.
 
 ### Added
 
+- Searchable customization for every application-command shortcut, including unassigned menu commands and file/window alternatives, with conflict explanations, clear/reset controls and existing Filter-binding migration.
+- Terminal settings for the default/custom shell, installed monospaced fonts, font size and system/dark/light/custom colors. Font and color edits update open terminals without restarting their shells; shell selection applies on the next start.
+- A toolbar button to show or hide the window's terminal, with a matching overflow action and current shortcut hint.
+- A separate Folders tree below Favorites and Locations, with active-pane following, lazy directory loading, hidden/Home options, other-pane navigation and restored panel layout.
+- The MIT project license and prominent free/open-source README and website copy; a checksum-pinned Homebrew cask in the project's own tap, with release-generation and installation checks.
+- A build-time transparency check for all canonical README/site screenshots and conservative measured-edge recovery for native rounded corners next to colored system indicators.
 - Workspace restoration on launch, enabled by default: reopen windows, ordered and named tabs, split panes, active locations and layout, and rerun existing search requests. General settings can disable restoration and clear the saved workspace; saving failures appear inline with a retry action. Navigation history, filters, selection, terminal sessions, transfers and undo are not restored.
 - Software updates through Sparkle, with a manual Check for Updates command and a dedicated Updates settings page. Daily automatic checks default on and can be disabled; automatic download and installation is a separate option that defaults off.
 - Signed update DMGs and a stable-release appcast carrying their signatures, published alongside release assets. The original 0.1.0 application requires one manual upgrade to gain the updater.

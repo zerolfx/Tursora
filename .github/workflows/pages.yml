@@ -6,17 +6,15 @@ on:
     paths:
       - 'site/**'
       - 'app/Resources/AppIcon.png'
-      - 'docs/images/features/path-navigation.png'
-      - 'docs/images/features/split-panes.png'
-      - 'docs/images/features/zip-browsing.png'
+      - 'docs/images/features/**'
+      - 'app/tools/screenshot_alpha.py'
       - '.github/workflows/pages.yml'
   pull_request:
     paths:
       - 'site/**'
       - 'app/Resources/AppIcon.png'
-      - 'docs/images/features/path-navigation.png'
-      - 'docs/images/features/split-panes.png'
-      - 'docs/images/features/zip-browsing.png'
+      - 'docs/images/features/**'
+      - 'app/tools/screenshot_alpha.py'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 

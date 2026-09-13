@@ -10,6 +10,9 @@ from urllib.parse import unquote, urlsplit
 
 SITE = Path(__file__).resolve().parent
 ROOT = SITE.parent
+sys.path.insert(0, str(ROOT / "app/tools"))
+from screenshot_alpha import validate as validate_screenshot_alpha
+
 DIST = SITE / "dist"
 ASSETS = {
     "AppIcon.png": ROOT / "app/Resources/AppIcon.png",
@@ -75,6 +78,11 @@ def main():
     for source in assets.values():
         if not source.is_file():
             raise FileNotFoundError(f"Missing canonical asset: {source.relative_to(ROOT)}")
+    screenshots = sorted((ROOT / "docs/images/features").glob("*.png"))
+    if not screenshots:
+        raise ValueError("No canonical screenshots found")
+    for source in screenshots:
+        validate_screenshot_alpha(source)
     if DIST.is_symlink():
         raise ValueError("Refusing to replace a symlink at site/dist")
     if DIST.exists():
@@ -87,7 +95,7 @@ def main():
         shutil.copy2(source, DIST / "assets" / filename)
     reference_count = validate()
     size = sum(path.stat().st_size for path in DIST.rglob("*") if path.is_file())
-    print(f"Built site/dist: {len(assets)} canonical assets, {reference_count} references checked, {size / 1024:.0f} KiB.")
+    print(f"Built site/dist: {len(assets)} canonical assets, {reference_count} references checked, {size / 1024:.0f} KiB; {len(screenshots)} screenshots passed alpha checks.")
     print("Preview: python3 -m http.server 8080 --directory site/dist")
 
 

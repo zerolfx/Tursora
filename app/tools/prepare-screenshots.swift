@@ -202,6 +202,7 @@ func prepare(_ bitmap: Bitmap) throws -> Prepared {
         for y in 0..<spanY { for x in 0..<2 { band.insert(y * limit + x) } }
         var feathered = 0
         var transparent = 0
+        var stableEdgeFallbacks = 0
 
         for local in band.sorted() {
             let x = local % limit, y = local / limit
@@ -236,11 +237,31 @@ func prepare(_ bitmap: Bitmap) throws -> Prepared {
             let denominator = distance.reduce(0) { $0 + $1 * $1 }
             try require(average(foreground) < 205 && denominator > 7_500,
                         "\(corner.name): insufficient matte/foreground contrast for edge recovery.")
-            let alpha = zip(distance, color).reduce(0) { $0 + $1.0 * (255 - $1.1) } / denominator
+            var alpha = zip(distance, color).reduce(0) { $0 + $1.0 * (255 - $1.1) } / denominator
             guard alpha < 0.985 else { continue }
-            let residual = (0..<3).map { abs(color[$0] - (alpha * foreground[$0] + (1 - alpha) * 255)) }.max()!
+            var residual = (0..<3).map { abs(color[$0] - (alpha * foreground[$0] + (1 - alpha) * 255)) }.max()!
+            if residual > 22 || alpha < 0 {
+                // An actual title-bar badge can enter the diagonal protected
+                // samples while the native corner edge remains neutral. Try
+                // only this corner's already measured top/side edge colors,
+                // with the same contrast and residual limits. This changes
+                // neither the exterior flood nor the bounded editable band.
+                for edge in [top.color, side.color] {
+                    let distances = edge.map { 255 - $0 }
+                    let divisor = distances.reduce(0) { $0 + $1 * $1 }
+                    guard average(edge) < 205, divisor > 7_500 else { continue }
+                    let candidate = zip(distances, color).reduce(0) { $0 + $1.0 * (255 - $1.1) } / divisor
+                    let error = (0..<3).map { abs(color[$0] - (candidate * edge[$0] + (1 - candidate) * 255)) }.max()!
+                    guard candidate >= 0, error <= 22 else { continue }
+                    alpha = candidate
+                    residual = error
+                    stableEdgeFallbacks += 1
+                    break
+                }
+            }
             try require(residual <= 22 && alpha >= 0,
                         "\(corner.name): colored or inconsistent fringe (residual \(String(format: "%.1f", residual))); refusing to alter it.")
+            guard alpha < 0.985 else { continue }
             let alphaByte = max(0, min(254, Int((alpha * 255).rounded())))
             if alphaByte <= 8 {
                 output.replaceSubrange(byte..<(byte + 4), with: [0, 0, 0, 0])
@@ -259,6 +280,7 @@ func prepare(_ bitmap: Bitmap) throws -> Prepared {
         records.append(["corner": corner.name, "measuredSpan": [spanX, spanY],
                         "connectedMattePixels": flood.count, "transparentPixels": transparent,
                         "antialiasPixels": feathered, "candidateBandPixels": band.count,
+                        "stableEdgeFallbackPixels": stableEdgeFallbacks,
                         "changedBounds": bounds(of: changed.subtracting(previouslyChanged), width: bitmap.width) as Any? ?? NSNull()])
     }
     try require(extents.max()! <= extents.min()! * 3,

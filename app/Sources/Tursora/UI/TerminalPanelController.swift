@@ -137,6 +137,9 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     let restartButton = NSButton(title: "Restart in Current Folder", target: nil, action: nil)
     private var presentation = TerminalPanelPresentation()
     private let localHostNames: Set<String>
+    private let preferences: TerminalPreferences.Store
+    private var preferencesObserver: NSObjectProtocol?
+    private var launchError: String?
     private var isShutDown = false
     var onClose: (() -> Void)?
 
@@ -147,16 +150,26 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         return foreground > 0 && foreground != process.shellPid
     }
 
-    init(initialDirectory: URL, localHostNames: Set<String> = TerminalPanelPresentation.localHostNames) {
+    init(initialDirectory: URL, localHostNames: Set<String> = TerminalPanelPresentation.localHostNames,
+         preferences: TerminalPreferences.Store = TerminalPreferences.shared) {
         pendingDirectory = initialDirectory
         self.localHostNames = localHostNames
+        self.preferences = preferences
         super.init(nibName: nil, bundle: nil)
+        preferencesObserver = preferences.notificationCenter.addObserver(forName: .tursoraTerminalPreferencesChanged, object: preferences, queue: nil) { [weak self] _ in
+            self?.applyAppearancePreferences()
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    deinit { if let process = terminalView?.process { TerminalProcessLifecycle.stop(process) } }
+    deinit {
+        if let preferencesObserver { preferences.notificationCenter.removeObserver(preferencesObserver) }
+        if let process = terminalView?.process { TerminalProcessLifecycle.stop(process) }
+    }
 
     override func loadView() {
-        view = NSView()
+        let root = TerminalPanelRootView()
+        root.onAppearanceChanged = { [weak self] in self?.applyAppearancePreferences() }
+        view = root
         let title = NSTextField(labelWithString: "Terminal")
         title.font = .systemFont(ofSize: 11, weight: .medium)
         title.textColor = .secondaryLabelColor
@@ -229,6 +242,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         }
         terminalView = nil
         presentation = TerminalPanelPresentation()
+        launchError = nil
     }
 
     private func startIfNeeded() {
@@ -239,8 +253,14 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
 
     private func start(in directory: URL) {
         guard !SmokeTest.isRequested, AppPreferences.experimentalTerminalEnabled else { return }
-        let configuration = TerminalLaunchConfiguration.make(directory: directory, shell: TerminalLaunchConfiguration.userShell,
-                                                              environment: ProcessInfo.processInfo.environment)
+        let configuration: TerminalLaunchConfiguration
+        do { configuration = try launchConfiguration(in: directory) }
+        catch {
+            presentation = TerminalPanelPresentation(state: .failedToStart)
+            launchError = error.localizedDescription + " Open Settings → Terminal to choose a shell."
+            updateLocation()
+            return
+        }
         let terminal = LocalProcessTerminalView(frame: terminalContainer.bounds)
         installTerminal(terminal, in: directory)
         terminal.startProcess(executable: configuration.executable, args: configuration.arguments,
@@ -248,6 +268,28 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         if !terminal.process.running { presentation.state = .failedToStart }
         updateLocation()
         view.window?.makeFirstResponder(terminal)
+    }
+
+    /// Resolve again for each start; a stored executable may since have moved.
+    func launchConfiguration(in directory: URL, environment: [String: String] = ProcessInfo.processInfo.environment) throws -> TerminalLaunchConfiguration {
+        let shell = try preferences.configuration.resolvedShell()
+        return TerminalLaunchConfiguration.make(directory: directory, shell: shell, environment: environment)
+    }
+
+    private func applyAppearancePreferences() {
+        guard let terminalView, isViewLoaded else { return }
+        let value = preferences.configuration
+        let font = value.font
+        // SwiftTerm resets selection and cell geometry when assigning a font.
+        // A shell-only edit must preserve both.
+        if terminalView.font.fontName != font.fontName || terminalView.font.pointSize != font.pointSize {
+            terminalView.font = font
+        }
+        let colors = value.colors(for: view.effectiveAppearance)
+        terminalView.nativeBackgroundColor = colors.background
+        terminalView.nativeForegroundColor = colors.foreground
+        terminalView.caretColor = colors.foreground
+        terminalView.needsDisplay = true
     }
 
     /// Attaching a terminal view is separate from launching its process, so a
@@ -260,12 +302,11 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
             TerminalProcessLifecycle.stop(previous.process)
             previous.removeFromSuperview()
         }
-        terminal.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        terminal.nativeBackgroundColor = .textBackgroundColor
-        terminal.nativeForegroundColor = .textColor
         terminal.processDelegate = self
         terminalContainer.pinToEdges(terminal)
         terminalView = terminal
+        launchError = nil
+        applyAppearancePreferences()
         presentation = TerminalPanelPresentation(state: .running, startedDirectory: directory)
         updateLocation()
     }
@@ -292,9 +333,9 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     @objc private func closePanel(_ sender: Any?) { onClose?() }
 
     private func updateLocation() {
-        locationLabel.stringValue = presentation.locationText
+        locationLabel.stringValue = launchError ?? presentation.locationText
         locationLabel.textColor = presentation.state == .failedToStart ? .systemRed : .secondaryLabelColor
-        locationLabel.toolTip = presentation.reportedDirectory.map { "Shell-reported folder: \($0.path)" }
+        locationLabel.toolTip = launchError ?? presentation.reportedDirectory.map { "Shell-reported folder: \($0.path)" }
             ?? presentation.startedDirectory.map { "Started in \($0.path). The shell has not reported its current folder." }
         destinationLabel.stringValue = presentation.destinationText(pendingDirectory)
         destinationLabel.toolTip = "New shell destination: \(pendingDirectory.path). Browsing folders does not change the existing shell."
@@ -317,5 +358,13 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         guard !isShutDown, source === terminalView else { return }
         presentation.state = .ended
         updateLocation()
+    }
+}
+
+private final class TerminalPanelRootView: NSView {
+    var onAppearanceChanged: (() -> Void)?
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChanged?()
     }
 }

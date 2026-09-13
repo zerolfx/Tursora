@@ -104,6 +104,9 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 | FSEvents never matches the watched folder | Events carry real paths (`/private/var/…`) while the app holds `/var/…` | Resolve symlinks on both sides before comparing |
 | Second pane never appears / split treated as collapsed | `NSSplitView` treats a zero-size subview as collapsed | Give the pane a real initial frame; the delegate refuses collapse; relayout on close |
 | Crash on `reloadData` after a folder listing changed | Outline view queried stale rows | Refresh children before `reloadData`; track expansion via `itemDidExpand/Collapse` notifications |
+| Accessibility inspection gradually opens untouched tree branches | AppKit consults `shouldExpandItem` while querying available actions | Keep permission callbacks pure; load directories only after `outlineViewItemDidExpand` |
+| Narrow split panes enter a layout loop | Recreating an overflow button and temporarily unhiding its replacement chevron invalidates layout on every pass | Reuse the control, calculate final visibility once, and update only changed frames or visibility |
+| Headless AX checks trap while iterating `accessibilityRows()` | The imported Swift array expects `NSAccessibilityRow`, but AppKit returns legacy `NSOutlineRow` objects on macOS 26.3 | In the regression test, retain the Objective-C `NSArray` and query its legacy attributes without the incorrect typed bridge |
 | Details-view zoom ignored | `rowSizeStyle = .default` ignores `rowHeight` | `rowSizeStyle = .custom`; `loadView` must not overwrite the height |
 | Completion popup rows cut off | `.inset` table style adds padding, unflipped clip view | `.plain` style, `rowSizeStyle = .custom`, flipped clip view, scroll to top |
 | Undo merges several operations into one | `NSUndoManager` had an open automatic event group | `asUndoGroup` closes stale groups, then opens one per operation |

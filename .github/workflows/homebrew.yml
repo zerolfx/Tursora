@@ -1,0 +1,62 @@
+name: Homebrew
+
+on:
+  pull_request:
+    paths:
+      - 'Casks/**'
+      - 'app/tools/update-homebrew.py'
+      - 'app/tools/test_homebrew.py'
+      - '.github/workflows/homebrew.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Casks/**'
+      - 'app/tools/update-homebrew.py'
+      - 'app/tools/test_homebrew.py'
+      - '.github/workflows/homebrew.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cask:
+    name: Validate published cask installation
+    runs-on: macos-26
+    timeout-minutes: 10
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+      HOMEBREW_NO_INSTALL_FROM_API: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check release-boundary tests and Ruby syntax
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s app/tools -p 'test_homebrew.py'
+          ruby -c Casks/tursora.rb
+      - name: Tap this checkout and install the published application
+        run: |
+          brew tap zerolfx/tursora "$GITHUB_WORKSPACE"
+          mkdir -p "$RUNNER_TEMP/homebrew-apps"
+          brew install --cask --appdir="$RUNNER_TEMP/homebrew-apps" zerolfx/tursora/tursora
+          codesign --verify --deep --strict "$RUNNER_TEMP/homebrew-apps/Tursora.app"
+          lipo -verify_arch arm64 "$RUNNER_TEMP/homebrew-apps/Tursora.app/Contents/MacOS/Tursora"
+          brew info --json=v2 --cask zerolfx/tursora/tursora > "$RUNNER_TEMP/tursora-cask.json"
+          python3 - <<'PY'
+          import json, os, pathlib, plistlib
+          root = pathlib.Path(os.environ["RUNNER_TEMP"])
+          cask = json.loads((root / "tursora-cask.json").read_text())["casks"][0]
+          with (root / "homebrew-apps/Tursora.app/Contents/Info.plist").open("rb") as stream:
+              bundle = plistlib.load(stream)
+          assert bundle["CFBundleShortVersionString"] == cask["version"]
+          print("Installed app version matches cask:", cask["version"])
+          PY
+          xattr -p com.apple.quarantine "$RUNNER_TEMP/homebrew-apps/Tursora.app"
+      - name: Remove the runner's test installation
+        if: always()
+        run: |
+          if brew list --cask zerolfx/tursora/tursora >/dev/null 2>&1; then
+            brew uninstall --cask zerolfx/tursora/tursora
+          fi

@@ -24,6 +24,7 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     private var segmentButtons: [NSButton] = []
     private var chevronButtons: [NSButton] = []
     private var overflowButton: NSButton?
+    private var shortcutObserver: NSObjectProtocol?
 
     struct Segment {
         let url: URL
@@ -42,15 +43,30 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         textField.delegate = self
         textField.isHidden = true
         textField.font = .systemFont(ofSize: NSFont.systemFontSize)
-        textField.placeholderString = "Type a folder path — ⌘L"
+        refreshShortcutHint()
+        shortcutObserver = NotificationCenter.default.addObserver(forName: .tursoraShortcutsChanged,
+            object: AppPreferences.shared.shortcuts, queue: .main) { [weak self] _ in self?.refreshShortcutHint() }
         textField.cell?.sendsActionOnEndEditing = false
         addSubview(textField)
+        let overflow = NSButton(title: "…", target: self, action: #selector(overflowClicked(_:)))
+        overflow.bezelStyle = .accessoryBarAction
+        overflow.showsBorderOnlyWhileMouseInside = true
+        overflow.toolTip = "Hidden segments"
+        overflow.isHidden = true
+        addSubview(overflow)
+        overflowButton = overflow
         completion.onChoose = { [weak self] name in
             self?.accept(candidate: name)
             self?.window?.makeFirstResponder(self?.textField)
         }
     }
     required init?(coder: NSCoder) { fatalError() }
+    deinit { if let shortcutObserver { NotificationCenter.default.removeObserver(shortcutObserver) } }
+
+    private func refreshShortcutHint() {
+        let key = AppPreferences.shared.shortcuts.shortcut(for: "menu.editLocation")?.displayString
+        textField.placeholderString = "Type a folder path" + (key.map { " — " + $0 } ?? "")
+    }
 
     override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: Self.height) }
 
@@ -71,7 +87,7 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         (segmentButtons + chevronButtons + [overflowButton].compactMap { $0 })
             .filter { !$0.isHidden }.map(\.frame)
     }
-    var hasOverflowMenu: Bool { overflowButton != nil }
+    var hasOverflowMenu: Bool { overflowButton?.isHidden == false }
 
     private func rebuild() {
         segmentButtons.forEach { $0.removeFromSuperview() }
@@ -168,7 +184,6 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
             return
         }
 
-        overflowButton?.removeFromSuperview(); overflowButton = nil
         let available = bounds.width - pad * 2
         var widths = segmentButtons.map { min($0.fittingSize.width, 220) }
         let chevronW: CGFloat = 20
@@ -201,23 +216,30 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
             overflow -= cut
         }
 
+        // Keep the view hierarchy and visibility stable across layout passes.
+        // Recreating the overflow button (or briefly unhiding the root's
+        // chevron) invalidates AppKit layout again in narrow split panes.
+        if overflowButton?.isHidden != hidden.isEmpty { overflowButton?.isHidden = hidden.isEmpty }
         var x = pad
         for i in 0..<segments.count {
             let s = segmentButtons[i], c = chevronButtons[i]
             let visible = i == 0 || i >= firstVisible
-            s.isHidden = !visible; c.isHidden = !visible
+            let chevronHidden = !visible || (i == 0 && !hidden.isEmpty)
+            if s.isHidden != !visible { s.isHidden = !visible }
+            if c.isHidden != chevronHidden { c.isHidden = chevronHidden }
             if !visible { continue }
-            s.frame = NSRect(x: x, y: y, width: widths[i], height: 22); x += widths[i]
+            let segmentFrame = NSRect(x: x, y: y, width: widths[i], height: 22)
+            if s.frame != segmentFrame { s.frame = segmentFrame }
+            x += widths[i]
             if i == 0, !hidden.isEmpty {
-                let o = NSButton(title: "…", target: self, action: #selector(overflowClicked(_:)))
-                o.bezelStyle = .accessoryBarAction; o.showsBorderOnlyWhileMouseInside = true
-                o.frame = NSRect(x: x, y: y, width: overflowW, height: 22)
-                o.toolTip = "Hidden segments"
-                addSubview(o); overflowButton = o; x += overflowW
-                c.isHidden = true
+                let overflowFrame = NSRect(x: x, y: y, width: overflowW, height: 22)
+                if overflowButton?.frame != overflowFrame { overflowButton?.frame = overflowFrame }
+                x += overflowW
                 continue
             }
-            c.frame = NSRect(x: x, y: y, width: chevronW, height: 22); x += chevronW
+            let chevronFrame = NSRect(x: x, y: y, width: chevronW, height: 22)
+            if c.frame != chevronFrame { c.frame = chevronFrame }
+            x += chevronW
         }
         hiddenSegmentIndexes = hidden
     }

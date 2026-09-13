@@ -60,3 +60,9 @@ Replace the example `0.1.1` archive name with the released version. The appcast 
 Record the release URL, workflow result, exact commit and verification scope in the handoff. Publishing a release does not deploy the separate product website or change repository visibility. Pages uses its own workflow; see [site/README.md](../site/README.md).
 
 Before 0.1.0, the changelog was a development log rather than a version history. Those entries are retained in [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md); they are not separate published releases.
+
+## Homebrew tap
+
+The repository itself is a tap via `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora`. `Casks/tursora.rb` tracks a real published stable application asset with a pinned SHA-256; currently it is the historical 0.1.0 ZIP. After publishing and verifying a new stable release, use `app/tools/update-homebrew.py` with its saved release JSON, SHA256SUMS and actual downloaded DMG, review the generated diff and merge it to main. Add `--auto-updates` only for a Sparkle-enabled release that has published its versioned appcast. The original 0.1.0 must not receive that flag. See [the exact maintenance commands and local verification](research/homebrew.md).
+
+The cask leaves Homebrew's quarantine in place and uses no post-install bypass. Its custom-tap installation does not require Developer ID membership, while official homebrew/cask acceptance has separate Gatekeeper rules. The Homebrew workflow validates this checkout's cask by installing/uninstalling into a temporary runner app directory. Publishing a release does not automatically update or publish the cask. The project MIT license must remain in the packaged app beside the third-party notices.

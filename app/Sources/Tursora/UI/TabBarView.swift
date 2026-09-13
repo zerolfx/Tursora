@@ -27,6 +27,7 @@ final class TabBarView: NSView {
     private let addButton = NSButton()
     private let overflowButton = NSButton()
     private var windowObservers: [NSObjectProtocol] = []
+    private var shortcutObserver: NSObjectProtocol?
     private var revealSelection = true
     private var previousViewportWidth: CGFloat = -1
     private var reloadGeneration = 0
@@ -48,7 +49,9 @@ final class TabBarView: NSView {
         scrollView.onScroll = { [weak self] delta in self?.scroll(by: delta) }
         addSubview(scrollView)
         configure(addButton, symbol: "plus", description: "New Tab", action: #selector(addClicked))
-        addButton.toolTip = "New Tab (⌘T)"
+        refreshShortcutHint()
+        shortcutObserver = NotificationCenter.default.addObserver(forName: .tursoraShortcutsChanged,
+            object: AppPreferences.shared.shortcuts, queue: .main) { [weak self] _ in self?.refreshShortcutHint() }
         configure(overflowButton, symbol: "chevron.down", description: "All Tabs", action: #selector(showOverflow))
         overflowButton.toolTip = "All Tabs"
         overflowButton.isHidden = true
@@ -57,8 +60,16 @@ final class TabBarView: NSView {
     required init?(coder: NSCoder) { fatalError() }
     deinit {
         windowObservers.forEach(NotificationCenter.default.removeObserver)
+        if let shortcutObserver { NotificationCenter.default.removeObserver(shortcutObserver) }
         dragScrollTimer?.invalidate()
         autoActivation?.cancel()
+    }
+
+    var newTabToolTipForTesting: String? { addButton.toolTip }
+
+    private func refreshShortcutHint() {
+        let key = AppPreferences.shared.shortcuts.shortcut(for: "menu.newTab")?.displayString
+        addButton.toolTip = "New Tab" + (key.map { " (" + $0 + ")" } ?? "")
     }
 
     private func configure(_ button: NSButton, symbol: String, description: String, action: Selector) {

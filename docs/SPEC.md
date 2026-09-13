@@ -10,6 +10,8 @@
 
 ## 0. 范围
 
+Tursora 免费使用，项目源码按 MIT 许可证开放；README 和产品页显著展示免费、开源与许可证入口。第三方依赖保留各自许可，打包资源附项目许可。公开源码、可安装版本、自动化与实机验证分别记录，不把未发布的开发功能当作正式版本能力。
+
 应用图标：两块蓝色玻璃窗格组成抽象尾鳍，浅色背景裁成单个圆角底板，四周与外角透明，不增加描边、外阴影或第二层底板。前景保持原比例与位置；1024 px 导出在四周各留 80 px，圆角半径 192 px，这是本应用的几何选择。应用包提供 16–1024 px 的 macOS 图标尺寸，`.icns` 自带透明轮廓，不依赖系统补做圆角。依据与验证状态见[图标边缘记录](research/app-icon-edges.md)。
 
 **本地文件系统接口。** 文件后端走 `protocol FileProvider`，当前只有 `LocalFileProvider`，也能浏览 macOS 已挂载的卷。Connect to Server 通过系统 NetFS 挂载 SMB / NFS / WebDAV 等服务，详见 §15；没有自建 SFTP 后端、KIO 或 KDE 依赖。
@@ -51,6 +53,14 @@ Locations
 
 窗口名称跟活动 pane 的目录（供 Window 菜单与辅助功能识别），标题栏隐藏名称且不再重复路径；目录位置由可编辑地址栏显示。侧栏按钮固定在工具栏最左端，折叠不移动窗口；侧栏和内容区共用平直接缝，仅外窗保留圆角。Favorites 图标统一使用 18 pt 图像区域。状态栏显示"N items / N of M selected"，右侧是缩放滑块（Dolphin 的位置）。
 
+**Folders 目录树**：View → Show / Hide Folders 默认 `F7`（可自定义），在左侧 Places 下方展开独立目录树，两块面板之间可拖动高度。首次默认隐藏；打开时保留 Favorites / Locations，侧栏收起时先展开侧栏。树跟随活动标签与活动 pane，列表 / 图标、过滤、分组或搜索不会过滤树本身；ZIP 内跟随原 ZIP 所在目录，不展示临时副本。
+
+- 单击文件夹导航当前活动 pane；右键捕获所点目录，提供 Open、Open in New Tab、Open in Other Pane。后者按既有规则创建或使用另一侧。拖入树节点走相同复制 / 移动任务和撤销链，视图不直接读写文件系统。
+- 只显示可浏览文件夹，不列普通文件或包。后台按需读取一层子目录，跟随时只展开到目标的祖先链；不递归预扫整盘。加载错误在树底部内联显示，可 Refresh Folders 重试；关闭树或折叠侧栏停用监听与结果应用。
+- 辅助功能读取树或查询可否展开不改变节点状态、不触发目录读取；只有实际展开操作和活动路径跟随才加载所需节点。展开 / 刷新完成后选中目录保持完整可见，手动查看其他分支时不被无关刷新强行拉回。
+- 菜单提供 Show Hidden Folders（默认关）、Limit to Home Directory（默认开）与 Refresh Folders。限制 Home 时，活动位置位于 Home 内就以 Home 为根；位置在 Home 外仍切到 `/` 以便跟随。树的隐藏项目选项独立于文件 pane。为跟随 macOS 的 `/tmp` / `/var` 等系统别名，模型在后台解析真实路径并展示 `/private/...` 祖先；只为当前路径补入隐藏的 `/private` 根节点，不打开其他隐藏目录或改写该选项。
+- 会话保存每窗口的树可见性、上下比例和这两个选项；节点展开集合不跨进程保存，重开时根据活动位置重新展开。Dolphin 的 Places / Folders 是独立面板；本实现选定左侧上下排列，没有任意停靠、浮动或面板锁定，见[目录树对照](research/folder-tree.md)。
+
 ## 2. 地址栏（对标 Dolphin，核心差异化）
 
 ```
@@ -62,6 +72,7 @@ Locations
 - 点空白区 / `⌘L` / `⌘⇧G` → 切换为可编辑文本框；`Esc` 退回面包屑。
 - 编辑模式：**行内补全**（补上的部分选中，继续打字即替换；Tab / → 接受）+ 候选列表面板（↑↓ 选、Return 接受并跳转、Esc 关、点击选）。补全跳过包（.app）。
 - 路径过长时从**左侧**折叠，首段保留；过长的段压缩。
+- 窄窗与分栏持续保留根目录、折叠路径入口及尾部目录菜单，必要时缩短文字；反复改变窗口尺寸不引发持续布局循环或阻塞导航。
 - 当前目录段高亮，非当前段 hover 才显示背景。
 - 每个 pane 的文件区上方都有自己的地址栏；分栏时两边路径同时显示并随各自宽度布局。点击路径、面包屑或补全先激活该 pane，跳转只改变它的目录。`⌘L` / `⌘⇧G` 编辑活动 pane 的路径。
 - 切换 pane / 标签时收起离开侧的路径编辑和补全面板，不提交尚未确认的输入；已捕获的路径操作不能改为作用于新活动 pane。另一侧的路径、导航历史、过滤和搜索保持独立。
@@ -224,22 +235,30 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 - 不提供 SSH / SFTP 后端、服务器发现、收藏服务器或断线重连。本次只验证地址、状态流转与卷策略；没有真实服务器地址，因此未进行远端读写测试。
 
 
-## 16. 设置与过滤快捷键
+## 16. 设置与自定义快捷键
 
-- Tursora → Settings…（`⌘,`）打开应用级设置窗口，分 General / Updates 两页，首次选择 General。General 页含通用、Startup、Folder View Settings、Keyboard 和 Terminal & ZIP；修改立即生效并持久化。Startup 的 Reopen windows and tabs on launch 默认开启，语义见 §22。Folder View Settings 选择每目录记忆或统一默认，保存当前默认和恢复当前目录的入口在 View 菜单，语义见 §5。Updates 页见 §20。
-- 名称过滤快捷键默认 `⌘F`。点击录制按钮后输入组合；要求 Command 或 Control，可加 Option / Shift，支持字母、数字和允许的标点。拒绝已有应用命令及常见系统组合；冲突内联提示，原绑定不变。Escape 取消录制，Reset 恢复 `⌘F`。
+- Tursora → Settings…（默认 `⌘,`）打开应用级设置窗口，分 General / Shortcuts / Terminal / Updates 四页，首次选择 General。General 页含通用、Startup、Folder View Settings 和 Terminal & ZIP；修改立即生效并持久化。Startup 的 Reopen windows and tabs on launch 默认开启，语义见 §22。Folder View Settings 选择每目录记忆或统一默认，语义见 §5；Updates 页见 §20。
+- Shortcuts 提供可搜索的应用命令目录，覆盖主菜单中已有绑定及未绑定命令，以及 Return / Enter 重命名、Space Quick Look、标签循环 / 数字定位、备用缩放、取消归档打开等额外键盘动作。支持录制、Clear、逐项 Reset、Reset All Shortcuts；清除的命令保持无绑定，与“没有覆盖值则用默认”区分。
+- 绑定全局持久化，菜单与打开窗口立即更新；旧 Filter 自定义绑定保留，默认仍为 `⌘F`。冲突指出已占用的命令并保留原值；恢复单项也检查冲突，全部重置恢复一致的默认集合。Use Groups 默认 `⌃⌘0`，Group By → None 不再重复占用该键。
+- 一般命令接受 Command / Control 组合或功能键；File View 额外动作可接受 Return、Tab、Space、Escape 组合。普通 Escape 取消录制，恢复 Escape 默认通过 Reset。保留已知 macOS 组合；按当前键盘布局录制并保留字符原值，只在比较时解析 Shift 等价关系；美式 Plus 与 Shift–Equals 等价，不把其他布局的独立 Plus 强制改成 Equals。
+- 应用命令仍走 AppKit 菜单验证与响应链，文本框的复制、粘贴、撤销等保留原生目标。Control-only 与功能键在文本或 SwiftTerm 输入期间交回原视图，配置的终端开关除外。文件动作只在列表 / 图标具有焦点时处理；原生文本编辑、路径补全、方向选择、对话框确认、shell/readline 和鼠标手势不是该目录里的可重定义命令。分别列出的主菜单和备用动作独立配置。
+- Backspace 与 Forward Delete 分别保存、显示和匹配；Fn-Delete 按前向删除解释。菜单匹配时只转换事件副本到 AppKit 对应的菜单字符，原生文本与终端的输入事件不被改写。禁用命令继续遵守菜单验证，不因改绑而执行。
 - 过滤仍是当前目录名称过滤；独立递归搜索见 §19。扩展名显示只影响界面标签，不改文件名或 Finder 的逐文件 Hide extension 标记。
 - Terminal panel 与 Browse ZIP archives 默认均开启，保留已有显式关闭选择；没有偏好记录时使用新默认值。终端开关只让入口可用，不自行启动 shell。
-- 证据、允许的组合与持久化规则见 [设置对照](research/settings-and-shortcuts.md)。
+- 完整默认绑定、可录制范围与响应链规则见 [SHORTCUTS.md](SHORTCUTS.md)；[设置对照](research/settings-and-shortcuts.md)保留原 Filter-only 阶段依据，不代表当前仍只支持一个快捷键。
 
 ## 17. 终端面板
 
-- View → Show / Hide Terminal（`F4`）在浏览窗口底部展开 / 关闭终端。每个窗口最多一个终端，与该窗口的全部标签 / 分栏共用；面板高度可拖动。
-- 使用 SwiftTerm 1.15.0 的原生终端视图与真实 PTY，启动当前用户的交互登录 shell；初始目录为打开面板时的活动目录；活动 pane 在 ZIP 内时，使用原 ZIP 所在目录，不在临时副本内启动或重启 shell。只有开关启用且面板实际显示时才启动进程。
+- 工具栏终端按钮和 View → Show / Hide Terminal（默认 `F4`，可自定义）在浏览窗口底部展开 / 关闭终端。按钮状态、标题、提示与溢出菜单反映当前窗口是否展开；设置关闭终端入口时按钮禁用。每个窗口最多一个终端，与该窗口的全部标签 / 分栏共用；面板高度可拖动。
+- 使用 SwiftTerm 1.15.0 的原生终端视图与真实 PTY，默认启动当前用户的交互登录 shell；Settings → Terminal 可选择 System Login Shell 或 Custom Shell。自定义项是绝对可执行文件路径，不接受附加参数或命令片段；保存与实际启动分别验证，缺失或不可执行时显示内联错误。shell 选择只在下一次打开 / 重启生效，不结束正在运行的会话。
+- 字体可选已安装等宽字体及 System Monospaced，默认系统等宽 12 pt，允许 8–36 pt；输入后按 Return 或移走焦点（包括 Tab）提交并校验，步进器也走相同持久化。颜色默认 Follow Appearance，也可固定 Dark / Light 或 Custom 的六位十六进制文本 / 背景色；字体与颜色立即应用到所有已打开终端，不重启 shell 或写入输入。Restore Terminal Defaults 恢复上述工厂值。固定方案不随系统亮暗切换；自定义颜色只定义文本 / 背景，不宣称完整 ANSI 调色板编辑器。
+- 初始目录为打开面板时的活动目录；活动 pane 在 ZIP 内时，使用原 ZIP 所在目录，不在临时副本内启动或重启 shell。只有开关启用且面板实际显示时才启动进程。
 - 浏览器导航、切换标签或 pane 只更新 Restart in Current Folder 的目标，不向现有 shell 注入 `cd`，也不根据终端输出驱动文件浏览器导航。
 - 面板区分 Started in（启动目录）与 Shell folder（收到当前会话的本地 OSC 7 报告后）；没有目录报告时不把启动位置当作实时 shell 目录。独立第二行显示启动或重启目标。自然退出或启动失败后保留状态和输出，后续导航不覆盖结束提示；可按 Start in Current Folder 开始新会话。
 - Restart 明确结束当前 shell 及前台命令后，在目标目录启动新会话；检测到前台命令时确认。关闭面板（含 F4 收起）、禁用终端功能、关闭所属窗口或退出应用都会结束该会话，不保留后台终端。
 - 本轮不提供多个终端标签、会话恢复或自动双向目录同步。
+
+实现、Rascal 源码差异与验证阶段见[终端自定义](research/terminal-customization.md)。
 
 ## 18. ZIP 浏览
 
@@ -278,6 +297,9 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 ## 21. 下载与安装
 
+- 项目自己的 Homebrew tap 直接使用本仓库 `Casks/tursora.rb`。合入公开 `main` 后可 `brew tap zerolfx/tursora https://github.com/zerolfx/Tursora`，再 `brew install --cask zerolfx/tursora/tursora`。固定已发布版本与 SHA-256；当前 cask 用真实 `0.1.0` ZIP。不需要为自有 tap 先购买 Apple 会员，但安装包仍未公证；保留下载隔离，不在 cask 中执行绕过命令。官方 `homebrew/cask` 接纳条件与自有 tap 分开，见[Homebrew 依据与实装验证](research/homebrew.md)。
+- README、研究记录和网站的 canonical 截图必须是实际窗口 PNG，原生圆角外侧透明且边缘带抗锯齿；确定性处理保护内部像素，不能生成或修饰 UI。网站构建检查整个图片目录，不能靠 CSS 覆盖白底，见[本轮截图审计](research/screenshot-audit-2026-09-13.md)。
+
 - 后续 release 直接提供 `Tursora-<version>-macOS-arm64.dmg` 与 SHA-256 校验文件，正式版另附更新 appcast。打开镜像后，窗口中左侧为 Tursora、右侧为 Applications，中间箭头指向目标；将应用拖入 Applications 完成安装。Applications 是 `/Applications` 的链接，没有额外安装脚本。
 - 镜像预设 640 × 280 窗口、128 px 图标，布局在构建时直接写入 Finder 元数据。用户正常拖拽应用时由 macOS 执行复制；不修改文件管理器的 ZIP 浏览或普通文件操作行为。
 - 原始 `0.1.0` 继续保留已发布 ZIP，不重写历史资产。网站和 README 在首个 DMG 发布前明确区分已发布 ZIP 与准备中的 DMG。
@@ -286,7 +308,7 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 
 ## 22. 工作区会话恢复（工作连续性）
 
-- Reopen windows and tabs on launch 默认开启。正常启动重建已保存的浏览窗口及其标签顺序、选中标签、自定义名、每标签一到两个 pane 的位置、活动侧与分栏比例；同时恢复活动窗口、窗口位置和尺寸、最小化状态、侧栏宽度及折叠状态。显式关闭的窗口或标签不在下次启动时复活；当前没有浏览窗口时启动打开 Home。
+- Reopen windows and tabs on launch 默认开启。正常启动重建已保存的浏览窗口及其标签顺序、选中标签、自定义名、每标签一到两个 pane 的位置、活动侧与分栏比例；同时恢复活动窗口、窗口位置和尺寸、最小化状态、侧栏宽度及折叠状态、Folders 树可见性 / 高度比例 / 隐藏文件夹与 Home 限制选项。旧会话缺少树字段时默认隐藏。显式关闭的窗口或标签不在下次启动时复活；当前没有浏览窗口时启动打开 Home。
 - 保存的是逻辑位置与已执行搜索的条件，启动重新导航并重新查询，不保存搜索结果或尚未执行的草稿。ZIP 使用原归档加内部目录的逻辑 URL，准备过程中也保留目标，不写入临时解压目录。关闭 ZIP 浏览且能识别实际归档时改开归档父目录；离线或缺失路径不按 `.zip` 后缀猜测，不把同名普通目录改为归档。
 - 不存在、未挂载或无权限的目录仍保留原路径，由既有异步浏览错误在 pane 内说明，不自动替换为 Home，不自动挂载或重新认证服务器。重新连接卷后可 Reload 或继续导航。窗口按当前屏幕的可见区域约束，移除显示器不会让恢复窗口留在屏幕外；分栏暂时受窄窗口最小宽度约束时，仍保留原比例供放宽后恢复。
 - 过滤文字、选区、滚动、Back / Forward 历史、最近关闭标签、终端进程、文件任务和撤销历史不持久化。两种文件视图继续按 §5 读取目录属性；搜索与 ZIP 的临时视图属性不并入会话库。退出仍按原有规则取消传输并等待清理，恢复工作区不会继续复制或执行终端命令。

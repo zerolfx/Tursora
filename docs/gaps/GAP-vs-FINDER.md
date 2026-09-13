@@ -74,7 +74,7 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
 | **Spring-loaded folders** | ❌ | M | `NSSpringLoadingDestination`，列表、图标、侧栏、面包屑四处；NSOutlineView 自带的悬停展开不能重复触发 |
-| **Finder 设置窗口** | ✅ 基础设置与目录视图策略 | 扩展项 M–L | 扩展名显示、过滤快捷键、每目录记忆 / 统一默认、默认启用的终端 / ZIP 浏览实验；废纸篓策略、Keep folders on top 等未实现 |
+| **Finder 设置窗口** | ✅ General / Shortcuts / Terminal / Updates | 扩展项 M–L | 扩展名显示、所有应用命令快捷键、每目录记忆 / 统一默认、终端 Shell / 字体 / 颜色、默认启用的终端 / ZIP 和更新选项；废纸篓策略、Keep folders on top 等未实现 |
 | 显示/隐藏文件扩展名 + 改扩展名警告 | 显示开关 ✅；警告 ❌ | 警告 M | 全局只改列表 / 图标标签，普通文件夹名不变；重命名、排序、过滤保留真名；不是 Finder 逐文件 flag 策略的完整复制 |
 | Quick Actions（Rotate / Markup / Create PDF） | ❌ | L | Finder 的注册表是私有的，Markup 无公开 API；只能自己实现 Rotate/Create PDF |
 | 右键 ▸ Services 菜单 | ❌ | S | `NSApp.servicesMenu`；一个 NSMenu 只能有一个父菜单，上下文菜单要复制 |
@@ -87,7 +87,7 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 ## 建议顺序（按成本）
 
 1. S：Deselect All、Move Items Here、Copy as Pathname 对齐、New Folder with Selection、Show Package Contents、Always Open With、Print、Slideshow、Eject All、Go 菜单快捷键、Cycle Through Windows、Services 菜单、别名解析
-2. M：批量重命名、Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、Spring-loaded、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、快捷键对齐
+2. M：批量重命名、Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、Spring-loaded、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、Finder 默认快捷键预设（现已可逐项配置）
 3. L：Column 视图、Gallery 视图、完整偏好策略、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、服务器发现 / 历史 / 重连；Show View Options 完整对话框另列 M（每目录持久化已实现）
 4. XL / 不建议：Customize Folder、Smart Folders、FinderSync 角标
 
@@ -107,3 +107,10 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 - [x] 标签中性选中层级、居中标题、悬停关闭、固定新增按钮。
 - [x] 多标签横向滚动与全部标签文字菜单；不替代上表待做的缩略图总览。
 - [x] 系统亮 / 暗外观与现有 layer 表面动态更新；[本轮验证状态](../research/tabs-and-appearance.md)。
+
+## 2026-09-13 定制与目录树
+
+- [x] 所有应用命令快捷键已可配置，包含菜单未绑定项、Return / Space 与标签备用键；支持冲突提示、清除、单项 / 全部重置。文本编辑、选择、补全及 shell 控制仍走原生视图。
+- [x] 终端 Shell / 等宽字体 / 字号 / 主题 / 自定义文本背景色及工具栏开关。
+- [x] Places 下方的 Folders 树是 Dolphin 式补充；保留 Finder 式收藏侧栏，不把两种导航混为一棵树。
+- [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG、实机与截图验证范围见 [HANDOFF](../HANDOFF.md)；远端 CI / 发布仍单独处理。

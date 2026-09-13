@@ -34,8 +34,8 @@ enum AppPreferences {
 
         init(keyEquivalent: String, modifierFlags: NSEvent.ModifierFlags) {
             var modifiers = modifierFlags.intersection(Self.supportedModifiers)
-            let key = keyEquivalent.lowercased()
-            if key != keyEquivalent { modifiers.insert(.shift) }
+            let key = keyEquivalent == "\u{f728}" ? "\u{7f}" : keyEquivalent.lowercased()
+            if keyEquivalent.lowercased() != keyEquivalent { modifiers.insert(.shift) }
             self.keyEquivalent = key
             self.modifierFlags = modifiers
         }
@@ -45,22 +45,25 @@ enum AppPreferences {
             for (flag, symbol): (NSEvent.ModifierFlags, String) in [(.control, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.command, "⌘")] {
                 if modifierFlags.contains(flag) { result += symbol }
             }
-            return result + keyEquivalent.uppercased()
+            let names = ["\r": "↩", "\t": "⇥", " ": "Space", "\u{1b}": "Esc", "\u{8}": "⌫", "\u{7f}": "⌦",
+                         "\u{f700}": "↑", "\u{f701}": "↓", "\u{f702}": "←", "\u{f703}": "→", "\u{f728}": "⌦",
+                         "\u{f729}": "Home", "\u{f72b}": "End", "\u{f72c}": "Page Up", "\u{f72d}": "Page Down", "\u{f746}": "Help"]
+            if let scalar = keyEquivalent.unicodeScalars.first, (0xf704...0xf726).contains(scalar.value) {
+                return result + "F" + String(scalar.value - 0xf703)
+            }
+            return result + (names[keyEquivalent] ?? keyEquivalent.uppercased())
         }
 
+        /// Compatibility validation for the original filter-only API. The full
+        /// settings UI validates against the user's current complete catalog.
         func validationError(in menu: NSMenu? = nil) -> String? {
-            guard keyEquivalent.count == 1, let character = keyEquivalent.first,
-                  "abcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./+".contains(character) else {
-                return "Use a letter, number or punctuation key with Command or Control."
+            if let error = syntaxError(context: .application) { return error }
+            if let reserved = ShortcutCatalog.systemConflict(self) { return reserved }
+            if let conflict = ShortcutCatalog.actions.first(where: { $0.id != ShortcutCatalog.filterID && $0.defaultShortcut?.isEquivalent(to: self) == true }) {
+                return "\(displayString) is already used for \(conflict.title). Choose another shortcut."
             }
-            guard modifierFlags.contains(.command) || modifierFlags.contains(.control) else {
-                return "Include Command or Control so ordinary typing still works. Option and Shift can be added."
-            }
-            if let command = Self.reserved.first(where: { $0.shortcut == self })?.title {
-                return "\(displayString) is already used for \(command). Choose another shortcut."
-            }
-            if let menu, let command = conflictingMenuTitle(in: menu) {
-                return "\(displayString) is already used for \(command). Choose another shortcut."
+            if let menu, let title = conflictingMenuTitle(in: menu) {
+                return "\(displayString) is already used for \(title). Choose another shortcut."
             }
             return nil
         }
@@ -69,30 +72,11 @@ enum AppPreferences {
             for item in menu.items {
                 if let submenu = item.submenu, let title = conflictingMenuTitle(in: submenu) { return title }
                 guard !item.keyEquivalent.isEmpty, item.action != Selector(("focusFilter:")) else { continue }
-                if Shortcut(keyEquivalent: item.keyEquivalent, modifierFlags: item.keyEquivalentModifierMask) == self {
+                if Shortcut(keyEquivalent: item.keyEquivalent, modifierFlags: item.keyEquivalentModifierMask).isEquivalent(to: self) {
                     return item.title
                 }
             }
             return nil
-        }
-
-        /// Includes monitor-only bindings and future menu entries (Settings),
-        /// so validation also works before NSApp has built its main menu.
-        private static var reserved: [(shortcut: Shortcut, title: String)] {
-            var entries: [(Shortcut, String)] = []
-            func add(_ keys: String, _ modifiers: NSEvent.ModifierFlags, _ title: String) {
-                entries += keys.map { (Shortcut(keyEquivalent: String($0), modifierFlags: modifiers), title) }
-            }
-            add("hqntyidwxczvarlkm,[]-+=0123456789", .command, "an existing app command")
-            add("nwtzcmdphgf.[]", [.command, .shift], "an existing app command")
-            add("hi12", [.command, .option], "an existing app command")
-            add("is01234567", [.command, .control], "an existing app command")
-            add("=", [.command, .shift], "Zoom In")
-            add("`", .command, "Cycle Windows")
-            add("`", [.command, .shift], "Cycle Windows")
-            add("/", [.command, .shift], "Help")
-            add("q", [.command, .control], "Lock Screen")
-            return entries
         }
     }
 
@@ -111,11 +95,13 @@ enum AppPreferences {
             static let shortcutModifiers = "filterShortcutModifiers"
         }
         private let defaults: UserDefaults
+        let shortcuts: ShortcutStore
         let notificationCenter: NotificationCenter
 
         init(defaults: UserDefaults = .standard, notificationCenter: NotificationCenter = .default) {
             self.defaults = defaults
             self.notificationCenter = notificationCenter
+            self.shortcuts = ShortcutStore(defaults: defaults, notificationCenter: notificationCenter)
         }
 
         var showFileExtensions: Bool {
@@ -135,25 +121,21 @@ enum AppPreferences {
             set { set(newValue, forKey: Key.zip, oldValue: experimentalZIPBrowsingEnabled) }
         }
         var filterShortcut: Shortcut {
-            guard let key = defaults.string(forKey: Key.shortcutKey),
-                  let raw = defaults.object(forKey: Key.shortcutModifiers) as? NSNumber else { return .defaultFilter }
-            let shortcut = Shortcut(keyEquivalent: key, modifierFlags: NSEvent.ModifierFlags(rawValue: raw.uintValue))
-            return shortcut.validationError() == nil ? shortcut : .defaultFilter
+            shortcuts.shortcut(for: ShortcutCatalog.filterID) ?? Shortcut(keyEquivalent: "", modifierFlags: [])
         }
 
         func setFilterShortcut(_ shortcut: Shortcut, menu: NSMenu? = nil) throws {
-            if let error = shortcut.validationError(in: menu) { throw PreferenceError(message: error) }
-            guard shortcut != filterShortcut else { return }
-            defaults.set(shortcut.keyEquivalent, forKey: Key.shortcutKey)
-            defaults.set(shortcut.modifierFlags.rawValue, forKey: Key.shortcutModifiers)
-            notify()
+            let previous = filterShortcut
+            try shortcuts.set(shortcut, for: ShortcutCatalog.filterID, menu: menu)
+            if previous != filterShortcut { notificationCenter.post(name: .tursoraPreferencesChanged, object: self) }
         }
 
         func resetFilterShortcut() {
-            let changed = filterShortcut != .defaultFilter
+            let changed = shortcuts.shortcut(for: ShortcutCatalog.filterID) != .defaultFilter
             defaults.removeObject(forKey: Key.shortcutKey)
             defaults.removeObject(forKey: Key.shortcutModifiers)
-            if changed { notify() }
+            try? shortcuts.reset(ShortcutCatalog.filterID)
+            if changed { notificationCenter.post(name: .tursoraPreferencesChanged, object: self) }
         }
 
         private func set(_ value: Bool, forKey key: String, oldValue: Bool) {

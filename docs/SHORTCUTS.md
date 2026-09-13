@@ -4,6 +4,18 @@ File Operations is available from the Window menu. Long transfers open its task 
 
 Everything the user can press or click, as implemented. Main menu items use `nil` targets so the responder chain picks the handler; Dock items explicitly target the application delegate (see [ARCHITECTURE.md §4](ARCHITECTURE.md)). Where a binding deliberately follows Dolphin or Finder, it says so; the planned changes are in [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md).
 
+## Customizing application shortcuts
+
+**Settings → Shortcuts** lists every application menu command, including commands with no default shortcut, and all extra file-view/window keyboard actions. Search by command or menu category, select a row, click the recorder and press a combination. **Clear** removes the binding; **Reset** restores that row; **Reset All Shortcuts** restores the entire catalog. Settings, Terminal, tab selection, navigation, file operations, search, view/group/sort commands and application commands all participate. The tables below show factory defaults; current menu labels and toolbar hints reflect saved choices.
+
+Conflicts identify the current owner and keep the previous value. Clear or change that owner first. Resetting one row also rejects a conflict; Reset All can always restore a consistent default set. The old custom Filter binding is retained on upgrade. Settings are global, persist between launches and take effect in open windows, tabs and panes.
+
+Command or Control combinations and function keys can be recorded; the File View alternatives additionally accept Return, Tab, Space and Escape combinations. Plain Escape cancels recording, so use Reset to restore an Escape default. Known macOS-reserved shortcuts are rejected. The recorder uses the active keyboard layout for characters, displays named special keys, and checks equivalent combinations using the current keyboard layout without rewriting literal punctuation. For example, Plus and Shift–Equals conflict on a US layout, but remain distinct when another layout places Plus on an unshifted key.
+
+Command bindings use AppKit's normal menu validation and responder chain, including standard editing commands in text fields. Control-only and function-key bindings pass through to text fields and SwiftTerm while typing, except the configured **Show/Hide Terminal** command, which remains available from the shell. File View alternatives only act while the list or icon view has focus. Native text editing, filename/path completion, arrow selection, dialog confirmation/cancellation, shell/readline controls and mouse/trackpad gestures remain owned by those native views; this catalog customizes Tursora's application commands.
+
+Return/Enter rename and Space Quick Look are separately listed alternatives to their menu commands. Control-Tab, Control-Shift-Tab, the nine tab positions and Command-Equals also have individually editable rows. Clearing a primary menu binding does not silently clear a separately listed alternative. **Use Groups** retains Control-Command-0; **Group By → None** has no factory binding, removing the former duplicate.
+
 ## Dock menu
 
 Right-click the running app's Dock icon for **New Window**, **Downloads** or **Applications**. Each opens a fresh window at its fixed destination and activates the app. Existing panes, tabs and searches stay in place. Standard window and application items are supplied by macOS. No new shortcut is assigned.
@@ -55,12 +67,12 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Zoom In / Zoom Out | ⌘+ / ⌘- (⌘= also) | `plus.magnifyingglass` / `minus.magnifyingglass` | Steps the per-mode ladder (icons 32…512, list 16…64) |
 | Actual Size | ⌘0 | — | 64 pt icons / 16 pt rows |
 | Show Previews | ⇧⌘P | — | Thumbnails from 32 pt up (Finder's ⇧⌘P is the preview pane) |
-| Filter | ⌘F by default; configurable | `magnifyingglass` | Focuses the toolbar name-filter field; checkmark while filtering |
+| Filter | ⌘F | `magnifyingglass` | Focuses the toolbar name-filter field; checkmark while filtering |
 | Search… | ⇧⌘F | `doc.text.magnifyingglass` | Expands recursive search options beside the existing toolbar query; unavailable inside ZIP locations |
 | Show Hidden Files | ⇧⌘. | — | Saved by the selected folder-view policy; transient in ZIP and search pages |
 | Reload | ⌘R | `arrow.clockwise` | (Finder: Show Original) |
 | Use Groups | ⌃⌘0 | `square.grid.3x1.below.line.grid.1x2` | Off → back to the last key (Kind first) |
-| Group By ▸ None · Name · Kind · Application · Date Last Opened · Date Added · Date Modified · Date Created · Size | ⌃⌘0 · ⌃⌘1 · ⌃⌘2 · — · ⌃⌘3 … ⌃⌘7 | `arrow.up.arrow.down` | Same submenu as the toolbar Group button |
+| Group By ▸ None · Name · Kind · Application · Date Last Opened · Date Added · Date Modified · Date Created · Size | — · ⌃⌘1 · ⌃⌘2 · — · ⌃⌘3 … ⌃⌘7 | `arrow.up.arrow.down` | Same submenu as the toolbar Group button |
 | Sort By ▸ Name / Date Modified / Size / Kind · Ascending | — | — | Driven through the table so the header arrow stays in sync |
 | Folder View Settings ▸ Remember Each Folder / Use One View for All Folders | — | — | Selects per-directory memory (default) or the existing shared default; also in Settings |
 | Folder View Settings ▸ Use Current Settings as Default | — | — | Saves the active ordinary folder's complete view properties as the default; existing customized folders keep their records |
@@ -68,6 +80,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Split View | ⇧⌘D | `rectangle.split.2x1` | Title becomes "Close Left/Right Pane" while split (Dolphin's toggle; Finder: ⇧⌘D = Desktop) |
 | Focus Other Pane | ⌥⇥ | — | Split only |
 | Show Sidebar | ⌃⌘S | `sidebar.leading` | (Finder: ⌥⌘S) |
+| Show Folders | F7 | `list.bullet.indent` | Shows the optional directory tree alongside Places |
 | Show / Hide Terminal | F4 | — | Present only when Terminal panel is enabled in Settings; hiding ends the session |
 
 ### Go
@@ -184,7 +197,7 @@ The configured filter shortcut (⌘F by default) focuses the toolbar field, expa
 
 ## Settings, terminal and ZIP browsing
 
-Settings (⌘,) has General and Updates tabs and initially selects General. General offers extension-label display, Folder View Settings, the Filter by Name shortcut recorder, and terminal access and ZIP browsing, both enabled by default. Folder View Settings chooses Remember Each Folder or Use One View for All Folders; the View submenu also saves the current view as default and restores a folder. If saving fails, Settings shows the error inline and offers Retry Saving View Settings; successful retry clears the error. Shortcut recording requires Command or Control, optionally Option/Shift; it rejects existing command conflicts. Escape cancels recording and Reset restores ⌘F. The menu binding updates immediately.
+Settings (⌘,) has **General**, **Shortcuts**, **Terminal** and **Updates** tabs and initially selects General. General offers startup workspace restoration, extension-label display, Folder View Settings, terminal access and ZIP browsing; both features are enabled by default. Folder View Settings chooses Remember Each Folder or Use One View for All Folders; the View submenu also saves the current view as default and restores a folder. Save errors appear inline with a retry action. The complete keyboard catalog is in Shortcuts; Terminal configures shell, font, font size and colors.
 
 Updates provides **Automatically check for updates** (daily, default on), **Automatically download and install updates** (default off), **Check for Updates…**, and the last-check status. Disabling automatic checks disables the automatic-installation control without clearing its saved choice; manual checking remains available. Existing downloaded or deferred-install updates are not cancelled by changing these preferences. Startup failures appear inline and disable unavailable controls; bare debug binaries and smoke runs do not start Sparkle. No new keyboard shortcut is assigned to updating.
 
@@ -210,4 +223,4 @@ With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in t
 
 ## Search
 
-`⇧⌘F` (View → Search…) or Search Options after filtering expands the active pane’s recursive conditions while retaining the same toolbar query field. Filter keeps its independently configurable shortcut, default `⌘F`. Queries run after a 500 ms typing pause or immediately on Return; Cancel / Clear / Close Search controls are pane-local. Completely empty conditions do not scan the tree. Escape or the toolbar cancel button returns to the folder. Inline Save / Saved Searches / Open / Delete manage the app-wide list of saved conditions; opening one runs it only in the active pane. Search is unavailable inside ZIP locations. While results are active, Folder View Settings cannot save the result view as a default or reset the originating folder; Close Search restores that folder’s current saved view.
+`⇧⌘F` (View → Search…) or Search Options after filtering expands the active pane’s recursive conditions while retaining the same toolbar query field. Filter defaults to `⌘F`; both Filter and Search bindings can be changed in Shortcuts. Queries run after a 500 ms typing pause or immediately on Return; Cancel / Clear / Close Search controls are pane-local. Completely empty conditions do not scan the tree. Escape or the toolbar cancel button returns to the folder. Inline Save / Saved Searches / Open / Delete manage the app-wide list of saved conditions; opening one runs it only in the active pane. Search is unavailable inside ZIP locations. While results are active, Folder View Settings cannot save the result view as a default or reset the originating folder; Close Search restores that folder’s current saved view.

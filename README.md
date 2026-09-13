@@ -3,6 +3,7 @@
 </p>
 <h1 align="center">Tursora</h1>
 <p align="center"><strong>Finder's familiar workflows. Useful ideas from Dolphin and Explorer.</strong></p>
+<p align="center"><strong>Free and open source · <a href="LICENSE">MIT licensed</a></strong></p>
 <p align="center">
   <a href="https://github.com/zerolfx/Tursora/actions/workflows/build.yml"><img src="https://github.com/zerolfx/Tursora/actions/workflows/build.yml/badge.svg" alt="Build"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B-blue" alt="macOS 14 or later">
@@ -16,7 +17,9 @@
   <a href="https://zerolfx.github.io/Tursora/">Website</a>
 </p>
 
-Tursora is a native macOS file manager built around a simple goal: **keep what feels familiar in Finder, then add the file-management ideas that make Dolphin and Windows File Explorer useful.**
+Tursora is a **free, open-source native macOS file manager**, released under the [MIT license](LICENSE). Use it without a subscription, read the source, and adapt it to your workflow.
+
+Its goal is simple: **keep what feels familiar in Finder, then add the file-management ideas that make Dolphin and Windows File Explorer useful.**
 
 That means Quick Look, macOS sharing, familiar file operations and a native AppKit interface—with Dolphin-inspired split panes, editable paths, instant filtering, recursive search and folder-specific view settings. An integrated terminal and Explorer-style ZIP navigation in the same pane are enabled by default and can be turned off in Settings.
 
@@ -24,7 +27,7 @@ Tursora is an early project, and it does not yet cover everything Finder can do.
 
 ## Features
 
-The features below describe current development. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size.
+The features below describe current development. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size. Key combinations below are the defaults; customize application commands in **Settings → Shortcuts**.
 
 <table>
   <thead>
@@ -40,7 +43,7 @@ The features below describe current development. See the [version history](CHANG
       </td>
       <td>
         <a href="docs/images/features/split-panes.png"><img src="docs/images/features/split-panes.png" width="600" alt="Split panes with independent paths: source files on the left, delivery folder on the right"></a>
-        <a href="docs/images/features/workspace-restored.png"><img src="docs/images/features/workspace-restored.png" width="600" alt="After relaunch: Daily work, Inbox and Archive tabs, with the original split layout and active right pane restored"></a>
+        <a href="docs/images/features/workspace-restored.png"><img src="docs/images/features/workspace-restored.png" width="600" alt="After normal quit and relaunch: two tabs, the original split layout and the active right pane in icon view restored"></a>
       </td>
     </tr>
     <tr>
@@ -60,8 +63,16 @@ The features below describe current development. See the [version history](CHANG
     </tr>
     <tr>
       <td>
+        <strong>See the folder hierarchy beside your favorites</strong>
+        <p>Choose <strong>View → Show Folders</strong> or press <code>F7</code> for a separate folder tree below Favorites and Locations. Keep familiar places visible while exploring nested folders; drag the divider to adjust the two panels.</p>
+        <p>The tree follows the active pane and loads folders as needed. Click a folder to navigate, or right-click to open it in a new tab or the other pane. Hidden-folder and Home-directory options are independent of the file view. Reopening the workspace restores the panel's visibility, size and options.</p>
+      </td>
+      <td><a href="docs/images/features/folders.png"><img src="docs/images/features/folders.png" width="600" alt="The independent Folders tree below Favorites, with Model selected in Tursora's source hierarchy and its contents shown beside it"></a></td>
+    </tr>
+    <tr>
+      <td>
         <strong>Find a name without leaving the folder</strong>
-        <p>Press <code>⌘F</code> and type part of a filename or a pattern such as <code>*.png</code>. The active folder filters immediately; other panes stay unchanged. Escape clears the filter, and its shortcut is configurable.</p>
+        <p>Press <code>⌘F</code> and type part of a filename or a pattern such as <code>*.png</code>. The active folder filters immediately; other panes stay unchanged. Escape clears the filter. Customize the Filter command in Settings → Shortcuts.</p>
         <p><strong>Typing first filters the current folder.</strong> Search Options appears after you type and expands recursive search conditions.</p>
       </td>
       <td><a href="docs/images/features/name-filter.png"><img src="docs/images/features/name-filter.png" width="600" alt="The active pane filtered by filename while the destination remains visible"></a></td>
@@ -119,11 +130,12 @@ The features below describe current development. See the [version history](CHANG
     </tr>
     <tr>
       <td>
-        <strong>A few useful preferences</strong>
-        <p>General lets you reopen the previous workspace, choose per-folder views or a shared default, show or hide extensions, record a filtering shortcut, and configure the terminal and ZIP browsing. Shortcut recording checks conflicts. Hidden extensions affect display only; renaming always shows the full filename. Updates offers daily automatic checks, optional automatic installation and a manual check. Workspace restoration, terminal access and ZIP browsing default on; the shell starts only when you open its panel.</p>
+        <strong>Make the controls your own</strong>
+        <p>Settings has General, Shortcuts, Terminal and Updates pages. General controls workspace restoration, folder views, extension display, terminal access and ZIP browsing. Shortcuts lets you search all application commands, record or clear a binding, and restore one command or all defaults. Conflicts name the command already using the binding; menus update immediately. Native text editing, selection, path completion and shell controls retain their normal behavior. Updates offers daily checks, optional automatic installation and a manual check.</p>
       </td>
       <td>
-        <a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="General settings with startup workspace restoration, folder view policy, shortcut recording and terminal and ZIP browsing enabled"></a>
+        <a href="docs/images/features/settings.png"><img src="docs/images/features/settings.png" width="600" alt="General settings with startup workspace restoration, folder view policy and terminal and ZIP browsing enabled"></a>
+        <a href="docs/images/features/shortcuts.png"><img src="docs/images/features/shortcuts.png" width="600" alt="Shortcuts filtered by Show, with Show Terminal customized to F6 and clear and reset controls visible"></a>
         <a href="docs/images/features/updates.png"><img src="docs/images/features/updates.png" width="600" alt="Updates settings with automatic checks, optional download and installation, a manual check and last-check status"></a>
       </td>
     </tr>
@@ -145,10 +157,14 @@ Both features are **enabled by default**. Change them in **Tursora → Settings�
     <tr>
       <td>
         <strong>A terminal in your workspace</strong>
-        <p>Press <code>F4</code> for an interactive <a href="https://github.com/migueldeicaza/SwiftTerm">SwiftTerm</a> terminal beneath the files. It starts in the active folder, or beside the original ZIP when browsing an archive.</p>
-        <p>Navigation shows the target for <strong>Restart in Current Folder</strong> without injecting shell commands. The header distinguishes the start location from a shell-reported folder and keeps the ended state after a shell exits. Restarting, hiding the panel, closing the window or disabling terminal access ends its shell session.</p>
+        <p>Click the toolbar's <strong>Show Terminal</strong> button, or press <code>F4</code>, for an interactive <a href="https://github.com/migueldeicaza/SwiftTerm">SwiftTerm</a> terminal beneath the files. It starts in the active folder, or beside the original ZIP when browsing an archive.</p>
+        <p>Choose the system login shell or a custom executable in <strong>Settings → Terminal</strong>. Pick a monospaced font (8–36 pt), follow the system appearance, or use dark, light or custom text/background colors. Font and color changes apply to every open terminal immediately; shell changes take effect on the next open or restart. Defaults are the system login shell, System Monospaced at 12 pt, and Follow Appearance.</p>
+        <p>Navigation shows the target for <strong>Restart in Current Folder</strong> without injecting shell commands. The header distinguishes the start location from a shell-reported folder and keeps the ended state after a shell exits. The toolbar button changes to <strong>Hide Terminal</strong> while open. Restarting, hiding the panel, closing the window or disabling terminal access ends its shell session.</p>
       </td>
-      <td><a href="docs/images/features/terminal.png"><img src="docs/images/features/terminal.png" width="600" alt="The integrated terminal preserving its shell directory while the file pane shows a different restart destination"></a></td>
+      <td>
+        <a href="docs/images/features/terminal.png"><img src="docs/images/features/terminal.png" width="600" alt="The selected terminal toolbar button and a customized terminal below split panes, retaining an exported variable across commands"></a>
+        <a href="docs/images/features/terminal-settings.png"><img src="docs/images/features/terminal-settings.png" width="600" alt="Terminal settings for system or custom shell, monospaced font and size, and system or custom colors"></a>
+      </td>
     </tr>
     <tr>
       <td>
@@ -190,6 +206,21 @@ Requires **macOS 14 or later**. Downloadable builds currently target **Apple Sil
 **Development builds:** after the updated workflow is published, successful [Build runs](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) will contain a DMG and checksum inside GitHub's artifact ZIP. Unpack that outer ZIP, open the DMG and drag Tursora to Applications. Older runs contain the previous application ZIP. Artifacts are kept for 14 days. See the [changelog](CHANGELOG.md) for version history.
 
 <p><a href="docs/images/features/installation.png"><img src="docs/images/features/installation.png" width="640" alt="The prepared DMG opened in Finder, with Tursora on the left and an arrow pointing to Applications on the right"></a></p>
+
+### Homebrew
+
+The repository includes a Homebrew cask for the published **0.1.0** Apple Silicon build. Once the cask is on `main`, install it through this project's tap:
+
+```sh
+brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
+brew install --cask zerolfx/tursora/tursora
+```
+
+The explicit repository URL is required on the first line. Update with `brew update` followed by `brew upgrade --cask zerolfx/tursora/tursora`; uninstall with `brew uninstall --cask zerolfx/tursora/tursora`. Uninstall leaves your settings and workspace intact.
+
+This project maintains its own tap. An Apple Developer Program membership is not required to distribute it this way; **the downloaded app remains ad-hoc signed and not notarized**, and the [first-launch instructions](#first-launch) still apply. The cask keeps Homebrew's normal download quarantine and verifies the pinned SHA-256. Homebrew's official cask repository has separate [Gatekeeper acceptance requirements](https://docs.brew.sh/Acceptable-Casks#platform-compatibility-and-macos-security-protections).
+
+The cask has been installed and uninstalled in an isolated Homebrew prefix using the real release. Publishing these tap files to `main` is a separate step; see [Homebrew maintenance and verification](docs/research/homebrew.md).
 
 ### First launch
 

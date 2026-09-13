@@ -244,6 +244,15 @@ enum PanePathsSmokeTests {
               bar.hasOverflowMenu && !controls.isEmpty
               && controls.allSatisfy { $0.minX >= 0 && $0.maxX <= 160 && $0.width >= 0 },
               "controls=\(controls)")
+        let originalSubviews = bar.subviews.map(ObjectIdentifier.init)
+        for width: CGFloat in [220, 360, 160, 160] {
+            bar.frame.size.width = width
+            bar.needsLayout = true
+            bar.layoutSubtreeIfNeeded()
+            check("repeated breadcrumb layout reuses its controls at width \(Int(width))",
+                  bar.subviews.map(ObjectIdentifier.init) == originalSubviews
+                  && bar.visibleNavigationFrames.allSatisfy { $0.minX >= 0 && $0.maxX <= width + 1 })
+        }
     }
 
     @MainActor private static func type(_ value: String, in bar: BreadcrumbBar) {

@@ -646,12 +646,8 @@ final class FileOutlineView: NSOutlineView {
     }
 
     override func keyDown(with event: NSEvent) {
-        let plain = event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-        switch event.keyCode {
-        case 36, 76 where plain:   onReturn?()          // Return / Enter
-        case 49 where plain:       onSpace?()           // Space
-        default:                   super.keyDown(with: event)
-        }
+        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace) { return }
+        super.keyDown(with: event)
     }
 
     override func otherMouseDown(with event: NSEvent) {

@@ -443,12 +443,8 @@ final class FileCollectionView: NSCollectionView {
     }
 
     override func keyDown(with event: NSEvent) {
-        let plain = event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-        switch event.keyCode {
-        case 36, 76 where plain: onReturn?()
-        case 49 where plain:     onSpace?()
-        default:                 super.keyDown(with: event)
-        }
+        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace) { return }
+        super.keyDown(with: event)
     }
 
     /// ⌘-scroll zooms (Dolphin's Ctrl-wheel); ordinary scrolling passes through.
