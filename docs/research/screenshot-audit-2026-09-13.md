@@ -2,6 +2,25 @@
 
 用户要求所有截图的原生窗口圆角外侧透明，不残留白底或其他底色，并明确授权确定性的截图 alpha 处理。真实界面内部不能因此修改；新功能截图须由最终打包应用实测后重拍。
 
+## 0.2.1 已下载正式包：四张 README 指针重拍
+
+对其余 25 张旧 canonical 的只读实图检查发现七处明显鼠标箭头 / 光晕；四张用于 README，另三张仅用于历史研究。主任务从已下载并完整核验的正式 0.2.1 pristine app 创建隔离 QA 身份 `com.tursora.releaseqa021.s0913`，实际操作后重拍 `/private/tmp/tursora-0.2.1-qa-u1_phjba/screenshots/{folders,share,terminal-settings,updates}.jpg`。该身份仅用于隔离验证，不能写成正式包身份；发布字节与签名检查由[0.2.1 记录](terminal-navigation-0.2.1.md)另行维护。
+
+Folders / Share 均为 1100 × 740，侧栏实际宽 300 pt：左 pane 为 Seabreeze 演示目录，右 pane 为公开 Tursora 仓库的 Model，截图范围内没有其他项目名。Folders 选中 Model；Share 实际打开 `FileItem.swift` 的系统分享菜单，没有选择任何外部发送目标。Terminal Settings / Updates 均为 660 × 777：前者显示 System Login Shell、System Monospaced 12 pt、Follow Appearance，后者显示自动检查开启、自动安装关闭。Terminal Settings 最初的缓存帧未使用，采用单独获取截图后最后覆盖的版本。
+
+处理前逐张查看原始图，未见鼠标指针或悬停提示；随后使用未修改的 `prepare-screenshots.swift`，四次处理 exit 0、stderr 为空。未修改 UI、降低阈值或抹去鼠标像素。原图、旧 canonical、处理 PNG、stats、亮暗比较图、哈希及全量 alpha 结果保存在 `/private/tmp/tursora-021-released-screenshots-i9q9qs45/`。
+
+| Canonical | 改变的角像素 | 保护像素 / RGBA 字节不变 | 全透明 / 半透明 | 测量边色回退 | PNG SHA-256 |
+|---|---:|---:|---:|---:|---|
+| `folders.png` | 847 | 813,153 / 3,252,612 | 519 / 328 | 0 | `dc0966a610febd20fb85a12d9cb5facb2456237e03b8faa2f8ae5df7c3dfd2cb` |
+| `share.png` | 847 | 813,153 / 3,252,612 | 519 / 328 | 0 | `4a185525175a148332c8695a24ccb6c9608ea50307771c81778cdae2862e2e13` |
+| `terminal-settings.png` | 362 | 512,458 / 2,049,832 | 176 / 186 | 6 | `6be8e60517b3377e95221ac251d5401768310ff0744908b7f526238058b2b911` |
+| `updates.png` | 362 | 512,458 / 2,049,832 | 176 / 186 | 6 | `7ad0cbc1d81fdd7553d0da7c8caed6d737aea11aead9ed6128377e75e2a9cdb6` |
+
+完整亮暗棋盘和四角 4 倍比较均经目视核对，无白色外沿残留；保护区在 PNG 编码后逐字节相同，紫色系统标记及原生控件保持原样。正式目录只替换这四张，与已审阅暂存 PNG 字节相同；本 follow-up 其余 25 张哈希不变，29 张全部通过 alpha 门槛。
+
+当前 README 的 20 张不同截图及网站四图未再发现明显鼠标指针 / 悬停痕迹；这属于实图目视复查，不是自动逐像素光标识别保证。**不声明全部 29 张无指针**：`app-icon-edges.png`、`text-preview.png`、`views-and-groups.png` 保留 2026-09-12 历史研究中的真实指针，当前 README 与产品页均不引用它们。此前七处发现及定位图见 `/private/tmp/tursora-cursor-review-r4nysli7/review.json`；四处公开宣传图的问题由此次重拍解决，另外三张不涂改历史证据。静态宣传引用清单与新图统计在本轮 `verification.json`；线上渲染、部署及应用更新检查由主任务单独记录。
+
 ## 0.2.1 最终界面：四张 canonical 正式替换
 
 主任务在最终 0.2.1 release app 中捕获 `/private/tmp/tursora-0.2.1-qa-u1_phjba/screenshots/{terminal,split-panes,path-navigation,zip-browsing}.jpg`，四张均为 1100 × 740；捕获前，同一份 102 个 Swift 文件已完成 3 × 3,435 项 smoke，精确验证与操作范围见[0.2.1 记录](terminal-navigation-0.2.1.md)。处理前逐张检查真实原图，无鼠标指针或悬停提示；Terminal 使用主任务最后覆盖的已清除文本选区版本，保留实际 shell 光标。

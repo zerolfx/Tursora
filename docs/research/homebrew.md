@@ -1,5 +1,9 @@
 # Homebrew 分发（2026-09-13）
 
+## 当前版本：0.2.1
+
+`Casks/tursora.rb` 已从实际公开的 0.2.1 DMG、release JSON 和 SHA256SUMS 生成，保持 `auto_updates true`。DMG 为 5,852,598 字节，SHA-256 `3458aa15670b75e8469398e4d0928ed73e6f038567c9ae7dba049e509333460b`；真实资产、代码签名、Ed25519 更新签名和安装布局见[发布核验](release-0.2.1.md)。本地 83 项工具测试、cask 精确重生成和 Ruby 语法检查通过；对应 main 推送的实际安装 / 卸载结果由 [Homebrew 工作流](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) 单独记录。下文保留早期版本和安装说明调整的历史证据。
+
 ## 结论与一手依据
 
 可以先支持自己的 Homebrew tap，无需购买 Apple Developer Program。用户提到的每年 99 美元对应 Apple 会员；Developer ID 签名与公证改善首次启动体验，和能否写一个自己的 cask 是不同环节。[Apple 会员说明](https://developer.apple.com/programs/)、[Developer ID](https://developer.apple.com/developer-id/)。

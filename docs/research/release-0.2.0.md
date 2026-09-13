@@ -1,5 +1,7 @@
 # 0.2.0 正式发布核验
 
+> 历史发布记录。当前稳定版为 [0.2.1](release-0.2.1.md)；下文保留当时 0.2.0 发布的实际证据。
+
 2026-09-13。[Tursora 0.2.0](https://github.com/zerolfx/Tursora/releases/tag/v0.2.0) 已发布为最新稳定版，非 draft / prerelease。用户已授权完成这些功能后推送、合入与发布，原 0.1.0 标签及资产未修改。
 
 ## 源码与流水线
@@ -32,7 +34,7 @@
 
 实机启动成功，About 显示 `0.2.0 (1789275959)`，右下角初始 Terminal 明确没有启动 shell。Settings → Updates → Check for Updates 实际访问生产源，提示 **You’re up to date!**，确认 0.2.0 是当前最新版本。证据为 `live-update-check.jpg`，随后正常退出，精确进程路径查询确认测试副本已退出。
 
-本次没有把同一用户下的旧正式 bundle id 应用交给生产 installer 替换 / 自动重启：本机仍有用户应用运行，Sparkle 替换后按标准路径重启不会继承旧副本的临时隔离配置。受控 Foundation 探测还确认 `CFFIXED_USER_HOME` 仅改变 home 路径 API，不能隔离 UserDefaults，新的进程仍访问真实偏好目录；专用 QA 域与文件已清理，正式偏好未动。实际旧版本下载 / 安装 / 自动重启仍沿用此前**一次性 QA key + loopback** 的独立成功记录，不将其宣称为本次生产源端到端安装验证。原版 0.1.0 没有 updater，仍需手动升级一次。
+本次没有把同一用户下的旧正式 bundle id 应用交给生产 installer 替换 / 自动重启：本机仍有用户应用运行，Sparkle 替换后按标准路径重启不会继承旧副本的临时隔离配置。受控 Foundation 探测还确认 `CFFIXED_USER_HOME` 仅改变 home 路径 API，不能隔离 UserDefaults，新的进程仍访问真实偏好目录；专用 QA 域与文件已清理，正式偏好未动。实际旧版本下载 / 安装 / 自动重启仍沿用此前**一次性 QA key + loopback** 的独立成功记录，不将其宣称为本次生产源端到端安装验证。
 
 ## 安装入口与后续核验
 

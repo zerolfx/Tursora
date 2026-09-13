@@ -142,10 +142,10 @@
       <div class="experiments-heading">
         <p class="eyebrow">内置工具</p>
         <h2 id="experiments-title">内置终端和 ZIP 浏览</h2>
-        <p>0.2.0 默认启用终端入口和 ZIP 浏览，可在 <span lang="en">Tursora → Settings…</span> 中关闭；已有设置会保留。</p>
+        <p>默认启用终端入口和 ZIP 浏览，可在 <span lang="en">Tursora → Settings…</span> 中关闭；已有设置会保留。</p>
       </div>
       <div class="experiment-notes">
-        <div><h3>0.2.1 终端改进（即将发布） <span>F4</span></h3><p>通过工具栏按钮或 F4 展开、收起终端，标题栏更紧凑；收起后会话继续运行。默认 zsh 会话跟随当前浏览窗格的目录，隐藏时也会同步。前台命令执行期间、<code>read</code> 正等待输入或命令尚未输入完时，会暂缓切换目录。其他自定义 Shell 使用 Restart 手动打开当前浏览目录。Shell、字体、配色和快捷键仍可设置；退出、关窗或重启 Shell 前，检测到任务会先确认。</p></div>
+        <div><h3>0.2.1 终端改进 <span>F4</span></h3><p>通过工具栏按钮或 F4 展开、收起终端，标题栏更紧凑；收起后会话继续运行。默认 zsh 会话跟随当前浏览窗格的目录，隐藏时也会同步。前台命令执行期间、<code>read</code> 正等待输入或命令尚未输入完时，会暂缓切换目录。其他自定义 Shell 使用 Restart 手动打开当前浏览目录。Shell、字体、配色和快捷键仍可设置；退出、关窗或重启 Shell 前，检测到任务会先确认。</p></div>
         <div><h3>把 ZIP 当作只读目录浏览</h3><p>打开过程中可以取消，失败后可以重试或返回所在文件夹。仅支持普通 ZIP。打开的临时副本会在应用退出时清理；需要保留编辑，请在外部应用中“另存为”。不支持密码 ZIP 或直接写回归档。</p></div>
       </div>
     </section>
@@ -153,7 +153,7 @@
     <section class="download wrap" id="installation" aria-labelledby="download-title">
       <div class="download-copy" id="download">
         <img class="download-icon" src="assets/AppIcon.png" width="64" height="64" alt="" loading="lazy">
-        <p class="eyebrow">安装指南 · 0.2.0</p>
+        <p class="eyebrow">安装指南 · 0.2.1</p>
         <h2 id="download-title">下载并安装<br>Tursora</h2>
         <p>Tursora 免费使用，以 MIT 许可证开源。<br class="desktop-break">欢迎下载，也欢迎阅读源码、修改和贡献。</p>
         <div class="download-actions">
@@ -177,9 +177,9 @@
           <div><dt>签名</dt><dd>ad-hoc 签名，尚未公证</dd></div>
         </dl>
         <h3 class="install-method">通过 DMG 安装</h3>
-        <p class="install-note">0.2.0 已发布，提供 Apple Silicon 的 DMG 安装包。</p>
+        <p class="install-note">0.2.1 已发布，提供 Apple Silicon 的 DMG 安装包。</p>
         <ol class="download-steps">
-          <li>在<a class="inline-link" href="https://github.com/zerolfx/Tursora/releases/latest">最新正式版本</a>下载 <span lang="en">Tursora-0.2.0-macOS-arm64.dmg</span>；同页提供 SHA-256 校验文件，无需 GitHub 账号。</li>
+          <li>在<a class="inline-link" href="https://github.com/zerolfx/Tursora/releases/latest">最新正式版本</a>下载 <span lang="en">Tursora-0.2.1-macOS-arm64.dmg</span>；同页提供 SHA-256 校验文件，无需 GitHub 账号。</li>
           <li>双击打开 DMG。</li>
           <li>将 <span lang="en">Tursora.app</span> 复制到可写入的目录：<code>/Applications</code>、<code>~/Applications</code> 或其他位置均可。</li>
           <li>打开复制后的应用，不要直接在只读 DMG 内运行。</li>
@@ -193,7 +193,7 @@
         <pre class="install-code" aria-label="Homebrew 安装命令"><code>brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
 brew trust --cask zerolfx/tursora/tursora
 brew install --cask zerolfx/tursora/tursora</code></pre>
-        <p class="install-note">若报错提示找不到 <span lang="en">zerolfx/homebrew-tursora</span>，Homebrew 使用了默认 tap 地址。请先完整执行上方含 URL 的第一条命令。Tap 安装已发布的 0.2.0 DMG，并校验固定 SHA-256。<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew">更新与卸载说明 <span aria-hidden="true">↗</span></a></p>
+        <p class="install-note">若报错提示找不到 <span lang="en">zerolfx/homebrew-tursora</span>，Homebrew 使用了默认 tap 地址。请先完整执行上方含 URL 的第一条命令。Tap 安装已发布的 0.2.1 DMG，并校验固定 SHA-256。<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew">更新与卸载说明 <span aria-hidden="true">↗</span></a></p>
         <p class="install-note">第二条只信任 Tursora 的安装定义。若仍提示 <span lang="en">untrusted tap</span>，见<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew-troubleshooting">安装排错说明</a>。</p>
         <p class="install-note">指定其他目录，可在第三条加上 <code>--appdir="$HOME/Applications"</code>，或替换为所需目录。若 Homebrew 自身的目录没有写入权限，直接用 DMG 安装即可。首次启动仍按上方步骤处理。</p>
         <h3 class="install-method" id="agent-install">让 agent 帮你安装</h3>

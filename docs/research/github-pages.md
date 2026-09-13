@@ -1,5 +1,9 @@
 # GitHub Pages 配置与验证（2026-09-12）
 
+## 当前双语站点与 0.2.1
+
+默认入口改为英文 `index.html`，中文为 `zh.html`，普通 English / 中文链接双向切换。两页共享截图、样式、脚本及英文 `install.md` agent 指南；安装目标为已发布的 0.2.1。源码提交 `c95f4d5aaaf483dd8176873685ac614b47c8100a` 的 [Pages 34748295179](https://github.com/zerolfx/Tursora/actions/runs/34748295179) 成功，10 个部署文件及根 URL 的 11 次正常 TLS 下载均与该提交和本地构建相同。1200 / 390 px 双语浏览、安装跳转、图片查看器和键盘关闭通过；新截图实际尺寸为 1100 × 740。安装版本文案在正式资产核验后以独立跟进提交更新，其部署须按该提交单独核对；[站点说明](../../site/README.md)与[0.2.1 发布核验](release-0.2.1.md)记录范围。下文为较早的中文站点与安装调整历史，不再作为当前页面描述。
+
 ## 0.2.0 发布后的安装说明
 
 [PR #8](https://github.com/zerolfx/Tursora/pull/8) 于 2026-09-13 合入 `3ca4ab9ffd43555e4c4118e5504eb6d39e6dc034`；[main Pages 34739716315](https://github.com/zerolfx/Tursora/actions/runs/34739716315) 成功。该部署发生在正式 Release 前，页面当时保留真实的“准备中”说明。[0.2.0 发布](release-0.2.0.md)后，本 follow-up 去掉未来 DMG / tap 待发布文案，说明已发布 0.2.0 与固定 SHA 的 Homebrew 安装，保留 `#installation`、latest release CTA、MIT、未公证和原 0.1.0 一次手动升级提示。
