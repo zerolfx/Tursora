@@ -1,12 +1,13 @@
 cask "tursora" do
-  version "0.1.0"
-  sha256 "7619e8ee33ade5283bbddf0eef306892bc806811801bdd36abdb4d8682b06124"
+  version "0.2.0"
+  sha256 "2593f312772b6d7ee6a885c8017ce43b31d094fc2744f764e76e027178d1aef7"
 
-  url "https://github.com/zerolfx/Tursora/releases/download/v#{version}/Tursora-#{version}-macOS-arm64.zip"
+  url "https://github.com/zerolfx/Tursora/releases/download/v#{version}/Tursora-#{version}-macOS-arm64.dmg"
   name "Tursora"
   desc "Native macOS file manager with split panes and editable paths"
   homepage "https://github.com/zerolfx/Tursora"
 
+  auto_updates true
   depends_on arch: :arm64
   depends_on macos: :sonoma
 

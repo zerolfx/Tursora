@@ -18,6 +18,7 @@
 | you are changing Dock shortcuts | [research/dock-menu.md](research/dock-menu.md) — fixed destinations, explicit action targets and Finder label evidence | 中文 |
 | you are preparing README or site screenshots | [images/README.md](images/README.md), [research/screenshot-transparency.md](research/screenshot-transparency.md) — deterministic alpha preparation and pixel verification | English / 中文 |
 | you are preparing a versioned release, drag-install DMG or future Apple signing | [RELEASING.md](RELEASING.md), [../CHANGELOG.md](../CHANGELOG.md); older implementation entries are in [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md) | English |
+| you are checking the published 0.2.0 assets and verification scope | [research/release-0.2.0.md](research/release-0.2.0.md) — exact tag/build, downloaded bytes, signatures and production-feed boundaries | 中文 |
 | you are changing software updates, release signing or update settings | [research/app-updates.md](research/app-updates.md) — Sparkle driver, stored choices, release feed, key readiness and verification; [SPEC.md §20](SPEC.md#20-软件更新sparkle-原生更新流程) | 中文 |
 | you are configuring or deploying GitHub Pages | [research/github-pages.md](research/github-pages.md) — public repository evidence, workflow, subpath checks and deployment status; [site/README.md](../site/README.md) | 中文 / English |
 | you are changing text icon previews | [research/text-thumbnails.md](research/text-thumbnails.md) — readable excerpts, Finder / Dolphin evidence and stale request checks | 中文 |

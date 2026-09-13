@@ -110,7 +110,7 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 - [x] 关闭自动检查保留手动入口和下载偏好；注入 driver 的无网络回归、包内 updater 与 release 元数据校验。
 - [x] 公开产品页的 GitHub Pages 工作流与最新正式版本下载入口。
 - [x] 直接 DMG 分发与 Tursora → Applications 拖拽安装布局，构建与签名工具检查。
-- [ ] 签名私钥配置为 GitHub Actions secret，发布首个含 updater 的正式版本与 appcast。
+- [x] 签名私钥配置为 GitHub Actions secret，首个含 updater 的正式 0.2.0 与 appcast 已发布；字节与签名见[发布记录](../research/release-0.2.0.md)。
 - [x] 使用临时 QA key 与本机 feed 完成 Sparkle DMG 下载、验证、安装和重启；另有错误 key / 同长度篡改的离线签名负测。
 - [ ] 完成线上生产 feed 的下载、安装和重启验证；原 0.1.0 用户需先手动升级一次。Developer ID / Apple 公证尚无证书，后续独立接入。
 - 勾选表示实现范围，不代表新版本或网站已经发布；本轮工具 / smoke / 实机检查见[软件更新记录](../research/app-updates.md)与[Pages 记录](../research/github-pages.md)。
@@ -145,5 +145,6 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 - [x] Places 旁的独立 Folders 树：本实现位于其下方，允许拖动高度，保持收藏可见。
 - [x] MIT 许可、免费开源说明和自有 Homebrew tap 配置；隔离安装 / 卸载通过。
 - [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG、实机与全部 29 张透明截图检查完成；阶段和范围见 [HANDOFF](../HANDOFF.md)。
-- [ ] 隐藏保留终端与退出 / 关窗 / Restart 任务确认的追加验证；[生命周期范围](../research/terminal-session-lifecycle.md)。
-- [ ] 用户已授权公开 main 上的 tap、远端 CI / 网站部署与 0.2.0 发布；先完成新增源码验证，再核验真实 release 后更新 cask。
+- [x] 隐藏保留终端与退出 / 关窗 / Restart 任务确认，101 份源码 3,329 项 smoke 连续三轮及实机追加验证通过；[生命周期范围](../research/terminal-session-lifecycle.md)。
+- [x] 公开 main 上的原始 tap 与 0.2.0 正式 release 已发布，下载字节、签名和安装布局核验通过。
+- [x] 0.2.0 cask 与安装文案 follow-up 的隔离安装 / 卸载、网站构建及引用检查通过；这是合入前本地范围。线上提交结果见 [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml)、[Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 及对应 PR；[发布记录](../research/release-0.2.0.md)。

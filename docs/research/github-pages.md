@@ -1,12 +1,18 @@
 # GitHub Pages 配置与验证（2026-09-12）
 
+## 0.2.0 发布后的安装说明
+
+[PR #8](https://github.com/zerolfx/Tursora/pull/8) 于 2026-09-13 合入 `3ca4ab9ffd43555e4c4118e5504eb6d39e6dc034`；[main Pages 34739716315](https://github.com/zerolfx/Tursora/actions/runs/34739716315) 成功。该部署发生在正式 Release 前，页面当时保留真实的“准备中”说明。[0.2.0 发布](release-0.2.0.md)后，本 follow-up 去掉未来 DMG / tap 待发布文案，说明已发布 0.2.0 与固定 SHA 的 Homebrew 安装，保留 `#installation`、latest release CTA、MIT、未公证和原 0.1.0 一次手动升级提示。
+
+此 follow-up 本地构建通过：5 资产、39 引用、约 1,629 KiB、全部 29 图 alpha 通过；静态检查两个安装锚点、两个 latest CTA、精确保留的两行 Homebrew 命令，以及 README 的 20 个不同截图引用。五份网站资产与此前浏览器实测版本字节相同。证据 `/private/tmp/tursora-homebrew-0.2.0-i_9y61y8/site-static.json` 与 `site-build.{out,err}`。本轮未驱动浏览器或应用，该 follow-up 合入后的线上结果以 [Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml)、对应 PR 与最终 HTTP 核验证据为准，不能用上一个部署成功代替它；历史 1200 / 390 px 安装区与图片查看器实测范围不扩大。
+
 ## 实现
 
 公开产品页目标地址为 <https://zerolfx.github.io/Tursora/>。沿用 `site/` 的中文静态页面、真实应用截图与 Python 标准库构建器；部署产物只有 `site/dist/`。全部资源保持相对引用，适配项目站点 `/Tursora/` 子路径。
 
 新增 `.github/workflows/pages.yml`：影响站点或四份源资产的 PR 运行静态构建和引用校验；同类变更进入 `main` 或手动在 `main` 触发时，构建产物交给 GitHub 官方 Pages Actions 发布。其他分支与 PR 不上传 Pages 产物、不部署。构建任务只读仓库与 Pages 配置；部署任务拥有 `pages: write` / `id-token: write`，依赖构建成功，使用 `github-pages` environment，并记录正式页面 URL。并发组保留正在进行的部署。
 
-下载按钮改为 `https://github.com/zerolfx/Tursora/releases/latest`，自动指向最新正式发布页。文案保留 Apple Silicon、macOS 14+、SHA-256、ad-hoc 签名与未公证的实际边界，移除私有仓库登录要求。按后续要求准备直接 DMG 分发及应用 → Applications 拖拽安装；页面明确说明当前 `0.1.0` 仍是已发布 ZIP、DMG 尚未发布。首次 DMG 真正发布后应删除这段过渡说明；ZIP 浏览功能介绍不变。
+下载按钮改为 `https://github.com/zerolfx/Tursora/releases/latest`，自动指向最新正式发布页。文案保留 Apple Silicon、macOS 14+、SHA-256、ad-hoc 签名与未公证的实际边界，移除私有仓库登录要求。早期按要求准备直接 DMG 分发及应用 → Applications 拖拽安装，当时页面明确区分已发布的 0.1.0 ZIP 与未来 DMG；这段过渡说明已在页首的 0.2.0 follow-up 移除。ZIP 浏览功能介绍不变。
 
 ## 依据与远端只读核验
 

@@ -2,13 +2,13 @@
 
 ## 当前状态
 
-更新代码、设置和 DMG 发布工具已实现，尚未发布含 updater 的新版本。2026-09-13 用户已授权在[终端会话保留与退出确认](terminal-session-lifecycle.md)完成后推送、合入并发布 **0.2.0**；CHANGELOG 已准备对应日期节。只读 GitHub 预检仍为唯一正式版 0.1.0，没有 appcast；新版本最终源码验证、远端 Release 和生产 feed 核验未完成，具体进度以 [HANDOFF](../HANDOFF.md) 为准。
+[0.2.0 已正式发布](https://github.com/zerolfx/Tursora/releases/tag/v0.2.0)，是首个含 updater 的稳定版本，附正式 DMG、appcast 与校验文件。[Release 34739914582](https://github.com/zerolfx/Tursora/actions/runs/34739914582) 成功；101 份 Swift 源码的 3,329 项 smoke 连续三轮和[终端生命周期实测](terminal-session-lifecycle.md)完成。主任务重新下载核对实际字节、包元数据、安装布局及 Ed25519 签名；正式下载包的隔离身份副本显示 0.2.0 / build 1789275959，生产 Check for Updates 返回“已是最新”，latest feed 字节与固定版本一致；精确修改范围、日志和界面证据见[发布记录](release-0.2.0.md)。这些检查不等于旧版经生产 feed 完整下载、安装和重启。
 
 以下为软件更新独立阶段的历史证据：同源码 **2,158 项 smoke 连续三轮通过**，stderr 均为空；工具测试 **70 项通过**（发布说明 33、更新元数据 / 布局 37）。General / Updates 实机设置、重启持久化、本地 Sparkle DMG 下载 / 校验 / 安装 / 重启及最终 DMG 的 Finder 视觉检查均已完成。Pages 随 PR #5 合入并部署，见[站点记录](github-pages.md)；这些历史结果不替代 0.2.0 新增源码或真实生产发布检查。
 
-Ed25519 公钥已写入 `app/Resources/SparklePublicKey.txt`，私钥保存在本机 Keychain 的 `com.tursora.Tursora` account。首次上传被自动审批拦截后，用户明确授权；`zerolfx/Tursora` 的 Actions secret `SPARKLE_PRIVATE_KEY` 已于 2026-09-13 00:48:20（Asia/Shanghai）成功配置，GitHub `updatedAt=2026-09-12T16:48:20Z`，secret 列表已核实名称与时间。上传前从现有 Keychain 导出到 mode-0600 临时文件，经 CryptoKit 派生公钥与 Resources 一致后通过 stdin 上传，trap 清理临时文件；私钥未进入源码或日志。新稳定 release 尚未发布，`0.1.0` 标签与资产保持原样。
+Ed25519 公钥已写入 `app/Resources/SparklePublicKey.txt`，私钥保存在本机 Keychain 的 `com.tursora.Tursora` account。首次上传被自动审批拦截后，用户明确授权；`zerolfx/Tursora` 的 Actions secret `SPARKLE_PRIVATE_KEY` 已于 2026-09-13 00:48:20（Asia/Shanghai）成功配置，GitHub `updatedAt=2026-09-12T16:48:20Z`，secret 列表已核实名称与时间。上传前从现有 Keychain 导出到 mode-0600 临时文件，经 CryptoKit 派生公钥与 Resources 一致后通过 stdin 上传，trap 清理临时文件；私钥未进入源码或日志。后续 0.2.0 已发布；`0.1.0` 标签与资产仍保持原样。
 
-原版 `0.1.0` 没有更新器，仍保留已发布 ZIP；用户必须手动安装一次含本功能的后续版本。后续 release 直接提供 DMG：打开后把 Tursora 拖入 Applications。首份正式 `appcast.xml` 随下一次稳定 release 发布；本机测试用一次性 QA key 与 loopback feed，不能据此宣称生产签名 key、线上 feed 或真实 release 已完成端到端验证。网站配置与本地检查另见 [GitHub Pages](github-pages.md)。
+原版 `0.1.0` 没有更新器，仍保留已发布 ZIP；用户必须手动安装一次 0.2.0。正式 DMG 打开后将 Tursora 拖入 Applications，后续稳定版本可通过 updater 检查。首份正式 `appcast.xml` 已随 0.2.0 发布；历史完整更新测试使用一次性 QA key 与 loopback feed，不能据此宣称生产下载、安装和重启已完成端到端验证。网站配置与发布检查另见 [GitHub Pages](github-pages.md)。
 
 ## 交互与偏好
 
@@ -62,13 +62,13 @@ Build 与 Release 的 bundle build 默认都取源码提交的 Unix committer ti
 - 截图格式修正：捕获返回的 JPEG bytes 最初使用 `.png` 文件名，现通过 `sips` 转为真实 540 × 737 PNG；两张转换前后 macOS ImageIO 解码 RGBA 逐字节一致。透明处理脚本拒绝两图左上彩色边缘（residual 49.9 / 51.5），因此保留完整原截图，没有伪造角落或修改开关。原始 JPEG、PNG 和像素校验脚本保存在 `/private/tmp/tursora-updates-screenshots-final/`。
 - 最终文档校验：204 个本地 Markdown 链接目标存在；截图目录 24 张均为真正 PNG，README 特性表 15 张截图及下载区 1 张安装截图引用有效。安装图的 JPEG → PNG 也通过原生 ImageIO 逐像素一致性核对，尺寸 640 × 280；`git diff --check` 通过。
 - 收尾：77 份 Swift 源码再次核对与最终三轮测试快照一致；测试应用已退出、本地 updater fixture server 已停止、挂载已卸载，只恢复本轮更新偏好，未覆盖用户其他设置，实机验证锁已释放。
-- GitHub 签名 secret 已于上述时间配置；首个更新版稳定 release/appcast 与线上生产下载 / 安装 / 重启尚未完成。Pages 合入后运行，远端结果独立记录。
+- 该历史阶段 GitHub 签名 secret 已配置，首个更新版 release/appcast 尚未发布；后续 0.2.0 发布结果见页首，不能回填成历史测试的生产端到端结果。
 
 ![最终 DMG 的真实 Finder 安装窗口](../images/features/installation.png)
 
 ## 首次启动说明（2026-09-13）
 
-按用户要求参考 [Rascal 下载说明](https://github.com/chang-07/rascal#download)，采用下载 → 打开 DMG 拖入 Applications → 从 Applications 启动的顺序。Tursora 当前正式版仍为 `0.1.0` ZIP，README / 网站保留这一过渡事实，没有提供尚不存在的 Homebrew tap。Rascal 自有 [cask](https://github.com/chang-07/homebrew-tap/blob/main/Casks/rascal.rb) 将 ad-hoc / 未公证及隔离属性处理写在 `caveats`，没有在安装 hook 自动执行该命令；它的分发方式不作为 Tursora 已签名或已公证的证据。
+按用户要求参考 [Rascal 下载说明](https://github.com/chang-07/rascal#download)，采用下载 → 打开 DMG 拖入 Applications → 从 Applications 启动的顺序。编写首次启动说明时，Tursora 的正式版仍为 `0.1.0` ZIP，README / 网站如实保留过渡说明；0.2.0 发布后该文案与真实 Homebrew tap 已更新，见页首。Rascal 自有 [cask](https://github.com/chang-07/homebrew-tap/blob/main/Casks/rascal.rb) 将 ad-hoc / 未公证及隔离属性处理写在 `caveats`，没有在安装 hook 自动执行该命令；它的分发方式不作为 Tursora 已签名或已公证的证据。
 
 [Apple《Safely open apps on your Mac》](https://support.apple.com/en-us/102445)（页面日期 2026-05-27，本次读取 2026-09-13）给出的单应用处理顺序为：先尝试启动，再进入 System Settings → Privacy & Security 选择 Open Anyway，确认提示中选择 Open。条件是使用者确信来源可信且未被篡改。README 以此为主路径，网站只提供简短说明与 README `#first-launch` 链接，不扩展静态构建器的外链白名单。无法验证开发者和无法检查恶意软件的提示不能作为恶意软件实际检出、撤销授权或文件损坏的统一解释；损坏先重下及同版本 checksum 核对，恶意软件警告不按普通隔离属性问题处理。
 

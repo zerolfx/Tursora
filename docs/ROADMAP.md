@@ -10,15 +10,16 @@ v1（纯本地）的功能已经齐了：地址栏、标签页、分栏、两种
 
 ## 本轮：终端会话与 0.2.0 发布
 
-- [ ] 收起 / 禁用入口保留窗口终端；退出、关窗与 Restart 对任务确认，取消退出保留传输与工作区。右下角可点击状态显示隐藏会话及任务进程数，后台轮询不创建 PTY。实现和最终验证进行中，见[生命周期记录](research/terminal-session-lifecycle.md)。
-- [ ] 完成新增源码三轮 smoke、打包实测与 General / Terminal 真实截图更新后，按用户授权推送、合入并发布 0.2.0；重新下载验证资产，再把 Homebrew cask 更新到真实 DMG，核对远端 CI 与 Pages。
+- [x] 收起 / 禁用入口保留窗口终端；退出、关窗与 Restart 对任务确认，取消退出保留传输与工作区。右下角可点击状态显示隐藏会话及任务进程数，后台轮询不创建 PTY。101 份源码 3,329 项 smoke 连续三轮及实机验证通过，见[生命周期记录](research/terminal-session-lifecycle.md)。
+- [x] 新增源码三轮 smoke、打包实测与 General / Terminal 真实截图完成；0.2.0 正式发布，重新下载资产、签名与布局核验通过，见[发布记录](research/release-0.2.0.md)。
+- [x] 0.2.0 cask 与安装文案 follow-up 已准备，隔离安装 / 卸载、网站构建及引用检查通过。此项勾选为合入前本地范围，线上提交状态见 [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml)、[Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 和对应 PR；生产 feed 的旧版下载 / 安装 / 重启仍单独记录。
 
 ## 已完成阶段：操作定制与目录导航
 
 - [x] 所有应用命令快捷键可搜索、录制、清除与重置，保留原生文本 / shell 控制；[范围与验证](research/custom-shortcuts.md)。
 - [x] 终端 Shell、等宽字体 / 字号、外观和自定义文本 / 背景色；工具栏直接展开 / 收起；[实现与边界](research/terminal-customization.md)。
 - [x] Places 下方独立 Folders 目录树，活动 pane 跟随、后台单层读取和会话布局记忆；[Dolphin 依据](research/folder-tree.md)。
-- [x] MIT 许可与免费开源说明、自有 Homebrew cask 及安装 / 卸载本地验证；公开 main 上的 tap 发布和远端工作流仍待最终整合。
+- [x] MIT 许可与免费开源说明、自有 Homebrew cask 及安装 / 卸载本地验证；原始 0.1.0 cask 已随 main 发布，0.2.0 跟进见上方。
 - [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG 检查、打包应用实机与全部 29 张截图透明化通过；[HANDOFF](HANDOFF.md) 记录范围，远端 CI / 发布仍单独处理。
 
 ## 已完成：工作连续性

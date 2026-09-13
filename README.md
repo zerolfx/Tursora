@@ -28,21 +28,21 @@ Its goal is simple: **keep what feels familiar in Finder, then add the file-mana
 
 **macOS 14+ · Apple Silicon · Free and open source.** [Download the latest stable release](https://github.com/zerolfx/Tursora/releases/latest) · [中文安装指南](https://zerolfx.github.io/Tursora/#installation)
 
-**0.2.0 is being prepared.** The current published version is 0.1.0 (ZIP); the DMG steps below apply once 0.2.0 is published. For 0.1.0, unzip the download and move `Tursora.app` to Applications.
+**[0.2.0 is available](https://github.com/zerolfx/Tursora/releases/tag/v0.2.0).** Download the DMG and install it in four steps:
 
 1. From the release page, download **`Tursora-0.2.0-macOS-arm64.dmg`**. The same page includes `SHA256SUMS.txt` to verify the download.
 2. Open the DMG.
 3. Drag **Tursora → Applications** in the installer window.
 4. Open **Tursora from Applications**. If macOS cannot verify the app, follow the [First launch instructions](#first-launch) for a trusted download.
 
-**Prefer Homebrew?** Once the tap is merged to `main`, use:
+**Prefer Homebrew?** Install through this project’s tap:
 
 ```sh
 brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
 brew install --cask zerolfx/tursora/tursora
 ```
 
-The prepared tap currently installs the verified 0.1.0 build; it will move to 0.2.0 after that release's DMG is published and checked. See [Homebrew details](#homebrew) for updates and uninstalling. **Existing 0.1.0 users need this manual upgrade once** to gain in-app updates.
+The tap installs the published 0.2.0 DMG with its verified SHA-256. See [Homebrew details](#homebrew) for updates and uninstalling. **Existing 0.1.0 users need this manual upgrade once** to gain in-app updates.
 
 ## Features
 
@@ -50,7 +50,7 @@ Quick Look, macOS sharing and familiar file operations meet Dolphin-inspired spl
 
 Tursora is an early project and does not yet cover everything Finder can do. The [differences below](#what-finder-still-does-that-tursora-doesnt) are part of the picture.
 
-The features below describe current development. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size. Key combinations below are the defaults; customize application commands in **Settings → Shortcuts**.
+The features below are available in 0.2.0. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size. Key combinations below are the defaults; customize application commands in **Settings → Shortcuts**.
 
 <table>
   <thead>
@@ -170,7 +170,7 @@ The features below describe current development. See the [version history](CHANG
 
 ## Terminal & ZIP
 
-Both features are **enabled by default** in the prepared 0.2.0 release. Change them in **Tursora → Settings…** (`⌘,`). Existing saved choices are preserved. In the historical 0.1.0 build, enable both features in Settings.
+Both features are **enabled by default** in 0.2.0. Change them in **Tursora → Settings…** (`⌘,`). Existing saved choices are preserved. In the historical 0.1.0 build, enable both features in Settings.
 
 <table>
   <thead>
@@ -217,23 +217,23 @@ These are current gaps, not promises of complete Finder parity:
 
 **Outside the design:** file tags and Import from iPhone. These are intentionally excluded, rather than items waiting to be implemented.
 
-Tursora currently has an English interface. Workspace restoration keeps locations and layout; filters, selection, scroll position, navigation history, closed tabs, terminal sessions, transfers and undo history do not survive quitting. Missing folders remain at their original paths with an inline error; restoration does not reconnect servers. Implementation and pending verification are tracked in the [workspace session record](docs/research/workspace-sessions.md). See the [Finder comparison](docs/gaps/GAP-vs-FINDER.md), [Dolphin comparison](docs/gaps/GAP-vs-DOLPHIN.md) and [roadmap](docs/ROADMAP.md) for the detailed status.
+Tursora currently has an English interface. Workspace restoration keeps locations and layout; filters, selection, scroll position, navigation history, closed tabs, terminal sessions, transfers and undo history do not survive quitting. Missing folders remain at their original paths with an inline error; restoration does not reconnect servers. Implementation and verification are tracked in the [workspace session record](docs/research/workspace-sessions.md). See the [Finder comparison](docs/gaps/GAP-vs-FINDER.md), [Dolphin comparison](docs/gaps/GAP-vs-DOLPHIN.md) and [roadmap](docs/ROADMAP.md) for the detailed status.
 
 ## Get Tursora
 
 Requires **macOS 14 or later**. Downloadable builds currently target **Apple Silicon** and are **ad-hoc signed, not notarized**.
 
 1. **Download** from the [latest stable release](https://github.com/zerolfx/Tursora/releases/latest). Public downloads need no GitHub account; the same release includes `SHA256SUMS.txt` for checking your download.
-2. **Install:** open the DMG and drag **Tursora → Applications**, as shown below. **The current release, 0.1.0, still provides a ZIP:** unzip it and move `Tursora.app` to Applications instead. The DMG is prepared for 0.2.0 and is not yet published.
+2. **Install:** open the DMG and drag **Tursora → Applications**, as shown below.
 3. **Launch Tursora from Applications.** If macOS blocks the first launch, follow the steps below.
 
-**Development builds:** after the updated workflow is published, successful [Build runs](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) will contain a DMG and checksum inside GitHub's artifact ZIP. Unpack that outer ZIP, open the DMG and drag Tursora to Applications. Older runs contain the previous application ZIP. Artifacts are kept for 14 days. See the [changelog](CHANGELOG.md) for version history.
+**Development builds:** successful [Build runs](https://github.com/zerolfx/Tursora/actions/workflows/build.yml) contain a DMG and checksum inside GitHub's artifact ZIP. Unpack that outer ZIP, open the DMG and drag Tursora to Applications. Older runs contain the previous application ZIP. Artifacts are kept for 14 days. See the [changelog](CHANGELOG.md) for version history.
 
-<p><a href="docs/images/features/installation.png"><img src="docs/images/features/installation.png" width="640" alt="The prepared DMG opened in Finder, with Tursora on the left and an arrow pointing to Applications on the right"></a></p>
+<p><a href="docs/images/features/installation.png"><img src="docs/images/features/installation.png" width="640" alt="The DMG installer layout in Finder, with Tursora on the left and an arrow pointing to Applications on the right"></a></p>
 
 ### Homebrew
 
-The repository includes a Homebrew cask for the published **0.1.0** Apple Silicon build. Once the cask is on `main`, install it through this project's tap:
+The repository includes a Homebrew cask for the published **0.2.0** Apple Silicon DMG. Install it through this project's tap:
 
 ```sh
 brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
@@ -244,7 +244,7 @@ The explicit repository URL is required on the first line. Update with `brew upd
 
 This project maintains its own tap. An Apple Developer Program membership is not required to distribute it this way; **the downloaded app remains ad-hoc signed and not notarized**, and the [first-launch instructions](#first-launch) still apply. The cask keeps Homebrew's normal download quarantine and verifies the pinned SHA-256. Homebrew's official cask repository has separate [Gatekeeper acceptance requirements](https://docs.brew.sh/Acceptable-Casks#platform-compatibility-and-macos-security-protections).
 
-The cask has been installed and uninstalled in an isolated Homebrew prefix using the real release. Publishing these tap files to `main` is a separate step; see [Homebrew maintenance and verification](docs/research/homebrew.md).
+See [Homebrew maintenance and verification](docs/research/homebrew.md) for release checks and isolated installation results.
 
 ### First launch
 
@@ -273,7 +273,7 @@ This recursively removes only the download-quarantine attribute from this app bu
 
 Version 0.2.0 adds **Tursora → Check for Updates…** and **Settings… → Updates**. Automatic checks are enabled by default and run daily; you can turn them off and still check manually. **Automatically download and install updates** is a separate option, disabled by default. When enabled, verified updates can install when you quit. Turning off automatic checks disables that control while preserving its saved choice; changing these options does not cancel an update already downloaded or scheduled to install on quit.
 
-**The original 0.1.0 release has no updater.** Download the first release containing this feature manually once; subsequent stable releases can update through the app. The implementation, release workflow and repository signing secret are prepared; the first update-enabled release and its live feed have not yet been published. See [update status](docs/research/app-updates.md).
+**The original 0.1.0 release has no updater.** Install 0.2.0 manually once; subsequent stable releases can update through the app. The update feed, including the DMG’s update signature, is now published with 0.2.0. See [release verification and its scope](docs/research/release-0.2.0.md).
 
 ### Build locally
 

@@ -8,15 +8,19 @@
 
 工具栏 / F4 / 面板关闭按钮只隐藏每窗口终端，再展开继续原 PTY、输出与任务。Settings 禁用入口也隐藏并保留；Shell 选择只在新建会话 / Restart 时应用。退出、关闭窗口或 Restart 对前台 / 后台 / 已停止任务及未知状态先确认，默认 Cancel；取消退出不进入最终保存和清理，不取消文件传输。仍不恢复跨应用重启的终端会话。精确检测边界、验证计划及后续实测统一见[会话生命周期](research/terminal-session-lifecycle.md)，行为见 SPEC §17 / §22、D55。
 
-用户又确认把终端状态放在窗口右下角：当前标签最右 pane 的 footer 显示唯一入口，点击切换同一终端；初始、隐藏 / 运行、任务进程数、结束 / 错误 / 未知状态均有说明，窄栏缩为图标。现有会话约两秒后台采样，初始展示不启动 PTY，动作时即时检测；D56 记录取舍；独立发布包的初始状态、保留任务、默认取消、窄栏及退出清理已实测，最终 101 份 Swift 源码的 3,329 项 smoke 已连续三轮通过。README 的 0.2.0 安装说明已前置，网站导航 / 首屏“安装指南”跳转 `#installation`，含实际 DMG 图及 Homebrew 命令；当前页面构建（5 资产 / 39 引用）与新增入口桌面 / 390 px 实测通过，安装图弹窗和 Escape 返回焦点通过；精确点击范围见[截图记录](research/screenshot-audit-2026-09-13.md)。正式发布前保留 pending 文案与有效 latest 链接。网站复用现有 installation.png，资产数变为 5，canonical 图片总数仍为 29。
+用户又确认把终端状态放在窗口右下角：当前标签最右 pane 的 footer 显示唯一入口，点击切换同一终端；初始、隐藏 / 运行、任务进程数、结束 / 错误 / 未知状态均有说明，窄栏缩为图标。现有会话约两秒后台采样，初始展示不启动 PTY，动作时即时检测；D56 记录取舍；独立发布包的初始状态、保留任务、默认取消、窄栏及退出清理已实测，最终 101 份 Swift 源码的 3,329 项 smoke 已连续三轮通过。README 的 0.2.0 安装说明已前置，网站导航 / 首屏“安装指南”跳转 `#installation`，含实际 DMG 图及 Homebrew 命令；当前页面构建（5 资产 / 39 引用）与新增入口桌面 / 390 px 实测通过，安装图弹窗和 Escape 返回焦点通过；精确点击范围见[截图记录](research/screenshot-audit-2026-09-13.md)。0.2.0 发布后的跟进已去掉 pending 安装文案，保留有效 latest 链接；该文案与新 cask 的后续合入 / 部署检查另记。网站复用现有 installation.png，资产数变为 5，canonical 图片总数仍为 29。
 
 Ghostty 仅完成一手源码评估：公开 libghostty-vt 与内部完整 Metal 嵌入 API 的边界、MIT 许可及后续原型建议见[研究](research/ghostty-embedding.md)。本轮不替换 SwiftTerm，也不宣称做过性能横评。
 
-**此追加阶段：101 份 Swift 源码，3,329 项 smoke 连续三轮通过**（194.4 / 188.4 / 187.6 秒，stderr 均为空，逐轮与当前源码哈希一致）。最终默认 0.2.0 release / DMG 构建、严格签名与安装布局检查及 83 项工具测试通过；公开发布核对仍待完成；下面的 3,194 项与 95 份源码只代表 `eeaea1c` 之前的定制阶段。独立发布包已实测隐藏 / Settings 禁用再启用仍保留实际 sleep 任务及相同 PID，默认 Cancel、Restart / 关窗取消、窄至 560 × 380 的可点击状态图标、接受退出后的 PID 清理，以及浅色重开初始无 shell / 自然结束。精确步骤和边界见[会话生命周期](research/terminal-session-lifecycle.md)。
+**此追加阶段：101 份 Swift 源码，3,329 项 smoke 连续三轮通过**（194.4 / 188.4 / 187.6 秒，stderr 均为空，逐轮与当前源码哈希一致）。最终默认 0.2.0 release / DMG 构建、严格签名与安装布局检查及 83 项工具测试通过；公开 0.2.0 的下载字节、签名和安装布局核对通过，生产 feed 的最新版本检查和 cask 隔离安装 / 卸载通过，follow-up 的线上结果另记；下面的 3,194 项与 95 份源码只代表 `eeaea1c` 之前的定制阶段。独立发布包已实测隐藏 / Settings 禁用再启用仍保留实际 sleep 任务及相同 PID，默认 Cancel、Restart / 关窗取消、窄至 560 × 380 的可点击状态图标、接受退出后的 PID 清理，以及浅色重开初始无 shell / 自然结束。精确步骤和边界见[会话生命周期](research/terminal-session-lifecycle.md)。
 
 General / Terminal 已替换为这轮真实截图，显示新的保留说明和右下角 `Terminal · 1 task`；保护区逐字节相同，明暗整体及四角检查通过，其余 27 张 canonical 字节未变。全部 29 张 alpha 检查与网站重建通过；`quit-hidden.jpg` 保留为独立交互证据。截图不替代最终源码测试，旧通过数不能用作新增生命周期的验证结论。
 
-2026-09-13 只读预检：远程 main 为 `b58c1ce5acb0f5318f67feb129073864be4950f1`，其 Build / Pages 均成功；没有打开的 PR，远程仅有 `v0.1.0`，`v0.2.0` 尚未占用。0.1.0 公开资产仍仅 ZIP / 校验文件，没有 appcast；此轮未读取密钥或修改远程。CHANGELOG 已准备 0.2.0 日期节并保留 Unreleased；先完成最终验证和 main 合入，再从精确提交运行 Release。发布后重新下载核验 DMG / appcast / SHA256SUMS，最后根据真实新资产更新 cask 并确认 Homebrew / Pages CI，步骤见 [RELEASING](RELEASING.md)。当前 cask 仍固定真实 0.1.0，未提前引用新 DMG。
+[0.2.0 已正式发布](https://github.com/zerolfx/Tursora/releases/tag/v0.2.0)，为当前 latest；[Release 34739914582](https://github.com/zerolfx/Tursora/actions/runs/34739914582) 成功，tag 精确指向 `3ca4ab9ffd43555e4c4118e5504eb6d39e6dc034`，build 为 `1789275959`。真实下载的 DMG / appcast 与校验文件及 GitHub asset digest / size 一致；主任务还验证实际包版本、arm64、strict codesign、项目和第三方许可、安装布局与 Ed25519 签名，挂载已卸载。DMG SHA-256 为 `2593f312772b6d7ee6a885c8017ce43b31d094fc2744f764e76e027178d1aef7`。完整字节和生产 feed 检查边界见[正式发布记录](research/release-0.2.0.md)。
+
+cask 已从上述真实 release JSON、校验文件和 DMG 生成，固定 0.2.0 并加 `auto_updates true`；六项发布边界测试与 Ruby 语法通过。隔离 Homebrew 6.0.22 从公开 DMG 真安装，版本 / build、arm64、strict codesign、许可和保留 quarantine 核对通过，未启动应用；正常卸载后临时 app / Caskroom 均不存在。此 follow-up 的本地网站构建和安装锚点 / 命令 / 图片引用检查通过；这里记录该 follow-up 合入前的本地验证；线上提交结果以对应 PR、[Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) 与 [Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 为准，精确运行号写入 PR 和最终证据文件，见[Homebrew](research/homebrew.md)。原始 0.1.0 ZIP 和标签保留，其用户仍需手动升级一次。主任务另用正式下载包的隔离身份副本确认 About 为 0.2.0 / build 1789275959、初始终端未启动 shell，以及不改生产 feed 的 Check for Updates 返回“已是最新”；latest/download/appcast.xml 与固定版本 feed 字节相同，副本已退出。未将历史 loopback 更新测试或仅检查 Up To Date 等同于旧版经生产 feed 下载、安装和重启。
+
+[PR #8](https://github.com/zerolfx/Tursora/pull/8) 已以同一提交合入 main（2026-09-13 13:12:12 Asia/Shanghai）；其 [Build](https://github.com/zerolfx/Tursora/actions/runs/34739716326)、[Pages](https://github.com/zerolfx/Tursora/actions/runs/34739716315) 与 [Homebrew](https://github.com/zerolfx/Tursora/actions/runs/34739716318) 均成功。该 Homebrew 运行仍验证原 0.1.0 cask，该 Pages 仍有发布前文案；不能当作上述 0.2.0 follow-up 的验证结果。
 
 ## 已完成阶段：快捷键、终端设置、目录树与免费开源分发
 
@@ -25,7 +29,7 @@ General / Terminal 已替换为这轮真实截图，显示新的保留说明和�
 - Settings 现分 General / Shortcuts / Terminal / Updates。Shortcuts 覆盖主菜单已有及未绑定命令、文件 Return / Space、标签定位与循环、备用缩放及归档取消；持久化录制 / 清除 / 单项或全部重置，保留原 Filter 绑定，冲突说明归属。文本、Info / Settings 编辑器与 SwiftTerm 的原生 Control / 功能键受保护，终端开关除外；默认绑定和精确范围见 [SHORTCUTS](SHORTCUTS.md)、[快捷键记录](research/custom-shortcuts.md)。
 - Terminal 默认系统登录 Shell、系统等宽 12 pt、跟随外观；可选绝对可执行 Shell、已安装等宽字体 / 8–36 pt、Dark / Light / Custom 文本背景色。字体和颜色即时应用到所有已打开 PTY，Shell 下次启动才用。工具栏终端按钮及溢出菜单反映本窗口展开状态；当时收起终止会话的规则由页首追加阶段取代。Tursora 是 SwiftTerm + 真实 PTY，Rascal 当前是逐条 Process + Pipe 命令面板，源码依据与边界见[终端记录](research/terminal-customization.md)。
 - View → Show Folders 默认 F7，在收藏与位置下方展开独立目录树，单层后台读取、活动 pane 跟随、独立隐藏 / Home 限制选项、右键打开到新标签 / 另一侧、文件拖入走既有任务。按窗口恢复可见性、上下比例及选项；隐藏树或收起侧栏停用监听。Dolphin 两种面板的区别、固定左侧布局取舍见[目录树记录](research/folder-tree.md)。
-- 根目录 MIT 许可与 README / 网站免费开源说明已加入，第三方声明保留。Homebrew cask 复用本公开仓库，固定已发布 `0.1.0` ZIP，实际下载字节 / 校验文件 / GitHub digest 一致；独立临时 Homebrew 6.0.22 中真安装、包版本 / arm64 / strict codesign / 保留 quarantine 与卸载通过。公开 main 的 tap、远端工作流仍需最终发布；不声称官方 homebrew/cask 已接纳，不把 brew 安装当作 Apple 公证。维护工具与依据见[Homebrew](research/homebrew.md)。
+- 根目录 MIT 许可与 README / 网站免费开源说明已加入，第三方声明保留。Homebrew cask 复用本公开仓库，固定已发布 `0.1.0` ZIP，实际下载字节 / 校验文件 / GitHub digest 一致；独立临时 Homebrew 6.0.22 中真安装、包版本 / arm64 / strict codesign / 保留 quarantine 与卸载通过。此处为最初 0.1.0 cask 的验证阶段；0.2.0 和 main 跟进结果见页首。不声称官方 homebrew/cask 已接纳，不把 brew 安装当作 Apple 公证。维护工具与依据见[Homebrew](research/homebrew.md)。
 - 新增标准库 PNG 检查和 Pages 门槛覆盖整个 canonical 目录；透明化处理器沿用实测边缘、原残差阈值和窄范围，保护真实内部，83 项 Python 工具测试通过。**全部 29 张截图通过 alpha 与逐张明暗 / 四角检查**：原有 20 张字节未改，六张旧不透明图真实重拍，并新增 Shortcuts / Terminal Settings / Folders。安装图使用同一 Finder 窗口配准参考，真实白色示意内部保留。网站完整构建（4 资产、36 引用）及 1200 / 390 px 浏览器复查通过，包含 ZIP 页签、透明图暗色弹窗和 Escape 焦点恢复；自有页签及服务器已关闭。来源、像素统计和阶段边界见[截图记录](research/screenshot-audit-2026-09-13.md)。
 
 实机修复覆盖字号 Tab 提交、功能键录制、非美式 `+`、目录别名、树选区 / 异步回调与窄窗地址栏布局。树的展开权限查询现无副作用，实际展开后才加载；面包屑省略控件在多次 layout 中保持稳定。Backspace / Forward Delete 菜单匹配只规范化事件副本，保留原生输入。详细边界见[整合记录](research/customization-integration.md)和[快捷键记录](research/custom-shortcuts.md)。Settings 图实际演示终端自定义 F6、`/bin/zsh`、Menlo 14 pt 与配色；Updates 自动检查开、自动安装关，图片保留各自真实拍摄阶段。
@@ -34,13 +38,13 @@ General / Terminal 已替换为这轮真实截图，显示新的保留说明和�
 
 **最终 95 份 Swift 源码：3,194 项 smoke 连续三轮通过**。`smoke-7` / `8` / `9` 分别用时 196.1 / 190.5 / 190.9 秒，均 exit 0、stderr 为空、源码未变；三份源码清单和当前文件均与 `/private/tmp/tursora-customization-qa/delivery-sources.json` 一致。逐轮 `.json` / `.out` / `.err` 与 `*-sources.json` 保存在同目录；此前 2,566 / 3,160 等历史项数不代表这份源码。
 
-交付 release app 与本地 DMG 构建通过，strict codesign、Info.plist、arm64、根 MIT 许可证打包、DMG 只读挂载 / 安装布局核对通过；日志 `package-delivery.out`、`dmg-delivery.out`。本地 DMG 的 `0.1.0` 文件名来自当前开发包版本，不是新公开 release，也未替换已发布的 `0.1.0` ZIP。最终菜单复查与 QA 清理见[整合记录](research/customization-integration.md)。尚未推送分支、发布本轮 tap / 新版本或部署网站，远端 CI 结果需发布后单独核对。
+交付 release app 与本地 DMG 构建通过，strict codesign、Info.plist、arm64、根 MIT 许可证打包、DMG 只读挂载 / 安装布局核对通过；日志 `package-delivery.out`、`dmg-delivery.out`。本地 DMG 的 `0.1.0` 文件名来自当前开发包版本，不是新公开 release，也未替换已发布的 `0.1.0` ZIP。最终菜单复查与 QA 清理见[整合记录](research/customization-integration.md)。该阶段尚未推送分支或发布新版本；后续 0.2.0 合入、分发和远端 CI 结果见页首。
 
 ## 本轮：默认启用终端与 ZIP 浏览
 
 用户要求两项功能默认开启并打磨。缺少偏好记录时默认 true，保留既有显式关闭；General 改为 Terminal & ZIP，F4 展开时才创建 shell。ZIP 加入命名的准备状态 / Cancel、失败 Retry / Open Enclosing Folder，以及启动恢复失败的 Reload 重试。最后等待者取消底层准备并清理未完成副本，关闭后重开标签再准备原目标；退出先保存一次逻辑工作区，再等传输与归档清理。
 
-终端区分 Started in / Shell folder，始终显示启动或重启目标；自然退出保留输出和 ended 状态，拒绝旧实例与无效地址报告。实现、取舍及验证进度见[本轮记录](research/default-features-polish.md)，SPEC §16–18、D49。实机发现并修复系统路径别名下的 ZIP 修复重试及启动失败标题；最终 83 份 Swift 源码 2,566 项连续三轮通过，stderr 为空且源码哈希一致。debug / release、strict codesign / plist 通过；最终包已实测坏 ZIP 修复后重试子目录、两个失败标签的标题与切换、正常退出重开及不启动 shell。General / 终端 / ZIP 恢复真实截图和网站默认说明已更新；QA 已退出，锁已释放。未发布新版本。
+终端区分 Started in / Shell folder，始终显示启动或重启目标；自然退出保留输出和 ended 状态，拒绝旧实例与无效地址报告。实现、取舍及验证进度见[本轮记录](research/default-features-polish.md)，SPEC §16–18、D49。实机发现并修复系统路径别名下的 ZIP 修复重试及启动失败标题；最终 83 份 Swift 源码 2,566 项连续三轮通过，stderr 为空且源码哈希一致。debug / release、strict codesign / plist 通过；最终包已实测坏 ZIP 修复后重试子目录、两个失败标签的标题与切换、正常退出重开及不启动 shell。General / 终端 / ZIP 恢复真实截图和网站默认说明已更新；QA 已退出，锁已释放。该默认功能阶段结束时尚未发布新版本。
 
 ## 本轮：工作区会话恢复
 
@@ -62,7 +66,7 @@ General / Terminal 已替换为这轮真实截图，显示新的保留说明和�
 
 完整本地 Sparkle 更新已从临时 `0.1.1` 经正常签名 DMG 下载、验证、安装并重启到 `0.1.2`，bundle / About / 进程核对通过；使用临时 QA key 与 loopback feed，**不代表生产线上已通**。错误 key、同长度篡改离线签名负测通过；篡改 DMG 的 GUI 安装动作被自动审批拒绝，已放弃该动作并使用离线检查，不记为 GUI 通过。最终 DMG 在 Finder 中正常打开，两侧图标与中间箭头完整可见，640 × 280 内容窗口和无工具栏布局已目视核对；[真实截图](images/features/installation.png)已转为 PNG 保留。
 
-生产公钥已入 Resources，私钥已存 Keychain account `com.tursora.Tursora`；用户明确授权后，仓库 `SPARKLE_PRIVATE_KEY` secret 已于 2026-09-13 00:48:20（Asia/Shanghai）配置，并通过 GitHub secret 列表核实。上传前派生公钥与 Resources 一致，临时导出已清理，未将私钥写入源码或日志；此前自动审批拦截属于历史状态。用户另已授权提 PR / 合入，新的稳定 release 尚未发布，原 `0.1.0` 标签与资产未改。本机没有有效 code-signing identity，用户确认尚无 Developer ID；本轮不加入 Apple 签名脚本，待会员、证书及公证凭据就绪再独立接入，Sparkle 签名不等于公证。日志、源码哈希与精确阶段见[软件更新记录](research/app-updates.md)，发布步骤见 [RELEASING.md](RELEASING.md)。
+生产公钥已入 Resources，私钥已存 Keychain account `com.tursora.Tursora`；用户明确授权后，仓库 `SPARKLE_PRIVATE_KEY` secret 已于 2026-09-13 00:48:20（Asia/Shanghai）配置，并通过 GitHub secret 列表核实。上传前派生公钥与 Resources 一致，临时导出已清理，未将私钥写入源码或日志；此前自动审批拦截属于历史状态。用户另已授权提 PR / 合入，该软件更新独立阶段结束时尚未发布新的稳定 release，原 `0.1.0` 标签与资产未改；后续 0.2.0 结果见页首。本机没有有效 code-signing identity，用户确认尚无 Developer ID；本轮不加入 Apple 签名脚本，待会员、证书及公证凭据就绪再独立接入，Sparkle 签名不等于公证。日志、源码哈希与精确阶段见[软件更新记录](research/app-updates.md)，发布步骤见 [RELEASING.md](RELEASING.md)。
 
 收尾核对 77 份 Swift 源码与最终测试哈希一致。测试应用、loopback server 和测试挂载已清理，只恢复本轮更新偏好并释放实机验证锁。最终网站下载区的桌面 / 390 px 复查、静态构建和文档链接 / PNG 格式校验通过；后续 PR #5 合入与线上验证见本段开头。
 
