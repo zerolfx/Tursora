@@ -55,3 +55,7 @@ ruby -c Casks/tursora.rb
 5. 发布边界测试 6 个方法通过，Ruby 语法通过；这些独立工具检查不代替最终组合应用 smoke。
 
 用户已授权在新增终端生命周期完成后推送、合入并发布 0.2.0。当前仍只准备仓库内分发配置：`main` 的 cask、远端工作流及网站重新部署尚未执行。0.2.0 真实 DMG / appcast 发布核验后，用 [RELEASING 中的命令](../RELEASING.md#020-preparation-2026-09-13)生成后续 cask 并加入 `auto_updates true`，不能提前把当前 cask 指向未发布字节。这些状态由最终 HANDOFF 更新；本次也不算 Gatekeeper 首次启动实测或生产自动更新实测。
+
+## 首次远端 CI 与工具链修正
+
+PR #8 的首个 Homebrew job 已从自有 tap 安装真实 0.1.0 并通过严格 codesign，随后 Xcode 26.6 的 lipo 将 `-verify_arch arm64 <file>` 中的文件误当作后续架构参数。按工具提示把输入文件放到命令前：`lipo <file> -verify_arch arm64`；本机最终 0.2.0 包验证通过，远端重跑结果待补。失败不代表安装或签名失败，也没有执行到后续版本 / quarantine 核验。[原始 job](https://github.com/zerolfx/Tursora/actions/runs/34739359685/job/103676301695)。此修正只影响 CI 参数顺序，101 份 Swift 源码与已通过的三轮 3,329 项检查完全一致。

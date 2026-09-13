@@ -42,7 +42,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/homebrew-apps"
           brew install --cask --appdir="$RUNNER_TEMP/homebrew-apps" zerolfx/tursora/tursora
           codesign --verify --deep --strict "$RUNNER_TEMP/homebrew-apps/Tursora.app"
-          lipo -verify_arch arm64 "$RUNNER_TEMP/homebrew-apps/Tursora.app/Contents/MacOS/Tursora"
+          lipo "$RUNNER_TEMP/homebrew-apps/Tursora.app/Contents/MacOS/Tursora" -verify_arch arm64
           brew info --json=v2 --cask zerolfx/tursora/tursora > "$RUNNER_TEMP/tursora-cask.json"
           python3 - <<'PY'
           import json, os, pathlib, plistlib
