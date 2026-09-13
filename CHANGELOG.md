@@ -4,6 +4,12 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Added
+
+- Renaming several selected items opens Finder's Rename Finder Items sheet: Replace Text, Add Text and Format (Name and Index, Name and Counter, Name and Date), with a live preview of every new name and an inline reason whenever a name is empty, illegal or already taken. Chains, swaps and case-only renames work, nothing outside the batch is ever overwritten, and the whole batch is one undo step. Available from File ▸ Rename N Items…, the More menu and the context menu, in list and icon views, split panes and search results.
+- The terminal and the file views now follow each other's folder in both directions, and bash and fish join zsh in doing it automatically. Changing directory in the shell moves the window's active pane while the terminal is visible; browsing to a folder still asks the running shell to change directory. zsh applies that at an idle prompt, bash and fish at the next prompt you draw. Nothing is ever typed into the shell, no signals are sent, and your own startup files are not modified. Both directions have checkboxes in Settings → Terminal, on by default.
+- A command palette (View → Command Palette…, ⇧⌘O): fuzzy search over every application command, every sidebar favourite and the active pane's back/forward history folders. ↑/↓ move, Return runs, Esc closes; unavailable commands stay listed but dimmed and refuse to run. Commands execute exactly as they do from the menu bar, and folder rows navigate the active pane.
+
 ### Changed
 
 - Internal simplification without behaviour changes: removed dead code (the unused modal conflict dialog, the never-released favourites migration, unused model accessors and the unread transfer progress callback), shared the file views' zoom-gesture and backing-scale handling, the pasteboard file-URL reader, flipped document views and Settings label builders, and routed New Folder and undo moves through `FileOperations`. Context menus inside ZIP archives now also say "Open in N New Tabs" for several folders.

@@ -206,6 +206,10 @@ enum MainMenu {
         add(menu, "Show Terminal", #selector(MainWindowController.toggleTerminal(_:)), key(NSF4FunctionKey), [])
         add(menu, "Show Sidebar", #selector(MainWindowController.toggleSidebar(_:)), "s", [.command, .control], symbol: "sidebar.leading")
         add(menu, "Show Folders", #selector(MainWindowController.toggleFoldersPanel(_:)), key(NSF7FunctionKey), [], symbol: "list.bullet.indent")
+        menu.addItem(.separator())
+        // ⇧⌘P already belongs to Show Previews; ⇧⌘O is free and matches the
+        // "open quickly" convention. Customisable through the shortcut catalog.
+        add(menu, "Command Palette…", #selector(MainWindowController.showCommandPalette(_:)), "o", [.command, .shift], symbol: "command")
         return item
     }
 

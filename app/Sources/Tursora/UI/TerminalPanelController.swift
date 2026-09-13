@@ -6,23 +6,30 @@ import SwiftTerm
 struct TerminalLaunchConfiguration {
     let directory: URL
     let shell: String
+    /// Interactive arguments for the chosen shell, including any integration
+    /// file. They stay separate argv values and are never quoted into text.
+    let shellArguments: [String]
     let environment: [String]
 
     var executable: String { "/bin/sh" }
     var arguments: [String] {
         // SwiftTerm's currentDirectory chdir is best effort. Check it again in
         // the child so an unmounted directory cannot silently open another cwd.
-        ["-c", "cd -- \"$1\" || exit 1; exec \"$2\" -il", "tursora-terminal", directory.path, shell]
+        ["-c", "cd -- \"$1\" || exit 1; tursora_shell=\"$2\"; shift 2; exec \"$tursora_shell\" \"$@\"",
+         "tursora-terminal", directory.path, shell] + shellArguments
     }
 
-    static func make(directory: URL, shell: String, environment: [String: String]) -> Self {
+    static func make(directory: URL, shell: String,
+                     shellArguments: [String] = TerminalShellIntegration.plainArguments,
+                     environment: [String: String]) -> Self {
         var values = environment
         values["TERM"] = "xterm-256color"
         values["COLORTERM"] = "truecolor"
         values["TERM_PROGRAM"] = "Tursora"
         values["SHELL"] = shell
         values["PATH"] = values["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        return Self(directory: directory, shell: shell, environment: values.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" })
+        return Self(directory: directory, shell: shell, shellArguments: shellArguments,
+                    environment: values.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" })
     }
 
     static var userShell: String {
@@ -79,7 +86,18 @@ struct TerminalPanelPresentation: Equatable {
         let host = components.host?.lowercased() ?? ""
         let names = Set(localHostNames.map { $0.lowercased() })
         guard host.isEmpty || host == "localhost" || names.contains(host) else { return nil }
-        return URL(fileURLWithPath: components.path, isDirectory: true).standardizedFileURL
+        // `standardized` only resolves "." and ".."; `standardizedFileURL` also
+        // drops a leading /private, which would rename the folder the shell
+        // actually reported. Loop protection compares both spellings instead.
+        return URL(fileURLWithPath: components.path, isDirectory: true).standardized
+    }
+
+    /// Folder identity for sync decisions. A browsed URL and one rebuilt from
+    /// an OSC 7 path describe the same place with different URL spellings, so
+    /// loop protection compares standardized paths rather than URL values.
+    static func isSameDirectory(_ first: URL?, _ second: URL?) -> Bool {
+        guard let first, let second else { return false }
+        return first.standardizedFileURL.path == second.standardizedFileURL.path
     }
 
     static var localHostNames: Set<String> {
@@ -111,7 +129,18 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     private var directorySync: TerminalDirectorySync?
     private(set) var directorySyncUpdate: TerminalDirectorySync.Update?
     private var directorySyncError: String?
+    /// The last folder this panel asked the shell for. A report that matches it
+    /// is this panel's own request coming back and must not navigate again.
+    private var requestedDirectory: URL?
+    /// The last folder OSC 7 carried. Tracked apart from the presentation,
+    /// which zsh's response file also writes, so a repeated report is still
+    /// recognised as a repeat.
+    private var reportedShellDirectory: URL?
     var onClose: (() -> Void)?
+    /// A local folder the shell reported that neither the browser nor this
+    /// panel asked for. The window navigates its active pane; the panel itself
+    /// never reads or writes the filesystem for it.
+    var onShellDirectoryChanged: ((URL) -> Void)?
 
     var isRunning: Bool { terminalView?.process.running == true }
     var statusState: TerminalPanelPresentation.State { presentation.state }
@@ -190,11 +219,37 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     func followDirectory(_ url: URL) {
         guard TerminalPanelPresentation.localDirectory(url.absoluteString, localHostNames: localHostNames) != nil else { return }
         pendingDirectory = url
-        if directorySync != nil {
-            directorySyncUpdate = TerminalDirectorySync.Update(state: .waiting, directory: presentation.reportedDirectory)
+        // The restart target always follows browsing; only the request to the
+        // running shell is what the preference turns off.
+        if preferences.configuration.terminalFollowsBrowser {
+            requestedDirectory = url
+            if let sync = directorySync {
+                // A shell that reports at its prompt is already there whenever
+                // the browser asks for the folder it last reported; only zsh's
+                // response file decides that for zsh.
+                let settled = !sync.kind.appliesRequestsWhileIdle
+                    && TerminalPanelPresentation.isSameDirectory(url, reportedShellDirectory)
+                directorySyncUpdate = TerminalDirectorySync.Update(state: settled ? .synchronized : .waiting,
+                                                                   directory: presentation.reportedDirectory)
+            }
+            directorySync?.request(url)
         }
-        directorySync?.request(url)
         if isViewLoaded { updateLocation() }
+    }
+
+    /// Dolphin only mirrors its terminal while the panel is on screen; a hidden
+    /// panel keeps its shell but stops steering the file views.
+    private var isPanelVisible: Bool {
+        isViewLoaded && view.window != nil && !view.isHiddenOrHasHiddenAncestor
+    }
+
+    /// Reverse direction. Reports that repeat this panel's own request, or the
+    /// folder the browser is already showing, cannot start a navigation loop.
+    private func reportShellDirectory(_ url: URL) {
+        guard preferences.configuration.browserFollowsShell, isPanelVisible,
+              !TerminalPanelPresentation.isSameDirectory(url, requestedDirectory),
+              !TerminalPanelPresentation.isSameDirectory(url, pendingDirectory) else { return }
+        onShellDirectoryChanged?(url)
     }
 
     func focus() {
@@ -209,6 +264,8 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         directorySync = nil
         directorySyncUpdate = nil
         directorySyncError = nil
+        requestedDirectory = nil
+        reportedShellDirectory = nil
         let process = terminalView?.process ?? stoppingProcess
         if let terminalView {
             terminalView.processDelegate = nil
@@ -248,7 +305,8 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         installTerminal(terminal, in: directory)
         do {
             if let sync = try TerminalDirectorySync.make(shell: configuration.shell, environment: ProcessInfo.processInfo.environment) {
-                configuration = TerminalLaunchConfiguration.make(directory: directory, shell: configuration.shell, environment: sync.environment)
+                configuration = TerminalLaunchConfiguration.make(directory: directory, shell: configuration.shell,
+                                                                 shellArguments: sync.shellArguments, environment: sync.environment)
                 installDirectorySynchronization(sync, for: terminal)
             }
         } catch {
@@ -293,6 +351,8 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         directorySync = nil
         directorySyncUpdate = nil
         directorySyncError = nil
+        requestedDirectory = nil
+        reportedShellDirectory = nil
         if let previous = terminalView, previous !== terminal {
             previous.processDelegate = nil
             TerminalProcessLifecycle.stop(previous.process, session: activitySession)
@@ -322,6 +382,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
             if let reported = update.directory { self.presentation.reportedDirectory = reported }
             self.updateLocation()
         }
+        requestedDirectory = pendingDirectory
         sync.request(pendingDirectory)
         updateLocation()
     }
@@ -347,18 +408,31 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
 
     @objc private func closePanel(_ sender: Any?) { onClose?() }
 
+    /// The reverse direction only runs while the panel is on screen, so the
+    /// header says so where it explains the forward one.
+    private var reverseDirectionText: String {
+        guard preferences.configuration.browserFollowsShell else { return "" }
+        return " A folder you change in the shell moves the active pane while this panel is visible."
+    }
+
     private func updateLocation() {
         let detail: String
         if let launchError { detail = launchError }
         else if presentation.state == .running {
             let location = presentation.reportedDirectory.map { "Shell folder: \($0.path). " } ?? ""
             if let directorySyncError { detail = location + directorySyncError }
-            else if directorySync == nil {
-                detail = location + "Automatic folder sync needs zsh integration. Restart to open \(pendingDirectory.path)."
+            else if !preferences.configuration.terminalFollowsBrowser {
+                // The user's own choice explains the behaviour better than the
+                // shell's capabilities, so it is said first.
+                detail = location + "This shell does not follow browsing folders. Turn on \"Terminal follows the browser folder\" in Settings \u{2192} Terminal, or restart to open \(pendingDirectory.path)."
+            } else if directorySync == nil {
+                detail = location + "Automatic folder sync needs zsh, bash or fish. Restart to open \(pendingDirectory.path)."
             } else if directorySyncUpdate?.state == .synchronized {
-                detail = location + "Follows browsing folders, including while hidden."
+                detail = location + "Follows browsing folders, including while hidden." + reverseDirectionText
             } else if directorySyncUpdate?.state == .failed {
                 detail = location + "Could not synchronize to \(pendingDirectory.path). The request is kept for the next prompt."
+            } else if directorySync?.kind.appliesRequestsWhileIdle == false {
+                detail = location + "Folder sync pending: \(pendingDirectory.path). bash and fish apply it at the next prompt you draw; commands and unfinished input are preserved."
             } else {
                 detail = location + "Folder sync pending: \(pendingDirectory.path). Waiting for an empty zsh prompt; commands and unfinished input are preserved."
             }
@@ -380,8 +454,19 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         // Do not let terminal output trigger filesystem navigation.
         guard !isShutDown, source === terminalView, presentation.state == .running,
               let url = TerminalPanelPresentation.localDirectory(directory, localHostNames: localHostNames) else { return }
+        // Shells report at every prompt, and fish reports twice because it has
+        // its own OSC 7 hook. Only an actual change is news for the browser.
+        let changed = !TerminalPanelPresentation.isSameDirectory(url, reportedShellDirectory)
+        reportedShellDirectory = url
         presentation.reportedDirectory = url
+        // bash and fish acknowledge a request by reporting where they ended up
+        // rather than through the zsh response file.
+        if let sync = directorySync, !sync.kind.appliesRequestsWhileIdle {
+            let arrived = TerminalPanelPresentation.isSameDirectory(url, pendingDirectory)
+            directorySyncUpdate = TerminalDirectorySync.Update(state: arrived ? .synchronized : .waiting, directory: url)
+        }
         updateLocation()
+        if changed { reportShellDirectory(url) }
     }
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         guard !isShutDown, source === terminalView else { return }

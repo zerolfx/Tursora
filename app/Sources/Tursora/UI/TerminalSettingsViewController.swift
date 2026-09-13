@@ -7,6 +7,8 @@ final class TerminalSettingsViewController: NSViewController {
     let shellMode = NSPopUpButton(frame: .zero, pullsDown: false)
     let shellPath = NSTextField(string: "")
     let applyShellButton = NSButton(title: "Apply Shell", target: nil, action: nil)
+    let terminalFollowsBrowserBox = NSButton(checkboxWithTitle: "Terminal follows the browser folder", target: nil, action: nil)
+    let browserFollowsShellBox = NSButton(checkboxWithTitle: "Browser follows the shell folder", target: nil, action: nil)
     let fontPicker = NSPopUpButton(frame: .zero, pullsDown: false)
     let fontSize = NSTextField(string: "12")
     let sizeStepper = NSStepper()
@@ -43,6 +45,9 @@ final class TerminalSettingsViewController: NSViewController {
         applyShellButton.bezelStyle = .rounded
         wire(applyShellButton, #selector(applyShell(_:)))
         let shellRow = row([shellPath, applyShellButton])
+        terminalFollowsBrowserBox.toolTip = "Browsing to a folder asks the running shell to change directory. zsh applies it at an idle prompt; bash and fish apply it at the next prompt you draw. Nothing is ever typed into the shell, and unfinished input is preserved."
+        browserFollowsShellBox.toolTip = "A folder you change in the shell moves the window's active pane, while the terminal panel is visible."
+        for box in [terminalFollowsBrowserBox, browserFollowsShellBox] { wire(box, #selector(changeFolderSync(_:))) }
         shellPath.setContentHuggingPriority(.defaultLow, for: .horizontal)
         shellPath.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -92,7 +97,8 @@ final class TerminalSettingsViewController: NSViewController {
         resetButton.bezelStyle = .rounded
         wire(resetButton, #selector(restoreDefaults(_:)))
 
-        let stack = NSStackView(views: [title, shellMode, shellRow, shellNote, fontRow, themeRow,
+        let stack = NSStackView(views: [title, shellMode, shellRow, shellNote,
+                                       terminalFollowsBrowserBox, browserFollowsShellBox, fontRow, themeRow,
                                        colorsRow, appearanceNote, preview, message, resetButton])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -153,6 +159,12 @@ final class TerminalSettingsViewController: NSViewController {
             backgroundField.stringValue = value.background
         }
         for control in [foregroundField, backgroundField, applyColorsButton] { control.isEnabled = value.theme == .custom }
+        if force || previous?.terminalFollowsBrowser != value.terminalFollowsBrowser {
+            terminalFollowsBrowserBox.state = value.terminalFollowsBrowser ? .on : .off
+        }
+        if force || previous?.browserFollowsShell != value.browserFollowsShell {
+            browserFollowsShellBox.state = value.browserFollowsShell ? .on : .off
+        }
         displayedConfiguration = value
         refreshPreview()
     }
@@ -203,6 +215,13 @@ final class TerminalSettingsViewController: NSViewController {
             return
         }
         _ = save { $0.shellMode = .custom; $0.customShell = path }
+    }
+    /// Both directions save at once: neither changes a running shell's own
+    /// state, only whether folders are exchanged with it from now on.
+    @objc func changeFolderSync(_ sender: Any?) {
+        let forward = terminalFollowsBrowserBox.state == .on
+        let reverse = browserFollowsShellBox.state == .on
+        _ = save { $0.terminalFollowsBrowser = forward; $0.browserFollowsShell = reverse }
     }
     @objc func changeFont(_ sender: Any?) {
         guard availableFonts.indices.contains(fontPicker.indexOfSelectedItem) else { return }

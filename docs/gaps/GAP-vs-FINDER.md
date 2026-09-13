@@ -12,7 +12,7 @@ S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
 | **Get Info**（⌘I）/ Show Inspector（⌥⌘I）/ Get Summary Info（⌃⌘I） | ✅ 已做 | — | 默认 General / Preview 展开、其余折叠，记住显式选择；[证据](../research/info-disclosures.md)。未做：Stationery pad、ACL、改 owner/group（要提权，无公开 API → 单独算 L）、Apply to enclosed items |
-| **Rename（多选 = 批量重命名对话框）** | 单选 ✅ 批量 ❌ | M | 替换文本 / 添加文本 / 格式三种模式；连锁改名（a→b 而 b 也在批里）要两遍临时名 |
+| **Rename（多选 = 批量重命名对话框）** | ✅ 已做 | — | 替换文本 / 添加文本 / 格式三种模式 + 实时预览；连锁改名走两遍临时名；措辞证据与推断项见[批量重命名](../research/finder-batch-rename.md) |
 | **New Folder with Selection**（⌃⌘N） | ❌ | S | createDirectory + 现有 transfer；撤销要合成一个组 |
 | **Compress** / Compress with password | 普通 ZIP ✅；密码 ❌ | 密码 M | 压缩 / 解压支持重名保留、撤销重做；可选当前 pane 只读 ZIP 浏览默认启用（浏览交互参考 Windows） |
 | **Make Alias**（⌃⌘A）/ Show Original（⌘R） | ❌ | M | `URL.bookmarkData(options: .suitableForBookmarkFile)` + `writeBookmarkData`；⌘R 与我们的 Reload 冲突 |
@@ -87,7 +87,7 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 ## 建议顺序（按成本）
 
 1. S：Deselect All、Move Items Here、Copy as Pathname 对齐、New Folder with Selection、Show Package Contents、Always Open With、Print、Slideshow、Eject All、Go 菜单快捷键、Cycle Through Windows、Services 菜单、别名解析
-2. M：批量重命名、Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、Spring-loaded、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、Finder 默认快捷键预设（现已可逐项配置）
+2. M：Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、Spring-loaded、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、Finder 默认快捷键预设（现已可逐项配置）
 3. L：Column 视图、Gallery 视图、完整偏好策略、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、服务器发现 / 历史 / 重连；Show View Options 完整对话框另列 M（每目录持久化已实现）
 4. XL / 不建议：Customize Folder、Smart Folders、FinderSync 角标
 

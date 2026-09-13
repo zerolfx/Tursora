@@ -834,6 +834,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     @objc func renameSelection(_ sender: Any?) {
         guard canModifySelectedItems else { return }
+        // Finder: several items go to the batch sheet, one is edited in place.
+        if fileView.selectedItems.count > 1 { presentBatchRename(for: fileView.selectedItems); return }
+        renameSelectionInline(sender)
+    }
+
+    /// The Return / click-to-rename path: never opens the batch sheet.
+    @objc func renameSelectionInline(_ sender: Any?) {
+        guard canModifySelectedItems else { return }
         guard let item = fileView.selectedItems.first, fileView.selectedItems.count == 1 else { return }
         fileView.beginRename(item: item)
     }
@@ -997,7 +1005,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// automatic group (undo() itself does the same), then group explicitly.
     /// Registers `body` as the undo of one operation on `manager` (default: the
     /// window's undo manager); `body` receives the pane and that manager.
-    private func registerUndo(on manager: UndoManager? = nil, actionName: String,
+    func registerUndo(on manager: UndoManager? = nil, actionName: String,
                               _ body: @escaping (BrowserViewController, UndoManager) -> Void) {
         guard let undo = manager ?? self.undo else { return }
         if !undo.isUndoing, !undo.isRedoing {
@@ -1066,7 +1074,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         case #selector(cut(_:)), #selector(duplicate(_:)), #selector(moveToTrash(_:)), #selector(deletePermanently(_:)):
             return canModifySelectedItems && hasSelection
         case #selector(renameSelection(_:)):
-            return canModifySelectedItems && fileView.selectedItems.count == 1
+            // Finder switches this row to "Rename N Items…" for a multi-selection.
+            let count = fileView.selectedItems.count
+            item.title = Self.batchRenameTitle(count: count)
+            return canModifySelectedItems && count >= 1
         case #selector(ctxRevealEnclosingFolder(_:)):
             return isSearching && contextTargets(for: item).count == 1
         case #selector(compressSelection(_:)):
@@ -1243,6 +1254,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         add("Quick Look", #selector(ctxQuickLook(_:)), symbol: "eye")
         add("Get Info", #selector(ctxGetInfo(_:)), symbol: "info.circle")
         if items.count == 1 { add("Rename", #selector(ctxRename(_:)), symbol: "pencil") }
+        else if items.count > 1, canModifySelectedItems {
+            add(Self.batchRenameTitle(count: items.count), #selector(ctxBatchRename(_:)), symbol: "pencil")
+        }
         add("Duplicate", #selector(ctxDuplicate(_:)), symbol: "plus.square.on.square")
         if canModifyCurrentLocation {
             add(Self.compressionTitle(for: items.map(\.url)), #selector(ctxCompress(_:)), symbol: "doc.zipper")
@@ -1316,6 +1330,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc private func ctxRename(_ s: Any?) {
         guard canModifySelectedItems else { return }
         if let item = contextTargets(for: s).first { fileView.beginRename(item: item) }
+    }
+    /// Several clicked items go to the batch sheet, on the clicked items.
+    @objc private func ctxBatchRename(_ s: Any?) {
+        // A menu built without a clicked row (keyboard, accessibility) acts on
+        // the selection, like every other selection-based context action.
+        let clicked = contextTargets(for: s)
+        let targets = clicked.isEmpty ? fileView.selectedItems : clicked
+        selectContextTargets(targets)
+        presentBatchRename(for: targets)
     }
     @objc private func ctxDuplicate(_ s: Any?) { selectContextTargets(contextTargets(for: s)); duplicate(nil) }
     @objc private func ctxTrash(_ s: Any?) { trash(contextTargets(for: s).map(\.url)) }

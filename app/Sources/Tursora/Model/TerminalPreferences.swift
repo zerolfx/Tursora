@@ -33,6 +33,29 @@ enum TerminalPreferences {
         var theme: Theme = .system
         var foreground = "#E6E6E6"
         var background = "#17191D"
+        /// Browsing to a folder asks the running shell to change directory.
+        var terminalFollowsBrowser = true
+        /// A folder the shell reports navigates the window's active pane.
+        var browserFollowsShell = true
+
+        init() {}
+
+        /// Decoded field by field: a configuration stored before a direction
+        /// switch existed must keep the user's shell and appearance rather than
+        /// failing to decode and resetting everything.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let fallback = Configuration()
+            shellMode = try container.decodeIfPresent(ShellMode.self, forKey: .shellMode) ?? fallback.shellMode
+            customShell = try container.decodeIfPresent(String.self, forKey: .customShell) ?? fallback.customShell
+            fontName = try container.decodeIfPresent(String.self, forKey: .fontName) ?? fallback.fontName
+            fontSize = try container.decodeIfPresent(Double.self, forKey: .fontSize) ?? fallback.fontSize
+            theme = try container.decodeIfPresent(Theme.self, forKey: .theme) ?? fallback.theme
+            foreground = try container.decodeIfPresent(String.self, forKey: .foreground) ?? fallback.foreground
+            background = try container.decodeIfPresent(String.self, forKey: .background) ?? fallback.background
+            terminalFollowsBrowser = try container.decodeIfPresent(Bool.self, forKey: .terminalFollowsBrowser) ?? fallback.terminalFollowsBrowser
+            browserFollowsShell = try container.decodeIfPresent(Bool.self, forKey: .browserFollowsShell) ?? fallback.browserFollowsShell
+        }
 
         var font: NSFont {
             if !fontName.isEmpty, let font = NSFont(name: fontName, size: fontSize), Self.isMonospaced(font) { return font }

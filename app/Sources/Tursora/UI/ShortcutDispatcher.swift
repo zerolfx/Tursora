@@ -55,7 +55,7 @@ enum ShortcutDispatcher {
         switch action.id {
         case ShortcutCatalog.renameID, ShortcutCatalog.previewID:
             return handleFileView(event, store: store,
-                onRename: { controller.browser.renameSelection(nil) },
+                onRename: { controller.browser.renameSelectionInline(nil) },
                 onQuickLook: { controller.browser.quickLook(nil) })
         case ShortcutCatalog.cancelArchiveID:
             guard controller.browser.isPreparingArchive else { return false }

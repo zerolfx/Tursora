@@ -227,6 +227,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if isTerminalVisible { hideTerminal(); return }
         let panel = terminalPanel ?? TerminalPanelController(initialDirectory: terminalWorkingDirectory)
         panel.onClose = { [weak self] in self?.hideTerminal() }
+        panel.onShellDirectoryChanged = { [weak self] url in self?.followShellDirectory(url) }
         terminalPanel = panel
         let item = NSSplitViewItem(viewController: panel)
         item.minimumThickness = 120
@@ -238,6 +239,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         contentSplitController.splitView.setPosition(max(180, height - max(120, desiredHeight)), ofDividerAt: 0)
         syncTerminalToolbar()
         panel.focus()
+    }
+
+    /// Reverse folder sync. The shell reported a directory nobody asked it for,
+    /// so the window's active pane follows through the ordinary navigation path;
+    /// the terminal panel never touches the filesystem itself.
+    func followShellDirectory(_ url: URL) {
+        guard isTerminalVisible,
+              !TerminalPanelPresentation.isSameDirectory(url, terminalWorkingDirectory) else { return }
+        browser.navigate(to: url)
     }
 
     /// A terminal may work beside a ZIP, never inside its temporary snapshot.
@@ -666,7 +676,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case .open: return browser.canOpenSelection
         case .quickLook: return browser.canPreviewSelection
         case .copy: return !browser.readableSelectionURLs.isEmpty
-        case .rename: return browser.canModifySelectedItems && count == 1
+        case .rename:
+            // Finder's plural wording for a multi-selection batch rename.
+            item.title = BrowserViewController.batchRenameTitle(count: count)
+            return browser.canModifySelectedItems && count >= 1
         case .compress:
             item.title = browser.compressionTitle
             return browser.canModifyCurrentLocation && count > 0

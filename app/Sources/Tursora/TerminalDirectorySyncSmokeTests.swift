@@ -202,7 +202,7 @@ enum TerminalDirectorySyncSmokeTests: SmokeSuite {
         }
         func synced(to directory: URL) async throws {
             try await requireEventually("shell acknowledges \(directory.lastPathComponent)", timeout: 10, interval: 25_000_000,
-                                        detail: { "update=\(String(describing: panel.directorySyncUpdate)) output=\(output)" }) {
+                                        detail: { "update=\(String(describing: panel.directorySyncUpdate)) session=\(String(describing: panel.sessionDirectory?.path)) wanted=\(directory.path) output=\(output)" }) {
                 panel.directorySyncUpdate?.state == .synchronized && panel.sessionDirectory?.path == directory.path
             }
         }

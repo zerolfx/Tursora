@@ -12,6 +12,9 @@ final class TerminalDirectorySync {
     }
 
     let directory: URL
+    let kind: TerminalShellIntegration.Kind
+    /// Interactive arguments the shell needs to load its integration.
+    let shellArguments: [String]
     let environment: [String: String]
     var onChange: ((Update) -> Void)?
     private let token: String
@@ -25,33 +28,60 @@ final class TerminalDirectorySync {
     private var invalidated = false // main thread confined
 
     static func make(shell: String, environment: [String: String]) throws -> TerminalDirectorySync? {
-        guard URL(fileURLWithPath: shell).lastPathComponent == "zsh" else { return nil }
-        return try TerminalDirectorySync(environment: environment)
+        guard let kind = TerminalShellIntegration.kind(forShell: shell) else { return nil }
+        return try TerminalDirectorySync(kind: kind, environment: environment)
     }
 
-    private init(environment original: [String: String]) throws {
+    private init(kind: TerminalShellIntegration.Kind, environment original: [String: String]) throws {
+        self.kind = kind
         token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-shell-sync-" + token, isDirectory: true)
-        var values = original
-        values["TURSORA_USER_ZDOTDIR_SET"] = original["ZDOTDIR"] == nil ? "0" : "1"
-        values["TURSORA_USER_ZDOTDIR"] = original["ZDOTDIR"] ?? ""
-        values["ZDOTDIR"] = directory.path
-        environment = values
+        // Every stored property is settled before the first throwing call, so
+        // a failed channel still deinitializes cleanly.
+        switch kind {
+        case .zsh:
+            var values = original
+            values["TURSORA_USER_ZDOTDIR_SET"] = original["ZDOTDIR"] == nil ? "0" : "1"
+            values["TURSORA_USER_ZDOTDIR"] = original["ZDOTDIR"] ?? ""
+            values["ZDOTDIR"] = directory.path
+            environment = values
+            shellArguments = TerminalShellIntegration.plainArguments
+        case .bash:
+            // bash reads --rcfile only for a non-login interactive shell; the
+            // generated file replays the login startup files itself. bash also
+            // stops looking for long options at the first short one, so
+            // --rcfile has to come before -i.
+            environment = original
+            shellArguments = ["--rcfile", directory.appendingPathComponent("bashrc").path, "-i"]
+        case .fish:
+            environment = original
+            shellArguments = ["--init-command",
+                              TerminalShellIntegration.fishInitCommand(directory: directory, token: token), "-i"]
+        }
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-            let fifo = directory.appendingPathComponent("wake").path
-            guard mkfifo(fifo, 0o600) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-            wakeFD = open(fifo, O_RDWR | O_NONBLOCK | O_CLOEXEC)
-            guard wakeFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-            try write(Data(Self.startupScript.utf8), to: ".zshenv")
-            try write(Data(Self.integrationScript(directory: directory, token: token).utf8), to: "integration.zsh")
-            let fd = open(directory.path, O_EVTONLY | O_CLOEXEC)
-            guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-            let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: queue)
-            source.setEventHandler { [weak self] in self?.readResponse() }
-            source.setCancelHandler { Darwin.close(fd) }
-            watcher = source
-            source.resume()
+            switch kind {
+            case .zsh:
+                let fifo = directory.appendingPathComponent("wake").path
+                guard mkfifo(fifo, 0o600) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                wakeFD = open(fifo, O_RDWR | O_NONBLOCK | O_CLOEXEC)
+                guard wakeFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                try write(Data(Self.startupScript.utf8), to: ".zshenv")
+                try write(Data(Self.integrationScript(directory: directory, token: token).utf8), to: "integration.zsh")
+                // Only zsh acknowledges through a response file; bash and fish
+                // report their directory with OSC 7 instead.
+                let fd = open(directory.path, O_EVTONLY | O_CLOEXEC)
+                guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: queue)
+                source.setEventHandler { [weak self] in self?.readResponse() }
+                source.setCancelHandler { Darwin.close(fd) }
+                watcher = source
+                source.resume()
+            case .bash:
+                try write(Data(TerminalShellIntegration.bashRunCommands(directory: directory, token: token).utf8), to: "bashrc")
+            case .fish:
+                break
+            }
         } catch {
             if wakeFD >= 0 { Darwin.close(wakeFD) }
             try? FileManager.default.removeItem(at: directory)
@@ -74,9 +104,15 @@ final class TerminalDirectorySync {
                 try self.write(Data("\(self.sequence)\0\(url.path)\0".utf8), to: "request")
                 // One nonblocking byte is enough. A full pipe already contains
                 // a wakeup; the latest atomic request replaces all older ones.
-                var byte: UInt8 = 1
-                _ = Darwin.write(self.wakeFD, &byte, 1)
-                self.publish(.waiting)
+                // bash and fish have no wakeup: they read at their next prompt.
+                if self.wakeFD >= 0 {
+                    var byte: UInt8 = 1
+                    _ = Darwin.write(self.wakeFD, &byte, 1)
+                }
+                // Only zsh answers on this channel. For the others the panel
+                // owns the state, from what the shell reports over OSC 7, and
+                // a late waiting notice here would overwrite a fresh answer.
+                if self.kind.appliesRequestsWhileIdle { self.publish(.waiting) }
             } catch { self.publish(.failed) }
         }
     }
@@ -213,10 +249,12 @@ final class TerminalDirectorySync {
             builtin zle -F -w "$_ts_TOKEN_fd" _ts_TOKEN_wake
           fi
           _ts_TOKEN_apply
+          _ts_TOKEN_osc7
           return 0
         }
         builtin typeset -ga precmd_functions
         precmd_functions+=(_ts_TOKEN_prompt)
         """#.replacingOccurrences(of: "TOKEN", with: token).replacingOccurrences(of: "ROOT", with: quotedRoot)
+            + "\n" + TerminalShellIntegration.zshReporter(token: token) + "\n"
     }
 }

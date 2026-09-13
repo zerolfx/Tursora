@@ -42,7 +42,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Get Info | ⌘I | `info.circle` | One window per item (>10 → summary) | `InfoWindowController.show` |
 | Show Inspector (⌥ alternate) | ⌥⌘I | `info.circle` | Floating panel following the selection | `InfoWindowController.showInspector` |
 | Get Summary Info (⌃ alternate) | ⌃⌘I | `info.circle` | One window for all items | `InfoWindowController.showSummary` |
-| Rename | — | `pencil` | Inline rename; enabled for exactly one item | `BrowserViewController.renameSelection` |
+| Rename | — | `pencil` | One item: inline rename. Several: the title becomes "Rename N Items…" and opens the batch sheet | `BrowserViewController.renameSelection` |
 | Duplicate | ⌘D | `plus.square.on.square` | Undoable | `BrowserViewController.duplicate` |
 | Compress / Extract | — | `doc.zipper` | ZIP creation/extraction with undo; also in More and context menus | `MainWindowController` → active `BrowserViewController` |
 | Move to Trash | ⌘⌫ | `trash` | Undoable; selects the next item (Dolphin; Finder selects nothing) | `BrowserViewController.moveToTrash` |
@@ -82,6 +82,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Show Sidebar | ⌃⌘S | `sidebar.leading` | (Finder: ⌥⌘S) |
 | Show Folders | F7 | `list.bullet.indent` | Shows the optional directory tree alongside Places |
 | Show / Hide Terminal | F4 | — | Present only when Terminal panel is enabled in Settings; hiding retains the session |
+| Command Palette… | ⇧⌘O | `command` | Fuzzy search over every command, sidebar favourite and the active pane's history folders; ↑/↓ move, Return runs, Esc closes (⇧⌘P is Show Previews; Finder has no equivalent) |
 
 ### Go
 | Item | Shortcut | Icon |
@@ -105,7 +106,7 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | Background (no item) | New Folder · Get Info · Paste (enabled only with file URLs on the pasteboard) · — · Reload · Show Hidden Files ✓ · Sort By ▸ · — · Add/Remove from Favourites (current folder) |
 | A file | Open · Open With ▸ (default app first, "(default)", separator, up to 20 apps with icons; "No Applications" when none) · [split: Copy/Move to Other Pane] · — · Quick Look · Get Info · Rename · Duplicate · Move to Trash · — · Cut · Copy · — · Copy Path |
 | A folder | Open · Open in New Tab (or "Open in N New Tabs") · Open in New Window · Open in Other/New Pane · then the file block · — · Add/Remove from Favourites |
-| Several items | As above minus Open With and Rename; "Copy Paths" |
+| Several items | As above minus Open With; Rename becomes "Rename N Items…" and opens the batch sheet; "Copy Paths" |
 | Sidebar (`SidebarViewController`) | Open · Open in New Tab · Open in Other Pane · [removable: Remove from Favourites · Reset Favourites] · [volume: Eject "name"]; empty when no row was clicked |
 | Tab | New Tab · Detach Tab · — · Rename Tab · — · Close Other Tabs · Close Tabs to the Left · Close Tabs to the Right · Close Tab; middle-click closes |
 
@@ -113,7 +114,7 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 
 | Key | Effect |
 |---|---|
-| Return / Enter | Rename the one selected item; disabled inside read-only ZIPs (Finder; Dolphin uses F2). See [DECISIONS.md](DECISIONS.md) D3 |
+| Return / Enter | Rename the one selected item inline; with several items selected it does nothing (the batch sheet is a menu command); disabled inside read-only ZIPs (Finder; Dolphin uses F2). See [DECISIONS.md](DECISIONS.md) D3 |
 | Space | Toggle Quick Look |
 | ⌘↓ / ⌘↑ | Open the selection / enclosing folder |
 | Arrows | Selection; inside the Quick Look panel ←→↑↓ are forwarded to the view so previews browse |
@@ -228,3 +229,7 @@ With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in t
 ## Search
 
 `⇧⌘F` (View → Search…) or Search Options after filtering expands the active pane’s recursive conditions while retaining the same toolbar query field. Filter defaults to `⌘F`; both Filter and Search bindings can be changed in Shortcuts. Queries run after a 500 ms typing pause or immediately on Return; Cancel / Clear / Close Search controls are pane-local. Completely empty conditions do not scan the tree. Escape or the toolbar cancel button returns to the folder. Inline Save / Saved Searches / Open / Delete manage the app-wide list of saved conditions; opening one runs it only in the active pane. Search is unavailable inside ZIP locations. While results are active, Folder View Settings cannot save the result view as a default or reset the originating folder; Close Search restores that folder’s current saved view.
+
+**Batch rename sheet.** File ▸ Rename N Items…, the More menu and the context menu open Finder's "Rename Finder Items:" window as a sheet: a mode popup (Replace Text / Add Text / Format), the fields of that mode (Find:/Replace with:; the text plus Where: after name/before name; Name Format: Name and Index/Counter/Date, Where:, Custom Format:, Start numbers at:), an "Example:" line and a live old → new preview. Rename stays disabled with the reason shown while a name is empty, contains "/" or ":", repeats inside the batch, or is taken in that item's own folder. The whole batch is one undo group.
+
+**Command Palette.** Unavailable commands stay listed but dimmed with their category and shortcut, and Return refuses them without closing the panel. Running a command closes the panel and returns focus to the file view; folder rows navigate the active pane only.

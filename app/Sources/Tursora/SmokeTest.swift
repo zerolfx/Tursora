@@ -72,9 +72,11 @@ enum SmokeTest: SmokeSuite {
             SplitToolbarSmokeTests.run,
             FolderTreeSmokeTests.run,
             ShortcutSmokeTests.run,
+            CommandPaletteSmokeTests.run,
             TerminalToolbarSmokeTests.run,
             TerminalSmokeTests.run,
             TerminalDirectorySyncSmokeTests.run,
+            TerminalShellSyncSmokeTests.run,
             TerminalPreferencesSmokeTests.run,
             TerminalActivitySmokeTests.run,
             StatusBarSmokeTests.run,
@@ -84,6 +86,7 @@ enum SmokeTest: SmokeSuite {
             IntegratedSearchSmokeTests.run,
             PanePathsSmokeTests.run,
             TabActionsSmokeTests.run,
+            BatchRenameSmokeTests.run,
             delayedListing,
             { _ in
                 infoSectionLayout()

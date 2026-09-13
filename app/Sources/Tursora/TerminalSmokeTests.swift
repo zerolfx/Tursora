@@ -111,7 +111,7 @@ enum TerminalSmokeTests: SmokeSuite {
         controller.installTerminal(original, in: directory)
         check("terminal: view installation is separate from process launch", original.process.shellPid == 0 && !controller.isRunning)
         controller.followDirectory(destination)
-        check("terminal: unsupported session keeps cwd and explains pending target in tooltip", controller.sessionDirectory?.path == directory.path && controller.titleLabel.toolTip?.contains("needs zsh integration") == true && controller.restartButton.toolTip?.contains(destination.path) == true)
+        check("terminal: unsupported session keeps cwd and explains pending target in tooltip", controller.sessionDirectory?.path == directory.path && controller.titleLabel.toolTip?.contains("needs zsh, bash or fish") == true && controller.restartButton.toolTip?.contains(destination.path) == true)
         controller.hostCurrentDirectoryUpdate(source: original, directory: "file://fixture-mac.local/tmp/Shell%20Folder")
         check("terminal: active source updates the accessible shell folder", controller.sessionDirectory?.path == "/tmp/Shell Folder" && controller.titleLabel.toolTip?.contains("Shell folder: /tmp/Shell Folder") == true && controller.pendingDirectory == destination)
         controller.hostCurrentDirectoryUpdate(source: original, directory: "file://other-mac.local/tmp/Foreign")

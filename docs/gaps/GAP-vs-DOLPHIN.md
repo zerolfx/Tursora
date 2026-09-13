@@ -25,7 +25,7 @@
 |---|---|---|
 | **Folders 面板**（目录树，可与视图同步） | ✅ 已实现并验证 | Places 下方独立 NSOutlineView 树；F7、活动 pane 跟随、按需读取、隐藏 / Home 选项、上下比例与可见性会话记忆；没有任意停靠 / 浮动，见[记录](../research/folder-tree.md) |
 | Information 面板（预览 + 元数据 + 媒体自动播放、"悬停时显示"） | ❌ | (mac) Quick Look 覆盖预览；元数据面板可做成 Inspector |
-| Terminal 面板（内嵌终端，随目录同步，`switch_terminal_url_sync`） | ✅ 默认启用 | 原生 SwiftTerm 1.15.0 + PTY，工具栏 / 默认 F4；可设 shell、等宽字体和文本 / 背景配色。隐藏保留会话，终止前任务确认见[生命周期](../research/terminal-session-lifecycle.md)。zsh 通过私有请求在空的主提示符单向跟随活动 pane，保留运行程序与未提交输入；其他 shell 手动 Restart，不反向导航。顶部紧凑，底部无终端状态或容量；[0.2.1 范围与验证](../research/terminal-navigation-0.2.1.md) |
+| Terminal 面板（内嵌终端，随目录同步，`switch_terminal_url_sync`） | ✅ 默认启用 | 原生 SwiftTerm 1.15.0 + PTY，工具栏 / 默认 F4；可设 shell、等宽字体和文本 / 背景配色。隐藏保留会话，终止前任务确认见[生命周期](../research/terminal-session-lifecycle.md)。zsh、bash 与 fish 都自动双向跟随：浏览目录送给 shell（zsh 在空提示符即时，bash / fish 在下一个提示符），shell 自己换目录时当前 pane 跟随，两个方向各有开关且默认开，保留运行程序与未提交输入。其他 shell 手动 Restart。顶部紧凑，底部无终端状态或容量；[0.2.1 范围](../research/terminal-navigation-0.2.1.md)、[双向同步与 bash / fish](../research/terminal-shell-sync.md) |
 | Places：隐藏条目 / 显示全部、"最近使用"与"搜索"分组 | 部分 | 我们有增删拖拽重排、推出 ✅ |
 | 面板锁定 / 布局记忆 | 部分 | 会话恢复已有侧栏宽度 / 折叠及分栏比例；本轮加入 Folders 可见性 / 高度比例 / 选项。面板锁定、任意停靠及终端布局恢复仍未实现 |
 
@@ -33,7 +33,7 @@
 
 | Dolphin 功能 | Tursora | 说明 |
 |---|---|---|
-| **批量重命名**（多选后 Return → `KIO::RenameFileDialog`，`name#` 模式） | ❌ | 单选重命名 ✅ |
+| **批量重命名**（多选后 Return → `KIO::RenameFileDialog`，`name#` 模式） | ✅ Finder 式 | 多选走 File ▸ Rename N Items… 的 sheet（Dolphin 用 Return）；`name#` 占位符未做，用 Name and Index / Name and Counter 代替；预览列表与 Dolphin 一致 |
 | **新建 ▸ 模板**（`Create New`：文本文件/HTML/…，来自 Templates 目录） | 只有新建文件夹 | |
 | **反选**（`invert_selection`） | ❌ | 几行代码 |
 | **操作进度与取消**（KJob 进度、暂停/取消、多任务） | 复制 / 移动 / Duplicate 已实现逐任务控制，验证见[专项记录](../research/file-operation-tasks.md) | 大文件中途可暂停 / 继续 / 取消（逐块检查）；独立冲突与安全撤销。元数据系统调用、同卷原子移动与 ZIP 工具阶段不冒称可逐字节暂停；不实现全部 KIO 后端 |
@@ -90,7 +90,7 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 用户将工作连续性排到小功能之前；会话恢复本轮已实现，当前先完成其构建、三轮 smoke 和实机验证，见[记录](../research/workspace-sessions.md)。以下保留其余候选功能的成本排序。
 
 1. ~~过滤栏~~、反选、最近关闭标签列表、`.hidden`/`UF_HIDDEN` —— 小
-2. 批量重命名、新建模板、文件夹项目数列、分组显示 —— 中
+2. 新建模板、文件夹项目数列、分组显示 —— 中
 3. ~~会话恢复（本轮实现与验证完成）~~、~~复制 / 移动进度与逐任务控制~~、~~冲突批量选项~~ —— 中
 4. 面板停靠 / 浮动、更多偏好策略、中文本地化 —— 中大
 5. 更多信息列（Spotlight 元数据）、视图属性递归应用与列布局持久化 —— 中大
@@ -151,8 +151,20 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 
 ## 0.2.1 终端目录跟随与状态栏简化
 
-- [x] zsh 在安全提示符跟随文件浏览；私有数据通道保留 shell 输入，隐藏终端仍可跟随。其他 shell 的自动同步、双向同步及多个终端会话仍未实现。
+- [x] zsh 在安全提示符跟随文件浏览；私有数据通道保留 shell 输入，隐藏终端仍可跟随。多个终端会话仍未实现。
 - [x] 终端只保留一行标题 / Start 或 Restart / Hide 操作，目录与错误详情通过提示及辅助功能说明呈现。
 - [x] 移除右下角全部终端状态和轮询，移除可用容量文本及文件系统查询；保留文件计数、上下文、缩放和操作进度。
 - [x] 0.2.1 正式发布，实际资产与签名、打包应用启动及生产源最新版本检查通过；[发布核验](../research/release-0.2.1.md)。
 - 勾选表示实现范围；完整 smoke、打包实机与发布结果见[0.2.1 记录](../research/terminal-navigation-0.2.1.md)，不把 0.2.0 的三轮检查当作本轮验证。
+
+## 终端双向目录同步与 bash / fish
+
+- [x] 反向同步：shell 换目录时窗口的活动 pane 跟随，只在面板可见时生效，两种文件视图、分栏和多标签一致；四道防回环。
+- [x] bash 与 fish 的自动同步：临时 `--rcfile` / `--init-command` 读用户自己的启动文件，请求在下一个提示符生效；三种 shell 都用 OSC 7 汇报目录。
+- [x] Settings → Terminal 两个方向开关（默认开），旧版偏好迁移保留 shell 与外观。
+- bash / fish 空闲时不跟随、没有失败应答；范围、证据与限制见[双向同步记录](../research/terminal-shell-sync.md)。
+
+## 命令面板
+
+- [x] ⇧⌘O 打开的模糊命令面板，覆盖全部命令、侧栏收藏与当前窗格历史目录；命令按菜单语义执行，不可用命令置灰列出。Dolphin 无此功能，属 Tursora 自有能力。
+- 打包应用的可视检查仍待补；范围与推断见[命令面板记录](../research/command-palette.md)。
