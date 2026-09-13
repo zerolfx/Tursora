@@ -21,12 +21,26 @@ final class DirectoryModel {
 
     enum SortKey: String {
         case name, size, kind, dateModified
+        // Finder's ArrangeByMenu.nib also offers these three; the raw values
+        // match GroupKey's so a saved file written before they existed still
+        // decodes (DirectoryViewProperties falls back to .name on an unknown).
+        case dateCreated, dateAdded, dateLastOpened
     }
 
     let provider: FileProvider
 
+    /// Folder item counts and optional recursive sizes for this listing.
+    let folderSizes = FolderSizes()
+
     init(provider: FileProvider) {
         self.provider = provider
+        folderSizes.onUpdate = { [weak self] in self?.folderMetricsDidChange() }
+    }
+
+    /// New counts or sizes arrived. Only a Size sort has to reorder; every
+    /// other arrangement just redraws the column.
+    private func folderMetricsDidChange() {
+        if sortKey == .size { resort() } else { onChange?() }
     }
 
     private(set) var url: URL?
@@ -57,6 +71,7 @@ final class DirectoryModel {
 
     func beginSearchResults() {
         loadToken += 1
+        folderSizes.cancel()
         isSearchResults = true
         url = nil
         replaceSearchResults([])
@@ -77,6 +92,7 @@ final class DirectoryModel {
     func load(_ target: URL, completion: (() -> Void)? = nil) {
         isSearchResults = false
         let changingDirectory = url?.standardizedFileURL != target.standardizedFileURL
+        if changingDirectory { folderSizes.cancel() }
         url = target
         loadToken += 1
         let token = loadToken
@@ -174,7 +190,19 @@ final class DirectoryModel {
     private func resort() {
         nodes = arrange(allNodes)
         groups = Grouping.split(nodes, by: groupKey)
+        // Recursive results have no directory to walk cheaply; they get counts only.
+        folderSizes.request(visibleFolders(nodes), allowsRecursiveSizes: !isSearchResults)
         onChange?()
+    }
+
+    /// Every folder row on screen, including the ones inside expanded folders.
+    private func visibleFolders(_ list: [FileNode]) -> [FileItem] {
+        var out: [FileItem] = []
+        for node in list {
+            if node.item.isNavigable { out.append(node.item) }
+            if !node.children.isEmpty { out += visibleFolders(node.children) }
+        }
+        return out
     }
 
     /// Hidden-file filter + sort, applied to one level. Recurses into loaded
@@ -212,9 +240,13 @@ final class DirectoryModel {
         case .name:
             ordered = nameAscending
         case .size:
-            ordered = a.size == b.size
+            // Folders sort by whatever has been measured for them; until a
+            // value arrives they stay together ahead of the measured ones.
+            let sa = folderSizes.sortValue(for: a) ?? -1
+            let sb = folderSizes.sortValue(for: b) ?? -1
+            ordered = sa == sb
                 ? nameAscending
-                : a.size < b.size
+                : sa < sb
         case .kind:
             let c = a.kindDescription.localizedStandardCompare(b.kindDescription)
             ordered = c == .orderedSame
@@ -226,7 +258,30 @@ final class DirectoryModel {
             ordered = da == db
                 ? nameAscending
                 : da < db
+        case .dateCreated:
+            return Self.compareDates(a.creationDate, b.creationDate,
+                                     nameAscending: nameAscending, ascending: ascending)
+        case .dateAdded:
+            return Self.compareDates(a.addedDate, b.addedDate,
+                                     nameAscending: nameAscending, ascending: ascending)
+        case .dateLastOpened:
+            return Self.compareDates(a.accessDate, b.accessDate,
+                                     nameAscending: nameAscending, ascending: ascending)
         }
         return ascending ? ordered : !ordered
+    }
+
+    /// The three keys Finder added after Date Modified. An item with no date
+    /// sinks to the bottom in *both* directions, the way folders always lead:
+    /// reversing the order must not promote "no date" to the top.
+    static func compareDates(_ a: Date?, _ b: Date?, nameAscending: Bool, ascending: Bool) -> Bool {
+        switch (a, b) {
+        case (nil, nil): return ascending ? nameAscending : !nameAscending
+        case (nil, _): return false
+        case (_, nil): return true
+        case (let da?, let db?):
+            let ordered = da == db ? nameAscending : da < db
+            return ascending ? ordered : !ordered
+        }
     }
 }

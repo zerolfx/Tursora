@@ -15,6 +15,9 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     var onBeginEditing: (() -> Void)?
     /// Called when editing ends for any reason, so focus can go back to the list.
     var onEndEditing: (() -> Void)?
+    /// Files dropped on a breadcrumb segment: (urls, that segment's folder,
+    /// the operation `FileOperations.dropOperation` decided on).
+    var onDropFiles: (([URL], URL, NSDragOperation) -> Void)?
 
     private(set) var isEditing = false
     private var isBeginningEditing = false
@@ -25,6 +28,8 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     private var chevronButtons: [NSButton] = []
     private var overflowButton: NSButton?
     private var shortcutObserver: NSObjectProtocol?
+    private let dropHighlight = NSView()
+    private var hoverSegmentIndex: Int? { didSet { if hoverSegmentIndex != oldValue { updateDropHighlight() } } }
 
     struct Segment {
         let url: URL
@@ -59,6 +64,11 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
             self?.accept(candidate: name)
             self?.window?.makeFirstResponder(self?.textField)
         }
+        dropHighlight.wantsLayer = true
+        dropHighlight.layer?.cornerRadius = 5
+        dropHighlight.isHidden = true
+        addSubview(dropHighlight, positioned: .below, relativeTo: nil)
+        registerForDraggedTypes([.fileURL])
     }
     required init?(coder: NSCoder) { fatalError() }
     deinit { if let shortcutObserver { NotificationCenter.default.removeObserver(shortcutObserver) } }
@@ -242,6 +252,7 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
             x += chevronW
         }
         hiddenSegmentIndexes = hidden
+        updateDropHighlight()
     }
 
     private var hiddenSegmentIndexes: [Int] = []
@@ -480,5 +491,83 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         // Focus left the field (clicked elsewhere): fall back to breadcrumb.
         guard obj.object as? NSTextField === textField, !isBeginningEditing else { return }
         if isEditing { endEditing(returnFocus: false) }
+    }
+
+    // MARK: - Files dragged over the breadcrumb
+
+    /// Each visible segment is a drop target for the folder it names, using the
+    /// same rule as the list, grid, sidebar, folder tree and tab strip. The
+    /// "…" overflow menu's hidden segments are not targets.
+    func segmentIndex(at point: NSPoint) -> Int? {
+        guard !isEditing else { return nil }
+        for (i, button) in segmentButtons.enumerated() where !button.isHidden {
+            if button.frame.contains(point) { return i }
+        }
+        return nil
+    }
+
+    /// The operation a drop on `index` would perform, or none.
+    func dropOperation(for urls: [URL], atSegment index: Int?, sourceMask: NSDragOperation) -> NSDragOperation {
+        guard !isEditing, let index, segments.indices.contains(index), !urls.isEmpty else { return [] }
+        let destination = segments[index].url
+        guard !ArchiveWorkspace.shared.containsArchiveLocation(destination) else { return [] }
+        return FileOperations.dropOperation(for: urls, into: destination, sourceMask: sourceMask)
+    }
+
+    /// Hands an accepted drop to the browser; the view never touches files.
+    @discardableResult
+    func performDrop(urls: [URL], sourceMask: NSDragOperation, onSegment index: Int?) -> Bool {
+        let op = dropOperation(for: urls, atSegment: index, sourceMask: sourceMask)
+        guard !op.isEmpty, let index, segments.indices.contains(index) else { return false }
+        onDropFiles?(urls, segments[index].url, op)
+        return true
+    }
+
+    /// For tests and for the highlight: which segment the pointer is over.
+    var hoveredSegmentIndexForTesting: Int? { hoverSegmentIndex }
+
+    /// One segment's button frame, or `.zero` when that segment is folded into
+    /// the "…" menu (those hidden segments are not drop targets).
+    func segmentFrameForTesting(_ index: Int) -> NSRect {
+        guard segmentButtons.indices.contains(index), !segmentButtons[index].isHidden else { return .zero }
+        return segmentButtons[index].frame
+    }
+
+    /// The folder a segment names, for tests that assert the drop destination.
+    func segmentURLForTesting(_ index: Int) -> URL? {
+        segments.indices.contains(index) ? segments[index].url : nil
+    }
+
+    private func updateDropHighlight() {
+        guard let index = hoverSegmentIndex, segmentButtons.indices.contains(index), !segmentButtons[index].isHidden else {
+            dropHighlight.isHidden = true
+            return
+        }
+        dropHighlight.frame = segmentButtons[index].frame.insetBy(dx: -1, dy: -1)
+        dropHighlight.layer?.backgroundColor = NSColor.selectedContentBackgroundColor.withAlphaComponent(0.35).cgColor
+        dropHighlight.isHidden = false
+    }
+
+    private func endDropHover() { hoverSegmentIndex = nil }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+    override func wantsPeriodicDraggingUpdates() -> Bool { false }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let urls = sender.fileURLs
+        let index = segmentIndex(at: convert(sender.draggingLocation, from: nil))
+        let mask = sender.draggingSourceOperationMask
+        let op = dropOperation(for: urls, atSegment: index, sourceMask: mask)
+        hoverSegmentIndex = op.isEmpty ? nil : index
+        return DragAndDrop.validationOperation(op, sourceMask: mask)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { endDropHover() }
+    override func draggingEnded(_ sender: NSDraggingInfo) { endDropHover() }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let index = segmentIndex(at: convert(sender.draggingLocation, from: nil))
+        endDropHover()
+        return performDrop(urls: sender.fileURLs, sourceMask: sender.draggingSourceOperationMask, onSegment: index)
     }
 }

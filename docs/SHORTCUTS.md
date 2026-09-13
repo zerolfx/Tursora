@@ -47,6 +47,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Compress / Extract | — | `doc.zipper` | ZIP creation/extraction with undo; also in More and context menus | `MainWindowController` → active `BrowserViewController` |
 | Move to Trash | ⌘⌫ | `trash` | Undoable; selects the next item (Dolphin; Finder selects nothing) | `BrowserViewController.moveToTrash` |
 | Delete Immediately… | ⌥⌘⌫ | `trash` | Confirmation, then unrecoverable | `BrowserViewController.deletePermanently` |
+| Empty Trash… | — (assignable) | `trash.slash` | Finder's confirmation, then erases every top-level item of the user's Trash; not undoable. Dimmed when the Trash is empty. Ships unbound: NSMenu ignores Shift for a ⌫ key equivalent, so Finder's ⇧⌘⌫ cannot be told apart from ⌘⌫ | `BrowserViewController.emptyTrash` |
 | Close Tab | ⌘W | — | Title flips to "Close Window" with one tab | `MainWindowController.closeTab` |
 | Close Window | ⇧⌘W | — | | `NSWindow.performClose` |
 | Reopen Closed Tab | ⇧⌘T | — | Up to 10 closed tabs kept whole (history + split + custom name) — Finder uses ⇧⌘T for the tab bar | `TabsController.reopenClosedTab` |
@@ -73,7 +74,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Reload | ⌘R | `arrow.clockwise` | (Finder: Show Original) |
 | Use Groups | ⌃⌘0 | `square.grid.3x1.below.line.grid.1x2` | Off → back to the last key (Kind first) |
 | Group By ▸ None · Name · Kind · Application · Date Last Opened · Date Added · Date Modified · Date Created · Size | — · ⌃⌘1 · ⌃⌘2 · — · ⌃⌘3 … ⌃⌘7 | `arrow.up.arrow.down` | Same submenu as the toolbar Group button |
-| Sort By ▸ Name / Date Modified / Size / Kind · Ascending | — | — | Driven through the table so the header arrow stays in sync |
+| Sort By ▸ Name · Date Modified · Date Created · Date Last Opened · Date Added · Size · Kind · Ascending | — | — | Driven through the table so the header arrow stays in sync |
 | Folder View Settings ▸ Remember Each Folder / Use One View for All Folders | — | — | Selects per-directory memory (default) or the existing shared default; also in Settings |
 | Folder View Settings ▸ Use Current Settings as Default | — | — | Saves the active ordinary folder's complete view properties as the default; existing customized folders keep their records |
 | Folder View Settings ▸ Restore This Folder to Default | — | — | Removes this folder's override and reapplies defaults; ordinary folders in per-directory policy only |
@@ -90,6 +91,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Back / Forward | ⌘[ / ⌘] | `chevron.backward` / `chevron.forward` |
 | Enclosing Folder | ⌘↑ | `arrow.up.folder` (selects the folder you left) |
 | Home | ⇧⌘H | `house` |
+| Trash | — | `trash` | The user's Trash as an ordinary listing; per-volume trashes are not offered |
 | Edit Location | ⌘L | — (Finder: Make Alias) |
 | Go to Folder… | ⇧⌘G | `arrow.forward.folder` (opens the breadcrumb's edit mode, like ⌘L) |
 | Connect to Server… | ⌘K | `rectangle.connected.to.line.below` |
@@ -181,15 +183,18 @@ Detach starts fresh navigation histories, selections, filters and scroll positio
 | Right-click in the grid | Selects the clicked item if it wasn't selected |
 | ⌘-click the title-bar proxy icon | Path menu (free via `window.representedURL`) |
 
-## Drag and drop (`FileOperations.dropOperation`, shared by list, grid, sidebar, folder tree, tab strip)
+## Drag and drop (`FileOperations.dropOperation`, shared by list, grid, sidebar, folder tree, tab strip, breadcrumb)
 
 - ⌥ held (source mask `.copy`) → **copy**, always.
+- ⌘ held (source mask `.generic`) → **move**, even across volumes.
 - Otherwise **same volume → move, different volume → copy** (Finder's rule).
 - Dropping items into the folder they already live in, or onto themselves → no-op.
 - Targets in the list: a folder row, the gap between an expanded folder's children (= that folder), or the listed directory. The grid highlights a folder icon or the whole grid — never an insertion line.
-- Source masks: ordinary files use local `[.copy, .move]` and external `[.copy, .move, .link]`. Read-only ZIP entries offer `.copy` only, including on the same volume. Archive panes and their tab targets reject incoming file drops.
+- Source masks (`DragAndDrop.sourceMask(readOnly:local:)`): ordinary files use local `[.copy, .move, .generic]` and external `[.copy, .move, .link, .generic]`. AppKit narrows that mask by the held modifier, so `.generic` has to be offered or a ⌘-drag narrows to nothing and every destination refuses it. Read-only ZIP entries offer `.copy` only, including on the same volume, so ⌘ and ⌃ correctly narrow to nothing there. Archive panes and their tab targets reject incoming file drops. A destination reports a ⌘-drag's move back as `.generic` (`DragAndDrop.validationOperation`) so it stays inside the mask AppKit narrowed to; the work performed is the same move.
 - Sidebar: files onto a place follow the same rule; folders dropped **between** favourites are added there; dragging a favourite reorders it; volumes can't be dragged.
 - Tab strip: hovering a tab with a drag activates it after **0.8 s** (`TabBarView.autoActivationDelay`, Dolphin); dropping on a tab lands in that tab's active pane; dropping on empty strip space opens each folder as a background tab.
+- Breadcrumb: each **visible** segment is a drop target for the folder it names, using the same rule; the hovered segment highlights. Segments folded into the `…` overflow menu are not targets, and the whole bar refuses drops while the path field is open.
+- Spring-loaded folders: hovering a drag over a folder opens it after the system's own delay (`com.apple.springing.delay`, which AppKit times — Tursora runs no timer of its own). The list and the grid navigate the pane, a sidebar place is selected, a folder-tree node expands in place. A target springs open only where a drop would be accepted, and never on a file, a read-only pane, an archive location, a dragged item itself, or the folder the dragged items already live in. Unlike Finder, Tursora does not spring back when the drag leaves.
 - Cross-tab and cross-pane drags work; the source pane refreshes through `DirectoryChanges`.
 
 ## Filter (`MainWindowController`)
@@ -233,3 +238,7 @@ With **Browse ZIP archives** enabled, normal Open/double-click enters a ZIP in t
 **Batch rename sheet.** File ▸ Rename N Items…, the More menu and the context menu open Finder's "Rename Finder Items:" window as a sheet: a mode popup (Replace Text / Add Text / Format), the fields of that mode (Find:/Replace with:; the text plus Where: after name/before name; Name Format: Name and Index/Counter/Date, Where:, Custom Format:, Start numbers at:), an "Example:" line and a live old → new preview. Rename stays disabled with the reason shown while a name is empty, contains "/" or ":", repeats inside the batch, or is taken in that item's own folder. The whole batch is one undo group.
 
 **Command Palette.** Unavailable commands stay listed but dimmed with their category and shortcut, and Return refuses them without closing the panel. Running a command closes the panel and returns focus to the file view; folder rows navigate the active pane only.
+
+**List header menu.** Right-clicking the list header shows or hides an optional column (Date Modified, Date Created, Date Last Opened, Date Added, Size, Kind — Name is always shown and Location is search-only) and toggles "Calculate all sizes" for that folder. List view only.
+
+**Inside the Trash.** The context menu takes its own branch: New Folder, Paste, Rename, Duplicate, Compress, Extract, Cut and Move to Trash are gone, and Put Back / Empty Trash… take their place. Put Back is dimmed with a tooltip when Tursora did not trash the item, its original folder is gone, or the name was retaken.

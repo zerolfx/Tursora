@@ -180,7 +180,7 @@ final class PlacesModel {
         let urls = FileManager.default.mountedVolumeURLs(
             includingResourceValuesForKeys: keys,
             options: [.skipHiddenVolumes]) ?? []
-        return urls.compactMap { url in
+        var places: [Place] = urls.compactMap { url in
             let v = try? url.resourceValues(forKeys: Set(keys))
             let name = v?.volumeName ?? url.lastPathComponent
             let removable = (v?.volumeIsRemovable ?? false) || (v?.volumeIsEjectable ?? false)
@@ -189,6 +189,11 @@ final class PlacesModel {
                                            isInternal: internalVolume, isRemovable: removable)
             return Place(name: name, url: url, symbolName: symbol)
         }
+        // Finder keeps the Trash at the bottom of the sidebar and never lets
+        // it be removed or reordered, so it closes the Locations section.
+        places.append(Place(name: TrashLocation.placeName, url: TrashLocation.userTrashPath(),
+                            symbolName: TrashLocation.symbolName))
+        return places
     }
 
     func isEjectable(_ url: URL) -> Bool {

@@ -17,16 +17,19 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
 
     var isReadOnly = false {
         didSet {
-            tableView.allowsRenaming = !isReadOnly
+            tableView.allowsRenaming = !isReadOnly && allowsRenaming
             updateDragOperations()
         }
+    }
+    var allowsRenaming = true {
+        didSet { tableView.allowsRenaming = !isReadOnly && allowsRenaming }
     }
     private var draggingReadOnlyItems = false
 
     private func updateDragOperations() {
         let copyOnly = isReadOnly || draggingReadOnlyItems
-        tableView.setDraggingSourceOperationMask(copyOnly ? .copy : [.copy, .move], forLocal: true)
-        tableView.setDraggingSourceOperationMask(copyOnly ? .copy : [.copy, .move, .link], forLocal: false)
+        tableView.setDraggingSourceOperationMask(DragAndDrop.sourceMask(readOnly: copyOnly, local: true), forLocal: true)
+        tableView.setDraggingSourceOperationMask(DragAndDrop.sourceMask(readOnly: copyOnly, local: false), forLocal: false)
     }
 
     /// Called once per item the user asked to open (double-click, ⌘↓).
@@ -41,6 +44,8 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     var onQuickLook: (() -> Void)?
     /// Files dropped into a folder: (urls, destination, .copy or .move).
     var onDropFiles: (([URL], URL, NSDragOperation) -> Void)?
+    /// A spring-loaded folder the pane should open (see UI/SpringLoading.swift).
+    var onSpringLoad: ((URL) -> Void)?
     var onZoomGesture: ((Int) -> Void)?
 
     var contextMenu: NSMenu? {
@@ -76,14 +81,20 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         target.field.isEditable = false
     }
 
-    private enum Column: String, CaseIterable {
-        case name, dateModified, size, kind, location
+    /// The list's columns, in Finder's "Show Columns" order
+    /// (ViewOptionsWindow.nib). Location has no Finder counterpart; it stays
+    /// last and appears only in search results.
+    enum Column: String, CaseIterable {
+        case name, dateModified, dateCreated, dateLastOpened, dateAdded, size, kind, location
 
         var id: NSUserInterfaceItemIdentifier { NSUserInterfaceItemIdentifier(rawValue) }
         var title: String {
             switch self {
             case .name: return "Name"
             case .dateModified: return "Date Modified"
+            case .dateCreated: return "Date Created"
+            case .dateLastOpened: return "Date Last Opened"
+            case .dateAdded: return "Date Added"
             case .size: return "Size"
             case .kind: return "Kind"
             case .location: return "Location"
@@ -93,6 +104,9 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             switch self {
             case .name: return .name
             case .dateModified: return .dateModified
+            case .dateCreated: return .dateCreated
+            case .dateLastOpened: return .dateLastOpened
+            case .dateAdded: return .dateAdded
             case .size: return .size
             case .kind: return .kind
             case .location: return .name
@@ -101,13 +115,23 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         var width: CGFloat {
             switch self {
             case .name: return 320
-            case .dateModified: return 170
+            case .dateModified, .dateCreated, .dateLastOpened, .dateAdded: return 170
             case .size: return 90
             case .kind: return 170
             case .location: return 320
             }
         }
+        /// Name always shows; Location follows the listing, not the user.
+        var isOptional: Bool { self != .name && self != .location }
     }
+
+    /// Optional columns currently shown, by raw identifier. Persisted per
+    /// directory through `DirectoryViewProperties.listColumns`; change it
+    /// through `setVisibleColumns`, which also updates the table.
+    var visibleColumns = Set(DirectoryViewProperties.defaultListColumns)
+    /// The header menu changed a column or "Calculate all sizes".
+    var onColumnsChanged: (() -> Void)?
+    lazy var headerMenu = ListColumnHeaderMenu(list: self)
 
     init(model: DirectoryModel) {
         self.model = model
@@ -130,6 +154,11 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             tableView.addTableColumn(col)
             if column == .name { tableView.outlineTableColumn = col }
         }
+        // Finder's header right-click: which columns to show, plus the size
+        // option. A header with no menu of its own would show the file menu.
+        if tableView.headerView == nil { tableView.headerView = NSTableHeaderView() }
+        tableView.headerView?.menu = headerMenu.menu
+        applyColumnVisibility()
         tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         tableView.allowsMultipleSelection = true
         tableView.usesAlternatingRowBackgroundColors = true
@@ -333,7 +362,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     /// selected — Finder's behaviour. The field is made editable only for the
     /// duration of the edit, so an ordinary click never starts one by itself.
     func beginRename(row: Int) {
-        guard !isReadOnly, let item = item(atRow: row), item.canAccess, !item.isArchiveEntry else { return }
+        guard !isReadOnly, allowsRenaming, let item = item(atRow: row), item.canAccess, !item.isArchiveEntry else { return }
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
         guard let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView,
@@ -356,7 +385,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         renameTarget = nil
         let item = target.item
         let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isReadOnly || item.isArchiveEntry || !item.canAccess || newName.isEmpty || newName == item.name || newName.contains("/") {
+        if isReadOnly || !allowsRenaming || item.isArchiveEntry || !item.canAccess || newName.isEmpty || newName == item.name || newName.contains("/") {
             field.stringValue = item.displayName            // revert
             return
         }
@@ -480,7 +509,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         guard let dest = dropDestination(item: item, childIndex: index) else { return [] }
         // Highlight the folder (or the whole list), never an insertion line.
         outlineView.setDropItem(dest.node, dropChildIndex: NSOutlineViewDropOnItemIndex)
-        return FileOperations.dropOperation(for: urls, into: dest.url, sourceMask: info.draggingSourceOperationMask)
+        return DragAndDrop.validationOperation(for: urls, into: dest.url, sourceMask: info.draggingSourceOperationMask)
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo,
@@ -543,8 +572,19 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         case .dateModified:
             cell.textField?.stringValue = item.displayDate
             cell.textField?.textColor = .secondaryLabelColor
+        case .dateCreated:
+            cell.textField?.stringValue = FileItem.displayDate(item.creationDate)
+            cell.textField?.textColor = .secondaryLabelColor
+        case .dateLastOpened:
+            cell.textField?.stringValue = FileItem.displayDate(item.accessDate)
+            cell.textField?.textColor = .secondaryLabelColor
+        case .dateAdded:
+            cell.textField?.stringValue = FileItem.displayDate(item.addedDate)
+            cell.textField?.textColor = .secondaryLabelColor
         case .size:
-            cell.textField?.stringValue = item.displaySize
+            // Folders read as "N items" (or their calculated size); files keep
+            // their own byte count.
+            cell.textField?.stringValue = model.folderSizes.displaySize(for: item)
             cell.textField?.textColor = .secondaryLabelColor
         case .location:
             cell.textField?.lineBreakMode = .byTruncatingMiddle

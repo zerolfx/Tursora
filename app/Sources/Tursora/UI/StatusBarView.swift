@@ -67,8 +67,9 @@ final class StatusBarView: NSView {
 
     var statusText: String { label.stringValue }
 
-    func update(itemCount: Int, totalCount: Int? = nil, selectedCount: Int, archiveStatus: String? = nil, searchStatus: String? = nil) {
-        let hasContext = archiveStatus != nil || searchStatus != nil
+    func update(itemCount: Int, totalCount: Int? = nil, selectedCount: Int, archiveStatus: String? = nil,
+                searchStatus: String? = nil, locationStatus: String? = nil) {
+        let hasContext = archiveStatus != nil || searchStatus != nil || locationStatus != nil
         label.lineBreakMode = hasContext ? .byTruncatingTail : .byTruncatingMiddle
         needsLayout = true
         var parts: [String] = []
@@ -78,11 +79,14 @@ final class StatusBarView: NSView {
             parts.append(itemCount == 1 ? "1 item" : "\(itemCount) items")
         }
         if selectedCount > 0 { parts[0] = "\(selectedCount) of \(itemCount) selected" }
-        if let context = archiveStatus ?? searchStatus { parts.insert(context, at: 0) }
+        if let context = archiveStatus ?? searchStatus ?? locationStatus { parts.insert(context, at: 0) }
         label.stringValue = parts.joined(separator: " — ")
         label.toolTip = archiveStatus == nil ? nil
             : "Read-only ZIP. Opened files are temporary copies kept until Tursora quits. Edits do not update the ZIP; use Save As to keep them."
         if searchStatus != nil { label.toolTip = "Search results use their original file locations. Reveal in Enclosing Folder opens a result's parent." }
+        if archiveStatus == nil, searchStatus == nil, locationStatus != nil {
+            label.toolTip = "Items in the Trash. Put Back returns an item Tursora trashed to where it came from; Empty Trash erases everything."
+        }
         toolTip = label.toolTip
     }
 

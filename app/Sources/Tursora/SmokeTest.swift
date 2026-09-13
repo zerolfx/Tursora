@@ -52,6 +52,7 @@ enum SmokeTest: SmokeSuite {
         let steps: [Step] = [
             DockMenuSmokeTests.run,
             DirectoryViewPropertiesSmokeTests.run,
+            SortColumnSizesSmokeTests.run,
             { done in
                 IconAssetsSmokeTests.run()
                 ServerConnectionSmokeTests.run()
@@ -71,6 +72,7 @@ enum SmokeTest: SmokeSuite {
             ArchiveBrowserSmokeTests.run,
             SplitToolbarSmokeTests.run,
             FolderTreeSmokeTests.run,
+            TrashSmokeTests.run,
             ShortcutSmokeTests.run,
             CommandPaletteSmokeTests.run,
             TerminalToolbarSmokeTests.run,
@@ -87,6 +89,7 @@ enum SmokeTest: SmokeSuite {
             PanePathsSmokeTests.run,
             TabActionsSmokeTests.run,
             BatchRenameSmokeTests.run,
+            DragAndDropSmokeTests.run,
             delayedListing,
             { _ in
                 infoSectionLayout()

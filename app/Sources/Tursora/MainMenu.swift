@@ -145,6 +145,13 @@ enum MainMenu {
         add(menu, "Extract", #selector(MainWindowController.extractSelection(_:)), symbol: "doc.zipper")
         add(menu, "Move to Trash", #selector(BrowserViewController.moveToTrash(_:)), "\u{8}", symbol: "trash")
         add(menu, "Delete Immediately…", #selector(BrowserViewController.deletePermanently(_:)), "\u{8}", [.command, .option], symbol: "trash")
+        // Finder puts Empty Trash on ⇧⌘⌫, but NSMenu ignores Shift for a ⌫ key
+        // equivalent: a ⇧⌘⌫ item answers a plain ⌘⌫ event and vice versa (probed
+        // on this machine; see docs/research/trash.md). Move to Trash comes first,
+        // so ⇧⌘⌫ would reach it instead — and once a user clears that binding,
+        // ⌘⌫ would reach Empty Trash, which cannot be undone. It ships unbound and
+        // stays assignable from Settings ▸ Shortcuts.
+        add(menu, TrashLocation.emptyTrashMenuTitle, #selector(BrowserViewController.emptyTrash(_:)), "", [], symbol: "trash.slash")
         menu.addItem(.separator())
         add(menu, "Close Tab", #selector(MainWindowController.closeTab(_:)), "w")
         add(menu, "Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift])
@@ -185,7 +192,9 @@ enum MainMenu {
         add(menu, "Use Groups", #selector(MainWindowController.toggleGroups(_:)), "0", [.command, .control], symbol: "square.grid.3x1.below.line.grid.1x2")
         menu.addItem(groupByMenuItem(applyBindings: false))
         let (sortItem, sortMenu) = submenu("Sort By")
-        for (title, key) in [("Name", "name"), ("Date Modified", "dateModified"), ("Size", "size"), ("Kind", "kind")] {
+        for (title, key) in [("Name", "name"), ("Date Modified", "dateModified"),
+                             ("Date Created", "dateCreated"), ("Date Last Opened", "dateLastOpened"),
+                             ("Date Added", "dateAdded"), ("Size", "size"), ("Kind", "kind")] {
             add(sortMenu, title, #selector(MainWindowController.sortBy(_:)), "", []).representedObject = key
         }
         sortMenu.addItem(.separator())
@@ -198,6 +207,8 @@ enum MainMenu {
         memoryMenu.addItem(.separator())
         add(memoryMenu, "Use Current Settings as Default", #selector(MainWindowController.useCurrentViewAsDefault(_:)), "", [])
         add(memoryMenu, "Restore This Folder to Default", #selector(MainWindowController.restoreFolderViewDefaults(_:)), "", [])
+        memoryMenu.addItem(.separator())
+        add(memoryMenu, "Calculate all sizes", #selector(MainWindowController.toggleCalculateAllSizes(_:)), "", [])
         menu.addItem(memoryItem)
         menu.addItem(.separator())
         add(menu, "Split View", #selector(MainWindowController.toggleSplit(_:)), "d", [.command, .shift], symbol: "rectangle.split.2x1")
@@ -267,6 +278,7 @@ enum MainMenu {
         add(menu, "Enclosing Folder", #selector(MainWindowController.goUp(_:)), key(NSUpArrowFunctionKey), symbol: "arrow.up.folder|folder")
         menu.addItem(.separator())
         add(menu, "Home", #selector(MainWindowController.goHome(_:)), "h", [.command, .shift], symbol: "house")
+        add(menu, TrashLocation.placeName, #selector(MainWindowController.goTrash(_:)), symbol: TrashLocation.symbolName)
         menu.addItem(.separator())
         add(menu, "Edit Location", #selector(MainWindowController.editLocation(_:)), "l")
         add(menu, "Go to Folder…", #selector(MainWindowController.editLocation(_:)), "g", [.command, .shift], symbol: "arrow.forward.folder|folder")

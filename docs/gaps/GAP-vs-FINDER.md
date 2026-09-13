@@ -73,12 +73,12 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 
 | Finder | Tursora | 难度 | 备注 |
 |---|---|---|---|
-| **Spring-loaded folders** | ❌ | M | `NSSpringLoadingDestination`，列表、图标、侧栏、面包屑四处；NSOutlineView 自带的悬停展开不能重复触发 |
+| **Spring-loaded folders** | ✅ | — | `NSSpringLoadingDestination`：列表、图标、Places 侧栏、文件夹树四处；延迟与开关来自系统的 `com.apple.springing.*`。面包屑分段是**投放目标**但不弹开；未实现 Finder 的「弹开后回滚」（[记录](../research/drag-and-drop.md)） |
 | **Finder 设置窗口** | ✅ General / Shortcuts / Terminal / Updates | 扩展项 M–L | 扩展名显示、所有应用命令快捷键、每目录记忆 / 统一默认、终端 Shell / 字体 / 颜色、默认启用的终端 / ZIP 和更新选项；废纸篓策略、Keep folders on top 等未实现 |
 | 显示/隐藏文件扩展名 + 改扩展名警告 | 显示开关 ✅；警告 ❌ | 警告 M | 全局只改列表 / 图标标签，普通文件夹名不变；重命名、排序、过滤保留真名；不是 Finder 逐文件 flag 策略的完整复制 |
 | Quick Actions（Rotate / Markup / Create PDF） | ❌ | L | Finder 的注册表是私有的，Markup 无公开 API；只能自己实现 Rotate/Create PDF |
 | 右键 ▸ Services 菜单 | ❌ | S | `NSApp.servicesMenu`；一个 NSMenu 只能有一个父菜单，上下文菜单要复制 |
-| 废纸篓视图（Put Back、清空） | ❌ | L | 本机已验证 `ls ~/.Trash` 被拒：需要 Full Disk Access，无系统弹窗，用户得手动授权 |
+| 废纸篓视图（Put Back、清空） | ✅ 用户废纸篓 | 卷级废纸篓 M | 边栏与 Go 菜单入口、普通列表 + `Trash` 状态语境、Finder 文案的 `Empty Trash…`、自建 put-back 日志（Finder 的 put-back 路径在 `.DS_Store` 私有记录里，不解析）。缺少 Full Disk Access 时窗格内显示横幅并提供跳转设置与重试，不弹模态。卷级废纸篓未实现（[记录](../research/trash.md)） |
 | Finder 别名双击解析 | symlink 跟随 ✅；Finder alias 自动解析 ❌ | S | 每目录视图库不新增 alias 解析；以后可用 `URL(resolvingAliasFileAt:options: .withoutMounting)` 在打开时解析目标 |
 | FinderSync 角标（云同步状态） | ❌ | XL | 只有 iCloud 的 ubiquity 键是公开的；Dropbox 等的角标无公开 API |
 | 中文本地化 | ❌ | L | 代码里建的菜单/字符串全部抽出；SPM 资源包在 .app 与裸二进制两种启动方式下都要找得到 |
@@ -87,8 +87,8 @@ Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗
 ## 建议顺序（按成本）
 
 1. S：Deselect All、Move Items Here、Copy as Pathname 对齐、New Folder with Selection、Show Package Contents、Always Open With、Print、Slideshow、Eject All、Go 菜单快捷键、Cycle Through Windows、Services 菜单、别名解析
-2. M：Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、Spring-loaded、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、Finder 默认快捷键预设（现已可逐项配置）
-3. L：Column 视图、Gallery 视图、完整偏好策略、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、服务器发现 / 历史 / 重连；Show View Options 完整对话框另列 M（每目录持久化已实现）
+2. M：Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、Finder 默认快捷键预设（现已可逐项配置）
+3. L：排序键 Date Created / Date Added / Date Last Opened、列表可选列与文件夹大小已完成（[记录](../research/sort-columns-folder-sizes.md)；Version / Comments / Tags 三列与列宽持久化仍未实现）。Column 视图、Gallery 视图、完整偏好策略、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、服务器发现 / 历史 / 重连；Show View Options 完整对话框另列 M（每目录持久化已实现）
 4. XL / 不建议：Customize Folder、Smart Folders、FinderSync 角标
 
 ## 2026-09-12 更新

@@ -12,6 +12,15 @@ struct DirectoryViewProperties: Codable, Equatable {
     var lastGroupKey: GroupKey = .kind
     var showHidden = false
     var showPreviews = true
+    /// Optional list columns the user has turned on, by raw column identifier.
+    /// Name is always shown and Location is search-only, so neither appears here.
+    var listColumns: [String] = Self.defaultListColumns
+    /// Finder's "Calculate all sizes" (ViewOptionsWindow.nib); off by default.
+    var calculateAllSizes = false
+
+    /// What a folder shows before anyone changes its columns: Finder's three
+    /// default list columns beside Name.
+    static let defaultListColumns = ["dateModified", "kind", "size"]
 
     init() {}
 
@@ -29,12 +38,16 @@ struct DirectoryViewProperties: Codable, Equatable {
         result.detailsZoomIndex = zoomIndex(for: .details)
         result.iconsZoomIndex = zoomIndex(for: .icons)
         if result.lastGroupKey == .none { result.lastGroupKey = .kind }
+        // Sorted and deduplicated so two equal column sets compare equal and
+        // a reordering alone never counts as an effective user change.
+        result.listColumns = Array(Set(listColumns)).sorted()
         return result
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, detailsZoomIndex, iconsZoomIndex, sortKey, ascending
         case groupKey, lastGroupKey, showHidden, showPreviews
+        case listColumns, calculateAllSizes
     }
 
     init(from decoder: Decoder) throws {
@@ -57,6 +70,12 @@ struct DirectoryViewProperties: Codable, Equatable {
            let value = GroupKey(rawValue: raw), value != .none { lastGroupKey = value }
         if let value = try? values.decode(Bool.self, forKey: .showHidden) { showHidden = value }
         if let value = try? values.decode(Bool.self, forKey: .showPreviews) { showPreviews = value }
+        // Files written before columns were optional carry neither key and
+        // keep the current defaults.
+        if let value = try? values.decode([String].self, forKey: .listColumns) {
+            listColumns = Array(Set(value)).sorted()
+        }
+        if let value = try? values.decode(Bool.self, forKey: .calculateAllSizes) { calculateAllSizes = value }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -71,6 +90,8 @@ struct DirectoryViewProperties: Codable, Equatable {
         try values.encode(value.lastGroupKey.rawValue, forKey: .lastGroupKey)
         try values.encode(value.showHidden, forKey: .showHidden)
         try values.encode(value.showPreviews, forKey: .showPreviews)
+        try values.encode(value.listColumns, forKey: .listColumns)
+        try values.encode(value.calculateAllSizes, forKey: .calculateAllSizes)
     }
 }
 

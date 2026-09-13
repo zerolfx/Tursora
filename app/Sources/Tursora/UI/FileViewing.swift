@@ -16,12 +16,18 @@ protocol FileViewing: AnyObject {
     var onFocus: (() -> Void)? { get set }
     var onQuickLook: (() -> Void)? { get set }
     var onDropFiles: (([URL], URL, NSDragOperation) -> Void)? { get set }
+    /// Spring-loaded folders: a drag hovered over this folder long enough that
+    /// the pane should open it. Never a file mutation.
+    var onSpringLoad: ((URL) -> Void)? { get set }
     /// +1 / -1 from ⌘-scroll or pinch.
     var onZoomGesture: ((Int) -> Void)? { get set }
 
     var contextMenu: NSMenu? { get set }
     /// Archive locations allow navigation and copying out, never edits or drops in.
     var isReadOnly: Bool { get set }
+    /// False inside the Trash: Finder renames nothing there, but dragging an
+    /// item out is still an ordinary same-volume move.
+    var allowsRenaming: Bool { get set }
     var cutURLs: Set<URL> { get set }
     var selectedItems: [FileItem] { get }
     /// Targets of a context-menu action: the selection if the clicked item is

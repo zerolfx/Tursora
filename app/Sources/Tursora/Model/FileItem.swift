@@ -117,9 +117,12 @@ struct FileItem {
         return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
     }
 
-    var displayDate: String {
-        guard let modificationDate else { return "--" }
-        return Self.dateFormatter.string(from: modificationDate)
+    var displayDate: String { Self.displayDate(modificationDate) }
+
+    /// Medium date and short time, or "--" — shared by every date column.
+    static func displayDate(_ date: Date?) -> String {
+        guard let date else { return "--" }
+        return dateFormatter.string(from: date)
     }
 
     private static let dateFormatter: DateFormatter = {

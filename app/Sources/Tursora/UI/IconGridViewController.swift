@@ -11,12 +11,13 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     var isReadOnly = false {
         didSet { updateDragOperations() }
     }
+    var allowsRenaming = true
     private var draggingReadOnlyItems = false
 
     private func updateDragOperations() {
         let copyOnly = isReadOnly || draggingReadOnlyItems
-        collectionView.setDraggingSourceOperationMask(copyOnly ? .copy : [.copy, .move], forLocal: true)
-        collectionView.setDraggingSourceOperationMask(copyOnly ? .copy : [.copy, .move, .link], forLocal: false)
+        collectionView.setDraggingSourceOperationMask(DragAndDrop.sourceMask(readOnly: copyOnly, local: true), forLocal: true)
+        collectionView.setDraggingSourceOperationMask(DragAndDrop.sourceMask(readOnly: copyOnly, local: false), forLocal: false)
     }
     private var layout = NSCollectionViewFlowLayout()
     private var layoutSignature: [Int] = []
@@ -31,6 +32,8 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     var onFocus: (() -> Void)?
     var onQuickLook: (() -> Void)?
     var onDropFiles: (([URL], URL, NSDragOperation) -> Void)?
+    /// A spring-loaded folder the pane should open (see UI/SpringLoading.swift).
+    var onSpringLoad: ((URL) -> Void)?
     var onZoomGesture: ((Int) -> Void)?
 
     var contextMenu: NSMenu? {
@@ -212,7 +215,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     func openSelection() { selectedItems.forEach { onOpen?($0) } }
 
     func beginRename(item: FileItem) {
-        guard !isReadOnly, item.canAccess, !item.isArchiveEntry, let ip = indexPath(for: item.url) else { return }
+        guard !isReadOnly, allowsRenaming, item.canAccess, !item.isArchiveEntry, let ip = indexPath(for: item.url) else { return }
         collectionView.selectionIndexPaths = [ip]
         collectionView.scrollToItems(at: [ip], scrollPosition: .nearestHorizontalEdge)
         guard let cell = collectionView.item(at: ip) as? FileCollectionItem else { return }
@@ -354,8 +357,8 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
             proposedIndexPath.pointee = NSIndexPath(forItem: model.groups.indices.contains(last) ? model.groups[last].nodes.count : 0, inSection: last)
         }
         guard let dest = dropDestination(ip, onFolder ? .on : .before) else { return [] }
-        return FileOperations.dropOperation(for: draggingInfo.fileURLs, into: dest,
-                                                    sourceMask: draggingInfo.draggingSourceOperationMask)
+        return DragAndDrop.validationOperation(for: draggingInfo.fileURLs, into: dest,
+                                               sourceMask: draggingInfo.draggingSourceOperationMask)
     }
 
     func collectionView(_ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo,
@@ -368,6 +371,10 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         return true
     }
 
+    /// The item at an index path, for spring loading and other collaborators
+    /// outside this file.
+    func item(at indexPath: IndexPath) -> FileItem? { node(at: indexPath)?.item }
+
     // MARK: - Rename (label editing)
 
     func controlTextDidEndEditing(_ obj: Notification) {
@@ -377,7 +384,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         renameTarget = nil
         let item = target.item
         let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isReadOnly || item.isArchiveEntry || !item.canAccess || newName.isEmpty || newName == item.name || newName.contains("/") {
+        if isReadOnly || !allowsRenaming || item.isArchiveEntry || !item.canAccess || newName.isEmpty || newName == item.name || newName.contains("/") {
             field.stringValue = item.displayName
             return
         }

@@ -81,13 +81,16 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private var suspendedNavigation: URL?
     var failedArchiveURL: URL? { failedArchive?.target }
     let archiveNotice = ArchiveNavigationNotice()
+    /// Access banner for a location that could not be listed; shares the
+    /// archive notice's host. See UI/TrashBrowser.swift.
+    var locationNotice: LocationNotice?
     private let archiveNoticeHost = NSView()
     private var archiveNoticeHeight: NSLayoutConstraint?
     var fileOpener: (URL) -> Bool = { NSWorkspace.shared.open($0) }
     var archiveFileOpener: (URL) -> Bool = { NSWorkspace.shared.open($0) }
     var archiveSourceURL: URL? { currentURL.flatMap { ArchiveWorkspace.shared.session(for: $0)?.archiveURL } }
     var isBrowsingArchive: Bool { archiveSourceURL != nil }
-    var canModifyCurrentLocation: Bool { canModifySelectedItems && !isSearching }
+    var canModifyCurrentLocation: Bool { canModifySelectedItems && !isSearching && !isBrowsingTrash }
     var canModifySelectedItems: Bool { currentURL != nil && !isBrowsingArchive && !isPreparingArchive }
     var archiveStatus: String? { isBrowsingArchive ? "ZIP · Read-only" : nil }
     var readableSelectionURLs: [URL] { readableURLs(fileView.selectedItems) }
@@ -137,7 +140,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             self.navigate(to: url)
             self.view.window?.makeFirstResponder(self.focusView)
         }
+        // Dropping on a breadcrumb segment lands in that ancestor folder.
+        addressBar.onDropFiles = { [weak self] urls, dest, op in self?.dropFiles(urls, to: dest, op: op) }
         wire(fileList)
+        observeListColumns()
         configureSearch()
         // Match the persisted mode before loadView mounts a child. Calling
         // setViewMode here would return early because viewMode already matches.
@@ -160,6 +166,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             guard let self else { return }
             self.lastError = error
             self.errorLabel.stringValue = "Cannot open this folder.\n\(error.localizedDescription)"
+            self.handleListingFailure(error)
         }
         observeViewProperties()
         // Deferred so the owner can wire onLocationChanged first.
@@ -250,11 +257,16 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     /// Archive locations, browsed or still being prepared, never accept edits or drops.
     private var isReadOnlyLocation: Bool { isBrowsingArchive || isPreparingArchive }
-    private func syncReadOnly() { fileView.isReadOnly = isReadOnlyLocation }
+    private func syncReadOnly() {
+        fileView.isReadOnly = isReadOnlyLocation
+        fileView.allowsRenaming = !isBrowsingTrash
+        fileView.allowsRenaming = !isBrowsingTrash
+    }
 
     /// Hook a file view (list or grid) up to the browser.
     private func wire(_ v: FileViewing) {
         v.isReadOnly = isReadOnlyLocation
+        v.allowsRenaming = !isBrowsingTrash
         v.onOpen = { [weak self] item in self?.open(item) }
         v.onOpenInNewTab = { [weak self] item in
             guard item.isNavigable else { return }
@@ -269,6 +281,12 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         v.onFocus = { [weak self] in self?.onFocus?() }
         v.onQuickLook = { [weak self] in self?.toggleQuickLook() }
         v.onDropFiles = { [weak self] urls, dest, op in self?.dropFiles(urls, to: dest, op: op) }
+        // Spring-loaded folders: navigate this pane, never mutate anything.
+        v.onSpringLoad = { [weak self] url in
+            guard let self else { return }
+            self.onFocus?()
+            self.navigate(to: url)
+        }
         v.onZoomGesture = { [weak self] step in self?.zoom(by: step) }
         v.contextMenu = contextMenu
         v.setIconSize(ZoomLevel.sizes(for: viewMode)[zoomIndex], showPreviews: showsPreviews)
@@ -560,6 +578,24 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private func clearArchiveNotice() {
         failedArchive = nil
         archiveNotice.removeFromSuperview()
+        locationNotice?.removeFromSuperview()
+        locationNotice = nil
+        archiveNoticeHeight?.isActive = true
+    }
+
+    /// Shows any pane-local banner in the notice host, replacing the centred
+    /// error text. Used by the archive notice and by UI/TrashBrowser.swift.
+    func mountNotice(_ notice: NSView) {
+        _ = view
+        lastError = nil
+        errorLabel.isHidden = true
+        guard notice.superview == nil else { return }
+        archiveNoticeHeight?.isActive = false
+        archiveNoticeHost.pinToEdges(notice)
+    }
+
+    func clearNotice(_ notice: NSView) {
+        notice.removeFromSuperview()
         archiveNoticeHeight?.isActive = true
     }
 
@@ -748,7 +784,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         statusBar.update(itemCount: model.items.count,
                          totalCount: model.nameFilter.isEmpty ? nil : model.unfilteredCount,
                          selectedCount: fileView.selectedItems.count,
-                         archiveStatus: archiveStatus, searchStatus: isSearching ? "Search Results" : nil)
+                         archiveStatus: archiveStatus, searchStatus: isSearching ? "Search Results" : nil,
+                         locationStatus: trashStatus)
         host?.selectionDidChange(in: self)
     }
 
@@ -759,7 +796,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     private func putOnPasteboard(_ urls: [URL], cut: Bool) {
         guard !urls.isEmpty, !isPreparingArchive else { return }
-        if cut && (!canModifySelectedItems || urls.contains(where: isArchiveContent)) { return }
+        if cut && (!canModifySelectedItems || isBrowsingTrash || urls.contains(where: isArchiveContent)) { return }
         let urls = urls.compactMap { isArchiveContent($0) ? try? ArchiveWorkspace.shared.readableURL(for: $0) : $0 }
         guard !urls.isEmpty else { return }
         let pb = NSPasteboard.general
@@ -790,19 +827,20 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     @objc func duplicate(_ sender: Any?) {
-        guard canModifySelectedItems, let destination = currentURL else { return }
+        guard canModifySelectedItems, !isBrowsingTrash, let destination = currentURL else { return }
         transfer(selectedURLs, to: destination, kind: .copy, actionName: "Duplicate", duplicateInPlace: true)
     }
 
     @objc func moveToTrash(_ sender: Any?) { trash(selectedURLs) }
 
     func trash(_ urls: [URL]) {
-        guard canModifySelectedItems, !urls.isEmpty,
+        guard canModifySelectedItems, !isBrowsingTrash, !urls.isEmpty,
               !urls.contains(where: isArchiveContent) else { return }
         // Dolphin selects the next item after deleting; Finder selects nothing. Dolphin wins here.
         let nextURL = fileView.itemAfterSelection()?.url
         do {
             let pairs = try FileOperations.trash(urls)
+            TrashOrigins.shared.record(pairs)
             if SmokeTest.isRequested { for p in pairs { print("   trashed \(p.original.lastPathComponent) → \(p.trashed.path)") } }
             registerUndoMove(pairs.map { (from: $0.original, to: $0.trashed) }, actionName: "Move to Trash")
             reloadSelectingURLs(nextURL.map { [$0] } ?? [])
@@ -833,7 +871,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     @objc func renameSelection(_ sender: Any?) {
-        guard canModifySelectedItems else { return }
+        guard canModifySelectedItems, !isBrowsingTrash else { return }
         // Finder: several items go to the batch sheet, one is edited in place.
         if fileView.selectedItems.count > 1 { presentBatchRename(for: fileView.selectedItems); return }
         renameSelectionInline(sender)
@@ -841,7 +879,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     /// The Return / click-to-rename path: never opens the batch sheet.
     @objc func renameSelectionInline(_ sender: Any?) {
-        guard canModifySelectedItems else { return }
+        guard canModifySelectedItems, !isBrowsingTrash else { return }
         guard let item = fileView.selectedItems.first, fileView.selectedItems.count == 1 else { return }
         fileView.beginRename(item: item)
     }
@@ -920,7 +958,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc func quickLook(_ sender: Any?) { toggleQuickLook() }
 
     func rename(_ item: FileItem, to name: String) {
-        guard canModifySelectedItems, !item.isArchiveEntry else { return }
+        guard canModifySelectedItems, !isBrowsingTrash, !item.isArchiveEntry else { return }
         do {
             let newURL = try FileOperations.rename(item.url, to: name)
             registerUndoRename(from: newURL, to: item.name, actionName: "Rename")
@@ -1046,6 +1084,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         registerUndo(actionName: actionName) { me, _ in
             do {
                 let pairs = try FileOperations.trash(urls)
+                TrashOrigins.shared.record(pairs)
                 me.registerUndoMove(pairs.map { (from: $0.original, to: $0.trashed) }, actionName: actionName)
             } catch { me.report(error, context: "undo copy (trash)") }
             me.reload()
@@ -1071,13 +1110,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let hasSelection = !fileView.selectedItems.isEmpty
         switch item.action {
         case #selector(copy(_:)), #selector(quickLook(_:)): return canPreviewSelection
-        case #selector(cut(_:)), #selector(duplicate(_:)), #selector(moveToTrash(_:)), #selector(deletePermanently(_:)):
+        case #selector(cut(_:)), #selector(duplicate(_:)), #selector(moveToTrash(_:)):
+            return canModifySelectedItems && hasSelection && !isBrowsingTrash
+        case #selector(deletePermanently(_:)):
             return canModifySelectedItems && hasSelection
         case #selector(renameSelection(_:)):
             // Finder switches this row to "Rename N Items…" for a multi-selection.
             let count = fileView.selectedItems.count
             item.title = Self.batchRenameTitle(count: count)
-            return canModifySelectedItems && count >= 1
+            return canModifySelectedItems && !isBrowsingTrash && count >= 1
         case #selector(ctxRevealEnclosingFolder(_:)):
             return isSearching && contextTargets(for: item).count == 1
         case #selector(compressSelection(_:)):
@@ -1100,6 +1141,13 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         case #selector(moveToOtherPane(_:)): return canModifySelectedItems && hasSelection && host?.isSplit == true
         case #selector(paste(_:)):
             return canModifyCurrentLocation && NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        case #selector(putBackSelection(_:)):
+            return applyPutBackEnablement(to: item, urls: fileView.selectedItems.map(\.url))
+        case #selector(ctxPutBack(_:)):
+            return applyPutBackEnablement(to: item, urls: contextTargets(for: item).map(\.url))
+        case #selector(emptyTrash(_:)):
+            item.title = TrashLocation.emptyTrashMenuTitle
+            return canEmptyTrash
         default:
             return true
         }
@@ -1215,6 +1263,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             addViewItems()
             return menu
         }
+        if isBrowsingTrash { return trashContextMenu(for: items, into: menu) }
         if isSearching, !items.isEmpty {
             add("Reveal in Enclosing Folder", #selector(ctxRevealEnclosingFolder(_:)), enabled: items.count == 1)
             menu.addItem(.separator())
@@ -1306,7 +1355,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let item = NSMenuItem(title: "Sort By", action: nil, keyEquivalent: "")
         let sub = NSMenu()
         for (title, key) in [("Name", DirectoryModel.SortKey.name), ("Date Modified", .dateModified),
-                             ("Size", .size), ("Kind", .kind)] {
+                             ("Date Created", .dateCreated), ("Date Last Opened", .dateLastOpened),
+                             ("Date Added", .dateAdded), ("Size", .size), ("Kind", .kind)] {
             let mi = NSMenuItem(title: title, action: #selector(ctxSort(_:)), keyEquivalent: "")
             mi.target = self; mi.representedObject = key.rawValue
             mi.state = model.sortKey == key ? .on : .off
@@ -1387,6 +1437,55 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
     @objc private func ctxToggleSortOrder(_ s: Any?) {
         fileList.setSort(key: model.sortKey, ascending: !model.ascending)
+    }
+
+    /// Finder's Trash menu: no New Folder, Paste, Rename, Duplicate or
+    /// Compress; Put Back and Empty Trash… instead. See UI/TrashBrowser.swift.
+    private func trashContextMenu(for items: [FileItem], into menu: NSMenu) -> NSMenu {
+        @discardableResult
+        func row(_ title: String, _ action: Selector?, enabled: Bool = true, symbol: String? = nil) -> NSMenuItem {
+            let mi = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            mi.target = self; mi.isEnabled = enabled
+            mi.image = MenuIcons.image(symbol)
+            menu.addItem(mi)
+            return mi
+        }
+        if items.isEmpty {
+            row("Get Info", #selector(ctxGetInfo(_:)), symbol: "info.circle")
+            row(TrashLocation.emptyTrashMenuTitle, #selector(emptyTrash(_:)), enabled: canEmptyTrash, symbol: "trash.slash")
+            menu.addItem(.separator())
+            row("Reload", #selector(ctxReload(_:)), symbol: "arrow.clockwise")
+            row("Show Hidden Files", #selector(ctxToggleHidden(_:))).state = showsHiddenFiles ? .on : .off
+            menu.addItem(sortMenuItem())
+            return menu
+        }
+        let verdict = putBackEnablement(for: items.map(\.url))
+        row("Open", #selector(ctxOpen(_:)))
+        menu.addItem(.separator())
+        row(TrashLocation.putBackTitle, #selector(ctxPutBack(_:)), enabled: verdict.enabled,
+            symbol: "arrow.uturn.backward").toolTip = verdict.tooltip
+        row("Quick Look", #selector(ctxQuickLook(_:)), symbol: "eye")
+        row("Get Info", #selector(ctxGetInfo(_:)), symbol: "info.circle")
+        row("Copy", #selector(ctxCopy(_:)), symbol: "document.on.document|doc.on.doc")
+        row(items.count == 1 ? "Copy Path" : "Copy Paths", #selector(ctxCopyPath(_:)))
+        menu.addItem(.separator())
+        row("Delete Immediately…", #selector(deletePermanently(_:)), symbol: "trash")
+        row(TrashLocation.emptyTrashMenuTitle, #selector(emptyTrash(_:)), enabled: canEmptyTrash, symbol: "trash.slash")
+        return menu
+    }
+
+    /// One place decides Put Back's enablement and its "why not" tooltip, for
+    /// both the File menu row and the contextual one.
+    private func applyPutBackEnablement(to item: NSMenuItem, urls: [URL]) -> Bool {
+        let verdict = putBackEnablement(for: urls)
+        item.toolTip = verdict.tooltip
+        return verdict.enabled
+    }
+
+    @objc private func ctxPutBack(_ s: Any?) {
+        let targets = contextTargets(for: s)
+        selectContextTargets(targets)
+        putBack(targets.map(\.url))
     }
 
     // MARK: - Private

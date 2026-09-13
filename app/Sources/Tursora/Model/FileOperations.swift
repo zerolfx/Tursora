@@ -146,9 +146,20 @@ enum FileOperations {
     }
 
     /// Finder-visible trash with Put Back. Returns (original, trashed) pairs.
+    /// While `TrashLocation.userTrashOverride` is set the items move into that
+    /// fixture directory instead, so a check can never write into the real
+    /// `~/.Trash`; with no override this is `FileManager.trashItem` unchanged.
     static func trash(_ urls: [URL]) throws -> [(original: URL, trashed: URL)] {
         var out: [(URL, URL)] = []
         for url in mutationSources(urls) {
+            if let fixture = TrashLocation.userTrashOverride {
+                let base = fixture.appendingPathComponent(url.lastPathComponent)
+                let destination = itemExists(base) ? uniqueURL(for: base) : base
+                try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+                try FileManager.default.moveItem(at: url, to: destination)
+                out.append((url, destination))
+                continue
+            }
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             if let r = result as URL? { out.append((url, r)) }
@@ -160,15 +171,21 @@ enum FileOperations {
         for url in mutationSources(urls) { try FileManager.default.removeItem(at: url) }
     }
 
-    /// Finder's drop rule, shared by the list, grid, sidebar, folder tree and tab strip:
-    /// ⌥ forces a copy, the same volume moves, another volume copies, and a drop
-    /// onto an item's own folder or onto itself does nothing.
+    /// Finder's drop rule, shared by the list, grid, sidebar, folder tree, tab
+    /// strip and breadcrumb: ⌥ forces a copy, ⌘ forces a move even across
+    /// volumes, otherwise the same volume moves and another volume copies; a
+    /// drop onto an item's own folder or onto itself does nothing.
+    ///
+    /// AppKit narrows the drag source's mask by the held modifier, so the
+    /// modifiers arrive here as the mask itself: `.copy` for ⌥ and `.generic`
+    /// for ⌘ (see `DragAndDrop.sourceMask(readOnly:local:)`).
     static func dropOperation(for urls: [URL], into destination: URL, sourceMask: NSDragOperation) -> NSDragOperation {
         guard !urls.isEmpty else { return [] }
         if urls.contains(where: { $0.standardizedFileURL == destination.standardizedFileURL }) { return [] }
         let alreadyThere = urls.allSatisfy { $0.deletingLastPathComponent().standardizedFileURL == destination.standardizedFileURL }
         if sourceMask == .copy { return .copy }
         if alreadyThere { return [] }
+        if sourceMask == .generic { return .move }      // ⌘ moves, whatever the volumes
         return sameVolume(urls[0], destination) ? .move : .copy
     }
 

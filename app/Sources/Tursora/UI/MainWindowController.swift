@@ -122,6 +122,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         sidebar.onOpenInNewTab = { [weak self] url in self?.tabs.newTab(at: url) }
         sidebar.onOpenInOtherPane = { [weak self] url in self?.tabs.openInOtherPane(url) }
         sidebar.onDropFiles = { [weak self] urls, dest, op in self?.browser.dropFiles(urls, to: dest, op: op) }
+        // Spring-loaded places select the place; the folder tree expands in place.
+        sidebar.onSpringLoad = { [weak self] url in self?.browser.navigate(to: url) }
         sidebar.onFoldersChanged = { [weak self] in
             guard let self, !self.isRestoringWorkspace else { return }
             self.onSessionChanged?()

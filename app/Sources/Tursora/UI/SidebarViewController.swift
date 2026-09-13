@@ -19,6 +19,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     var onOpenInOtherPane: ((URL) -> Void)?
     /// Files dropped onto a place: (urls, destination folder, .move or .copy).
     var onDropFiles: (([URL], URL, NSDragOperation) -> Void)?
+    /// A place a drag hovered long enough to spring open (see UI/SpringLoading.swift).
+    var onSpringLoad: ((URL) -> Void)?
     private let contextMenu = NSMenu()
     private static let placeType = NSPasteboard.PasteboardType("com.tursora.place")
     private static let dndDebug = ProcessInfo.processInfo.environment["TURSORA_DND_DEBUG"] != nil
@@ -62,6 +64,13 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             ])
         }
         required init?(coder: NSCoder) { fatalError() }
+    }
+
+    /// The location of the place on `row`, for collaborators outside this file
+    /// (spring loading); nil for section headers and empty rows.
+    func placeURL(atRow row: Int) -> URL? {
+        guard row >= 0, row < outlineView.numberOfRows else { return nil }
+        return (outlineView.item(atRow: row) as? PlaceNode)?.place.url
     }
 
     func symbolView(atRow row: Int) -> NSImageView? {

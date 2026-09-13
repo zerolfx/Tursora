@@ -134,7 +134,9 @@ Locations
 - 模式、排序字段与升降序、列表和图标各自的缩放档位、分组字段及上次启用字段、隐藏文件和预览开关按目录策略持久化。离开返回、新标签、新分栏以及重启后再次打开同目录均恢复；无记录目录使用独立保存的默认值。新 pane 必须挂载对应模式的实际视图。
 - 工具栏的视图按钮始终反映活动 pane；菜单或快捷键切换后立即同步，后台 pane 改变模式不影响当前工具栏。
 - 图标视图：多选 / 框选、方向键、`Return` 重命名（预选主名）、`空格` Quick Look、拖放（拖到文件夹图标上 = 放进去）、右键菜单与列表一致。
-- 排序：名称 / 修改日期 / 大小 / 种类，升降序；文件夹始终在前。
+- 排序：名称 / 修改日期 / 创建日期 / 最后打开日期 / 添加日期 / 大小 / 种类（标签同 Finder `ArrangeByMenu.nib`），升降序；文件夹始终在前，同值回落名称（名称顺序随方向翻转）。三个日期新键的「无日期」项在升序与降序下都排在最后；`修改日期` 保持旧语义。三处入口一致：View ▸ Sort By、右键 Sort By、点击列表表头。图标视图无列，只跟随排序键。
+- 列表可选列：Date Modified / Date Created / Date Last Opened / Date Added / Size / Kind，顺序同 Finder `ViewOptionsWindow.nib` 的 "Show Columns:"。Name 恒显示，Location 仅搜索结果且恒在末列。默认显示 Date Modified / Size / Kind，其余隐藏。右键表头勾选切换，点击表头按该列排序。可见列集合随其它视图属性按目录记忆，参与「Use Current Settings as Default」与「Restore This Folder to Default」；列宽不持久化。
+- 文件夹大小：Size 列对文件夹显示条目数（"1 item" / "N items"，Finder `I_ITEMS_*` 措辞），不再显示 `--`。开启 `Calculate all sizes`（View ▸ Folder View Settings，或表头右键菜单；默认关闭、按目录记忆）后改为显示递归字节数，格式与文件相同。计算在后台进行：条目数一次目录读取，字节数用枚举器递归、跳过符号链接、忽略错误、超过 50 万项放弃；结果按（路径, 修改时间）缓存，并在 `DirectoryChanges` 到达时连同全部已测量祖先失效。按 Size 排序对文件夹使用已知的计算值，新值到达后自动重排。离开目录立即取消，晚到的结果不会显示在新目录里。ZIP 列表与搜索结果只算条目数，不做递归遍历。
 - 列表名称列最小宽度为 180 pt，窄分栏仍为文件名保留空间，不让日期、大小和种类列将其挤到无法辨认。
 - Settings 的 Show all filename extensions 默认开启；关闭后，列表 / 图标中的文件和包名称隐藏最后一段扩展名，普通文件夹名不变。只改变标签显示；过滤、排序、路径与重命名仍使用完整真名。新旧窗口、各标签和分栏同步更新。
 
@@ -159,11 +161,17 @@ Locations
 | 批量重命名（多选 ≥ 2 项） | File ▸ `Rename N Items…`、More 菜单同一项或右键菜单打开 Finder 式 sheet（不是模态对话框）：`Replace Text` / `Add Text` / `Format` 三种模式，实时预览每一项的新名称 |
 | `⌘⌫` / `⌘⌥⌫` | 移到废纸篓（Finder 可见、可放回）/ 立即删除（确认） |
 | 新建文件夹 `⌘⇧N` | "untitled folder"、"untitled folder 2"，创建后选中 |
-| 拖放 | 同卷 = 移动，跨卷 = 复制，`⌥` = 复制；拖到自己所在目录或自身 = 无操作；可拖到 Finder、侧边栏收藏、标签、另一 pane；跨标签拖放 |
+| 拖放 | 同卷 = 移动，跨卷 = 复制，`⌥` = 复制，`⌘` = 移动（跨卷也移动）；拖到自己所在目录或自身 = 无操作；可拖到 Finder、侧边栏收藏、文件夹树、标签、面包屑分段、另一 pane；跨标签拖放 |
 | Quick Look | `空格` / `⌘Y`，面板内方向键换项 |
 | 撤销 / 重做 | 覆盖重命名、批量重命名、移动、复制、复制副本、废纸篓；每个操作（整批算一个）自成一个撤销组，按窗口记 |
 | Open With | 右键子菜单：默认程序在前，其余按名 |
 | 其他右键项 | 在新标签 / 新窗口 / 另一 pane 中打开、复制 / 移动到另一 pane、在 Finder 中显示、复制路径、加入 / 移出收藏 |
+
+### 弹簧加载文件夹与面包屑投放（对标 Finder）
+
+拖拽悬停在文件夹上，经系统的弹簧延迟（全局键 `com.apple.springing.delay`，由 AppKit 计时，Tursora 不自建计时器）后自动打开：列表与图标视图让当前 pane 导航进去，侧栏位置被选中，文件夹树节点就地展开而不导航。只在「投放本来就会被接受」的地方弹开，并且文件、只读面板、归档位置、被拖对象自身、被拖对象已经所在的文件夹都不弹。Finder 会在拖拽离开后回滚它弹开的窗口，Tursora 不回滚。
+
+面包屑的每个**可见**分段都是投放目标，判定与列表 / 图标 / 侧栏 / 文件夹树 / 标签条共用同一条规则，目标是该分段所指的文件夹，悬停时高亮；折进 `…` 溢出菜单的分段不是目标，路径输入框展开时整条栏不接受投放。取证与推断范围见[拖放记录](research/drag-and-drop.md)。
 
 ### 批量重命名（对标 Finder「Rename Finder Items」）
 
@@ -349,3 +357,15 @@ UI 使用**工具栏右侧的名称过滤框**（`NSSearchToolbarItem`，标为 
 - Help 菜单里 macOS 自带的菜单项搜索保持不变；命令面板额外覆盖没有菜单项的命令、收藏与历史目录，并直接执行。
 
 实现、Finder 取证、推断部分与验证阶段见[命令面板记录](research/command-palette.md)。
+
+## 24. 废纸篓（浏览、放回原处、清倒）
+
+- 边栏 Locations 末尾固定一项 `Trash`（SF Symbol `trash`，不可移除、不可重排），Go 菜单新增 `Trash`。进入废纸篓就是一次普通目录列表：两种文件视图、多标签、分屏、过滤与分组都照常工作，状态栏语境显示 `Trash`，形式与 ZIP 的 `ZIP · Read-only` 一致。
+- 只处理**用户废纸篓**（`FileManager` 的 `.trashDirectory` + `.userDomainMask`）。卷级废纸篓（`/Volumes/X/.Trashes/501`）有解析函数但不浏览、不放回、不清倒，边栏也只有一项。
+- 废纸篓内禁用 New Folder、Paste、Rename、Duplicate、Compress、Extract、Cut 与 Move to Trash（菜单校验与命令入口都设守卫，键盘路径同样拒绝）；视图内的点按重命名也不启动。Copy、Copy Path、Quick Look、Get Info、Delete Immediately…、Put Back 与 Empty Trash… 可用。把项目拖出废纸篓沿用既有的同卷移动规则。
+- **放回原处**：macOS 把 Finder 的 put-back 路径写在废纸篓 `.DS_Store` 的私有记录里，格式未公开，Tursora **不解析它**，而是自建日志。`FileOperations.trash` 返回的 `(original, trashed)` 配对写入 `~/Library/Application Support/Tursora/TrashOrigins.json`（串行队列 + 原子写；读取失败、格式不符或版本不为 1 时保留原文件）。条目在放回成功、清倒、以及列出废纸篓时发现文件已不存在时移除，上限 5000 条。
+- Put Back 仅在「有日志条目 + 原父目录仍存在 + 原路径未被占用」时可用，经 `FileOperations.moveItem` 移动、注册撤销并发出 `DirectoryChanges`。不满足条件时该行置灰并用 tooltip 说明原因（未知来源 / 原目录已消失 / 原名被占用），绝不猜测来源。撤销把项目移回它在废纸篓中的**原路径**并恢复日志条目，重做再次还原。
+- **清倒废纸篓**：File ▸ `Empty Trash…` 与废纸篓背景右键菜单。该项**默认不带快捷键**：实测 NSMenu 对 `⌫` 类键等价忽略 Shift，绑定 ⇧⌘⌫ 的菜单项会响应普通 ⌘⌫、反之亦然，而 Move to Trash 在菜单里更靠前，所以 Finder 的 ⇧⌘⌫ 既到不了这一项，又会在用户清掉 Move to Trash 绑定后让 ⌘⌫ 触发不可撤销的清倒。需要时可在 Settings ▸ Shortcuts 自行指定。确认弹窗使用 Finder 文案；无头运行只打印并经注入钩子决定。确认后在后台队列逐个 `FileManager.removeItem` 删除用户废纸篓的全部顶层项目，失败经 `FileOperations.report` 汇报，随后发出 `DirectoryChanges`。与 Finder 一致，**不可撤销**。废纸篓为空时该菜单项置灰。
+- **列目录被拒**（缺少完全磁盘访问权限时 `~/.Trash` 会被拒）在窗格内显示横幅，提供「Open Privacy Settings」与「Try Again」，原有列表保持可用。**任何情况下都不弹模态**；无头运行只打印。判定条件是 `EPERM` / `EACCES` 或 `NSFileReadNoPermissionError`（含 `NSUnderlyingErrorKey` 包装），`ENOENT` 不算。
+
+取证、推断部分、边界与验证见[废纸篓记录](research/trash.md)。

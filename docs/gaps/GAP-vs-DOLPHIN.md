@@ -13,7 +13,7 @@
 | 分组显示（`group_by`） | ✅ 按 Finder 的 Use Groups / Group By 做，9 种键（含 None，Tags 明确不做） | 列表组头吸顶，图标视图分节 |
 | **附加信息列**（`additional_info`，约 30 列：创建/访问时间、扩展名、权限、所有者、链接目标、路径、评分、标签、注释、字数、行数、图片尺寸、时长、艺术家…） | 普通目录有 名称/修改日期/大小/种类；搜索另有 Location | (mac) 大部分可由 Spotlight 元数据（`kMDItem*`）提供 |
 | 排序选项：降序 / 文件夹优先 / **隐藏文件靠后** | 升降 ✅，文件夹优先固定开 | 缺"隐藏靠后"，"文件夹优先"不可关 |
-| **文件夹项目数 / 递归大小列**（`KDirectoryContentsCounter`） | ❌ | 大小列对文件夹显示 `--` |
+| **文件夹项目数 / 递归大小列**（`KDirectoryContentsCounter`） | ✅ | Size 列默认显示条目数（Finder 的 "N items"），`Calculate all sizes` 打开后显示递归字节数；后台计算、按目录记忆、ZIP 与搜索结果只算条目数（[记录](../research/sort-columns-folder-sizes.md)） |
 | **每目录视图属性**（模式 / 排序 / 缩放 / 隐藏与恢复默认） | ✅ 每目录记忆 / 统一默认、保存当前默认、恢复当前目录 | 两种缩放档位、分组和预览一并保存；应用自身版本化路径库，无 `.directory` 或 xattr。递归应用到子目录、列宽 / 附加列与随移动追踪仍未实现；依据及边界见[研究](../research/directory-view-properties.md) |
 | Compact 视图（第三种模式） | ❌ | 优先级低 |
 | 悬停 tooltip（元数据 + 预览） | ❌ | Quick Look 部分替代 |
@@ -40,8 +40,8 @@
 | 冲突对话框的批量选项（全部跳过/全部覆盖/自动重命名） | ✅ Finder 式 | Keep Both / Skip / Stop / Replace / Merge + "Apply to all" |
 | 属性对话框（`properties`：权限、大小统计、打开方式、图标） | ✅ Get Info / Inspector | (mac) Finder 文字与系统预览；权限为 POSIX 子集 |
 | 显示链接目标（`show_target`） | ❌ | |
-| 清空废纸篓 / 浏览 `trash:/` / 放回 | 移入 Finder 废纸篓 ✅ | (mac) "清空废纸篓"可调 Finder；浏览可列 `~/.Trash` |
-| 拖放松手弹出 复制/移动/链接 菜单 | 按 Finder 规则自动决定 | 设计选择，可做成偏好 |
+| 清空废纸篓 / 浏览 `trash:/` / 放回 | ✅ 用户废纸篓 | 边栏 / Go 菜单进入，普通列表浏览；Put Back 用自建日志（Finder 的 put-back 记录在私有 `.DS_Store` 里），Empty Trash… 用 Finder 文案；卷级废纸篓未实现（[记录](../research/trash.md)） |
+| 拖放松手弹出 复制/移动/链接 菜单 | 按 Finder 规则自动决定 | 设计选择，可做成偏好。⌘ 强制移动、弹簧加载文件夹与面包屑投放已实现（[记录](../research/drag-and-drop.md)） |
 | 在终端中打开（`open_terminal_here`） | ❌ | (mac) Terminal.app / iTerm |
 | 压缩/解压（Ark 服务菜单） | ✅ 普通 ZIP | 系统 ditto / libarchive；密码和其他格式未实现 |
 | 比较文件（Kompare）、磁盘空间（Filelight） | ❌ | 外部工具，低优先 |
@@ -90,7 +90,7 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 用户将工作连续性排到小功能之前；会话恢复本轮已实现，当前先完成其构建、三轮 smoke 和实机验证，见[记录](../research/workspace-sessions.md)。以下保留其余候选功能的成本排序。
 
 1. ~~过滤栏~~、反选、最近关闭标签列表、`.hidden`/`UF_HIDDEN` —— 小
-2. 新建模板、文件夹项目数列、分组显示 —— 中
+2. 新建模板 —— 中
 3. ~~会话恢复（本轮实现与验证完成）~~、~~复制 / 移动进度与逐任务控制~~、~~冲突批量选项~~ —— 中
 4. 面板停靠 / 浮动、更多偏好策略、中文本地化 —— 中大
 5. 更多信息列（Spotlight 元数据）、视图属性递归应用与列布局持久化 —— 中大
@@ -168,3 +168,16 @@ Quick Look（空格）、移入系统废纸篓及撤销、拖到 Finder/其他 A
 
 - [x] ⇧⌘O 打开的模糊命令面板，覆盖全部命令、侧栏收藏与当前窗格历史目录；命令按菜单语义执行，不可用命令置灰列出。Dolphin 无此功能，属 Tursora 自有能力。
 - 打包应用的可视检查仍待补；范围与推断见[命令面板记录](../research/command-palette.md)。
+
+## 排序、列、文件夹大小与拖放
+
+- [x] 排序键补齐 Date Created / Date Added / Date Last Opened，三处入口一致；无日期项两个方向都垫底。
+- [x] 详情视图可选列（右键表头勾选）与按目录持久化；列宽不持久化，Version / Comments / Tags 未做。
+- [x] 文件夹条目数与可选的递归大小计算，后台取消与缓存失效；ZIP 与搜索结果只算条目数。
+- [x] ⌘ 强制移动、弹簧加载文件夹（列表 / 图标 / 侧栏 / 文件夹树）、面包屑分段投放。
+- Dolphin 的「松手弹出 复制/移动/链接 菜单」仍是设计选择，未实现。
+
+## 废纸篓
+
+- [x] 浏览用户废纸篓、Put Back（自建日志）、Empty Trash…（Finder 文案 + 确认）、无权限时的窗格内横幅。
+- 卷级废纸篓、Finder 之外移入项目的放回仍未实现；范围见[废纸篓记录](../research/trash.md)。

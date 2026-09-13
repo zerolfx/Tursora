@@ -252,7 +252,7 @@ final class FoldersPanelController: NSViewController, NSOutlineViewDataSource, N
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
         guard let node = item as? FolderTreeModel.Node, index == NSOutlineViewDropOnItemIndex else { return [] }
-        return FileOperations.dropOperation(for: info.fileURLs, into: node.url, sourceMask: info.draggingSourceOperationMask)
+        return DragAndDrop.validationOperation(for: info.fileURLs, into: node.url, sourceMask: info.draggingSourceOperationMask)
     }
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         let urls = info.fileURLs

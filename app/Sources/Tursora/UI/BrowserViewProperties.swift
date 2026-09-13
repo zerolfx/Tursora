@@ -17,6 +17,8 @@ extension BrowserViewController {
         properties.groupKey = model.groupKey
         properties.showHidden = model.showHidden
         properties.showPreviews = showsPreviews
+        properties.listColumns = fileList.visibleColumns.sorted()
+        properties.calculateAllSizes = model.folderSizes.calculatesAllSizes
         return properties
     }
 
@@ -48,6 +50,11 @@ extension BrowserViewController {
         // Expanding obsolete groups can otherwise scroll its name column away.
         model.showHidden = properties.showHidden
         model.groupKey = properties.groupKey
+        // A ZIP's extracted listing never gets a recursive walk; its counts
+        // still come from one directory read.
+        model.folderSizes.allowsRecursiveSizes = !isBrowsingArchive
+        model.folderSizes.calculatesAllSizes = properties.calculateAllSizes
+        fileList.setVisibleColumns(properties.listColumns)
         fileList.setSort(key: properties.sortKey, ascending: properties.ascending)
         setViewMode(properties.viewMode)
         setZoomIndex(properties.zoomIndex(for: properties.viewMode))
@@ -118,6 +125,9 @@ extension MainWindowController {
             return browser.canPersistViewProperties
         case #selector(restoreFolderViewDefaults(_:)):
             return browser.canPersistViewProperties && browser.viewPropertiesStore.policy == .perDirectory
+        case #selector(toggleCalculateAllSizes(_:)):
+            item.state = browser.model.folderSizes.calculatesAllSizes ? .on : .off
+            return browser.canCalculateFolderSizes
         default: return nil
         }
     }
