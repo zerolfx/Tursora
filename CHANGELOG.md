@@ -4,6 +4,8 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-14
+
 ### Added
 
 - Renaming several selected items opens Finder's Rename Finder Items sheet: Replace Text, Add Text and Format (Name and Index, Name and Counter, Name and Date), with a live preview of every new name and an inline reason whenever a name is empty, illegal or already taken. Chains, swaps and case-only renames work, nothing outside the batch is ever overwritten, and the whole batch is one undo step. Available from File ▸ Rename N Items…, the More menu and the context menu, in list and icon views, split panes and search results.
@@ -25,6 +27,10 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 ### Documentation
 
 - Removed the stale handoff pointer, corrected the per-file architecture map (misplaced rows, three unlisted files, a pasted sentence), pointed the bundle version and DMG wheel pins at the scripts that own them, replaced duplicated rule, release and site sections with links, updated the terminal shortcut text, and reduced the product-site README to build and review instructions.
+
+### Changed
+
+- The version the project ships is now written in one place, a `VERSION` file at the repository root. The website and the installation guide take it from there when they are built, and the README links to the latest release instead of naming a version, so a release no longer edits the number into a dozen sentences.
 
 ## [0.2.1] - 2026-09-13
 
@@ -103,7 +109,8 @@ First release of Tursora, a native macOS file manager built with Swift and AppKi
 
 Earlier implementation notes and historical verification counts are preserved in [Development history](docs/DEVELOPMENT_HISTORY.md). Use the [documentation index](docs/README.md) to find feature-specific verification and remaining limits.
 
-[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/zerolfx/Tursora/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/zerolfx/Tursora/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/zerolfx/Tursora/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/zerolfx/Tursora/releases/tag/v0.1.0

@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Native Swift and AppKit">
 </p>
 <p align="center">
-  <a href="#installation"><strong>Install 0.2.1</strong></a> ·
+  <a href="#installation"><strong>Install</strong></a> ·
   <a href="#features">Features</a> ·
   <a href="#terminal-and-zip">Terminal &amp; ZIP</a> ·
   <a href="#what-finder-still-does-that-tursora-doesnt">Finder differences</a> ·
@@ -24,13 +24,13 @@ Browse, preview and organize files with familiar Mac controls, split panes, edit
 
 <a id="installation"></a>
 
-## Install Tursora 0.2.1
+## Install Tursora
 
 **macOS 14+ · Apple Silicon · Free and open source.** [Download the latest stable release](https://github.com/zerolfx/Tursora/releases/latest) · [中文安装指南](https://zerolfx.github.io/Tursora/zh.html#installation)
 
-**[0.2.1 is available](https://github.com/zerolfx/Tursora/releases/tag/v0.2.1).** Download the DMG and install it in four steps:
+**[Download the latest release](https://github.com/zerolfx/Tursora/releases/latest).** Install it in four steps:
 
-1. From the release page, download **`Tursora-0.2.1-macOS-arm64.dmg`**. The same page includes `SHA256SUMS.txt` to verify the download.
+1. From the release page, download the **`Tursora-<version>-macOS-arm64.dmg`** asset. The same page includes `SHA256SUMS.txt` to verify the download.
 2. Open the DMG.
 3. Copy **Tursora.app** to a writable folder. The installer’s **Applications** shortcut points to `/Applications`; use `~/Applications` or another folder if you prefer or lack permission there.
 4. Open the installed copy. If macOS cannot verify the app, use the [simple Terminal method](#first-launch) with its actual path. For a copy you own and can write, this normally needs no administrator password.
@@ -51,7 +51,7 @@ brew install --cask zerolfx/tursora/tursora
 
 If an error says `zerolfx/homebrew-tursora` was not found, Homebrew used its default tap address. Run the first command above with the full URL before installing.
 
-The trust command allows Homebrew to load this cask's installation code. The tap installs the published 0.2.1 DMG with its verified SHA-256. See [Homebrew details](#homebrew) for updates and uninstalling, or [troubleshooting](#homebrew-troubleshooting) if installation fails.
+The trust command allows Homebrew to load this cask's installation code. The tap installs the published DMG with its verified SHA-256. See [Homebrew details](#homebrew) for updates and uninstalling, or [troubleshooting](#homebrew-troubleshooting) if installation fails.
 
 For a different destination, add `--appdir="$HOME/Applications"` (or your chosen folder) to the third command. If Homebrew itself needs permissions you do not have, use the DMG instead. Both methods use the same [first-launch steps](#first-launch).
 
@@ -61,7 +61,7 @@ Quick Look, macOS sharing and familiar file operations meet Dolphin-inspired spl
 
 Tursora is an early project and does not yet cover everything Finder can do. The [differences below](#what-finder-still-does-that-tursora-doesnt) are part of the picture.
 
-The features below are available in 0.2.1. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size. Key combinations below are the defaults; customize application commands in **Settings → Shortcuts**.
+The features below are in the latest release. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size. Key combinations below are the defaults; customize application commands in **Settings → Shortcuts**.
 
 <table>
   <thead>
@@ -181,7 +181,7 @@ The features below are available in 0.2.1. See the [version history](CHANGELOG.m
 
 ## Terminal & ZIP
 
-Both features are **enabled by default** in 0.2.1. Change them in **Tursora → Settings…** (`⌘,`). Existing saved choices are preserved.
+Both features are **enabled by default**. Change them in **Tursora → Settings…** (`⌘,`). Existing saved choices are preserved.
 
 <table>
   <thead>
@@ -244,7 +244,7 @@ Requires **macOS 14 or later**. Downloadable builds currently target **Apple Sil
 
 ### Homebrew
 
-The repository includes a Homebrew cask for the published **0.2.1** Apple Silicon DMG. Run all three commands in order, continuing only after each succeeds:
+The repository includes a Homebrew cask for the published Apple Silicon DMG. Run all three commands in order, continuing only after each succeeds:
 
 ```sh
 brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
@@ -286,9 +286,9 @@ For a damaged-app message, redownload and verify the checksum first. A warning t
 
 ### Software updates
 
-Version 0.2.0 adds **Tursora → Check for Updates…** and **Settings… → Updates**. Automatic checks are enabled by default and run daily; you can turn them off and still check manually. **Automatically download and install updates** is a separate option, disabled by default. When enabled, verified updates can install when you quit. Turning off automatic checks disables that control while preserving its saved choice; changing these options does not cancel an update already downloaded or scheduled to install on quit.
+Since 0.2.0 Tursora has **Tursora → Check for Updates…** and **Settings… → Updates**. Automatic checks are enabled by default and run daily; you can turn them off and still check manually. **Automatically download and install updates** is a separate option, disabled by default. When enabled, verified updates can install when you quit. Turning off automatic checks disables that control while preserving its saved choice; changing these options does not cancel an update already downloaded or scheduled to install on quit.
 
-Stable releases can update through the app. The current update feed provides 0.2.1 with its signed DMG. See [release verification and its scope](docs/research/release-0.2.1.md).
+Stable releases can update through the app. The update feed offers the latest stable release with its signed DMG. Each release has its own verification record, listed in [the documentation index](docs/README.md).
 
 ### Build locally
 

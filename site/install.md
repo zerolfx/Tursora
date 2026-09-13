@@ -1,6 +1,6 @@
 # Install Tursora
 
-Tursora is free, MIT-licensed software for **macOS 14 or later on Apple Silicon (arm64)**. The current stable release is [0.2.1](https://github.com/zerolfx/Tursora/releases/tag/v0.2.1). Its app is ad-hoc signed and not notarized by Apple.
+Tursora is free, MIT-licensed software for **macOS 14 or later on Apple Silicon (arm64)**. The current stable release is [{{VERSION}}](https://github.com/zerolfx/Tursora/releases/tag/v{{VERSION}}). Its app is ad-hoc signed and not notarized by Apple.
 
 You can give an agent this request:
 
@@ -30,8 +30,8 @@ Keep the full repository URL: without it, Homebrew may look for the nonexistent 
 
 ## Otherwise, use the official DMG
 
-1. Download `Tursora-0.2.1-macOS-arm64.dmg` and `SHA256SUMS.txt` from the [same official release](https://github.com/zerolfx/Tursora/releases/tag/v0.2.1).
-2. In the download directory, run `shasum -a 256 Tursora-0.2.1-macOS-arm64.dmg`. Compare all 64 hexadecimal characters with the entry named exactly `Tursora-0.2.1-macOS-arm64.dmg` in `SHA256SUMS.txt`, not the appcast entry. Stop if the entry is missing or the digest differs.
+1. Download `Tursora-{{VERSION}}-macOS-arm64.dmg` and `SHA256SUMS.txt` from the [same official release](https://github.com/zerolfx/Tursora/releases/tag/v{{VERSION}}).
+2. In the download directory, run `shasum -a 256 Tursora-{{VERSION}}-macOS-arm64.dmg`. Compare all 64 hexadecimal characters with the entry named exactly `Tursora-{{VERSION}}-macOS-arm64.dmg` in `SHA256SUMS.txt`, not the appcast entry. Stop if the entry is missing or the digest differs.
 3. Before copying, check the destination. If an application already exists there, stop and ask about the actual conflict before replacing it. Preserve its settings and user files.
 4. Open the verified DMG and copy `Tursora.app` out of the read-only image into the selected directory. The installer's Applications shortcut points specifically to `/Applications`; use the chosen folder directly for another destination. Eject the image after copying.
 
