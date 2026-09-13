@@ -7,8 +7,10 @@ CONFIG="${1:-release}"
 APP_NAME="Tursora"
 EXEC_NAME="Tursora"
 BUNDLE_ID="${TURSORA_BUNDLE_ID:-com.tursora.Tursora}"
-VERSION="${TURSORA_VERSION:-0.2.1}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# One source of truth for the version: the VERSION file at the repository root.
+# The Release workflow overrides it with the version it was dispatched with.
+VERSION="${TURSORA_VERSION:-$(tr -d "[:space:]" < "$ROOT/../VERSION")}"
 # A given source commit has the same update version locally and in every workflow.
 # Release publication also checks this against the current stable appcast.
 BUILD_NUMBER="${TURSORA_BUILD:-$(git -C "$ROOT" show -s --format=%ct HEAD)}"

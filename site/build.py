@@ -14,6 +14,10 @@ sys.path.insert(0, str(ROOT / "app/tools"))
 from screenshot_alpha import validate as validate_screenshot_alpha
 
 DIST = SITE / "dist"
+# The published version lives in one place. Pages and the installation guide
+# carry a {{VERSION}} placeholder so a release never edits prose in four files.
+VERSION_FILE = ROOT / "VERSION"
+SUBSTITUTED = ("index.html", "zh.html", "install.md")
 PAGES = {"index.html": "en", "zh.html": "zh-CN"}
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 ASSETS = {
@@ -135,8 +139,25 @@ def validate():
     return len(references)
 
 
+def release_version():
+    version = VERSION_FILE.read_text(encoding="utf-8").strip()
+    if not re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?", version):
+        raise ValueError(f"VERSION must be a semantic version without a leading v, found {version!r}")
+    return version
+
+
+def substitute(text, version, filename):
+    text = text.replace("{{VERSION}}", version)
+    leftover = re.search(r"\{\{[A-Z_]+\}\}", text)
+    if leftover:
+        raise ValueError(f"{filename} has an unsubstituted placeholder {leftover.group(0)}")
+    return text
+
+
 def main():
-    html = {filename: (SITE / filename).read_text(encoding="utf-8") for filename in PAGES}
+    version = release_version()
+    html = {filename: substitute((SITE / filename).read_text(encoding="utf-8"), version, filename)
+            for filename in PAGES}
     assets = dict(ASSETS)
     for source in assets.values():
         if not source.is_file():
@@ -153,13 +174,15 @@ def main():
     (DIST / "assets").mkdir(parents=True)
     for filename, content in html.items():
         (DIST / filename).write_text(content, encoding="utf-8")
-    for filename in ("styles.css", "main.js", "install.md"):
+    for filename in ("styles.css", "main.js"):
         shutil.copy2(SITE / filename, DIST / filename)
+    (DIST / "install.md").write_text(
+        substitute((SITE / "install.md").read_text(encoding="utf-8"), version, "install.md"), encoding="utf-8")
     for filename, source in assets.items():
         shutil.copy2(source, DIST / "assets" / filename)
     reference_count = validate()
     size = sum(path.stat().st_size for path in DIST.rglob("*") if path.is_file())
-    print(f"Built site/dist: {len(PAGES)} languages, {len(assets)} canonical assets, {reference_count} references checked, {size / 1024:.0f} KiB; {len(screenshots)} screenshots passed alpha checks.")
+    print(f"Built site/dist for {version}: {len(PAGES)} languages, {len(assets)} canonical assets, {reference_count} references checked, {size / 1024:.0f} KiB; {len(screenshots)} screenshots passed alpha checks.")
     print("Preview: python3 -m http.server 8080 --directory site/dist")
 
 

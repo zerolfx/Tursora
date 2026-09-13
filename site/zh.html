@@ -153,7 +153,7 @@
     <section class="download wrap" id="installation" aria-labelledby="download-title">
       <div class="download-copy" id="download">
         <img class="download-icon" src="assets/AppIcon.png" width="64" height="64" alt="" loading="lazy">
-        <p class="eyebrow">安装指南 · 0.2.1</p>
+        <p class="eyebrow">安装指南 · {{VERSION}}</p>
         <h2 id="download-title">下载并安装<br>Tursora</h2>
         <p>Tursora 免费使用，以 MIT 许可证开源。<br class="desktop-break">欢迎下载，也欢迎阅读源码、修改和贡献。</p>
         <div class="download-actions">
@@ -177,9 +177,9 @@
           <div><dt>签名</dt><dd>ad-hoc 签名，尚未公证</dd></div>
         </dl>
         <h3 class="install-method">通过 DMG 安装</h3>
-        <p class="install-note">0.2.1 已发布，提供 Apple Silicon 的 DMG 安装包。</p>
+        <p class="install-note">{{VERSION}} 已发布，提供 Apple Silicon 的 DMG 安装包。</p>
         <ol class="download-steps">
-          <li>在<a class="inline-link" href="https://github.com/zerolfx/Tursora/releases/latest">最新正式版本</a>下载 <span lang="en">Tursora-0.2.1-macOS-arm64.dmg</span>；同页提供 SHA-256 校验文件，无需 GitHub 账号。</li>
+          <li>在<a class="inline-link" href="https://github.com/zerolfx/Tursora/releases/latest">最新正式版本</a>下载 <span lang="en">Tursora-{{VERSION}}-macOS-arm64.dmg</span>；同页提供 SHA-256 校验文件，无需 GitHub 账号。</li>
           <li>双击打开 DMG。</li>
           <li>将 <span lang="en">Tursora.app</span> 复制到可写入的目录：<code>/Applications</code>、<code>~/Applications</code> 或其他位置均可。</li>
           <li>打开复制后的应用，不要直接在只读 DMG 内运行。</li>
@@ -193,7 +193,7 @@
         <pre class="install-code" aria-label="Homebrew 安装命令"><code>brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
 brew trust --cask zerolfx/tursora/tursora
 brew install --cask zerolfx/tursora/tursora</code></pre>
-        <p class="install-note">若报错提示找不到 <span lang="en">zerolfx/homebrew-tursora</span>，Homebrew 使用了默认 tap 地址。请先完整执行上方含 URL 的第一条命令。Tap 安装已发布的 0.2.1 DMG，并校验固定 SHA-256。<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew">更新与卸载说明 <span aria-hidden="true">↗</span></a></p>
+        <p class="install-note">若报错提示找不到 <span lang="en">zerolfx/homebrew-tursora</span>，Homebrew 使用了默认 tap 地址。请先完整执行上方含 URL 的第一条命令。Tap 安装已发布的 {{VERSION}} DMG，并校验固定 SHA-256。<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew">更新与卸载说明 <span aria-hidden="true">↗</span></a></p>
         <p class="install-note">第二条只信任 Tursora 的安装定义。若仍提示 <span lang="en">untrusted tap</span>，见<a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew-troubleshooting">安装排错说明</a>。</p>
         <p class="install-note">指定其他目录，可在第三条加上 <code>--appdir="$HOME/Applications"</code>，或替换为所需目录。若 Homebrew 自身的目录没有写入权限，直接用 DMG 安装即可。首次启动仍按上方步骤处理。</p>
         <h3 class="install-method" id="agent-install">让 agent 帮你安装</h3>

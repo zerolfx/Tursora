@@ -153,7 +153,7 @@
     <section class="download wrap" id="installation" aria-labelledby="download-title">
       <div class="download-copy" id="download">
         <img class="download-icon" src="assets/AppIcon.png" width="64" height="64" alt="" loading="lazy">
-        <p class="eyebrow">Install guide · 0.2.1</p>
+        <p class="eyebrow">Install guide · {{VERSION}}</p>
         <h2 id="download-title">Download and install<br>Tursora</h2>
         <p>Tursora is free to use and open source under the MIT license.<br class="desktop-break"> Download it, read the source, make changes or contribute.</p>
         <div class="download-actions">
@@ -177,9 +177,9 @@
           <div><dt>Signing</dt><dd>Ad-hoc signed, not notarized</dd></div>
         </dl>
         <h3 class="install-method">Install from the DMG</h3>
-        <p class="install-note">Version 0.2.1 is available as an Apple Silicon DMG.</p>
+        <p class="install-note">Version {{VERSION}} is available as an Apple Silicon DMG.</p>
         <ol class="download-steps">
-          <li>From <a class="inline-link" href="https://github.com/zerolfx/Tursora/releases/latest">the latest stable release</a> download  <span lang="en">Tursora-0.2.1-macOS-arm64.dmg</span>. The same page includes SHA-256 checksums. No GitHub account is needed.</li>
+          <li>From <a class="inline-link" href="https://github.com/zerolfx/Tursora/releases/latest">the latest stable release</a> download  <span lang="en">Tursora-{{VERSION}}-macOS-arm64.dmg</span>. The same page includes SHA-256 checksums. No GitHub account is needed.</li>
           <li>Double-click the DMG to open it.</li>
           <li>Copy <span lang="en">Tursora.app</span> to a writable folder: <code>/Applications</code>, <code>~/Applications</code> or another location.</li>
           <li>Open the installed copy, outside the read-only DMG.</li>
@@ -193,7 +193,7 @@
         <pre class="install-code" aria-label="Homebrew installation commands"><code>brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
 brew trust --cask zerolfx/tursora/tursora
 brew install --cask zerolfx/tursora/tursora</code></pre>
-        <p class="install-note">If an error says it cannot find  <span lang="en">zerolfx/homebrew-tursora</span>, Homebrew used the default tap address. Run the full-URL tap command above first. This tap installs the published 0.2.1 DMG and verifies its pinned SHA-256. <a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew">Update and uninstall instructions <span aria-hidden="true">↗</span></a></p>
+        <p class="install-note">If an error says it cannot find  <span lang="en">zerolfx/homebrew-tursora</span>, Homebrew used the default tap address. Run the full-URL tap command above first. This tap installs the published {{VERSION}} DMG and verifies its pinned SHA-256. <a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew">Update and uninstall instructions <span aria-hidden="true">↗</span></a></p>
         <p class="install-note">The second command trusts only the Tursora cask. If you still see  <span lang="en">untrusted tap</span>, see <a class="inline-link" href="https://github.com/zerolfx/Tursora#homebrew-troubleshooting">installation troubleshooting</a>.</p>
         <p class="install-note">To select another folder, add  <code>--appdir="$HOME/Applications"</code> to the third command, substituting your chosen path. If you cannot write to Homebrew itself, use the DMG instead. Follow the first-launch steps above for either method.</p>
         <h3 class="install-method" id="agent-install">Ask an agent to install it</h3>
