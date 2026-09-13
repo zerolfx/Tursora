@@ -11,7 +11,7 @@ Tursora is a Swift Package with one executable target, built with the Command Li
 | Language mode | Swift 5 (`swift-tools-version:5.9`) — see [DECISIONS.md](DECISIONS.md) D7 |
 | Frameworks | AppKit, Quartz (Quick Look UI), QuickLookThumbnailing, CoreServices (FSEvents, Spotlight MDItem), NetFS |
 | Swift package dependencies | SwiftTerm 1.15.0 and Sparkle 2.9.6 (exact pins); fetched by SPM on the first build |
-| DMG packaging | Python 3.10+; workflows use 3.13. Hash-pinned dmgbuild 1.6.7, ds-store 1.3.3 and mac-alias 2.2.3 are installed into `app/.build/dmg-tools` |
+| DMG packaging | Python 3.10+; workflows use 3.13. The hash-pinned wheels listed in `app/tools/dmg-requirements.txt` are installed into `app/.build/dmg-tools` |
 
 ## Build, run, package
 
@@ -31,7 +31,7 @@ cd app && tools/make-app.sh                # release build → app/build/Tursora
 
 The script then uses system `sips` and `iconutil` to regenerate the checked-in `AppIcon.icns` family. Both deliverable files must retain their alpha silhouette; do not restore opaque corners based on an assumption that the system will mask a manually packaged ICNS. `IconAssetsSmokeTests` decodes and normalizes pixels before checking transparent outer edges and corner regions, an opaque inset interior, an antialiased boundary, and transparent corners plus an opaque center in every decoded ICNS representation. The family must cover 16–1024 px. Inspect the packaged icon as well; pixel checks do not establish how every system surface or icon cache displays it. See [the icon evidence and current verification](research/app-icon-edges.md).
 
-`make-app.sh [debug|release]` runs `make-icon.sh` before building Swift, so each package regenerates the PNG and ICNS from the retained artwork. It assembles the bundle: `Info.plist` (bundle id `com.tursora.Tursora`, TCC usage strings and updater configuration), the executable, `AppIcon.icns` registered through `CFBundleIconFile`, and an ad-hoc `codesign`. `CFBundleShortVersionString` defaults to `0.1.0`; `CFBundleVersion` defaults to the source commit's Unix committer timestamp (`git show -s --format=%ct HEAD`). `TURSORA_VERSION`, `TURSORA_BUILD` and `TURSORA_BUNDLE_ID` can override metadata for controlled local checks; the packaging validator receives that chosen identifier. Release validation independently requires `com.tursora.Tursora`. Changing public application identity is a separate migration, not a release setting.
+`make-app.sh [debug|release]` runs `make-icon.sh` before building Swift, so each package regenerates the PNG and ICNS from the retained artwork. It assembles the bundle: `Info.plist` (bundle id `com.tursora.Tursora`, TCC usage strings and updater configuration), the executable, `AppIcon.icns` registered through `CFBundleIconFile`, and an ad-hoc `codesign`. `CFBundleShortVersionString` defaults to the release version pinned in `make-app.sh` (`VERSION=`); `CFBundleVersion` defaults to the source commit's Unix committer timestamp (`git show -s --format=%ct HEAD`). `TURSORA_VERSION`, `TURSORA_BUILD` and `TURSORA_BUNDLE_ID` can override metadata for controlled local checks; the packaging validator receives that chosen identifier. Release validation independently requires `com.tursora.Tursora`. Changing public application identity is a separate migration, not a release setting.
 
 To try a change in the packaged app, rebuild and relaunch:
 
@@ -39,7 +39,7 @@ To try a change in the packaged app, rebuild and relaunch:
 cd app && tools/make-app.sh && pkill -f "Tursora.app/Contents/MacOS/Tursora"; open "build/Tursora.app"
 ```
 
-The debug binary and the packaged app have **different UserDefaults domains** (the bare process has no bundle id), so favourites, saved searches, legacy view defaults, startup preferences and Info-section state do not carry over between them. The directory-view library and workspace session are application-owned files in Application Support, shared by ordinary debug and packaged runs. Smoke mode isolates their shared stores and uses injected temporary files for persistence checks.
+The debug binary and the packaged app have **different UserDefaults domains** (the bare process has no bundle id), so favourites, saved searches, startup preferences and Info-section state do not carry over between them. The directory-view library and workspace session are application-owned files in Application Support, shared by ordinary debug and packaged runs. Smoke mode isolates their shared stores and uses injected temporary files for persistence checks.
 
 The packaging script also includes `SwiftTerm_SwiftTerm.bundle` and `SwiftTerm-LICENSE.txt`. Keep the resource bundle in `Contents/Resources`; building only the executable is not a complete distributable. Terminal access is enabled by default; no shell starts until the user opens the panel with F4. Existing explicit opt-outs remain respected.
 
@@ -63,14 +63,14 @@ find "$TMPDIR" -maxdepth 1 -name "tursora-*" -exec rm -rf {} +
 
 How it is written (`SmokeTest.swift`):
 
-- `SmokeTest.run(wc)` resets preferences (view mode, group key), then polls the initial model generation without blocking the main run loop (15-second deadline). It waits for a completed listing, including empty results, rather than assuming a cold home directory loads within one second. A delayed empty provider reproduces the old timing assumption; Info-section layout and new panes created with each saved view mode are also checked before navigation. Later sections are `private static func` s that chain into the next one, usually inside `after(seconds) { … }` closures so the run loop can deliver async work (directory loads, FSEvents, Quick Look).
-- `check(name, condition, detail)` prints `ok`/`FAIL`; the detail autoclosure is only evaluated for the log, so put the interesting value there.
-- Sections that need files create them under `$TMPDIR/tursora-smoke-<pid>` and remove them at the end.
+- `SmokeTest.run(wc)` resets the browser's view mode and group key, polls the initial model generation without blocking the main run loop (15-second deadline), then runs its `steps` table: one entry per suite, in order, each handing the continuation to the next. The last step is the original navigation chain of `private static func`s that call the next one, usually inside `after(seconds) { … }` closures so the run loop can deliver async work (directory loads, FSEvents, Quick Look).
+- Every suite is an `enum … : SmokeSuite` (`SmokeSupport.swift`) with an optional `checkPrefix`. `check(name, condition, detail)` prints `ok  `/`FAIL ` plus the prefix and exits 1 on the first failure; the detail autoclosure is only evaluated for the log, so put the interesting value there. Throwing suites use `require` so `defer` cleanup runs before the process exits. Poll with `waitUntil` (silent on success), `expectEventually` (records a check) or `requireEventually`; fixtures such as the empty provider and async ZIP creation live in `SmokeFixtures`.
+- Sections that need files create them under `$TMPDIR/tursora-<suite>-…` and remove them at the end.
 - Nothing may show a modal: every error path checks `SmokeTest.isRequested` and prints (`report(_:context:)` in `BrowserViewController`, `report(_:)` in `InfoWindowController`, `FileOperations.report`). A modal in a headless run hangs the process and hides the message.
 - The app is not active in a headless run: there is **no key or main window**. Code that needs one (`editColumn`, the Inspector's "follow the main window") has fallbacks; tests activate the window where required.
 - Every feature adds a section or extends one. Test the model helpers as pure functions first (`FileOperations.uniqueURL`, `Grouping.bucket`, `FileInfo.mode`), then the UI path.
 
-The chain begins with the initial-listing wait, isolated directory-view checks, icon/server/settings checks, transfer and archive/ZIP/split-toolbar/terminal suites, search and integrated-search suites, pane-path and tab-action suites, then delayed-listing, saved-view and preferences integration checks. The original navigation chain follows: navigation → insideFolder → backHome → tabs → addressBarEditing → narrowAddressBar → contextMenus → fileOperations → copyPaste → duplicateAndTrash → expansion → splitView → tabDragSplit → viewModes → liveRefresh → crossTabDrag → filterAndConflicts → scrollClamp → groups → conflicts → getInfo → infoWindow → infoWindowFollows → favouritesAndHistory.
+The order of suites is the `steps` array in `SmokeTest.run`; [ARCHITECTURE.md §6](ARCHITECTURE.md#6-the-smoke-test) describes the harness.
 
 `UpdateSmokeTests` runs alongside settings checks, using a fake driver and isolated defaults to exercise update policy, startup/retry, persistence, both Settings pages, cross-window refresh and actual menu/button dispatch. The shared updater never constructs Sparkle in smoke mode; no feed downloads, updater permission prompts or installer processes belong in these tests. Run release-tool tests with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s app/tools -p 'test_*.py'` from the repository root.
 
@@ -86,13 +86,11 @@ For a real packaged-app quit/relaunch check, set **both** `TURSORA_UI_TEST_SESSI
 
 ## Conventions
 
-- **Finder evidence rule.** Anything that claims to match Finder — a label, a group name, a menu icon, a dialog's wording — is taken from Finder's own resources (`strings` on its nibs, `plutil` on its `.strings` tables), not from memory. Record the extraction under [research/](research/) and mark what is still inferred. See D12.
+The repository rules — Finder evidence, filesystem access only through `FileOperations`, the headless-run modal ban, commit format and document languages — are in [../AGENTS.md](../AGENTS.md). Code-level conventions on top of them:
+
 - **Dolphin semantics, Finder shape.** Where the two disagree, the interaction semantics follow Dolphin (address bar, tabs, split, zoom ladders, filter matching) and the visual form follows Finder (toolbar search field, conflict dialog, groups, Get Info). Say which in the spec.
-- **Views never touch the filesystem.** `FileOperations` does the work; `BrowserViewController` owns undo and refresh; the two file views only render `DirectoryModel` and report intent through the `FileViewing` callbacks.
-- **One undo group per operation** (`asUndoGroup`), registered on the window's undo manager, and every operation posts `DirectoryChanges.post` so other panes and Info windows refresh without waiting for FSEvents.
+- **One undo group per operation** (`registerUndo(on:actionName:_:)`), registered on the window's undo manager, and every operation posts `DirectoryChanges.post` so other panes and Info windows refresh without waiting for FSEvents.
 - **Comments say why.** The code carries short comments where AppKit behaviour is surprising (see the pitfalls below); the spec carries the intended behaviour.
-- **Commits**: use a meaningful module scope, such as `feat(search): …`, `fix(transfers): …`, or `docs(view-settings): …`. Omit the scope for global or multi-module changes (`feat: …`, `fix: …`, `docs: …`); do not use `tursora` as a blanket scope. The body says what changed and why and ends with the smoke-test count.
-- Docs: specs and decisions in Chinese (product-facing), code-facing docs in English.
 
 ## AppKit pitfalls met so far
 
@@ -109,7 +107,7 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 | Headless AX checks trap while iterating `accessibilityRows()` | The imported Swift array expects `NSAccessibilityRow`, but AppKit returns legacy `NSOutlineRow` objects on macOS 26.3 | In the regression test, retain the Objective-C `NSArray` and query its legacy attributes without the incorrect typed bridge |
 | Details-view zoom ignored | `rowSizeStyle = .default` ignores `rowHeight` | `rowSizeStyle = .custom`; `loadView` must not overwrite the height |
 | Completion popup rows cut off | `.inset` table style adds padding, unflipped clip view | `.plain` style, `rowSizeStyle = .custom`, flipped clip view, scroll to top |
-| Undo merges several operations into one | `NSUndoManager` had an open automatic event group | `asUndoGroup` closes stale groups, then opens one per operation |
+| Undo merges several operations into one | `NSUndoManager` had an open automatic event group | `registerUndo` closes stale groups, then opens one per operation |
 | Rename starts after a drag ends | Mouse-up after a drag session is indistinguishable by timing; `pressedMouseButtons` is unreliable with a mouse | Pointer travel > 3 pt cancels; drag session begin/end cancels |
 | Group rows selectable by keyboard/rubber band | Programmatic `selectRowIndexes` bypasses `shouldSelectItem` | Also implement `selectionIndexesForProposedSelection` |
 | Blank space after navigation, or the first row hidden under its header after refresh | Raw clip coordinates can include bounce and a legitimate negative header inset; clamping raw y to zero hides the first row | Save a nonnegative offset relative to the native constrained top; restore through `NSClipView.constrainBoundsRect` |
@@ -135,10 +133,7 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 
 ## Release checklist
 
-1. `swift build` clean, smoke test green three times.
-2. `tools/make-app.sh`, launch `build/Tursora.app`, click through what the smoke test cannot see (popups, overlays, Info window layout, menu icons).
-3. Update [../CHANGELOG.md](../CHANGELOG.md), the spec if behaviour changed, and the gap lists if something moved to ✅.
-4. Commit with the smoke-test count in the message.
+The release procedure, from the three green smoke runs and packaged-app click-through to the published assets, is in [RELEASING.md](RELEASING.md) § Prepare a release.
 
 ## GitHub Actions
 
@@ -183,16 +178,7 @@ Update documentation in the same change as the behavior it describes:
 
 ## Build and preview the product page
 
-The static page is independent of the Swift app. From the repository root, using Python 3.9 or later:
-
-```sh
-python3 site/build.py
-python3 -m http.server 8080 --directory site/dist
-```
-
-Open `http://localhost:8080` and stop the server with Control-C. The builder uses only the standard library, recreates `site/dist/`, and refuses a symlink at that location. Generated output is ignored by Git. It copies the required icon and three canonical screenshots without editing their pixels, then validates local references, fragments, IDs, alt attributes and the three workflow panels. Static validation does not replace browser review or verify live GitHub downloads.
-
-Use [site/README.md](../site/README.md) for the exact asset list and desktop/mobile, keyboard, dialog, reduced-motion and no-JavaScript review sequence. Record observed results, source revision and remaining gaps in the relevant dated research record, linked from [the documentation index](README.md). Previewing or building the page does not deploy it; hosting and publication are separate actions.
+The static product site builds and previews independently of the Swift app; commands, asset list and the browser review sequence are in [site/README.md](../site/README.md). Building or previewing never deploys it.
 
 ## Search-specific filesystem and UI pitfalls
 

@@ -1,12 +1,8 @@
 import AppKit
 
-enum SettingsSmokeTests {
+enum SettingsSmokeTests: SmokeSuite {
     static func run() {
         print("== application settings ==")
-        func check(_ name: String, _ condition: Bool) {
-            print("\(condition ? "ok  " : "FAIL") \(name)")
-            if !condition { exit(1) }
-        }
         let domain = "com.tursora.settings-smoke.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: domain)!
         defer { defaults.removePersistentDomain(forName: domain) }

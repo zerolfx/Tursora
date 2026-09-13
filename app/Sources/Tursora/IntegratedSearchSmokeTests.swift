@@ -2,7 +2,8 @@ import AppKit
 
 /// Cross-feature regressions: search stays transient while directory defaults,
 /// ordinary peers and cancellable file transfers retain their own identities.
-enum IntegratedSearchSmokeTests {
+enum IntegratedSearchSmokeTests: SmokeSuite {
+    static let checkPrefix = "integrated search: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             let fixture = FileManager.default.temporaryDirectory
@@ -152,7 +153,7 @@ enum IntegratedSearchSmokeTests {
         var result: FileOperations.TransferResult?
         FileOperations.transfer([link, linkedChild, link], to: destination, kind: .copy,
                                 conflict: { _ in .init(resolution: .cancel) }, task: task) { result = $0 }
-        await wait("linked source transfer completes") { result != nil }
+        await waitUntil("linked source transfer completes") { result != nil }
         let copiedLink = destination.appendingPathComponent(link.lastPathComponent)
         let copiedChild = destination.appendingPathComponent(file.lastPathComponent)
         check("the real worker copies a link once plus its separately selected child",
@@ -178,7 +179,7 @@ enum IntegratedSearchSmokeTests {
         var intermediateResult: FileOperations.TransferResult?
         FileOperations.transfer(inputs, to: secondDestination, kind: .copy,
                                 conflict: { _ in .init(resolution: .cancel) }, task: intermediateTask) { intermediateResult = $0 }
-        await wait("intermediate linked child transfer completes") { intermediateResult != nil }
+        await waitUntil("intermediate linked child transfer completes") { intermediateResult != nil }
         let copiedContainer = secondDestination.appendingPathComponent(container.lastPathComponent)
         let standaloneChild = secondDestination.appendingPathComponent(file.lastPathComponent)
         check("the worker publishes the directory tree and its separately selected external child",
@@ -243,10 +244,10 @@ enum IntegratedSearchSmokeTests {
               let undo = wc.window?.undoManager else {
             check("\(mode): search Duplicate starts the shared task controls", false); return
         }
-        await wait("\(mode) duplicate reaches interior bytes") { task.snapshot.completedBytes >= 64 * 1024 && !task.snapshot.isTerminal }
+        await waitUntil("\(mode) duplicate reaches interior bytes") { task.snapshot.completedBytes >= 64 * 1024 && !task.snapshot.isTerminal }
         TransferTasksWindowController.shared.refresh()
         row.pauseButton.performClick(nil)
-        await wait("\(mode) duplicate pause is acknowledged") { task.snapshot.state == .paused }
+        await waitUntil("\(mode) duplicate pause is acknowledged") { task.snapshot.state == .paused }
         TransferTasksWindowController.shared.refresh()
         let pausedBytes = task.snapshot.completedBytes
         try await Task.sleep(nanoseconds: 80_000_000)
@@ -255,7 +256,7 @@ enum IntegratedSearchSmokeTests {
         row.pauseButton.performClick(nil)
         let firstCopy = firstParent.appendingPathComponent("needle copy.bin")
         let secondCopy = secondParent.appendingPathComponent("needle copy.bin")
-        await wait("\(mode) duplicate publishes beside each real source and registers undo") {
+        await waitUntil("\(mode) duplicate publishes beside each real source and registers undo") {
             task.snapshot.isTerminal && undo.canUndo && exists(firstCopy) && exists(secondCopy)
                 && !browser.searchSession.status.isSearching
         }
@@ -265,7 +266,7 @@ enum IntegratedSearchSmokeTests {
               && paths(browser.fileView.selectedItems.map(\.url)) == paths([firstCopy, secondCopy])
               && browser.isSearching && browser.viewMode == mode && browser.groupKey == .kind && browser.nameFilter == "needle")
         undo.undo()
-        await wait("\(mode) duplicate undo refreshes recursive results") {
+        await waitUntil("\(mode) duplicate undo refreshes recursive results") {
             !exists(firstCopy) && !exists(secondCopy) && !browser.searchSession.status.isSearching
                 && !browser.model.items.contains { paths([firstCopy, secondCopy]).contains($0.url.standardizedFileURL.path) }
         }
@@ -281,9 +282,9 @@ enum IntegratedSearchSmokeTests {
               let cancelRow = TransferTasksWindowController.shared.row(for: cancelled.id) else {
             check("\(mode): search parent/child Copy starts an independent task", false); return
         }
-        await wait("\(mode) subtree copy reaches interior bytes") { cancelled.snapshot.completedBytes >= 64 * 1024 && !cancelled.snapshot.isTerminal }
+        await waitUntil("\(mode) subtree copy reaches interior bytes") { cancelled.snapshot.completedBytes >= 64 * 1024 && !cancelled.snapshot.isTerminal }
         cancelRow.cancelButton.performClick(nil)
-        await wait("\(mode) cancelled subtree is cleaned") { cancelled.snapshot.isTerminal }
+        await waitUntil("\(mode) cancelled subtree is cleaned") { cancelled.snapshot.isTerminal }
         await searched(browser)
         check("\(mode): cancelling parent/child search Copy preserves sources and publishes no partial tree",
               cancelled.snapshot.state == .cancelled
@@ -297,17 +298,17 @@ enum IntegratedSearchSmokeTests {
         }
         let copiedTree = destination.appendingPathComponent(tree.lastPathComponent)
         let copiedChild = copiedTree.appendingPathComponent(child.lastPathComponent)
-        await wait("\(mode) parent/child Copy completes once") {
+        await waitUntil("\(mode) parent/child Copy completes once") {
             copied.snapshot.isTerminal && undo.canUndo && exists(copiedChild)
         }
-        await wait("\(mode) destination pane sees copied tree") { peer.model.items.contains { $0.url.standardizedFileURL == copiedTree.standardizedFileURL } }
+        await waitUntil("\(mode) destination pane sees copied tree") { peer.model.items.contains { $0.url.standardizedFileURL == copiedTree.standardizedFileURL } }
         check("\(mode): overlapping recursive Copy publishes one complete subtree with a single byte total",
               copied.snapshot.state == .completed && copied.snapshot.totalBytes == Int64(firstBytes.count)
               && copied.snapshot.completedBytes == Int64(firstBytes.count)
               && (try? fm.contentsOfDirectory(atPath: destination.path)) == [tree.lastPathComponent]
               && (try? Data(contentsOf: copiedChild)) == firstBytes && browser.isSearching)
         undo.undo()
-        await wait("\(mode) subtree Copy undo refreshes the destination") {
+        await waitUntil("\(mode) subtree Copy undo refreshes the destination") {
             !exists(copiedTree) && peer.model.items.isEmpty && !browser.searchSession.status.isSearching
         }
         check("\(mode): subtree Copy Undo retains recursive source identity and active query",
@@ -327,7 +328,7 @@ enum IntegratedSearchSmokeTests {
     }
 
     @MainActor private static func listed(_ browser: BrowserViewController, at url: URL) async {
-        await wait("directory listing") {
+        await waitUntil("directory listing") {
             browser.currentURL?.standardizedFileURL == url.standardizedFileURL
                 && browser.model.url?.standardizedFileURL == url.standardizedFileURL
                 && browser.model.generation > 0 && !browser.model.isSearchResults
@@ -337,7 +338,7 @@ enum IntegratedSearchSmokeTests {
     }
 
     @MainActor private static func searched(_ browser: BrowserViewController) async {
-        await wait("recursive search finishes", detail: { browser.searchSession.status.message }) {
+        await waitUntil("recursive search finishes", detail: { browser.searchSession.status.message }) {
             browser.isSearching && browser.model.isSearchResults && !browser.searchSession.status.isSearching
         }
         guard case .finished = browser.searchSession.status else {
@@ -346,18 +347,6 @@ enum IntegratedSearchSmokeTests {
         browser.view.layoutSubtreeIfNeeded()
     }
 
-    @MainActor private static func wait(_ name: String, detail: () -> String = { "" }, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(15)
-        while !condition() {
-            if Date() > deadline { check(name, false, detail()); return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-    }
-
     private static func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
     private static func paths(_ urls: [URL]) -> Set<String> { Set(urls.map { $0.standardizedFileURL.path }) }
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") integrated search: \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
-    }
 }

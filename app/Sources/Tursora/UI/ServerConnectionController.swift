@@ -51,10 +51,7 @@ final class ServerConnectionController: NSWindowController, NSWindowDelegate, NS
         // Only an explicit Return or Connect button may start a network mount.
         addressField.cell?.sendsActionOnEndEditing = false
         addressField.delegate = self
-        let help = NSTextField(wrappingLabelWithString:
-            "Use SMB, NFS, WebDAV (https://), or legacy AFP. macOS handles sign-in; connected volumes appear in Locations.")
-        help.font = .systemFont(ofSize: 12)
-        help.textColor = .secondaryLabelColor
+        let help = NSTextField.detail("Use SMB, NFS, WebDAV (https://), or legacy AFP. macOS handles sign-in; connected volumes appear in Locations.")
         messageLabel.font = .systemFont(ofSize: 12)
         messageLabel.textColor = .systemRed
         messageLabel.setAccessibilityIdentifier("serverConnectionMessage")

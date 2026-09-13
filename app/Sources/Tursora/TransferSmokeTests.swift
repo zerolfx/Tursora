@@ -3,7 +3,8 @@ import Darwin
 
 /// Deterministic transfer checks exercise the worker first, then the same
 /// browser entry points used by both file views. All waits yield the main loop.
-enum TransferSmokeTests {
+enum TransferSmokeTests: SmokeSuite {
+    static let checkPrefix = "transfer: "
     @MainActor private final class Running {
         let task: TransferTask
         var result: FileOperations.TransferResult?
@@ -683,15 +684,7 @@ enum TransferSmokeTests {
     @MainActor private static func browserPaths(in fixture: URL, provider: FileProvider) async throws {
         print("== transfer task controls through real browser entry points ==")
         let fm = FileManager.default
-        let oldMode = ViewPreferences.viewMode
-        let oldGroup = ViewPreferences.groupKey
-        let oldLastGroup = ViewPreferences.lastGroupKey
-        defer {
-            ViewPreferences.viewMode = oldMode
-            ViewPreferences.groupKey = oldGroup
-            ViewPreferences.lastGroupKey = oldLastGroup
-            TransferTasksWindowController.shared.clearFinished(nil)
-        }
+        defer { TransferTasksWindowController.shared.clearFinished(nil) }
         let bytes = payload()
         for mode: ViewMode in [.details, .icons] {
             let (source, destination) = try folders("browser-\(mode)", in: fixture)
@@ -952,16 +945,4 @@ enum TransferSmokeTests {
         return String(cString: text)
     }
 
-    @MainActor private static func waitUntil(_ label: String, detail: () -> String = { "" }, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(15)
-        while !condition() {
-            if Date() > deadline { check("\(label) completes", false, detail()); return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-    }
-
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") transfer: \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
-    }
 }

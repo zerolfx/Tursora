@@ -4,15 +4,15 @@ import SwiftTerm
 
 /// Real task fixtures run in isolated shells without user startup files. The
 /// separate session suite covers the window's retain/hide/confirmation path.
-enum TerminalActivitySmokeTests {
+enum TerminalActivitySmokeTests: SmokeSuite {
+    static let checkPrefix = "terminal activity: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             print("== terminal activity ==")
             pureChecks()
-            let root = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-terminal-activity-" + UUID().uuidString)
-            defer { try? FileManager.default.removeItem(at: root) }
             do {
-                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                let root = try SmokeFixtures.temporaryDirectory("terminal-activity")
+                defer { try? FileManager.default.removeItem(at: root) }
                 await restartCancellationChecks(root)
                 try await jobChecks(root)
                 await execChecks(root)
@@ -29,13 +29,13 @@ enum TerminalActivitySmokeTests {
         panel.restartSession { launches.append($0) }
         var finalShutdownFinished = false
         panel.shutdown { finalShutdownFinished = true }
-        await until("explicit shutdown completes while an earlier restart is pending") { finalShutdownFinished }
+        await expectEventually("explicit shutdown completes while an earlier restart is pending") { finalShutdownFinished }
         check("close or quit suppresses a pending restart launch", launches.isEmpty && panel.terminalView == nil && !panel.isRunning)
 
         let replacement = TerminalPanelController(initialDirectory: root)
         replacement.installTerminal(LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 500, height: 120)), in: root)
         replacement.restartSession { launches.append($0) }
-        await until("an uncancelled restart launches once after cleanup") { launches.count == 1 }
+        await expectEventually("an uncancelled restart launches once after cleanup") { launches.count == 1 }
         check("restart retains the requested destination through asynchronous cleanup", launches == [root])
         replacement.shutdown()
     }
@@ -82,21 +82,21 @@ enum TerminalActivitySmokeTests {
         defer { TerminalProcessLifecycle.stop(probe.process, session: session) }
         check("real idle PTY shell does not warn", !session.snapshot().requiresConfirmation)
         probe.send("/bin/sleep 30\n")
-        await until("foreground job is detected independently of shell PID") {
+        await expectEventually("foreground job is detected independently of shell PID") {
             let value = session.snapshot()
             return tcgetpgrp(probe.process.childfd) != probe.process.shellPid && value.tasks.contains { $0.name == "sleep" }
         }
         probe.send("\u{1a}")
-        await until("Control-Z leaves a stopped task at an idle shell prompt") {
+        await expectEventually("Control-Z leaves a stopped task at an idle shell prompt") {
             session.snapshot().tasks.contains( where: \.isStopped) && tcgetpgrp(probe.process.childfd) == probe.process.shellPid
         }
         probe.send("bg\nprintf '\\n__BACKGROUND_READY__\\n'\n")
-        await until("background job continues while shell owns the foreground") {
+        await expectEventually("background job continues while shell owns the foreground") {
             probe.output.contains("\r\n__BACKGROUND_READY__\r\n") && tcgetpgrp(probe.process.childfd) == probe.process.shellPid
                 && session.snapshot().tasks.contains { $0.name == "sleep" && !$0.isStopped }
         }
         probe.send("/bin/sh -c 'trap \"\" HUP; /bin/sleep 30' &\nprintf '\\n__HUP_IGNORED__\\n'\n")
-        await until("additional HUP-ignoring background work starts") {
+        await expectEventually("additional HUP-ignoring background work starts") {
             probe.output.contains("\r\n__HUP_IGNORED__\r\n") && session.snapshot().tasks.filter { $0.name == "sleep" }.count >= 2
         }
         let sentinel = Process()
@@ -113,8 +113,8 @@ enum TerminalActivitySmokeTests {
         TerminalProcessLifecycle.stop(probe.process, session: session) { secondFinished = true }
         TerminalProcessLifecycle.whenAllStopped { allFinished = true }
         check("duplicate callers and the global shutdown barrier wait for cleanup", !firstFinished && !secondFinished && !allFinished)
-        await until("owned shell shutdown and all completion barriers finish") { firstFinished && secondFinished && allFinished }
-        await until("foreground and HUP-ignoring background jobs all stop") { members.allSatisfy(noLongerRunning) }
+        await expectEventually("owned shell shutdown and all completion barriers finish") { firstFinished && secondFinished && allFinished }
+        await expectEventually("foreground and HUP-ignoring background jobs all stop") { members.allSatisfy(noLongerRunning) }
         check("shutdown does not signal an unrelated sibling process", sentinel.isRunning && kill(sentinel.processIdentifier, 0) == 0)
         var status: Int32 = 0
         let result = waitpid(shellPID, &status, WNOHANG)
@@ -126,7 +126,7 @@ enum TerminalActivitySmokeTests {
         let session = TerminalActivity.Session(process: probe.process)!
         let shell = session.shell
         probe.send("exec /bin/sleep 30\n")
-        await until("real exec preserves shell PID but still requires confirmation") {
+        await expectEventually("real exec preserves shell PID but still requires confirmation") {
             let value = session.snapshot()
             return tcgetpgrp(probe.process.childfd) == shell.pid && value.tasks.contains { $0.pid == shell.pid && $0.name == "sleep" }
         }
@@ -138,16 +138,16 @@ enum TerminalActivitySmokeTests {
         let probe = await ready(root)
         let session = TerminalActivity.Session(process: probe.process)!
         probe.send("/bin/sh -c 'trap \"\" HUP; /bin/sleep 30' &\nprintf '\\n__ORPHAN_READY__\\n'\n")
-        await until("orphan fixture owns HUP-ignoring work") {
+        await expectEventually("orphan fixture owns HUP-ignoring work") {
             probe.output.contains("\r\n__ORPHAN_READY__\r\n") && session.snapshot().tasks.contains { $0.name == "sleep" }
         }
         let jobs = session.ownedProcesses().filter { $0.pid != session.shell.pid && !$0.isZombie }
         probe.send("exit\n")
-        await until("shell can exit while a background task retains the PTY session") {
+        await expectEventually("shell can exit while a background task retains the PTY session") {
             TerminalActivity.readProcess(session.shell.pid) == nil && session.snapshot().requiresConfirmation
         }
         await stop(probe.process, session: session)
-        await until("natural shell exit does not abandon retained session jobs") { jobs.allSatisfy(noLongerRunning) }
+        await expectEventually("natural shell exit does not abandon retained session jobs") { jobs.allSatisfy(noLongerRunning) }
     }
 
     private static func noLongerRunning(_ record: TerminalActivity.ProcessRecord) -> Bool {
@@ -160,7 +160,7 @@ enum TerminalActivitySmokeTests {
         probe.process.startProcess(executable: "/bin/sh", args: ["-f", "-i"],
                                    environment: ["PATH=/usr/bin:/bin", "HOME=\(root.path)", "ENV=/dev/null", "TERM=xterm-256color", "PS1=$ "], currentDirectory: root.path)
         probe.send("stty -echo; printf '\\n__ACTIVITY_READY__\\n'\n")
-        await until("controlled shell is ready") { probe.output.contains("\r\n__ACTIVITY_READY__\r\n") }
+        await expectEventually("controlled shell is ready") { probe.output.contains("\r\n__ACTIVITY_READY__\r\n") }
         return probe
     }
 
@@ -177,15 +177,5 @@ enum TerminalActivitySmokeTests {
         func dataReceived(slice: ArraySlice<UInt8>) { output += String(decoding: slice, as: UTF8.self) }
         func processTerminated(_ source: LocalProcess, exitCode: Int32?) {}
         func getWindowSize() -> winsize { winsize(ws_row: 24, ws_col: 100, ws_xpixel: 0, ws_ypixel: 0) }
-    }
-
-    @MainActor private static func until(_ name: String, condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(10)
-        while !condition() && Date() < deadline { try? await Task.sleep(nanoseconds: 30_000_000) }
-        check(name, condition())
-    }
-    private static func check(_ name: String, _ condition: Bool, _ detail: String = "") {
-        if condition { print("ok  terminal activity: \(name)") }
-        else { print("FAIL terminal activity: \(name) \(detail)"); exit(1) }
     }
 }

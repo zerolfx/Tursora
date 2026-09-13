@@ -25,37 +25,3 @@ enum ZoomLevel {
     static let previewThreshold: CGFloat = 32
 }
 
-/// Legacy defaults imported when the application directory-view library is absent.
-enum ViewPreferences {
-    private static let defaults = UserDefaults.standard
-
-    static var viewMode: ViewMode {
-        get { ViewMode(rawValue: defaults.string(forKey: "viewMode") ?? "") ?? .details }
-        set { defaults.set(newValue.rawValue, forKey: "viewMode") }
-    }
-
-    static func zoomIndex(for mode: ViewMode) -> Int {
-        let key = "zoom." + mode.rawValue
-        guard defaults.object(forKey: key) != nil else { return ZoomLevel.defaultIndex(for: mode) }
-        return ZoomLevel.clamp(defaults.integer(forKey: key), for: mode)
-    }
-
-    static func setZoomIndex(_ index: Int, for mode: ViewMode) {
-        defaults.set(index, forKey: "zoom." + mode.rawValue)
-    }
-
-    static var groupKey: GroupKey {
-        get { GroupKey(rawValue: defaults.string(forKey: "groupKey") ?? "") ?? .none }
-        set { defaults.set(newValue.rawValue, forKey: "groupKey") }
-    }
-    /// The key "Use Groups" returns to when toggled back on.
-    static var lastGroupKey: GroupKey {
-        get { GroupKey(rawValue: defaults.string(forKey: "lastGroupKey") ?? "") ?? .kind }
-        set { defaults.set(newValue.rawValue, forKey: "lastGroupKey") }
-    }
-
-    static var showPreviews: Bool {
-        get { defaults.object(forKey: "showPreviews") == nil ? true : defaults.bool(forKey: "showPreviews") }
-        set { defaults.set(newValue, forKey: "showPreviews") }
-    }
-}

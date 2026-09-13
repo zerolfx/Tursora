@@ -1,7 +1,7 @@
 import AppKit
 
 /// Exercises the real toolbar control without displaying a window or reading user files.
-enum SplitToolbarSmokeTests {
+enum SplitToolbarSmokeTests: SmokeSuite {
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             await runChecks()
@@ -12,11 +12,7 @@ enum SplitToolbarSmokeTests {
     @MainActor
     private static func runChecks() async {
         print("== split toolbar ==")
-        func check(_ name: String, _ condition: Bool) {
-            print("\(condition ? "ok  " : "FAIL") \(name)")
-            if !condition { exit(1) }
-        }
-        let provider = EmptyProvider()
+        let provider = SmokeFixtures.EmptyProvider()
         let defaults = UserDefaults.standard
         let savedFavorites = defaults.object(forKey: "favouritesOrder")
         defer {
@@ -112,20 +108,9 @@ enum SplitToolbarSmokeTests {
     @MainActor
     private static func listed(_ browser: BrowserViewController, at url: URL) async {
         let expected = url.standardizedFileURL.path
-        let deadline = Date().addingTimeInterval(15)
-        while Date() < deadline {
-            if browser.currentURL?.standardizedFileURL.path == expected,
-               browser.model.url?.standardizedFileURL.path == expected,
-               browser.model.generation > 0, !browser.isPreparingArchive { return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
+        await waitUntil("split toolbar lists \(url.lastPathComponent)", detail: { "expected=\(expected), current=\(browser.currentURL?.path ?? "nil"), generation=\(browser.model.generation)" }) {
+            browser.currentURL?.standardizedFileURL.path == expected && browser.model.url?.standardizedFileURL.path == expected
+                && browser.model.generation > 0 && !browser.isPreparingArchive
         }
-        print("FAIL split toolbar timed out waiting for \(expected); current=\(browser.currentURL?.path ?? "nil"), generation=\(browser.model.generation)")
-        exit(1)
-    }
-
-    private final class EmptyProvider: FileProvider {
-        let homeURL = FileManager.default.temporaryDirectory
-        func displayName(for url: URL) -> String { url.lastPathComponent }
-        func listDirectory(_ url: URL) throws -> [FileItem] { [] }
     }
 }

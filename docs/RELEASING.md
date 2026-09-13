@@ -14,7 +14,7 @@ The stable feed is `https://github.com/zerolfx/Tursora/releases/latest/download/
 
 ## Build the drag-install DMG
 
-Run `tools/make-app.sh`, then `tools/make-dmg.sh [release-version]` from `app/`. The local bundle version defaults to `0.2.1`; `TURSORA_VERSION` can override it, and the Release workflow supplies its explicitly selected version. The optional version defaults to the bundle's short version; a supplied prerelease name must have the same numeric version as the app. Output is `app/dist/Tursora-<version>-macOS-arm64.dmg`. GitHub Releases attaches this DMG directly. GitHub Actions' download service still wraps build artifacts in its own ZIP; that outer wrapper is not the application's installer format.
+Run `tools/make-app.sh`, then `tools/make-dmg.sh [release-version]` from `app/`. The local bundle version defaults to the `VERSION` pinned in `make-app.sh`; `TURSORA_VERSION` can override it, and the Release workflow supplies its explicitly selected version. The optional version defaults to the bundle's short version; a supplied prerelease name must have the same numeric version as the app. Output is `app/dist/Tursora-<version>-macOS-arm64.dmg`. GitHub Releases attaches this DMG directly. GitHub Actions' download service still wraps build artifacts in its own ZIP; that outer wrapper is not the application's installer format.
 
 DMG creation requires Python 3.10+ (`TURSORA_PYTHON` selects the interpreter); both workflows set up Python 3.13. `make-dmg.sh` uses the dedicated `app/.build/dmg-tools` virtual environment and installs `dmgbuild==1.6.7`, `ds-store==1.3.3` and `mac-alias==2.2.3` with all three wheel hashes pinned in `dmg-requirements.txt`. It writes layout metadata directly and does not depend on a running Finder UI.
 

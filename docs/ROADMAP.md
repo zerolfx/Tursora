@@ -22,6 +22,8 @@ v1（纯本地）的功能已经齐了：地址栏、标签页、分栏、两种
 - [x] 新增源码三轮 smoke、打包实测与 General / Terminal 真实截图完成；0.2.0 正式发布，重新下载资产、签名与布局核验通过，见[发布记录](research/release-0.2.0.md)。
 - [x] 0.2.0 cask 与安装文案 follow-up 已准备，隔离安装 / 卸载、网站构建及引用检查通过。此项勾选为合入前本地范围，线上提交状态见 [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml)、[Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 和对应 PR；生产 feed 的旧版下载 / 安装 / 重启仍单独记录。
 
+- [x] 终端入口与 ZIP 浏览默认启用，保留开关；ZIP 准备可取消、失败可重试，终端目录 / 结束状态在该阶段得到补充，见[历史记录](research/default-features-polish.md)；当前紧凑标题栏与目录同步见页首 0.2.1 范围。
+
 ## 已完成阶段：操作定制与目录导航
 
 - [x] 所有应用命令快捷键可搜索、录制、清除与重置，保留原生文本 / shell 控制；[范围与验证](research/custom-shortcuts.md)。
@@ -80,7 +82,5 @@ Tags、Import from iPhone（产品设计明确排除）；Customize Folder（私
 - 后续再评估更多范围和实时结果增量；Finder `.savedSearch` 互通、ZIP 内搜索、评分 / 标签不在本轮。未索引正文仍依赖用户的系统索引设置，应用不自建全文索引。单次结果与 Spotlight 候选均有 50,000 项上限；真实正向正文命中尚待单独验证。
 
 - 后续评估显式同时选择符号链接与 `link/child` 时，移动 / 删除的源顺序：链接先移走会使后代路径失效。搜索不遍历链接，因此本轮搜索结果不会产生这种组合；普通展开视图或剪贴板仍可能出现。
-
-- [x] 终端入口与 ZIP 浏览默认启用，保留开关；ZIP 准备可取消、失败可重试，终端目录 / 结束状态在该阶段得到补充，见[历史记录](research/default-features-polish.md)；当前紧凑标题栏与目录同步见页首 0.2.1 范围。
 
 - Folders 在 Home 根下按目录实际拼写定位；手动输入有效但大小写不同的路径时，文件浏览正常，树选中跟随仍需按卷的真实文件身份处理，不能简单把所有路径转成小写。

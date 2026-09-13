@@ -127,17 +127,18 @@ enum TerminalActivity {
         return current.identity == expected && current.parentPID == getpid()
     }
 
+    /// Decodes a fixed-size, NUL-padded C string field such as `pbi_name`.
+    private static func cString<Field>(_ field: inout Field) -> String {
+        withUnsafeBytes(of: &field) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+    }
+
     static func readProcess(_ pid: pid_t) -> ProcessRecord? {
         guard pid > 1 else { return nil }
         var value = proc_bsdinfo()
         let expected = Int32(MemoryLayout<proc_bsdinfo>.size)
         guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &value, expected) == expected else { return readKernelProcess(pid) }
-        let name = withUnsafeBytes(of: &value.pbi_name) { bytes in
-            String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
-        }
-        let fallback = withUnsafeBytes(of: &value.pbi_comm) { bytes in
-            String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
-        }
+        let name = cString(&value.pbi_name)
+        let fallback = cString(&value.pbi_comm)
         return ProcessRecord(identity: Identity(pid: pid, startedSeconds: value.pbi_start_tvsec,
                                                 startedMicroseconds: value.pbi_start_tvusec),
                              parentPID: pid_t(value.pbi_ppid), sessionID: getsid(pid),
@@ -156,9 +157,7 @@ enum TerminalActivity {
         guard result == 0, size == MemoryLayout<kinfo_proc>.size, value.kp_proc.p_pid == pid else { return nil }
         let started = value.kp_proc.p_un.__p_starttime
         guard started.tv_sec >= 0, started.tv_usec >= 0 else { return nil }
-        let name = withUnsafeBytes(of: &value.kp_proc.p_comm) { bytes in
-            String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
-        }
+        let name = cString(&value.kp_proc.p_comm)
         return ProcessRecord(identity: Identity(pid: pid, startedSeconds: UInt64(started.tv_sec), startedMicroseconds: UInt64(started.tv_usec)),
                              parentPID: value.kp_eproc.e_ppid, sessionID: getsid(pid), name: name,
                              status: UInt32(value.kp_proc.p_stat))

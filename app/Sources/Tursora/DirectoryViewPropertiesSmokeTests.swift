@@ -1,7 +1,7 @@
 import AppKit
 
 /// Isolated storage and actual pane navigation checks for remembered folder views.
-enum DirectoryViewPropertiesSmokeTests {
+enum DirectoryViewPropertiesSmokeTests: SmokeSuite {
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             let fm = FileManager.default
@@ -21,11 +21,6 @@ enum DirectoryViewPropertiesSmokeTests {
                 check("directory view properties fixture completes", false, error.localizedDescription)
             }
         }
-    }
-
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
     }
 
     private static var firstProperties: DirectoryViewProperties {
@@ -168,9 +163,9 @@ enum DirectoryViewPropertiesSmokeTests {
         do { try blocked.flush() } catch { rejected = true }
         check("storage failures are reported without losing the in-memory view",
               rejected && blocked.lastWriteError != nil && blocked.properties(forKey: aKey) == firstProperties)
-        await wait("a save failure reaches the already-open Settings window", condition: {
+        await expectEventually("a save failure reaches the already-open Settings window") {
             !settings.retryFolderViewSave.isHidden
-        })
+        }
         check("save failures appear inline without presenting a modal window",
               settings.folderViewSaveMessage.stringValue.contains("could not be saved")
               && settings.window?.attachedSheet == nil && NSApp.modalWindow == nil)
@@ -426,12 +421,12 @@ enum DirectoryViewPropertiesSmokeTests {
         let provider = GatedProvider(homeURL: slow)
         let pane = BrowserViewController(provider: provider, initialURL: slow, viewPropertiesStore: store)
         _ = pane.view
-        await wait("slow navigation starts", condition: { provider.didStart })
+        await expectEventually("slow navigation starts") { provider.didStart }
         pane.navigate(to: fast)
         await listed(pane, at: fast)
         check("fast navigation restores B while A's listing is still pending", pane.currentViewProperties == secondProperties)
         provider.release()
-        await wait("stale listing returns", condition: { provider.didReturn })
+        await expectEventually("stale listing returns") { provider.didReturn }
         try await Task.sleep(nanoseconds: 50_000_000)
         check("late A listing cannot apply properties or contents to B",
               pane.currentURL == fast && pane.currentViewProperties == secondProperties
@@ -560,21 +555,11 @@ enum DirectoryViewPropertiesSmokeTests {
 
     @MainActor
     private static func listed(_ pane: BrowserViewController, at url: URL, after generation: Int = 0) async {
-        await wait("directory view listing: \(url.lastPathComponent)", condition: {
+        await expectEventually("directory view listing: \(url.lastPathComponent)") {
             pane.currentURL?.standardizedFileURL == url.standardizedFileURL
                 && pane.model.url?.standardizedFileURL == url.standardizedFileURL
                 && pane.model.generation > generation && !pane.isPreparingArchive
-        })
-    }
-
-    @MainActor
-    private static func wait(_ name: String, condition: @escaping () -> Bool) async {
-        let deadline = Date().addingTimeInterval(15)
-        while Date() < deadline {
-            if condition() { check(name, true); return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
         }
-        check(name, false, "Timed out")
     }
 
     private final class GatedProvider: FileProvider {

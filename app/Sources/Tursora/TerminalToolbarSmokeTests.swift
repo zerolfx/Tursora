@@ -1,7 +1,8 @@
 import AppKit
 
 /// Runs the real toolbar and overflow actions without launching a user shell.
-enum TerminalToolbarSmokeTests {
+enum TerminalToolbarSmokeTests: SmokeSuite {
+    static let checkPrefix = "terminal toolbar: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             await runChecks()
@@ -12,14 +13,10 @@ enum TerminalToolbarSmokeTests {
     @MainActor
     private static func runChecks() async {
         print("== terminal toolbar ==")
-        func check(_ name: String, _ condition: Bool) {
-            print("\(condition ? "ok  " : "FAIL") terminal toolbar: \(name)")
-            if !condition { exit(1) }
-        }
         let savedEnabled = AppPreferences.experimentalTerminalEnabled
         defer { AppPreferences.experimentalTerminalEnabled = savedEnabled }
         AppPreferences.experimentalTerminalEnabled = true
-        let provider = EmptyProvider()
+        let provider = SmokeFixtures.EmptyProvider()
         let first = MainWindowController(provider: provider, places: PlacesModel(), initialURL: provider.homeURL)
         let second = MainWindowController(provider: provider, places: PlacesModel(), initialURL: provider.homeURL)
         defer { first.close(); second.close() }
@@ -70,18 +67,6 @@ enum TerminalToolbarSmokeTests {
 
     @MainActor
     private static func listed(_ browser: BrowserViewController) async {
-        let deadline = Date().addingTimeInterval(15)
-        while Date() < deadline {
-            if browser.model.generation > 0 { return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-        print("FAIL terminal toolbar: initial listing timed out")
-        exit(1)
-    }
-
-    private final class EmptyProvider: FileProvider {
-        let homeURL = FileManager.default.temporaryDirectory
-        func displayName(for url: URL) -> String { url.lastPathComponent }
-        func listDirectory(_ url: URL) throws -> [FileItem] { [] }
+        await waitUntil("initial listing") { browser.model.generation > 0 }
     }
 }

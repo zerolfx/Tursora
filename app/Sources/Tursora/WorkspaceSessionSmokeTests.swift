@@ -2,7 +2,8 @@ import AppKit
 
 /// Exercises saved workspaces through real windows and fresh controller trees.
 /// Every fixture owns its directory-view store; no user's session file is opened.
-enum WorkspaceSessionSmokeTests {
+enum WorkspaceSessionSmokeTests: SmokeSuite {
+    static let checkPrefix = "workspace UI: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             let fixture = FileManager.default.temporaryDirectory
@@ -190,9 +191,9 @@ enum WorkspaceSessionSmokeTests {
         await allListed(wc, state: state)
         let missingPane = wc.tabs.pages[0].panes[1]
         let replacedPane = wc.tabs.pages[1].active
-        await wait("missing directory displays an inline error") { visibleError(in: missingPane) }
+        await waitUntil("missing directory displays an inline error") { visibleError(in: missingPane) }
         wc.tabs.selectTab(at: 1)
-        await wait("file replacing a directory displays an inline error") { visibleError(in: replacedPane) }
+        await waitUntil("file replacing a directory displays an inline error") { visibleError(in: replacedPane) }
         check("unavailable locations retain their saved URLs", missingPane.currentURL?.path == missing.path && replacedPane.currentURL == regularFile && wc.workspaceSessionState.tabs[0].panes[1].url.path == missing.path)
         check("unavailable locations do not replace healthy peers", wc.tabs.pages[0].panes[0].currentURL == folders[0] && !wc.tabs.pages[0].panes[0].model.items.isEmpty)
         check("unavailable locations keep their slots and active side", wc.tabs.count == 2 && wc.tabs.pages[0].isSplit && wc.tabs.pages[0].activeIndex == 1)
@@ -201,7 +202,7 @@ enum WorkspaceSessionSmokeTests {
         try Data("available again".utf8).write(to: missing.appendingPathComponent("returned.txt"))
         wc.tabs.selectTab(at: 0)
         missingPane.reload()
-        await wait("previously missing location can be refreshed") { missingPane.model.items.contains { $0.name == "returned.txt" } }
+        await waitUntil("previously missing location can be refreshed") { missingPane.model.items.contains { $0.name == "returned.txt" } }
         check("refresh retains the recovered pane's identity and location", wc.browser === missingPane && missingPane.currentURL?.path == missing.path && wc.tabs.count == 2)
         missingPane.navigate(to: folders[1])
         await listed(missingPane, at: folders[1])
@@ -214,9 +215,7 @@ enum WorkspaceSessionSmokeTests {
         let nested = source.appendingPathComponent("Nested", isDirectory: true)
         try manager.createDirectory(at: nested, withIntermediateDirectories: true)
         try Data("restored ZIP content".utf8).write(to: nested.appendingPathComponent("note.txt"))
-        let archive: URL = try await withCheckedThrowingContinuation { continuation in
-            FileOperations.compress(urls: [source], to: fixture) { continuation.resume(with: $0) }
-        }
+        let archive = try await SmokeFixtures.compress([source], to: fixture)
         let archiveBytes = try Data(contentsOf: archive)
         let logical = archive.appendingPathComponent(source.lastPathComponent).appendingPathComponent(nested.lastPathComponent)
         let views = DirectoryViewPropertiesStore(fileURL: fixture.appendingPathComponent("zip-session-views.json"))
@@ -297,7 +296,7 @@ enum WorkspaceSessionSmokeTests {
             windows.append(missing)
             missing.restoreWorkspaceSession(captured)
             await listed(missing.browser, at: logical)
-            await wait("missing ZIP shows an inline location error") { visibleError(in: missing.browser) }
+            await waitUntil("missing ZIP shows an inline location error") { visibleError(in: missing.browser) }
             check("missing ZIP retains its full logical location with the experiment \(enabled ? "on" : "off")", missing.browser.currentURL?.path == logical.path && missing.workspaceSessionState.tabs[0].panes[0].url.path == logical.path && missing.tabs.count == 1)
             check("missing ZIP restoration never presents a modal or sheet", NSApp.modalWindow == nil && missing.window?.attachedSheet == nil)
         }
@@ -308,7 +307,7 @@ enum WorkspaceSessionSmokeTests {
         windows.append(failed)
         await listed(failed.browser, at: folders[0])
         failed.browser.navigate(to: corruptZIP)
-        await wait("corrupt ZIP preparation finishes") { !failed.browser.isPreparingArchive }
+        await waitUntil("corrupt ZIP preparation finishes") { !failed.browser.isPreparingArchive }
         check("failed ZIP navigation retains the currently displayed ordinary location", failed.browser.currentURL?.path == folders[0].path && !failed.browser.isBrowsingArchive && failed.workspaceSessionState.tabs[0].panes[0].url.path == folders[0].path)
         let afterFailureRequest = SearchRequest(rootURL: folders[0], name: "needle")
         failed.browser.startSearch(afterFailureRequest)
@@ -445,7 +444,7 @@ enum WorkspaceSessionSmokeTests {
         backgroundPane.navigate(to: folders[4])
         await listed(backgroundPane, at: folders[4])
         check("background navigation leaves every terminal panel uncreated", first.windowControllers.allSatisfy { $0.terminalPanel == nil })
-        await wait("background navigation is saved by the app debounce") {
+        await waitUntil("background navigation is saved by the app debounce") {
             guard case .loaded(let value) = store.load() else { return false }
             return value.windows[0].tabs[0].panes[0].url == folders[4]
         }
@@ -459,7 +458,7 @@ enum WorkspaceSessionSmokeTests {
         first.windowControllers[0].onSessionChanged = { clearEvents += 1; originalSessionCallback?() }
         backgroundPane.searchPanel.clearButton.performClick(nil)
         check("Clear reports a workspace change and removes the captured search", clearEvents > 0 && first.currentWorkspaceState.windows[0].tabs[0].panes[0].search == nil)
-        await wait("clearing background search persists through the app debounce") {
+        await waitUntil("clearing background search persists through the app debounce") {
             guard case .loaded(let value) = store.load() else { return false }
             return value.windows[0].tabs[0].panes[0].search == nil
         }
@@ -622,7 +621,7 @@ enum WorkspaceSessionSmokeTests {
     }
 
     @MainActor private static func listed(_ pane: BrowserViewController, at url: URL) async {
-        await wait("directory listing", detail: { "\(pane.currentURL?.path ?? "nil") vs \(url.path)" }) {
+        await waitUntil("directory listing", detail: { "\(pane.currentURL?.path ?? "nil") vs \(url.path)" }) {
             pane.currentURL?.standardizedFileURL.path == url.standardizedFileURL.path
                 && pane.model.url?.standardizedFileURL.path == url.standardizedFileURL.path
                 && pane.model.generation > 0 && !pane.isPreparingArchive && !pane.model.isSearchResults
@@ -630,7 +629,7 @@ enum WorkspaceSessionSmokeTests {
     }
 
     @MainActor private static func searched(_ pane: BrowserViewController) async {
-        await wait("search finishes", detail: { pane.searchSession.status.message }) {
+        await waitUntil("search finishes", detail: { pane.searchSession.status.message }) {
             guard case .finished = pane.searchSession.status else { return false }
             return pane.isSearching && pane.model.isSearchResults
         }
@@ -645,16 +644,4 @@ enum WorkspaceSessionSmokeTests {
         return containsError(pane.view)
     }
 
-    @MainActor private static func wait(_ name: String, detail: () -> String = { "" }, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(15)
-        while !condition() {
-            if Date() > deadline { check(name, false, detail()); return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-    }
-
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") workspace UI: \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
-    }
 }

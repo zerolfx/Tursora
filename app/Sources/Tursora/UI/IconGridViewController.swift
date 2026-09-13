@@ -334,10 +334,6 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         updateDragOperations()
     }
 
-    private func droppedFileURLs(_ info: NSDraggingInfo) -> [URL] {
-        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-    }
-
     /// Onto a folder icon → into that folder; anywhere else → into the listed directory.
     private func dropDestination(_ indexPath: IndexPath, _ op: NSCollectionView.DropOperation) -> URL? {
         guard !isReadOnly else { return nil }
@@ -358,15 +354,15 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
             proposedIndexPath.pointee = NSIndexPath(forItem: model.groups.indices.contains(last) ? model.groups[last].nodes.count : 0, inSection: last)
         }
         guard let dest = dropDestination(ip, onFolder ? .on : .before) else { return [] }
-        return FileListViewController.dropOperation(for: droppedFileURLs(draggingInfo), into: dest,
+        return FileOperations.dropOperation(for: draggingInfo.fileURLs, into: dest,
                                                     sourceMask: draggingInfo.draggingSourceOperationMask)
     }
 
     func collectionView(_ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo,
                         indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
-        let urls = droppedFileURLs(draggingInfo)
+        let urls = draggingInfo.fileURLs
         guard let dest = dropDestination(indexPath, dropOperation) else { return false }
-        let op = FileListViewController.dropOperation(for: urls, into: dest, sourceMask: draggingInfo.draggingSourceOperationMask)
+        let op = FileOperations.dropOperation(for: urls, into: dest, sourceMask: draggingInfo.draggingSourceOperationMask)
         guard !op.isEmpty else { return false }
         onDropFiles?(urls, dest, op)
         return true
@@ -410,25 +406,18 @@ final class FileCollectionView: NSCollectionView {
     var onBecomeFirstResponder: (() -> Void)?
     var onResignFirstResponder: (() -> Void)?
     var onBackingScaleChanged: (() -> Void)?
-    private var previewBackingScale: CGFloat = 2
     private(set) var clickedIndexPath: IndexPath?
-    private var wheelAccumulator: CGFloat = 0
-    private var magnifyAccumulator: CGFloat = 0
+    private var backingScale = BackingScaleTracker()
+    private var zoomGesture = ZoomGestureAccumulator()
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        updatePreviewBackingScale()
+        if backingScale.update(from: window) { onBackingScaleChanged?() }
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        updatePreviewBackingScale()
-    }
-
-    private func updatePreviewBackingScale() {
-        guard let scale = window?.backingScaleFactor, scale != previewBackingScale else { return }
-        previewBackingScale = scale
-        onBackingScaleChanged?()
+        if backingScale.update(from: window) { onBackingScaleChanged?() }
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -450,19 +439,11 @@ final class FileCollectionView: NSCollectionView {
     /// ⌘-scroll zooms (Dolphin's Ctrl-wheel); ordinary scrolling passes through.
     override func scrollWheel(with event: NSEvent) {
         guard event.modifierFlags.contains(.command) else { return super.scrollWheel(with: event) }
-        wheelAccumulator += event.scrollingDeltaY
-        if abs(wheelAccumulator) >= 8 {
-            onZoom?(wheelAccumulator > 0 ? 1 : -1)
-            wheelAccumulator = 0
-        }
+        if let step = zoomGesture.step(scrollingDeltaY: event.scrollingDeltaY) { onZoom?(step) }
     }
 
     override func magnify(with event: NSEvent) {
-        magnifyAccumulator += event.magnification
-        if abs(magnifyAccumulator) >= 0.12 {
-            onZoom?(magnifyAccumulator > 0 ? 1 : -1)
-            magnifyAccumulator = 0
-        }
+        if let step = zoomGesture.step(magnification: event.magnification) { onZoom?(step) }
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

@@ -117,7 +117,7 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         scopeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         scopeLabel.setAccessibilityLabel("Search Root Folder")
 
-        kindPopup.addItems(withTitles: SearchKind.allCases.map { $0 == .any ? "Any Type" : $0.title })
+        kindPopup.addItems(withTitles: SearchKind.allCases.map(\.title))
         kindPopup.setAccessibilityLabel("Search File Type")
         kindPopup.target = self
         kindPopup.action = #selector(conditionsChanged(_:))

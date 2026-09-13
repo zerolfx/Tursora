@@ -1,12 +1,8 @@
 import AppKit
 
-enum ServerConnectionSmokeTests {
+enum ServerConnectionSmokeTests: SmokeSuite {
     static func run() {
         print("== server connections ==")
-        func check(_ name: String, _ condition: Bool) {
-            print("\(condition ? "ok  " : "FAIL") \(name)")
-            if !condition { exit(1) }
-        }
         check("server: SMB share and whitespace normalization",
               (try? ServerConnection.validatedURL("  smb://nas.local/Team  ").absoluteString) == "smb://nas.local/Team")
         check("server: CIFS normalizes to SMB",

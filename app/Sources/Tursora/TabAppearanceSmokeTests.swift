@@ -1,7 +1,8 @@
 import AppKit
 
 /// Checks readable geometry, overflow routing, and adaptive tab rendering.
-enum TabAppearanceSmokeTests {
+enum TabAppearanceSmokeTests: SmokeSuite {
+    static let checkPrefix = "tab appearance: "
     static func run() {
         print("== tab layout and appearance ==")
         geometry()
@@ -167,10 +168,5 @@ enum TabAppearanceSmokeTests {
                                blue: foreground.blueComponent * alpha + background.blueComponent * (1 - alpha), alpha: 1)
         let x = luminance(rendered), y = luminance(background)
         return (max(x, y) + 0.05) / (min(x, y) + 0.05)
-    }
-
-    private static func check(_ name: String, _ success: Bool) {
-        print("\(success ? "ok  " : "FAIL") tab appearance: \(name)")
-        if !success { exit(1) }
     }
 }

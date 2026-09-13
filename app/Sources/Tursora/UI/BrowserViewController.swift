@@ -14,10 +14,6 @@ protocol BrowserHost: AnyObject {
     func focusSearch(in pane: BrowserViewController)
 }
 
-extension BrowserHost {
-    func focusSearch(in pane: BrowserViewController) {}
-}
-
 /// One browsing pane: its own path navigator, directory model, history, and
 /// file views. A tab owns one or two independently navigable panes.
 final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemValidation,
@@ -252,9 +248,13 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
     }
 
+    /// Archive locations, browsed or still being prepared, never accept edits or drops.
+    private var isReadOnlyLocation: Bool { isBrowsingArchive || isPreparingArchive }
+    private func syncReadOnly() { fileView.isReadOnly = isReadOnlyLocation }
+
     /// Hook a file view (list or grid) up to the browser.
     private func wire(_ v: FileViewing) {
-        v.isReadOnly = isBrowsingArchive || isPreparingArchive
+        v.isReadOnly = isReadOnlyLocation
         v.onOpen = { [weak self] item in self?.open(item) }
         v.onOpenInNewTab = { [weak self] item in
             guard item.isNavigable else { return }
@@ -381,7 +381,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         viewMode = mode
         zoomIndex = rememberedViewProperties.zoomIndex(for: mode)
         fileView = mode == .icons ? iconGrid : fileList
-        fileView.isReadOnly = isBrowsingArchive || isPreparingArchive
+        fileView.isReadOnly = isReadOnlyLocation
         if isViewLoaded { mount(fileView) }
         fileView.setIconSize(ZoomLevel.sizes(for: mode)[zoomIndex], showPreviews: showsPreviews)
         fileView.reloadData()
@@ -509,13 +509,13 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let generation = navigationGeneration
         pendingSelection = nil
         isPreparingArchive = false
-        fileView.isReadOnly = isBrowsingArchive
+        syncReadOnly()
         onWorkspaceSessionChanged?()
         if workspace.session(for: logical) != nil {
             enterPreparedArchive(logical)
         } else if AppPreferences.experimentalZIPBrowsingEnabled, let archive = workspace.archiveURL(containing: logical) {
             isPreparingArchive = true
-            fileView.isReadOnly = true
+            syncReadOnly()
             openingArchive = (archive, logical)
             statusBar.beginBusy()
             archiveNotice.showOpening(archive)
@@ -569,7 +569,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         openingArchive = nil
         if isPreparingArchive { statusBar.endBusy() }
         isPreparingArchive = false
-        fileView.isReadOnly = isBrowsingArchive
+        syncReadOnly()
     }
 
     @objc func cancelArchiveOpening(_ sender: Any?) {
@@ -698,31 +698,24 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     func openSelection() { fileView.openSelection() }
 
-    // MARK: - Simple file operations available before M5
+    // MARK: - File operations
 
     /// Creates "untitled folder" (or "untitled folder 2", …) and selects it.
     @discardableResult
     func newFolder() -> URL? {
         guard canModifyCurrentLocation, let currentURL else { return nil }
-        var name = "untitled folder"
-        var n = 2
-        while FileManager.default.fileExists(atPath: currentURL.appendingPathComponent(name).path) {
-            name = "untitled folder \(n)"; n += 1
-        }
-        let url = currentURL.appendingPathComponent(name)
+        let url: URL
         do {
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+            url = try FileOperations.createFolder(in: currentURL)
         } catch {
             report(error, context: "new folder")
             return nil
         }
-        pendingSelection = name
+        pendingSelection = url.lastPathComponent
         model.reload { [weak self] in self?.restoreViewState() }
         DirectoryChanges.post([currentURL])
         return url
     }
-
-    // MARK: - File operations (M5)
 
     private var selectedURLs: [URL] { fileView.selectedItems.map(\.url) }
     private var undo: UndoManager? { view.window?.undoManager }
@@ -759,11 +752,6 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         host?.selectionDidChange(in: self)
     }
 
-    private func reloadSelecting(_ names: [String]) {
-        if isSearching { restartSearch(); return }
-        model.reload { [weak self] in self?.fileView.select(names: names) }
-    }
-
     // Edit menu — reached via the responder chain when the list has focus.
 
     @objc func copy(_ sender: Any?) { putOnPasteboard(selectedURLs, cut: false) }
@@ -778,22 +766,25 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         pb.clearContents()
         pb.writeObjects(urls as [NSURL])
         Self.cutState = cut ? (pb.changeCount, urls) : nil
-        fileList.cutURLs = cut ? Set(urls) : []
-        if viewMode == .icons { iconGrid.cutURLs = fileList.cutURLs }
+        setCutMarkers(cut ? Set(urls) : [])
+    }
+
+    private func setCutMarkers(_ urls: Set<URL>) {
+        fileList.cutURLs = urls
+        if viewMode == .icons { iconGrid.cutURLs = urls }
     }
 
     @objc func paste(_ sender: Any?) {
         guard canModifyCurrentLocation, let dest = currentURL else { return }
         let pb = NSPasteboard.general
-        guard let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-              !urls.isEmpty else { return }
+        let urls = pb.fileURLs
+        guard !urls.isEmpty else { return }
         let pasteboardGeneration = pb.changeCount
         let isCut = Self.cutState?.changeCount == pb.changeCount
         transfer(urls, to: dest, kind: isCut ? .move : .copy) { [weak self] in
             // A later Copy/Cut belongs to a different operation.
             if isCut && pb.changeCount == pasteboardGeneration {
-                Self.cutState = nil; pb.clearContents(); self?.fileList.cutURLs = []
-                if self?.viewMode == .icons { self?.iconGrid.cutURLs = [] }
+                Self.cutState = nil; pb.clearContents(); self?.setCutMarkers([])
             }
         }
     }
@@ -983,18 +974,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     private func registerTransferUndo(_ journal: TransferJournal, undo: UndoManager, actionName: String) {
-        asUndoGroup(undo, actionName: actionName) {
-            undo.registerUndo(withTarget: self) { [weak undo] me in
-                guard let undo else { return }
-                do {
-                    let inverse = try FileOperations.replay(journal)
-                    me.registerTransferUndo(inverse, undo: undo, actionName: actionName)
-                    me.reload()
-                    DirectoryChanges.post(journal.affectedDirectories)
-                } catch {
-                    if let reporter = me.transferReplayErrorReporter { reporter(error) }
-                    else { me.report(error, context: "undo \(actionName.lowercased())") }
-                }
+        registerUndo(on: undo, actionName: actionName) { me, undo in
+            do {
+                let inverse = try FileOperations.replay(journal)
+                me.registerTransferUndo(inverse, undo: undo, actionName: actionName)
+                me.reload()
+                DirectoryChanges.post(journal.affectedDirectories)
+            } catch {
+                if let reporter = me.transferReplayErrorReporter { reporter(error) }
+                else { me.report(error, context: "undo \(actionName.lowercased())") }
             }
         }
     }
@@ -1007,12 +995,19 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// Copy and a later Move landed in one group and were undone together,
     /// which trashed the file the Move had just restored. So: close any stale
     /// automatic group (undo() itself does the same), then group explicitly.
-    private func asUndoGroup(_ undo: UndoManager, actionName: String, _ register: () -> Void) {
+    /// Registers `body` as the undo of one operation on `manager` (default: the
+    /// window's undo manager); `body` receives the pane and that manager.
+    private func registerUndo(on manager: UndoManager? = nil, actionName: String,
+                              _ body: @escaping (BrowserViewController, UndoManager) -> Void) {
+        guard let undo = manager ?? self.undo else { return }
         if !undo.isUndoing, !undo.isRedoing {
             while undo.groupingLevel > 0 { undo.endUndoGrouping() }
         }
         undo.beginUndoGrouping()
-        register()
+        undo.registerUndo(withTarget: self) { [weak undo] me in
+            guard let undo else { return }
+            body(me, undo)
+        }
         undo.setActionName(actionName)
         undo.endUndoGrouping()
         // With groupsByEvent on, NSUndoManager wraps a top-level group of ours
@@ -1025,47 +1020,40 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     private func registerUndoMove(_ pairs: [(from: URL, to: URL)], actionName: String) {
-        guard !pairs.isEmpty, let undo else { return }
-        asUndoGroup(undo, actionName: actionName) {
-            undo.registerUndo(withTarget: self) { me in
-                var reversed: [(from: URL, to: URL)] = []
-                for (from, to) in pairs {
-                    do { try FileManager.default.moveItem(at: to, to: from); reversed.append((from: to, to: from)) }
-                    catch { me.report(error, context: "undo move \(to.path) → \(from.path)") }
-                }
-                me.registerUndoMove(reversed, actionName: actionName)     // redo
-                me.reloadSelectingURLs(reversed.map(\.to))
-                DirectoryChanges.post(pairs.flatMap { [$0.from.deletingLastPathComponent(), $0.to.deletingLastPathComponent()] })
+        guard !pairs.isEmpty else { return }
+        registerUndo(actionName: actionName) { me, _ in
+            var reversed: [(from: URL, to: URL)] = []
+            for (from, to) in pairs {
+                do { try FileOperations.moveItem(at: to, to: from); reversed.append((from: to, to: from)) }
+                catch { me.report(error, context: "undo move \(to.path) → \(from.path)") }
             }
+            me.registerUndoMove(reversed, actionName: actionName)     // redo
+            me.reloadSelectingURLs(reversed.map(\.to))
+            DirectoryChanges.post(pairs.flatMap { [$0.from.deletingLastPathComponent(), $0.to.deletingLastPathComponent()] })
         }
     }
 
     private func registerUndoTrash(_ urls: [URL], actionName: String) {
-        guard !urls.isEmpty, let undo else { return }
-        asUndoGroup(undo, actionName: actionName) {
-            undo.registerUndo(withTarget: self) { me in
-                do {
-                    let pairs = try FileOperations.trash(urls)
-                    me.registerUndoMove(pairs.map { (from: $0.original, to: $0.trashed) }, actionName: actionName)
-                } catch { me.report(error, context: "undo copy (trash)") }
-                me.reload()
-                DirectoryChanges.post(DirectoryChanges.affected(sources: urls))
-            }
+        guard !urls.isEmpty else { return }
+        registerUndo(actionName: actionName) { me, _ in
+            do {
+                let pairs = try FileOperations.trash(urls)
+                me.registerUndoMove(pairs.map { (from: $0.original, to: $0.trashed) }, actionName: actionName)
+            } catch { me.report(error, context: "undo copy (trash)") }
+            me.reload()
+            DirectoryChanges.post(DirectoryChanges.affected(sources: urls))
         }
     }
 
     private func registerUndoRename(from url: URL, to oldName: String, actionName: String) {
-        guard let undo else { return }
-        asUndoGroup(undo, actionName: actionName) {
-            undo.registerUndo(withTarget: self) { me in
-                do {
-                    let newName = url.lastPathComponent
-                    let back = try FileOperations.rename(url, to: oldName)
-                    me.registerUndoRename(from: back, to: newName, actionName: actionName)
-                    me.reloadSelectingURLs([back])
-                    DirectoryChanges.post(DirectoryChanges.affected(sources: [url, back]), renamed: (from: url, to: back))
-                } catch { me.report(error, context: "undo rename"); me.reload() }
-            }
+        registerUndo(actionName: actionName) { me, _ in
+            do {
+                let newName = url.lastPathComponent
+                let back = try FileOperations.rename(url, to: oldName)
+                me.registerUndoRename(from: back, to: newName, actionName: actionName)
+                me.reloadSelectingURLs([back])
+                DirectoryChanges.post(DirectoryChanges.affected(sources: [url, back]), renamed: (from: url, to: back))
+            } catch { me.report(error, context: "undo rename"); me.reload() }
         }
     }
 
@@ -1181,6 +1169,24 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             mi.image = MenuIcons.image(symbol)
             menu.addItem(mi)
         }
+        func addOpenInItems(_ folders: [FileItem]) {
+            guard !folders.isEmpty else { return }
+            add(folders.count == 1 ? "Open in New Tab" : "Open in \(folders.count) New Tabs", #selector(ctxOpenInNewTab(_:)))
+            guard folders.count == 1 else { return }
+            add("Open in New Window", #selector(ctxOpenInNewWindow(_:)))
+            add(host?.isSplit == true ? "Open in Other Pane" : "Open in New Pane", #selector(ctxOpenInOtherPane(_:)))
+        }
+        func addViewItems() {
+            add("Reload", #selector(ctxReload(_:)), symbol: "arrow.clockwise")
+            add("Show Hidden Files", #selector(ctxToggleHidden(_:)), state: showsHiddenFiles ? .on : .off)
+            menu.addItem(sortMenuItem())
+        }
+        func addFavouriteItem(for url: URL) {
+            guard let host else { return }
+            menu.addItem(.separator())
+            let fav = host.places.isFavourite(url)
+            add(fav ? "Remove from Favourites" : "Add to Favourites", #selector(ctxToggleFavourite(_:)), symbol: fav ? "star.slash" : "star")
+        }
         if isBrowsingArchive {
             let readable = !readableURLs(items).isEmpty
             let folders = items.filter(\.isNavigable)
@@ -1188,22 +1194,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
                 add("Open", #selector(ctxOpen(_:)), enabled: readable)
                 if let single = items.first, items.count == 1, !single.isNavigable,
                    let url = single.readableContentURL { menu.addItem(openWithMenuItem(for: url)) }
-                if !folders.isEmpty {
-                    add("Open in New Tab", #selector(ctxOpenInNewTab(_:)))
-                    if folders.count == 1 {
-                        add("Open in New Window", #selector(ctxOpenInNewWindow(_:)))
-                        add(host?.isSplit == true ? "Open in Other Pane" : "Open in New Pane", #selector(ctxOpenInOtherPane(_:)))
-                    }
-                }
+                addOpenInItems(folders)
                 add("Quick Look", #selector(ctxQuickLook(_:)), enabled: readable, symbol: "eye")
                 add("Copy", #selector(ctxCopy(_:)), enabled: readable, symbol: "doc.on.doc")
                 if host?.isSplit == true { add("Copy to Other Pane", #selector(ctxCopyToOtherPane(_:)), enabled: readable) }
                 add(items.count == 1 ? "Copy Path" : "Copy Paths", #selector(ctxCopyPath(_:)))
                 menu.addItem(.separator())
             }
-            add("Reload", #selector(ctxReload(_:)), symbol: "arrow.clockwise")
-            add("Show Hidden Files", #selector(ctxToggleHidden(_:)), state: showsHiddenFiles ? .on : .off)
-            menu.addItem(sortMenuItem())
+            addViewItems()
             return menu
         }
         if isSearching, !items.isEmpty {
@@ -1223,14 +1221,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             add("Paste", #selector(paste(_:)), enabled: validateMenuItem(NSMenuItem(title: "", action: #selector(paste(_:)), keyEquivalent: "")),
                 symbol: "document.on.clipboard|doc.on.clipboard")
             menu.addItem(.separator())
-            add("Reload", #selector(ctxReload(_:)), symbol: "arrow.clockwise")
-            add("Show Hidden Files", #selector(ctxToggleHidden(_:)), state: showsHiddenFiles ? .on : .off)
-            menu.addItem(sortMenuItem())
-            if let currentURL, let host {
-                menu.addItem(.separator())
-                let fav = host.places.isFavourite(currentURL)
-                add(fav ? "Remove from Favourites" : "Add to Favourites", #selector(ctxToggleFavourite(_:)), symbol: fav ? "star.slash" : "star")
-            }
+            addViewItems()
+            if let currentURL { addFavouriteItem(for: currentURL) }
             return menu
         }
 
@@ -1241,13 +1233,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         if let single, !single.isNavigable {
             menu.addItem(openWithMenuItem(for: single.url))
         }
-        if !folders.isEmpty {
-            add(folders.count == 1 ? "Open in New Tab" : "Open in \(folders.count) New Tabs", #selector(ctxOpenInNewTab(_:)))
-            if folders.count == 1 {
-                add("Open in New Window", #selector(ctxOpenInNewWindow(_:)))
-                add(host?.isSplit == true ? "Open in Other Pane" : "Open in New Pane", #selector(ctxOpenInOtherPane(_:)))
-            }
-        }
+        addOpenInItems(folders)
         if host?.isSplit == true {
             menu.addItem(.separator())
             add("Copy to Other Pane", #selector(ctxCopyToOtherPane(_:)))
@@ -1270,11 +1256,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         add("Copy", #selector(ctxCopy(_:)), symbol: "document.on.document|doc.on.doc")
         menu.addItem(.separator())
         add(items.count == 1 ? "Copy Path" : "Copy Paths", #selector(ctxCopyPath(_:)), symbol: "document.on.document|doc.on.doc")
-        if let single, single.isNavigable, let host {
-            menu.addItem(.separator())
-            let fav = host.places.isFavourite(single.url)
-            add(fav ? "Remove from Favourites" : "Add to Favourites", #selector(ctxToggleFavourite(_:)), symbol: fav ? "star.slash" : "star")
-        }
+        if let single, single.isNavigable { addFavouriteItem(for: single.url) }
         return menu
     }
 
@@ -1406,8 +1388,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         addressBar.url = url
         viewPropertiesKey = destinationKey
         restoreViewProperties()
-        fileList.isReadOnly = isBrowsingArchive
-        if viewMode == .icons { iconGrid.isReadOnly = isBrowsingArchive }
+        syncReadOnly()
         lastError = nil
         errorLabel.isHidden = true
         refreshDebounce?.cancel()

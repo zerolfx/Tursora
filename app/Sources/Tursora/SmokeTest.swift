@@ -5,13 +5,13 @@ import Quartz
 /// real window, model, history, tabs and address bar, prints one line per
 /// check, and exits non-zero on the first failure. Used because CI (and
 /// sandboxed terminals) cannot look at the screen.
-enum SmokeTest {
+enum SmokeTest: SmokeSuite {
 
     static var isRequested: Bool { ProcessInfo.processInfo.environment["TURSORA_SMOKE_TEST"] != nil }
 
     private static var savedPreferences: [String: Any] = [:]
     private static let infoSectionKeys = ["general", "moreInfo", "name", "comments", "openWith", "preview", "sharing", "smoke-layout"]
-    private static let appPreferenceKeys = ["viewMode", "zoom.details", "zoom.icons", "groupKey", "lastGroupKey", "showPreviews", "showFileExtensions", "restoreWorkspaceOnLaunch", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
+    private static let appPreferenceKeys = ["showFileExtensions", "restoreWorkspaceOnLaunch", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
         + [ShortcutStore.defaultsKey, "terminalPreferences.v1"]
         + infoSectionKeys.flatMap { ["InfoSection.\($0)", InfoSection.explicitPreferenceKey(for: $0)] }
     static func restorePreferences() {
@@ -42,66 +42,64 @@ enum SmokeTest {
         AppPreferences.experimentalZIPBrowsingEnabled = false
         AppPreferences.shared.shortcuts.resetAll()
         AppPreferences.shared.resetFilterShortcut()
-        // A failed earlier run may have left preferences behind; start from defaults.
-        ViewPreferences.groupKey = .none
-        ViewPreferences.lastGroupKey = .kind
-        ViewPreferences.viewMode = .details
+        // A failed earlier run may have left view state behind; start from defaults.
         wc.browser.setGroupKey(.none)
         wc.browser.setViewMode(.details)
+        // The suites run in this fixed order; each step receives the
+        // continuation that starts the next one, so asynchronous suites hand
+        // over from their completion and synchronous ones are grouped.
+        typealias Step = (@escaping () -> Void) -> Void
+        let steps: [Step] = [
+            DockMenuSmokeTests.run,
+            DirectoryViewPropertiesSmokeTests.run,
+            { done in
+                IconAssetsSmokeTests.run()
+                ServerConnectionSmokeTests.run()
+                SettingsSmokeTests.run()
+                UpdateSmokeTests.run()
+                WorkspaceSessionModelSmokeTests.run()
+                done()
+            },
+            WorkspaceSessionSmokeTests.run,
+            { done in TabAppearanceSmokeTests.run(); InfoDisclosureSmokeTests.run(); done() },
+            { done in AppearanceSmokeTests.run(browser: wc.browser, completion: done) },
+            TextThumbnailSmokeTests.run,
+            { done in TransferSmokeTests.run(wc, completion: done) },
+            ArchiveSmokeTests.run,
+            ArchiveWorkspaceSmokeTests.run,
+            ArchivePreparationSmokeTests.run,
+            ArchiveBrowserSmokeTests.run,
+            SplitToolbarSmokeTests.run,
+            FolderTreeSmokeTests.run,
+            ShortcutSmokeTests.run,
+            TerminalToolbarSmokeTests.run,
+            TerminalSmokeTests.run,
+            TerminalDirectorySyncSmokeTests.run,
+            TerminalPreferencesSmokeTests.run,
+            TerminalActivitySmokeTests.run,
+            StatusBarSmokeTests.run,
+            TerminalSessionSmokeTests.run,
+            SearchEntrySmokeTests.run,
+            SearchSmokeTests.run,
+            IntegratedSearchSmokeTests.run,
+            PanePathsSmokeTests.run,
+            TabActionsSmokeTests.run,
+            delayedListing,
+            { _ in
+                infoSectionLayout()
+                savedViewModes(wc.provider)
+                preferencesIntegration(wc) { windowChrome(wc) { navigation(wc) } }
+            },
+        ]
+        func runSteps(_ remaining: ArraySlice<Step>) {
+            guard let step = remaining.first else { return }
+            step { runSteps(remaining.dropFirst()) }
+        }
         // A cold directory listing can outlive the old one-second delay.
         // Generation records completion, including an empty result or an error.
-        awaitInitialListing(wc.browser.model) {
-            DockMenuSmokeTests.run {
-            DirectoryViewPropertiesSmokeTests.run {
-            appIconAssets()
-            ServerConnectionSmokeTests.run()
-            SettingsSmokeTests.run()
-            UpdateSmokeTests.run()
-            WorkspaceSessionModelSmokeTests.run()
-            WorkspaceSessionSmokeTests.run {
-            TabAppearanceSmokeTests.run()
-            InfoDisclosureSmokeTests.run()
-            AppearanceSmokeTests.run(browser: wc.browser) {
-            TextThumbnailSmokeTests.run {
-            TransferSmokeTests.run(wc) { ArchiveSmokeTests.run {
-                ArchiveWorkspaceSmokeTests.run {
-                    ArchivePreparationSmokeTests.run {
-                    ArchiveBrowserSmokeTests.run {
-                        SplitToolbarSmokeTests.run {
-                            FolderTreeSmokeTests.run { ShortcutSmokeTests.run { TerminalToolbarSmokeTests.run { TerminalSmokeTests.run { TerminalDirectorySyncSmokeTests.run { TerminalPreferencesSmokeTests.run { TerminalActivitySmokeTests.run { StatusBarSmokeTests.run { TerminalSessionSmokeTests.run {
-                                SearchEntrySmokeTests.run {
-                                SearchSmokeTests.run {
-                                    IntegratedSearchSmokeTests.run {
-                                    PanePathsSmokeTests.run {
-                                    TabActionsSmokeTests.run {
-                                    delayedListing {
-                                        infoSectionLayout()
-                                        savedViewModes(wc.provider)
-                                        preferencesIntegration(wc) { windowChrome(wc) { navigation(wc) } }
-                                    }
-                                    }
-                                    }
-                                    }
-                                }
-                                }
-                            } } } } } } } } }
-                        }
-                    }
-                    }
-                }
-            } }
-            }
-            }
-        }
-        }
-        }
-        }
+        awaitInitialListing(wc.browser.model) { runSteps(steps[...]) }
     }
 
-    private static func check(_ name: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") {
-        print("\(ok ? "ok  " : "FAIL") \(name)\(detail().isEmpty ? "" : " — \(detail())")")
-        if !ok { exit(1) }
-    }
     private static func after(_ s: Double, _ f: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + s, execute: f)
     }
@@ -129,10 +127,6 @@ enum SmokeTest {
         }, completion: completion)
     }
 
-    private static func appIconAssets() {
-        IconAssetsSmokeTests.run()
-    }
-
     private static func awaitInitialListing(_ model: DirectoryModel, timeout: TimeInterval = 15,
                                             completion: @escaping () -> Void) {
         let deadline = ProcessInfo.processInfo.systemUptime + timeout
@@ -149,19 +143,11 @@ enum SmokeTest {
         poll()
     }
 
-    /// Empty results still complete; waiting for a nonzero item count would hang.
-    private final class DelayedEmptyProvider: FileProvider {
-        let homeURL = FileManager.default.temporaryDirectory
-        func displayName(for url: URL) -> String { url.lastPathComponent }
-        func listDirectory(_ url: URL) throws -> [FileItem] {
-            Thread.sleep(forTimeInterval: 1.25) // Background provider, never the main run loop.
-            return []
-        }
-    }
-
     private static func delayedListing(completion: @escaping () -> Void) {
         print("== asynchronous startup listing ==")
-        let provider = DelayedEmptyProvider()
+        // Empty results still complete; waiting for a nonzero item count would
+        // hang. The delay runs on the background provider, never the main run loop.
+        let provider = SmokeFixtures.EmptyProvider(listingDelay: 1.25)
         let model = DirectoryModel(provider: provider)
         var passedOldDeadline = false
         model.load(provider.homeURL)
@@ -744,10 +730,7 @@ enum SmokeTest {
     private static func viewModes(_ wc: MainWindowController, _ tmp: URL) {
         print("== view modes ==")
         let b = wc.browser
-        // Start from known preferences: an earlier failed run must not leak zoom steps in.
-        ViewPreferences.setZoomIndex(ZoomLevel.defaultIndex(for: .icons), for: .icons)
-        ViewPreferences.setZoomIndex(ZoomLevel.defaultIndex(for: .details), for: .details)
-        ViewPreferences.showPreviews = true
+        // Start from known view state: an earlier failed run must not leak zoom steps in.
         b.setViewMode(.details)
         b.zoomActualSize(nil)
         b.navigate(to: tmp)
@@ -806,7 +789,7 @@ enum SmokeTest {
 
     private static func liveRefresh(_ wc: MainWindowController, _ tmp: URL) {
         print("== live refresh ==")
-        let b = wc.browser, fm = FileManager.default, t = wc.tabs
+        let b = wc.browser, t = wc.tabs
         let sub = tmp.appendingPathComponent("sub")
         // a drag session must never end in a rename
         let list = b.fileList.tableView
@@ -1222,8 +1205,6 @@ enum SmokeTest {
             exercise(.icons) {
                 _ = tabs.closeCurrentTab()
                 original.setGroupKey(.none)
-                ViewPreferences.lastGroupKey = .kind
-                ViewPreferences.viewMode = original.viewMode
                 wc.window?.makeFirstResponder(original.focusView)
                 completion()
             }
@@ -1346,7 +1327,7 @@ enum SmokeTest {
     }
 
     private static func infoWindow(_ wc: MainWindowController, _ tmp: URL, _ file: URL, _ dir: URL) {
-        let b = wc.browser, fm = FileManager.default
+        let fm = FileManager.default
         guard let info = InfoWindowController.openWindows.first else { check("info window opened", false); return }
         check("one info window", InfoWindowController.openWindows.count == 1)
         check("title is '<name> Info'", info.window?.title == "info.txt Info", info.window?.title ?? "nil")
@@ -1606,8 +1587,6 @@ enum SmokeTest {
             exercise(.icons) {
                 _ = wc.tabs.closeCurrentTab()
                 original.setGroupKey(.none)
-                ViewPreferences.lastGroupKey = .kind
-                ViewPreferences.viewMode = original.viewMode
                 completion()
             }
         }
@@ -1708,11 +1687,10 @@ enum SmokeTest {
                 after(0.5) {
                     check("undo trash restores the file", fm.fileExists(atPath: tmp.appendingPathComponent("note copy 2.txt").path))
                     // drop-operation rules (Finder semantics)
-                    let list = b.fileList
-                    check("drop into own folder is a no-op", FileListViewController.dropOperation(for: [tmp.appendingPathComponent("note.txt")], into: tmp, sourceMask: [.copy, .move]).isEmpty)
-                    check("⌥-drop copies", FileListViewController.dropOperation(for: [tmp.appendingPathComponent("note.txt")], into: tmp.appendingPathComponent("sub"), sourceMask: .copy) == .copy)
-                    check("same-volume drop moves", FileListViewController.dropOperation(for: [tmp.appendingPathComponent("note.txt")], into: tmp.appendingPathComponent("sub"), sourceMask: [.copy, .move]) == .move)
-                    check("drop onto itself is a no-op", FileListViewController.dropOperation(for: [tmp.appendingPathComponent("sub")], into: tmp.appendingPathComponent("sub"), sourceMask: [.copy, .move]).isEmpty)
+                    check("drop into own folder is a no-op", FileOperations.dropOperation(for: [tmp.appendingPathComponent("note.txt")], into: tmp, sourceMask: [.copy, .move]).isEmpty)
+                    check("⌥-drop copies", FileOperations.dropOperation(for: [tmp.appendingPathComponent("note.txt")], into: tmp.appendingPathComponent("sub"), sourceMask: .copy) == .copy)
+                    check("same-volume drop moves", FileOperations.dropOperation(for: [tmp.appendingPathComponent("note.txt")], into: tmp.appendingPathComponent("sub"), sourceMask: [.copy, .move]) == .move)
+                    check("drop onto itself is a no-op", FileOperations.dropOperation(for: [tmp.appendingPathComponent("sub")], into: tmp.appendingPathComponent("sub"), sourceMask: [.copy, .move]).isEmpty)
                     expansion(wc, tmp)
                 }
             }

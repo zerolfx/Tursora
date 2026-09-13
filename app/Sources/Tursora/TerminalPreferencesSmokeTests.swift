@@ -4,7 +4,8 @@ import SwiftTerm
 
 /// All preferences use a private suite. The one real PTY starts our controlled
 /// executable, which ignores login arguments and execs /bin/sh without rc files.
-enum TerminalPreferencesSmokeTests {
+enum TerminalPreferencesSmokeTests: SmokeSuite {
+    static let checkPrefix = "terminal preferences: "
     static func run(completion: @escaping () -> Void) {
         print("== terminal preferences ==")
         let suite = "Tursora.TerminalPreferencesSmoke." + UUID().uuidString
@@ -235,19 +236,9 @@ enum TerminalPreferencesSmokeTests {
     private static func send(_ text: String, to terminal: LocalProcessTerminalView) { terminal.process.send(data: Array(text.utf8)[...]) }
     private static func output(_ terminal: LocalProcessTerminalView) -> String { String(decoding: terminal.getTerminal().getBufferAsData(), as: UTF8.self) }
     private static func waitFor(_ marker: String, in terminal: LocalProcessTerminalView, completion: @escaping () -> Void) {
-        let deadline = Date().addingTimeInterval(10)
-        func poll() {
-            if output(terminal).contains(marker) { check("real PTY receives \(marker)", true); completion(); return }
-            if Date() >= deadline { fail("real PTY receives \(marker)", output(terminal)) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: poll)
+        Task { @MainActor in
+            await expectEventually("real PTY receives \(marker)", timeout: 10, interval: 30_000_000, detail: { output(terminal) }) { output(terminal).contains(marker) }
+            completion()
         }
-        poll()
-    }
-    private static func check(_ name: String, _ condition: Bool, _ detail: String = "") {
-        if condition { print("ok  terminal preferences: \(name)") } else { fail(name, detail) }
-    }
-    private static func fail(_ name: String, _ detail: String) -> Never {
-        print("FAIL terminal preferences: \(name) \(detail)")
-        exit(1)
     }
 }

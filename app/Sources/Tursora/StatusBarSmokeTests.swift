@@ -2,7 +2,8 @@ import AppKit
 
 /// File-status wording and narrow-pane controls stay independent of terminal
 /// visibility. Exact strings also reject accidental disk-capacity suffixes.
-enum StatusBarSmokeTests {
+enum StatusBarSmokeTests: SmokeSuite {
+    static let checkPrefix = "file status: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             print("== file status bar ==")
@@ -60,7 +61,7 @@ enum StatusBarSmokeTests {
     @MainActor private static func paneChecks() async {
         let previousEnabled = AppPreferences.experimentalTerminalEnabled
         AppPreferences.experimentalTerminalEnabled = true
-        let provider = EmptyProvider()
+        let provider = SmokeFixtures.EmptyProvider()
         let viewFile = provider.homeURL.appendingPathComponent("tursora-file-status-" + UUID().uuidString + ".json")
         let controller = MainWindowController(provider: provider, places: PlacesModel(), initialURL: provider.homeURL,
             viewPropertiesStore: DirectoryViewPropertiesStore(fileURL: viewFile))
@@ -91,17 +92,6 @@ enum StatusBarSmokeTests {
         controller.tabs.pages.flatMap(\.panes).allSatisfy { !$0.statusBar.subviews.contains { $0 is NSButton } }
     }
     @MainActor private static func loaded(_ browser: BrowserViewController) async {
-        let deadline = Date().addingTimeInterval(10)
-        while browser.model.generation == 0 && Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
-        check("pane fixture loads", browser.model.generation > 0)
-    }
-    private static func check(_ name: String, _ condition: Bool) {
-        print("\(condition ? "ok  " : "FAIL") file status: \(name)")
-        if !condition { exit(1) }
-    }
-    private final class EmptyProvider: FileProvider {
-        let homeURL = FileManager.default.temporaryDirectory
-        func displayName(for url: URL) -> String { url.lastPathComponent }
-        func listDirectory(_ url: URL) throws -> [FileItem] { [] }
+        await expectEventually("pane fixture loads") { browser.model.generation > 0 }
     }
 }

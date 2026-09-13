@@ -2,7 +2,8 @@ import AppKit
 
 /// Exercise existing layer surfaces across appearance changes without changing
 /// the application's or the user's system appearance preference.
-enum AppearanceSmokeTests {
+enum AppearanceSmokeTests: SmokeSuite {
+    static let checkPrefix = "appearance: "
     static func run(browser: BrowserViewController, completion: @escaping () -> Void) {
         Task { @MainActor in
             await runChecks(browser: browser)
@@ -129,10 +130,5 @@ enum AppearanceSmokeTests {
         var expected: CGColor?
         appearance.performAsCurrentDrawingAppearance { expected = color.cgColor }
         return actual != nil && actual == expected
-    }
-
-    private static func check(_ name: String, _ success: Bool) {
-        print("\(success ? "ok  " : "FAIL") appearance: \(name)")
-        if !success { fflush(stdout); exit(1) }
     }
 }

@@ -153,9 +153,7 @@ final class TabPage: NSViewController, NSSplitViewDelegate {
         }
         installMonitor()
         activate(pane)
-        updateIndicators()
         onWorkspaceSessionChanged?()
-        if !(activeIndex == index) { onActivePaneChanged?(pane) }
         view.window?.makeFirstResponder(pane.focusView)
     }
 

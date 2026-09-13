@@ -2,7 +2,8 @@ import AppKit
 
 /// The one toolbar field starts as a local filter and keeps its pane identity
 /// when the user expands recursive search options or another pane becomes active.
-enum SearchEntrySmokeTests {
+enum SearchEntrySmokeTests: SmokeSuite {
+    static let checkPrefix = "search entry: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             print("== unified filter and search entry ==")
@@ -47,7 +48,7 @@ enum SearchEntrySmokeTests {
         check("\(mode): filtering never schedules recursive work", !browser.isSearching && browser.searchSession.request == nil)
         let beforeSameDirectory = browser.model.generation
         browser.navigate(to: root)
-        await wait("\(mode): same-directory navigation finishes") { browser.model.generation > beforeSameDirectory }
+        await expectEventually("\(mode): same-directory navigation finishes") { browser.model.generation > beforeSameDirectory }
         check("\(mode): same-directory navigation preserves filter text and its compact hint", browser.nameFilter == "needle" && field.stringValue == "needle" && !browser.searchPanel.view.isHidden && !browser.searchPanel.isShowingOptions && browser.model.items.map(\.name) == ["needle.txt"])
         browser.searchPanel.optionsButton.performClick(nil)
         check("\(mode): expanding options preserves the existing query", browser.searchPanel.isShowingOptions && browser.searchPanel.currentRequest.name == "needle" && field.stringValue == "needle")
@@ -96,13 +97,13 @@ enum SearchEntrySmokeTests {
         let panel = browser.searchPanel
         panel.kindPopup.selectItem(at: SearchKind.allCases.firstIndex(of: .document)!)
         dispatch(panel.kindPopup)
-        await wait("\(mode): type changes automatically start a query") {
+        await expectEventually("\(mode): type changes automatically start a query") {
             browser.searchSession.request?.kind == .document && !browser.searchSession.status.isSearching
         }
         check("\(mode): type changes preserve the name and search root", browser.searchSession.request?.name == "other" && browser.searchSession.request?.rootURL == root)
         panel.datePopup.selectItem(at: 1)
         dispatch(panel.datePopup)
-        await wait("\(mode): date changes automatically start a query") {
+        await expectEventually("\(mode): date changes automatically start a query") {
             browser.searchSession.request?.modifiedAfter != nil && !browser.searchSession.status.isSearching
         }
         check("\(mode): date changes preserve type and name", browser.searchSession.request?.kind == .document && browser.searchSession.request?.name == "other")
@@ -129,7 +130,7 @@ enum SearchEntrySmokeTests {
         check("\(mode): blurring an empty name preserves advanced options", panel.isShowingOptions && !panel.view.isHidden && browser.isSearching && field.stringValue.isEmpty)
         panel.kindPopup.selectItem(at: SearchKind.allCases.firstIndex(of: .document)!)
         dispatch(panel.kindPopup)
-        await wait("\(mode): an empty name can search by type") {
+        await expectEventually("\(mode): an empty name can search by type") {
             browser.searchSession.request?.name == "" && browser.searchSession.request?.kind == .document
                 && !browser.searchSession.status.isSearching
         }
@@ -258,7 +259,7 @@ enum SearchEntrySmokeTests {
 
     @MainActor private static func listed(_ browser: BrowserViewController, at url: URL) async {
         let expectedName = url.lastPathComponent == "Child" ? "needle-child.txt" : "needle.txt"
-        await wait("directory listing finishes") {
+        await expectEventually("directory listing finishes") {
             browser.currentURL?.standardizedFileURL == url.standardizedFileURL
                 && browser.model.url?.standardizedFileURL == url.standardizedFileURL
                 && browser.model.generation > 0 && !browser.model.isSearchResults && !browser.isSearching
@@ -267,7 +268,7 @@ enum SearchEntrySmokeTests {
     }
 
     @MainActor private static func searched(_ browser: BrowserViewController, name: String) async {
-        await wait("recursive query for \(name) finishes") {
+        await expectEventually("recursive query for \(name) finishes") {
             browser.isSearching && browser.model.isSearchResults && browser.searchSession.request?.name == name && !browser.searchSession.status.isSearching
         }
         guard case .finished = browser.searchSession.status else {
@@ -275,18 +276,7 @@ enum SearchEntrySmokeTests {
         }
     }
 
-    @MainActor private static func wait(_ label: String, condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(12)
-        while !condition(), Date() < deadline { await pause(0.04) }
-        check(label, condition())
-    }
-
     @MainActor private static func pause(_ seconds: TimeInterval) async {
         try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-    }
-
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") search entry: \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { exit(1) }
     }
 }

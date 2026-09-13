@@ -1,7 +1,7 @@
 import AppKit
 
 /// Real browser paths, including shared chrome, tabs and both file views.
-enum ArchiveBrowserSmokeTests {
+enum ArchiveBrowserSmokeTests: SmokeSuite {
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             let fm = FileManager.default
@@ -10,18 +10,12 @@ enum ArchiveBrowserSmokeTests {
             let terminalKey = "experimentalTerminalEnabled"
             let oldFlag = UserDefaults.standard.object(forKey: zipKey)
             let oldTerminal = UserDefaults.standard.object(forKey: terminalKey)
-            let oldMode = ViewPreferences.viewMode
-            let oldGroup = ViewPreferences.groupKey
-            let oldLastGroup = ViewPreferences.lastGroupKey
             let viewStore = DirectoryViewPropertiesStore(fileURL: fixture.appendingPathComponent("views/state.json"))
             var window: MainWindowController?
             defer {
                 window?.close()
                 restorePreference(oldFlag, forKey: zipKey)
                 restorePreference(oldTerminal, forKey: terminalKey)
-                ViewPreferences.viewMode = oldMode
-                ViewPreferences.groupKey = oldGroup
-                ViewPreferences.lastGroupKey = oldLastGroup
                 try? viewStore.flush()
                 try? fm.removeItem(at: fixture)
             }
@@ -36,7 +30,7 @@ enum ArchiveBrowserSmokeTests {
                 let welcome = fixture.appendingPathComponent("welcome.txt")
                 try Data("welcome".utf8).write(to: welcome)
                 try fm.createSymbolicLink(atPath: docs.appendingPathComponent("outside-link").path, withDestinationPath: welcome.path)
-                let archive = try await compress([docs, welcome], to: fixture)
+                let archive = try await SmokeFixtures.compress([docs, welcome], to: fixture)
                 let sourceBytes = try Data(contentsOf: archive)
                 restorePreference(nil, forKey: zipKey)
                 restorePreference(nil, forKey: terminalKey)
@@ -525,21 +519,5 @@ enum ArchiveBrowserSmokeTests {
                 && browser.model.items.allSatisfy { $0.url.deletingLastPathComponent().standardizedFileURL.path == url.standardizedFileURL.path }
         }
         browser.view.layoutSubtreeIfNeeded()
-    }
-    @MainActor private static func waitUntil(_ label: String, detail: () -> String = { "" }, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(15)
-        while !condition() {
-            if Date() > deadline { check("\(label) completes", false, detail()); return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
-    }
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
-    }
-    private static func compress(_ urls: [URL], to directory: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            FileOperations.compress(urls: urls, to: directory) { continuation.resume(with: $0) }
-        }
     }
 }

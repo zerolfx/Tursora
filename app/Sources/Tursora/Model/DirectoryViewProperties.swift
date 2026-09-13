@@ -15,19 +15,6 @@ struct DirectoryViewProperties: Codable, Equatable {
 
     init() {}
 
-    /// Migrate existing preferences once, when the application library is absent.
-    /// Restoring directory properties never writes back to these legacy keys.
-    static var legacyDefaults: Self {
-        var result = Self()
-        result.viewMode = ViewPreferences.viewMode
-        result.detailsZoomIndex = ViewPreferences.zoomIndex(for: .details)
-        result.iconsZoomIndex = ViewPreferences.zoomIndex(for: .icons)
-        result.groupKey = ViewPreferences.groupKey
-        result.lastGroupKey = ViewPreferences.lastGroupKey
-        result.showPreviews = ViewPreferences.showPreviews
-        return result.normalized
-    }
-
     func zoomIndex(for mode: ViewMode) -> Int {
         ZoomLevel.clamp(mode == .details ? detailsZoomIndex : iconsZoomIndex, for: mode)
     }
@@ -109,8 +96,7 @@ final class DirectoryViewPropertiesStore {
         }
         let root = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Tursora", isDirectory: true)
-        return DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("DirectoryViewProperties.json"),
-                                            initialDefaults: .legacyDefaults)
+        return DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("DirectoryViewProperties.json"))
     }()
 
     let fileURL: URL
@@ -275,27 +261,13 @@ final class DirectoryViewPropertiesStore {
         }
 
         private enum CodingKeys: String, CodingKey { case version, defaultProperties, policy, directories }
-        private struct DirectoryKey: CodingKey {
-            var stringValue: String
-            var intValue: Int? { nil }
-            init?(stringValue: String) { self.stringValue = stringValue }
-            init?(intValue: Int) { return nil }
-        }
-
         init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             version = try values.decode(Int.self, forKey: .version)
             defaultProperties = try? values.decode(DirectoryViewProperties.self, forKey: .defaultProperties)
             policy = (try? values.decode(Policy.self, forKey: .policy)) ?? .perDirectory
-            var records: [String: DirectoryViewProperties] = [:]
-            if let entries = try? values.nestedContainer(keyedBy: DirectoryKey.self, forKey: .directories) {
-                for key in entries.allKeys {
-                    if let value = try? entries.decode(DirectoryViewProperties.self, forKey: key) {
-                        records[key.stringValue] = value
-                    }
-                }
-            }
-            directories = records
+            let records = (try? values.decode([String: LossyDecoded<DirectoryViewProperties>].self, forKey: .directories)) ?? [:]
+            directories = records.compactMapValues(\.value)
         }
     }
 }

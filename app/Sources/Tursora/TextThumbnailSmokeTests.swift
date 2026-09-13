@@ -3,7 +3,8 @@ import Darwin
 
 /// Text decoding and real thumbnail consumers, including deliberately reversed
 /// completion order so asynchronous regressions do not depend on timing.
-enum TextThumbnailSmokeTests {
+enum TextThumbnailSmokeTests: SmokeSuite {
+    static let checkPrefix = "text thumbnails: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             await runChecks()
@@ -302,10 +303,5 @@ enum TextThumbnailSmokeTests {
     private static func bitmap(_ image: NSImage) -> NSBitmapImageRep? {
         guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         return NSBitmapImageRep(cgImage: cg)
-    }
-
-    private static func check(_ name: String, _ success: Bool) {
-        print("\(success ? "ok  " : "FAIL") text thumbnails: \(name)")
-        if !success { fflush(stdout); exit(1) }
     }
 }

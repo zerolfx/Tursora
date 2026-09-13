@@ -92,7 +92,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         generalScrollView.autohidesScrollers = true
         generalScrollView.drawsBackground = false
         generalScrollView.borderType = .noBorder
-        let content = SettingsDocumentView()
+        let content = FlippedView()
         content.translatesAutoresizingMaskIntoConstraints = false
         generalScrollView.documentView = content
         let clip = generalScrollView.contentView
@@ -131,17 +131,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         updates.view = updateContent
         settingsTabs.addTabViewItem(updates)
         buildUpdates(in: updateContent)
-        func heading(_ title: String) -> NSTextField {
-            let field = NSTextField(labelWithString: title)
-            field.font = .systemFont(ofSize: 13, weight: .semibold)
-            return field
-        }
-        func detail(_ text: String) -> NSTextField {
-            let field = NSTextField(wrappingLabelWithString: text)
-            field.font = .systemFont(ofSize: 12)
-            field.textColor = .secondaryLabelColor
-            return field
-        }
         func separator() -> NSBox {
             let box = NSBox(); box.boxType = .separator
             return box
@@ -169,17 +158,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         zipCheckbox.action = #selector(toggleZIPBrowsing(_:))
 
         let rows: [NSView] = [
-            heading("Startup"), restoreWorkspaceCheckbox,
-            detail("Restore your windows, tabs and split panes. Turning this off clears the saved workspace."),
+            NSTextField.heading("Startup"), restoreWorkspaceCheckbox,
+            NSTextField.detail("Restore your windows, tabs and split panes. Turning this off clears the saved workspace."),
             workspaceSaveMessage, retryWorkspaceSave, separator(),
-            heading("General"), extensionsCheckbox,
-            detail("Applies to file labels. Files keep their original names."), separator(),
-            heading("Folder View Settings"), folderViewPolicy,
-            detail("Remember view mode, sorting, icon sizes, groups, hidden files and previews. Use View → Folder View Settings to save a default or reset a folder. In Remember Each Folder mode, open panes keep their own view until you revisit the folder."),
+            NSTextField.heading("General"), extensionsCheckbox,
+            NSTextField.detail("Applies to file labels. Files keep their original names."), separator(),
+            NSTextField.heading("Folder View Settings"), folderViewPolicy,
+            NSTextField.detail("Remember view mode, sorting, icon sizes, groups, hidden files and previews. Use View → Folder View Settings to save a default or reset a folder. In Remember Each Folder mode, open panes keep their own view until you revisit the folder."),
             folderViewSaveMessage, retryFolderViewSave, separator(),
-            heading("Terminal & ZIP"),
-            terminalCheckbox, detail("Use the toolbar Terminal button to show or hide your terminal. Hidden sessions keep running, including when this option is off. Re-enable it to return to the session. Customize its shell and appearance in Terminal, and its shortcut in Shortcuts."),
-            zipCheckbox, detail("Open ZIP files read-only in the current pane. Use Extract when you want to unpack the archive."),
+            NSTextField.heading("Terminal & ZIP"),
+            terminalCheckbox, NSTextField.detail("Use the toolbar Terminal button to show or hide your terminal. Hidden sessions keep running, including when this option is off. Re-enable it to return to the session. Customize its shell and appearance in Terminal, and its shortcut in Shortcuts."),
+            zipCheckbox, NSTextField.detail("Open ZIP files read-only in the current pane. Use Extract when you want to unpack the archive."),
         ]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
@@ -223,11 +212,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     }
 
     private func buildUpdates(in content: NSView) {
-        let title = NSTextField(labelWithString: "Software Updates")
-        title.font = .systemFont(ofSize: 13, weight: .semibold)
-        let detail = NSTextField(wrappingLabelWithString: "Check for new versions daily. Downloaded updates are verified before installation. Automatic installation is off by default; when enabled, updates can install when you quit Tursora.")
-        detail.font = .systemFont(ofSize: 12)
-        detail.textColor = .secondaryLabelColor
+        let title = NSTextField.heading("Software Updates")
+        let detail = NSTextField.detail("Check for new versions daily. Downloaded updates are verified before installation. Automatic installation is off by default; when enabled, updates can install when you quit Tursora.")
         automaticUpdateChecksCheckbox.target = self
         automaticUpdateChecksCheckbox.action = #selector(toggleAutomaticUpdateChecks(_:))
         automaticUpdateDownloadsCheckbox.target = self
@@ -306,10 +292,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         if let updaterObserver { updater.notificationCenter.removeObserver(updaterObserver) }
         if let workspaceObserver { NotificationCenter.default.removeObserver(workspaceObserver) }
     }
-}
-
-private final class SettingsDocumentView: NSView {
-    override var isFlipped: Bool { true }
 }
 
 /// Intercepts recording before menu dispatch, so pressing an existing command

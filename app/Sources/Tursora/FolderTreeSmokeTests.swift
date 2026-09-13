@@ -3,7 +3,8 @@ import Darwin
 
 /// Folder-tree checks use task-owned fixtures, isolated view stores and gated
 /// providers. They do not enumerate a user's Home or persist a workspace.
-enum FolderTreeSmokeTests {
+enum FolderTreeSmokeTests: SmokeSuite {
+    static let checkPrefix = "folder tree: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             print("== folder tree ==")
@@ -54,18 +55,18 @@ enum FolderTreeSmokeTests {
         check("inactive construction and follow do not scan", model.root == nil && !model.isActive && provider.requestCount == count)
         model.follow(root)
         model.setActive(true)
-        await until("root listing finishes") { model.root?.children != nil && model.root?.isLoading == false }
+        await expectEventually("root listing finishes") { model.root?.children != nil && model.root?.isLoading == false }
         check("opening the root loads only its immediate folders", provider.requestCount == count + 1 && model.loadedNodes.count == 4 && model.root?.children?.allSatisfy { $0.children == nil } == true)
         let alphaNode = model.root!.children!.first { $0.name == "Alpha" }!
         model.load(alphaNode)
-        await until("explicit Alpha expansion finishes") { alphaNode.children != nil && !alphaNode.isLoading }
+        await expectEventually("explicit Alpha expansion finishes") { alphaNode.children != nil && !alphaNode.isLoading }
         check("expanding one level does not recursively scan grandchildren", alphaNode.children?.map(\.name) == ["Nested"] && alphaNode.children?.first?.children == nil && provider.count(at: alpha.appendingPathComponent("Nested")) == 0)
         var revealed: [FolderTreeModel.Node]?
         model.follow(alpha.appendingPathComponent("Nested/Deep")) { revealed = $0 }
-        await until("deep path reveal finishes") { revealed != nil }
+        await expectEventually("deep path reveal finishes") { revealed != nil }
         check("following a deep folder loads just its ancestor chain", revealed?.map(\.name) == [root.lastPathComponent, "Alpha", "Nested", "Deep"] && provider.count(at: root.appendingPathComponent("Beta")) == 0)
         model.showsHiddenFolders = true
-        await until("Show Hidden refresh finishes") { model.root?.children?.contains { $0.name == ".Hidden" } == true }
+        await expectEventually("Show Hidden refresh finishes") { model.root?.children?.contains { $0.name == ".Hidden" } == true }
         check("hidden preference survives a model refresh", model.showsHiddenFolders)
         model.setActive(false)
         let stoppedCount = provider.requestCount
@@ -90,20 +91,20 @@ enum FolderTreeSmokeTests {
         let model = FolderTreeModel(provider: provider)
         let firstGate = provider.gateNext(root)
         model.setActive(true)
-        await until("gated initial listing starts") { provider.isWaiting }
+        await expectEventually("gated initial listing starts") { provider.isWaiting }
         let discardedRoot = model.root!
         model.setActive(false)
         firstGate.signal()
-        await until("cancelled listing returns") { provider.completedCount == 1 }
+        await expectEventually("cancelled listing returns") { provider.completedCount == 1 }
         await turn()
         check("late result cannot repopulate an inactive tree", discardedRoot.children == nil && !discardedRoot.isLoading && model.root === discardedRoot && !model.isActive)
         model.setActive(true)
-        await until("reactivated listing finishes") { model.root?.children != nil && model.root?.isLoading == false }
+        await expectEventually("reactivated listing finishes") { model.root?.children != nil && model.root?.isLoading == false }
         check("reactivation creates fresh root identity", model.root !== discardedRoot)
         let current = model.root!
         let secondGate = provider.gateNext(root)
         model.load(current, refresh: true)
-        await until("gated refresh snapshots old children") { provider.isWaiting }
+        await expectEventually("gated refresh snapshots old children") { provider.isWaiting }
         let addition = root.appendingPathComponent("QueuedRefresh")
         try FileManager.default.createDirectory(at: addition, withIntermediateDirectories: false)
         model.refresh()
@@ -111,21 +112,21 @@ enum FolderTreeSmokeTests {
         var refreshedRevealCount = 0
         model.follow(addition) { refreshedReveal = $0; refreshedRevealCount += 1 }
         secondGate.signal()
-        await until("queued refresh sees a change made during enumeration") { current.children?.contains { $0.name == "QueuedRefresh" } == true && !current.isLoading }
+        await expectEventually("queued refresh sees a change made during enumeration") { current.children?.contains { $0.name == "QueuedRefresh" } == true && !current.isLoading }
         check("refresh during loading causes a follow-up enumeration", provider.count(at: root) >= 4)
         check("follow waits for queued refresh before concluding a new child is absent", refreshedRevealCount == 1 && refreshedReveal?.last?.name == "QueuedRefresh")
 
         let alpha = current.children!.first { $0.name == "Alpha" }!
         let childGate = provider.gateNext(alpha.url)
         model.load(alpha)
-        await until("first child listing snapshots before a change") { provider.isWaiting }
+        await expectEventually("first child listing snapshots before a change") { provider.isWaiting }
         try FileManager.default.createDirectory(at: alpha.url.appendingPathComponent("QueuedChild"), withIntermediateDirectories: false)
         DirectoryChanges.post([alpha.url.appendingPathComponent("QueuedChild")])
         // Wait for the model's debounced invalidation; its first child result
         // remains gated, so the request must be retained rather than ignored.
         try? await Task.sleep(nanoseconds: 300_000_000)
         childGate.signal()
-        await until("first child loading retains directory invalidation") { alpha.children?.contains { $0.name == "QueuedChild" } == true && !alpha.isLoading }
+        await expectEventually("first child loading retains directory invalidation") { alpha.children?.contains { $0.name == "QueuedChild" } == true && !alpha.isLoading }
         check("invalidation while a nonroot first load is pending triggers another read", provider.count(at: alpha.url) >= 2)
 
         let beta = current.children!.first { $0.name == "Beta" }!
@@ -133,17 +134,17 @@ enum FolderTreeSmokeTests {
         var staleReveal = false
         var latestReveal: [FolderTreeModel.Node]?
         model.follow(beta.url.appendingPathComponent("Child")) { _ in staleReveal = true }
-        await until("old reveal is waiting on Beta") { provider.isWaiting }
+        await expectEventually("old reveal is waiting on Beta") { provider.isWaiting }
         model.follow(root.appendingPathComponent("Alpha")) { latestReveal = $0 }
-        await until("latest reveal completes independently") { latestReveal != nil }
+        await expectEventually("latest reveal completes independently") { latestReveal != nil }
         thirdGate.signal()
-        await until("old Beta result returns") { !beta.isLoading }
+        await expectEventually("old Beta result returns") { !beta.isLoading }
         check("a late reveal cannot select the formerly active directory", !staleReveal && latestReveal?.last?.name == "Alpha" && sameLocation(model.location, root.appendingPathComponent("Alpha")))
 
         let missing = current.children!.first { $0.name == "QueuedRefresh" }!
         try FileManager.default.removeItem(at: addition)
         model.load(missing)
-        await until("unavailable folder produces an inline model error") { !missing.isLoading && missing.error != nil }
+        await expectEventually("unavailable folder produces an inline model error") { !missing.isLoading && missing.error != nil }
         check("enumeration failure does not produce a modal or remove unrelated folders", missing.children?.isEmpty == true && model.lastError != nil && current.children?.contains { $0.name == "Alpha" } == true)
         model.setActive(false)
     }
@@ -153,25 +154,25 @@ enum FolderTreeSmokeTests {
         let model = FolderTreeModel(provider: provider)
         let gate = provider.gateNext(root)
         model.setActive(true)
-        await until("abandoned root fixture is loading") { provider.isWaiting }
+        await expectEventually("abandoned root fixture is loading") { provider.isWaiting }
         model.follow(root.appendingPathComponent("Alpha/Nested")) { _ in }
         let replacedRoot = WeakNode(model.root)
         model.showsHiddenFolders = true
-        await until("replacement root loads independently") { model.root?.children != nil && model.root?.isLoading == false }
+        await expectEventually("replacement root loads independently") { model.root?.children != nil && model.root?.isLoading == false }
         gate.signal()
-        await until("root replacement releases pending ancestor callbacks") { replacedRoot.value == nil }
+        await expectEventually("root replacement releases pending ancestor callbacks") { replacedRoot.value == nil }
         model.setActive(false)
 
         let deinitProvider = CountingProvider(home: root)
         var disposable: FolderTreeModel? = FolderTreeModel(provider: deinitProvider)
         let deinitGate = deinitProvider.gateNext(root)
         disposable?.setActive(true)
-        await until("deinit root fixture is loading") { deinitProvider.isWaiting }
+        await expectEventually("deinit root fixture is loading") { deinitProvider.isWaiting }
         disposable?.follow(root.appendingPathComponent("Alpha/Nested")) { _ in }
         let disposedRoot = WeakNode(disposable?.root)
         disposable = nil
         deinitGate.signal()
-        await until("model deinit releases pending ancestor callbacks") { disposedRoot.value == nil }
+        await expectEventually("model deinit releases pending ancestor callbacks") { disposedRoot.value == nil }
 
         let removedURL = root.appendingPathComponent("RemovedDuringLoad")
         try FileManager.default.createDirectory(at: removedURL.appendingPathComponent("Child"), withIntermediateDirectories: true)
@@ -179,21 +180,21 @@ enum FolderTreeSmokeTests {
         let removalModel = FolderTreeModel(provider: removalProvider)
         removalModel.setActive(true)
         defer { removalModel.setActive(false) }
-        await until("descendant removal fixture root loads") { removalModel.root?.children != nil && removalModel.root?.isLoading == false }
+        await expectEventually("descendant removal fixture root loads") { removalModel.root?.children != nil && removalModel.root?.isLoading == false }
         let removedNode = WeakNode(removalModel.root?.children?.first { $0.name == "RemovedDuringLoad" })
         check("descendant removal fixture has a live folder node", removedNode.value != nil)
         let removalGate = removalProvider.gateNext(removedURL)
         defer { removalGate.signal() }
         var removedRevealCompleted = false
         removalModel.follow(removedURL.appendingPathComponent("Child")) { _ in removedRevealCompleted = true }
-        await until("removed descendant has a pending ancestor callback") { removalProvider.isWaiting }
+        await expectEventually("removed descendant has a pending ancestor callback") { removalProvider.isWaiting }
         try FileManager.default.removeItem(at: removedURL)
         removalModel.load(removalModel.root!, refresh: true)
-        await until("parent refresh discards the loading descendant") {
+        await expectEventually("parent refresh discards the loading descendant") {
             removalModel.root?.children?.contains { $0.name == "RemovedDuringLoad" } == false && removalModel.root?.isLoading == false
         }
         removalGate.signal()
-        await until("discarded descendant releases its pending ancestor callback") { removedNode.value == nil }
+        await expectEventually("discarded descendant releases its pending ancestor callback") { removedNode.value == nil }
         check("discarded descendant cannot complete an obsolete reveal", !removedRevealCompleted)
     }
 
@@ -215,15 +216,15 @@ enum FolderTreeSmokeTests {
         window.window?.contentView?.layoutSubtreeIfNeeded()
         let panel = window.sidebar.foldersPanel!
         await selected(destination, in: panel)
-        await until("following a deep row waits for final panel layout", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
+        await expectEventually("following a deep row waits for final panel layout", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
         check("scroll fixture selected row is far below the initial viewport", panel.outlineView.selectedRow > 50 && panel.scrollView.documentVisibleRect.minY > 0)
         window.window?.setContentSize(NSSize(width: 800, height: 360))
         window.window?.contentView?.layoutSubtreeIfNeeded()
-        await until("shrinking the sidebar keeps the whole selected row visible", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
+        await expectEventually("shrinking the sidebar keeps the whole selected row visible", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
         try FileManager.default.createDirectory(at: root.appendingPathComponent("AAA Inserted"), withIntermediateDirectories: false)
         panel.model.refresh()
-        await until("refresh adds a row above the selected branch") { panel.model.root?.children?.contains { $0.name == "AAA Inserted" } == true && panel.model.root?.isLoading == false }
-        await until("reload and re-expansion keep the selected row above the status bar", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
+        await expectEventually("refresh adds a row above the selected branch") { panel.model.root?.children?.contains { $0.name == "AAA Inserted" } == true && panel.model.root?.isLoading == false }
+        await expectEventually("reload and re-expansion keep the selected row above the status bar", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
         await turn()
         let clip = panel.scrollView.contentView
         clip.scroll(to: clip.constrainBoundsRect(NSRect(origin: .zero, size: clip.bounds.size)).origin)
@@ -232,19 +233,19 @@ enum FolderTreeSmokeTests {
         check("manual exploration can scroll away from the active row", !selectedRowIsVisible(panel))
         let explored = panel.model.root!.children!.first { $0.name == "Folder 00" }!
         panel.outlineView.expandItem(explored)
-        await until("manually explored unrelated branch finishes loading") { explored.children != nil && !explored.isLoading }
+        await expectEventually("manually explored unrelated branch finishes loading") { explored.children != nil && !explored.isLoading }
         await turn()
         check("loading another branch preserves manual scrolling", !selectedRowIsVisible(panel) && abs(panel.scrollView.documentVisibleRect.minY - manualOrigin) < 1, visibilityDetail(panel))
         panel.outlineView.collapseItem(explored)
         await turn()
         check("manual collapse keeps the explored branch closed", !panel.outlineView.isItemExpanded(explored))
         panel.model.refresh()
-        await until("background refresh while manually scrolled finishes") { panel.model.loadedNodes.allSatisfy { !$0.isLoading } }
+        await expectEventually("background refresh while manually scrolled finishes") { panel.model.loadedNodes.allSatisfy { !$0.isLoading } }
         await turn()
         check("background refresh does not snap back to offscreen active row", !selectedRowIsVisible(panel) && abs(panel.scrollView.documentVisibleRect.minY - manualOrigin) < 1, visibilityDetail(panel))
         check("background refresh preserves the manually collapsed branch", !panel.outlineView.isItemExpanded(explored))
         panel.follow(destination)
-        await until("explicit follow still reveals the active row after manual exploration", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
+        await expectEventually("explicit follow still reveals the active row after manual exploration", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
 
         let right = window.tabs.currentPage.split(with: destination)
         await listed(right, at: destination)
@@ -255,7 +256,7 @@ enum FolderTreeSmokeTests {
             nativeWindow.setFrame(NSRect(origin: nativeWindow.frame.origin, size: size), display: true)
             nativeWindow.contentView?.layoutSubtreeIfNeeded()
             await turn()
-            await until("tree selection remains visible after split window resize to \(Int(size.width))×\(Int(size.height))", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
+            await expectEventually("tree selection remains visible after split window resize to \(Int(size.width))×\(Int(size.height))", detail: { visibilityDetail(panel) }) { selectedRowIsVisible(panel) }
             check("narrow split window returns to the run loop with contained breadcrumb controls",
                   window.tabs.currentPage.panes.allSatisfy { pane in
                       pane.addressBar.visibleNavigationFrames.allSatisfy {
@@ -307,7 +308,7 @@ enum FolderTreeSmokeTests {
         await listed(background, at: root.appendingPathComponent("Gamma"))
         window.toggleFoldersPanel(nil)
         guard let panel = window.sidebar.foldersPanel else { check("\(mode): toggle creates a tree", false); return }
-        await until("\(mode): tree root is visible") { panel.model.root?.children != nil && panel.outlineView.numberOfRows >= 4 }
+        await expectEventually("\(mode): tree root is visible") { panel.model.root?.children != nil && panel.outlineView.numberOfRows >= 4 }
         await selected(root, in: panel)
         window.window?.contentView?.layoutSubtreeIfNeeded()
         check("\(mode): Places remains installed above independent tree", window.sidebar.outlineView.superview != nil && panel.view.superview != nil && window.sidebar.foldersVisible && panel.model.isActive)
@@ -384,7 +385,7 @@ enum FolderTreeSmokeTests {
 
         let options = panel.contextMenu(forRow: -1)
         dispatch(options.items.first { $0.title == "Show Hidden Folders" }!)
-        await until("\(mode): hidden folder option refreshes tree") { panel.model.root?.children?.contains { $0.name == ".Hidden" } == true }
+        await expectEventually("\(mode): hidden folder option refreshes tree") { panel.model.root?.children?.contains { $0.name == ".Hidden" } == true }
         check("\(mode): tree hidden option does not alter file-view filtering", panel.model.showsHiddenFolders && sameLocation(left.currentURL, root.appendingPathComponent("Alpha")))
         // Changing the second option while inactive proves it is persisted
         // without enumerating the real filesystem root in this test.
@@ -402,7 +403,7 @@ enum FolderTreeSmokeTests {
         defer { restored.close() }
         restored.restoreWorkspaceSession(persisted)
         await listed(restored.browser, at: right.currentURL!)
-        await until("\(mode): restored tree follows restored active pane") { restored.sidebar.foldersPanel.map { sameLocation(selectedURL($0), right.currentURL) } == true }
+        await expectEventually("\(mode): restored tree follows restored active pane") { restored.sidebar.foldersPanel.map { sameLocation(selectedURL($0), right.currentURL) } == true }
         check("\(mode): restore creates fresh tree with persisted options", restored.isFoldersPanelVisible && restored.sidebar.foldersPanel !== panel && restored.sidebar.foldersPanel?.model.showsHiddenFolders == true && restored.sidebar.foldersPanel?.model.limitsToHome == true)
         check("\(mode): restored folder divider fraction is retained", abs(restored.workspaceSessionState.foldersFraction - 0.6) < 0.04, "actual=\(restored.workspaceSessionState.foldersFraction)")
         restored.toggleSidebar(nil)
@@ -418,13 +419,13 @@ enum FolderTreeSmokeTests {
         deletionPanel.onOpen = { opened.append($0) }
         deletionPanel.follow(root)
         deletionPanel.setActive(true)
-        await until("\(mode): deletion fixture root loaded") { deletionPanel.outlineView.numberOfRows >= 4 }
+        await expectEventually("\(mode): deletion fixture root loaded") { deletionPanel.outlineView.numberOfRows >= 4 }
         select(root.appendingPathComponent("Gamma"), in: deletionPanel)
         check("\(mode): manual tree selection dispatches its exact URL", sameLocation(opened.last, root.appendingPathComponent("Gamma")))
         let countBeforeRemoval = opened.count
         try FileManager.default.removeItem(at: root.appendingPathComponent("Gamma"))
         deletionPanel.model.refresh()
-        await until("\(mode): external deletion removes selected node") { deletionPanel.model.root?.children?.contains { $0.name == "Gamma" } == false && deletionPanel.model.root?.isLoading == false }
+        await expectEventually("\(mode): external deletion removes selected node") { deletionPanel.model.root?.children?.contains { $0.name == "Gamma" } == false && deletionPanel.model.root?.isLoading == false }
         check("\(mode): deleting selected folder clears numeric row selection without navigation", deletionPanel.outlineView.selectedRow == -1 && opened.count == countBeforeRemoval)
         deletionPanel.setActive(false)
         restored.sidebar.foldersPanel?.onClose?()
@@ -444,13 +445,13 @@ enum FolderTreeSmokeTests {
         let varAlias = URL(fileURLWithPath: physicalPath(varTarget)!.replacingOccurrences(of: "/private/var/", with: "/var/"))
         panel.follow(varAlias)
         panel.setActive(true)
-        await until("filesystem-root tree reveals /var through physical ancestors", detail: {
+        await expectEventually("filesystem-root tree reveals /var through physical ancestors", detail: {
             "selected=\(selectedURL(panel)?.path ?? "nil"), root=\(panel.model.root?.url.path ?? "nil"), nodes=\(panel.model.loadedNodes.map { $0.url.path })"
         }) { sameLocation(selectedURL(panel), varTarget) }
         check("system alias reveal retains Show Hidden preference and required /private ancestor", !panel.model.showsHiddenFolders && panel.model.loadedNodes.contains { $0.url.path == "/private" })
         let tmpAlias = URL(fileURLWithPath: physicalPath(tmpTarget)!.replacingOccurrences(of: "/private/tmp/", with: "/tmp/"))
         panel.follow(tmpAlias)
-        await until("filesystem-root tree also reveals /tmp alias") { sameLocation(selectedURL(panel), tmpTarget) }
+        await expectEventually("filesystem-root tree also reveals /tmp alias") { sameLocation(selectedURL(panel), tmpTarget) }
         check("alias fixtures never enumerate actual system directories", provider.requested.allSatisfy { provider.allowed[$0] != nil })
         panel.setActive(false)
     }
@@ -468,10 +469,10 @@ enum FolderTreeSmokeTests {
         (panel.outlineView.item(atRow: panel.outlineView.selectedRow) as? FolderTreeModel.Node)?.url
     }
     @MainActor private static func selected(_ url: URL, in panel: FoldersPanelController) async {
-        await until("tree follows \(url.lastPathComponent)", detail: { "expected=\(url.path), selected=\(selectedURL(panel)?.path ?? "nil"), root=\(panel.model.root?.url.path ?? "nil")" }) { sameLocation(selectedURL(panel), url) }
+        await expectEventually("tree follows \(url.lastPathComponent)", detail: { "expected=\(url.path), selected=\(selectedURL(panel)?.path ?? "nil"), root=\(panel.model.root?.url.path ?? "nil")" }) { sameLocation(selectedURL(panel), url) }
     }
     @MainActor private static func listed(_ browser: BrowserViewController, at url: URL) async {
-        await until("browser lists \(url.lastPathComponent)", detail: {
+        await expectEventually("browser lists \(url.lastPathComponent)", detail: {
             "expected=\(url.path), current=\(browser.currentURL?.path ?? "nil"), model=\(browser.model.url?.path ?? "nil"), generation=\(browser.model.generation), items=\(browser.model.allNodes.prefix(12).map { $0.url.path })"
         }) {
             sameLocation(browser.currentURL, url) && browser.model.generation > 0
@@ -481,17 +482,7 @@ enum FolderTreeSmokeTests {
     @MainActor private static func dispatch(_ item: NSMenuItem) {
         check("dispatch \(item.title)", item.action.map { NSApp.sendAction($0, to: item.target, from: item) } == true)
     }
-    @MainActor private static func until(_ name: String, detail: () -> String = { "" }, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(15)
-        while !condition(), Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
-        let passed = condition()
-        check(name, passed, passed ? "" : detail())
-    }
     @MainActor private static func turn() async { try? await Task.sleep(nanoseconds: 30_000_000) }
-    private static func check(_ name: String, _ condition: Bool, _ detail: String = "") {
-        print("\(condition ? "ok  " : "FAIL") folder tree: \(name) \(detail)")
-        if !condition { exit(1) }
-    }
 
     private static func sameLocation(_ first: URL?, _ second: URL?) -> Bool {
         guard let first = physicalPath(first), let second = physicalPath(second) else { return false }

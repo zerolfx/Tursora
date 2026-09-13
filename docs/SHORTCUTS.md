@@ -180,7 +180,7 @@ Detach starts fresh navigation histories, selections, filters and scroll positio
 | Right-click in the grid | Selects the clicked item if it wasn't selected |
 | ⌘-click the title-bar proxy icon | Path menu (free via `window.representedURL`) |
 
-## Drag and drop (`FileListViewController.dropOperation`, shared by grid, sidebar, tab strip)
+## Drag and drop (`FileOperations.dropOperation`, shared by list, grid, sidebar, folder tree, tab strip)
 
 - ⌥ held (source mask `.copy`) → **copy**, always.
 - Otherwise **same volume → move, different volume → copy** (Finder's rule).
@@ -201,9 +201,9 @@ Settings (⌘,) has **General**, **Shortcuts**, **Terminal** and **Updates** tab
 
 Updates provides **Automatically check for updates** (daily, default on), **Automatically download and install updates** (default off), **Check for Updates…**, and the last-check status. Disabling automatic checks disables the automatic-installation control without clearing its saved choice; manual checking remains available. Existing downloaded or deferred-install updates are not cancelled by changing these preferences. Startup failures appear inline and disable unavailable controls; bare debug binaries and smoke runs do not start Sparkle. No new keyboard shortcut is assigned to updating.
 
-With **Terminal panel** enabled, F4 toggles a window-wide panel below the file panes. The bottom-right **Terminal** status button and toolbar button use the same action. Only the current tab's rightmost pane shows this window-wide status, including while the terminal is hidden; narrow panes show its icon with the full tooltip. Initial, running/hidden, task-count, ended/error and unknown states do not start a shell by themselves. Task counts refer to detected processes, not parsed shell jobs.
+With **Terminal panel** enabled, F4 and the toolbar **Terminal** button toggle a window-wide panel below the file panes; there is no footer status control. Toggling never starts a shell by itself.
 
-First opening starts an interactive shell in the active folder; inside a ZIP, it uses the original ZIP's containing folder rather than a temporary snapshot. The header distinguishes **Started in** from a reported **Shell folder** and preserves the ended state after exit. Navigation shows the destination for **Restart in Current Folder**; it never types `cd` into the running session. F4, the toolbar toggle and the panel close button only hide the terminal; show it again to resume the same shell and output. Disabling terminal access in Settings hides existing sessions without stopping them; re-enable it to show them again.
+First opening starts an interactive shell in the active folder; inside a ZIP, it uses the original ZIP's containing folder rather than a temporary snapshot. The compact one-row header keeps the restart and hide controls; the confirmed shell folder, a pending directory request and errors are exposed through its tooltip and accessibility description. A zsh session follows navigation at its next empty prompt; other shells use **Restart in Current Folder**. Nothing types `cd` into the running session. F4, the toolbar toggle and the panel close button only hide the terminal; show it again to resume the same shell and output. Disabling terminal access in Settings hides existing sessions without stopping them; re-enable it to show them again.
 
 Restart, window close and application quit stop their owned sessions. Foreground, background or stopped jobs, and activity that cannot be established, require confirmation with **Cancel** as the default. Cancel leaves the session and current work intact. Application quit checks hidden terminals in every window before saving the final workspace or cancelling transfers. Sessions are not restored after quitting; detection limits and verification are in the [lifecycle record](research/terminal-session-lifecycle.md).
 

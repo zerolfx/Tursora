@@ -4,6 +4,15 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Changed
+
+- Internal simplification without behaviour changes: removed dead code (the unused modal conflict dialog, the never-released favourites migration, unused model accessors and the unread transfer progress callback), shared the file views' zoom-gesture and backing-scale handling, the pasteboard file-URL reader, flipped document views and Settings label builders, and routed New Folder and undo moves through `FileOperations`. Context menus inside ZIP archives now also say "Open in N New Tabs" for several folders.
+- The smoke suites share one `SmokeSuite` helper for checks, polling and fixtures, and `SmokeTest.run` lists its suites as a flat, ordered step table.
+
+### Documentation
+
+- Removed the stale handoff pointer, corrected the per-file architecture map (misplaced rows, three unlisted files, a pasted sentence), pointed the bundle version and DMG wheel pins at the scripts that own them, replaced duplicated rule, release and site sections with links, updated the terminal shortcut text, and reduced the product-site README to build and review instructions.
+
 ## [0.2.1] - 2026-09-13
 
 ### Improved

@@ -94,7 +94,6 @@ struct FileItem {
         return safe
     }
 
-    var icon: NSImage { icon(size: 16) }
 
     /// The Finder icon at a given point size. Copied, because NSWorkspace may
     /// hand back a shared instance and we mutate the size.

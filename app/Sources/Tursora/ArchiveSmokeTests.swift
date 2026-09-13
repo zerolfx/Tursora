@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 /// Isolated model checks; the main smoke sequence owns the UI-path checks.
-enum ArchiveSmokeTests {
+enum ArchiveSmokeTests: SmokeSuite {
     static func run(completion: @escaping () -> Void) {
         Task {
             let fm = FileManager.default
@@ -105,11 +105,6 @@ enum ArchiveSmokeTests {
                 check("archive: unexpected operation error", false, error.localizedDescription)
             }
         }
-    }
-
-    private static func check(_ name: String, _ ok: Bool, _ detail: String = "") {
-        print("\(ok ? "ok  " : "FAIL") \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !ok { exit(1) }
     }
 
     private static func contents(_ url: URL) -> String? { try? String(contentsOf: url, encoding: .utf8) }

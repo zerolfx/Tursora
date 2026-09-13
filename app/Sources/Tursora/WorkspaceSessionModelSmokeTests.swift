@@ -2,14 +2,12 @@ import Foundation
 
 /// Independent document, validation and storage checks. No browser, updater,
 /// defaults domain or production session file is involved.
-enum WorkspaceSessionModelSmokeTests {
+enum WorkspaceSessionModelSmokeTests: SmokeSuite {
     static func run() {
         print("== workspace session model and storage ==")
-        let manager = FileManager.default
-        let fixture = manager.temporaryDirectory.appendingPathComponent("tursora-workspace-model-\(UUID().uuidString)")
-        defer { try? manager.removeItem(at: fixture) }
         do {
-            try manager.createDirectory(at: fixture, withIntermediateDirectories: true)
+            let fixture = try SmokeFixtures.temporaryDirectory("workspace-model")
+            defer { try? FileManager.default.removeItem(at: fixture) }
             try modelChecks(fixture)
             try decodingChecks(fixture)
             try storageChecks(fixture)
@@ -294,9 +292,4 @@ enum WorkspaceSessionModelSmokeTests {
     }
 
     private final class Counter { var value = 0 }
-
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
-    }
 }

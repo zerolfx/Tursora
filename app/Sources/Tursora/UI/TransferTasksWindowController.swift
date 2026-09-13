@@ -233,7 +233,7 @@ final class TransferTasksWindowController: NSWindowController, NSWindowDelegate 
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
-        let document = TransferTasksDocumentView()
+        let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
         rowsStack.orientation = .vertical
         rowsStack.alignment = .leading
@@ -553,8 +553,4 @@ final class TransferTaskRowView: AdaptiveLayerView {
         if seconds < 3600 { return "about \(Int((seconds / 60).rounded(.up)))m" }
         return "about \(Int(min((seconds / 3600).rounded(.up), 9999)))h"
     }
-}
-
-private final class TransferTasksDocumentView: NSView {
-    override var isFlipped: Bool { true }
 }

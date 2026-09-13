@@ -2,7 +2,7 @@ import AppKit
 
 /// Deterministic search conditions and lifecycle checks, followed by real pane actions.
 /// Spotlight result timing is deliberately excluded: the system index is not a fixture.
-enum SearchSmokeTests {
+enum SearchSmokeTests: SmokeSuite {
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             await runChecks()
@@ -16,16 +16,10 @@ enum SearchSmokeTests {
         let fixture = fm.temporaryDirectory.appendingPathComponent("tursora-search-" + UUID().uuidString).resolvingSymlinksInPath()
         let defaultsName = "Tursora.SearchSmoke." + UUID().uuidString
         let defaults = UserDefaults(suiteName: defaultsName)!
-        let previousMode = ViewPreferences.viewMode
-        let previousGroup = ViewPreferences.groupKey
-        let previousLastGroup = ViewPreferences.lastGroupKey
         let previousZIP = AppPreferences.experimentalZIPBrowsingEnabled
         var window: MainWindowController?
         defer {
             window?.close()
-            ViewPreferences.viewMode = previousMode
-            ViewPreferences.groupKey = previousGroup
-            ViewPreferences.lastGroupKey = previousLastGroup
             AppPreferences.experimentalZIPBrowsingEnabled = previousZIP
             defaults.removePersistentDomain(forName: defaultsName)
             try? fm.removeItem(at: fixture)
@@ -107,7 +101,7 @@ enum SearchSmokeTests {
             }
             let unrestrictedPredicate = SearchRequest(rootURL: root).metadataPredicate
             check("unrestricted Spotlight conditions use a native comparison instead of TRUEPREDICATE", unrestrictedPredicate is NSComparisonPredicate && unrestrictedPredicate.evaluate(with: ["kMDItemFSName": "any-name.txt"]))
-            topLevelSources(root: root)
+            mutationSources(root: root)
 
             let savedStore = SavedSearchStore(defaults: defaults)
             let saved = savedStore.save(name: "Recent named documents", request: combined)
@@ -382,18 +376,22 @@ enum SearchSmokeTests {
         check("\(browser.viewMode): Reveal validation uses its captured menu's target count", singleReveal.map { browser.validateMenuItem($0) } == true && multipleReveal.map { browser.validateMenuItem($0) } == false)
     }
 
-    private static func topLevelSources(root: URL) {
+    /// `mutationSources` only lets actual directories cover their descendants,
+    /// so the fixture creates the folders (the files need not exist).
+    private static func mutationSources(root: URL) {
         let folder = root.appendingPathComponent("parent")
         let child = folder.appendingPathComponent("nested/file.txt")
         let sibling = root.appendingPathComponent("parent-sibling/file.txt")
         let other = root.appendingPathComponent("other.txt")
         let equivalentFolder = URL(fileURLWithPath: folder.path + "/.")
-        check("overlapping sources collapse a selected parent and descendant", FileOperations.topLevelSources([folder, child]) == [folder])
-        check("overlapping sources collapse descendants even when the parent appears later", FileOperations.topLevelSources([child, folder]) == [folder])
-        check("source ancestry respects path-component boundaries", FileOperations.topLevelSources([folder, sibling]) == [folder, sibling])
-        check("source normalization deduplicates paths and preserves surviving input order", FileOperations.topLevelSources([child, other, folder, equivalentFolder, sibling, other]) == [other, folder, sibling])
-        check("a selected link excluded as an ancestor retains its explicit child without duplicating the link", FileOperations.topLevelSources([folder, child, folder], excludingAncestorURLs: [folder]) == [folder, child])
-        check("an empty source selection remains empty", FileOperations.topLevelSources([]).isEmpty)
+        for directory in [child, sibling] {
+            try? FileManager.default.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+        }
+        check("overlapping sources collapse a selected parent and descendant", FileOperations.mutationSources([folder, child]) == [folder])
+        check("overlapping sources collapse descendants even when the parent appears later", FileOperations.mutationSources([child, folder]) == [folder])
+        check("source ancestry respects path-component boundaries", FileOperations.mutationSources([folder, sibling]) == [folder, sibling])
+        check("source normalization deduplicates paths and preserves surviving input order", FileOperations.mutationSources([child, other, folder, equivalentFolder, sibling, other]) == [other, folder, sibling])
+        check("an empty source selection remains empty", FileOperations.mutationSources([]).isEmpty)
     }
 
     @MainActor private static func overlappingTrash(_ browser: BrowserViewController, window: MainWindowController, root: URL, folder: URL, child: URL, peer: URL) async {
@@ -501,9 +499,7 @@ enum SearchSmokeTests {
     }
 
     @MainActor private static func archiveBoundary(_ browser: BrowserViewController, root: URL, folder: URL) async throws {
-        let archive = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-            FileOperations.compress(urls: [folder], to: root) { continuation.resume(with: $0) }
-        }
+        let archive = try await SmokeFixtures.compress([folder], to: root)
         let before = try Data(contentsOf: archive)
         AppPreferences.experimentalZIPBrowsingEnabled = true
         browser.navigate(to: archive)
@@ -575,16 +571,6 @@ enum SearchSmokeTests {
         }
         browser.view.layoutSubtreeIfNeeded()
     }
-    @MainActor private static func waitUntil(_ label: String, detail: () -> String = { "" }, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(15)
-        while !condition() {
-            if Date() > deadline { check("\(label) completes", false, detail()); return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
-    }
-    @MainActor private static func drainMainQueue() async {
-        await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
-    }
     private static func isFinished(_ status: SearchStatus) -> Bool {
         if case .finished = status { return true }; return false
     }
@@ -597,9 +583,5 @@ enum SearchSmokeTests {
         guard let compound = predicate as? NSCompoundPredicate else { return true }
         let children = compound.subpredicates.compactMap { $0 as? NSPredicate }
         return children.count == compound.subpredicates.count && children.count >= 2 && children.allSatisfy(validCompoundGroups)
-    }
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
     }
 }

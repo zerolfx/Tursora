@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 /// Deterministic cancellation and cleanup checks, independent of browser UI.
-enum ArchivePreparationSmokeTests {
+enum ArchivePreparationSmokeTests: SmokeSuite {
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             let manager = FileManager.default
@@ -14,9 +14,7 @@ enum ArchivePreparationSmokeTests {
                 try manager.createDirectory(at: source, withIntermediateDirectories: true)
                 try Data("keep".utf8).write(to: source.appendingPathComponent("keep.txt"))
                 try Data("vanish".utf8).write(to: source.appendingPathComponent("vanish.txt"))
-                let archive: URL = try await withCheckedThrowingContinuation { continuation in
-                    FileOperations.compress(urls: [source], to: fixture) { continuation.resume(with: $0) }
-                }
+                let archive = try await SmokeFixtures.compress([source], to: fixture)
                 let bytes = try Data(contentsOf: archive)
                 try await subscriptionChecks(archive: archive, fixture: fixture)
                 try await cancellationChecks(archive: archive)
@@ -47,14 +45,14 @@ enum ArchivePreparationSmokeTests {
         check("cancelling one subscriber leaves the other extraction running", !harness.jobs[0].cancellation.isCancelled)
         let original = try await prepare(archive)
         harness.jobs[0].completion(.success(original))
-        await wait("remaining ZIP subscriber receives completion") { secondCalls == 1 }
+        await waitUntil("remaining ZIP subscriber receives completion") { secondCalls == 1 }
         check("cancelled subscriber never receives the shared result", firstCalls == 0 && workspace.session(for: archive) === original)
         check("successful extraction leaves no pending job", !workspace.hasPendingPreparation(for: archive))
 
         var cachedCalls = 0
         let cached = workspace.prepare(archive: archive) { _ in cachedCalls += 1 }
         cached.cancel()
-        await nextMainTurn()
+        await drainMainQueue()
         check("cancellation suppresses an already queued cached result", cachedCalls == 0 && harness.jobs.count == 1)
         check("cancelling a cached delivery preserves the usable snapshot", !original.isClosed && workspace.session(for: archive) === original)
 
@@ -65,7 +63,7 @@ enum ArchivePreparationSmokeTests {
         let undeliveredResult = try await prepare(archive, logical: undeliveredURL)
         undeliveredJob.completion(.success(undeliveredResult))
         undelivered.cancel()
-        await wait("cancelling a queued new result finishes private storage cleanup") {
+        await waitUntil("cancelling a queued new result finishes private storage cleanup") {
             !workspace.hasPendingPreparation(for: undeliveredURL)
         }
         check("cancelling before the first delivery does not retain an unused ZIP snapshot",
@@ -83,12 +81,12 @@ enum ArchivePreparationSmokeTests {
         let oldResult = try await prepare(archive, logical: retryURL)
         let newResult = try await prepare(archive, logical: retryURL)
         harness.jobs[2].completion(.success(oldResult))
-        await wait("stale successful ZIP preparation is cleaned") { oldResult.isClosed && !FileManager.default.fileExists(atPath: oldResult.storageURL.path) }
+        await waitUntil("stale successful ZIP preparation is cleaned") { oldResult.isClosed && !FileManager.default.fileExists(atPath: oldResult.storageURL.path) }
         check("an old job cannot publish into or finish the replacement job",
               abandonedCalls == 0 && retryCalls == 0 && workspace.session(for: retryURL) == nil
               && workspace.hasPendingPreparation(for: retryURL))
         harness.jobs[3].completion(.success(newResult))
-        await wait("same-ZIP retry receives its own result") { retryCalls == 1 }
+        await waitUntil("same-ZIP retry receives its own result") { retryCalls == 1 }
         check("the retry publishes only its new snapshot", workspace.session(for: retryURL) === newResult && !newResult.isClosed)
 
         let shutdownURL = fixture.appendingPathComponent("Shutdown.zip")
@@ -98,24 +96,24 @@ enum ArchivePreparationSmokeTests {
         }
         workspace.shutdownAll { shutdowns += 1 }
         workspace.shutdownAll { shutdowns += 1 }
-        await nextMainTurn()
+        await drainMainQueue()
         check("shutdown cancels pending work and informs still-subscribed panes", harness.jobs[4].cancellation.isCancelled && stoppedCalls == 1)
         check("repeated shutdown calls wait for the same unfinished job", shutdowns == 0 && workspace.hasPendingPreparation(for: shutdownURL))
         check("shutdown closes ready snapshots without waiting for unrelated child cleanup",
               original.isClosed && newResult.isClosed && !FileManager.default.fileExists(atPath: original.storageURL.path))
         let lateResult = try await prepare(archive, logical: shutdownURL)
         harness.jobs[4].completion(.success(lateResult))
-        await wait("shutdown barriers finish after stale private storage cleanup") { shutdowns == 2 }
+        await waitUntil("shutdown barriers finish after stale private storage cleanup") { shutdowns == 2 }
         check("shutdown callbacks run only after the last discarded result is cleaned",
               lateResult.isClosed && !FileManager.default.fileExists(atPath: lateResult.storageURL.path)
               && !workspace.hasPendingPreparation(for: shutdownURL))
         workspace.shutdownAll { shutdowns += 1 }
-        await nextMainTurn()
+        await drainMainQueue()
         check("shutdown remains idempotent after all work has settled", shutdowns == 3)
         var rejectedCalls = 0
         let rejected = workspace.prepare(archive: archive) { _ in rejectedCalls += 1 }
         rejected.cancel()
-        await nextMainTurn()
+        await drainMainQueue()
         check("a cancelled subscription also suppresses a queued shutdown error", rejectedCalls == 0 && harness.jobs.count == 5)
     }
 
@@ -139,13 +137,13 @@ enum ArchivePreparationSmokeTests {
             }
             let result = LockedBox<Result<ArchiveBrowsingSession, Error>?>(nil)
             ArchiveBrowsingSession.prepare(archive: archive, cancellation: token) { result.value = $0 }
-            await wait("ZIP worker reaches \(stage)") { gate.arrived }
+            await waitUntil("ZIP worker reaches \(stage)") { gate.arrived }
             check("\(stage): preparation owns private storage before cancellation",
                   storage.value.map { FileManager.default.fileExists(atPath: $0.path) } == true)
             token.cancel()
             check("\(stage): cancellation returns before the worker gate is released", token.isCancelled && result.value == nil)
             gate.release()
-            await wait("ZIP cancellation completes \(stage)") { result.value != nil }
+            await waitUntil("ZIP cancellation completes \(stage)") { result.value != nil }
             check("\(stage): cancelled extraction reports cancellation after cleaning storage",
                   result.value.map(isCancellation) == true
                   && storage.value.map { !FileManager.default.fileExists(atPath: $0.path) } == true)
@@ -161,13 +159,13 @@ enum ArchivePreparationSmokeTests {
             return ArchiveBrowsingSession.prepare(archive: source, logicalArchiveURL: logical, cancellation: token, completion: completion)
         }
         _ = workspace.prepare(archive: archive) { _ in }
-        await wait("real shutdown fixture reaches extraction gate") { gate.arrived }
+        await waitUntil("real shutdown fixture reaches extraction gate") { gate.arrived }
         var completed = false
         workspace.shutdownAll { completed = true }
-        await nextMainTurn()
+        await drainMainQueue()
         check("real workspace shutdown cannot finish before extraction cleanup", !completed && workspace.hasPendingPreparation(for: archive))
         gate.release()
-        await wait("real workspace shutdown finishes cleanup") { completed }
+        await waitUntil("real workspace shutdown finishes cleanup") { completed }
         check("real shutdown removes cancelled private storage before replying",
               storage.value.map { !FileManager.default.fileExists(atPath: $0.path) } == true
               && workspace.session(for: archive) == nil && !workspace.hasPendingPreparation(for: archive))
@@ -207,11 +205,11 @@ enum ArchivePreparationSmokeTests {
                 result.value = token.isCancelled && !child.isRunning && child.terminationReason == .uncaughtSignal
             } catch { result.value = false }
         }
-        await wait("real cancellable child starts") { gate.arrived }
+        await waitUntil("real cancellable child starts") { gate.arrived }
         token.cancel()
         check("process cancellation returns without waiting on the worker", result.value == nil)
         gate.release()
-        await wait("cancelled child is waited and reaped") { result.value != nil }
+        await waitUntil("cancelled child is waited and reaped") { result.value != nil }
         check("cancellation terminates the actual child before worker completion", result.value == true)
     }
 
@@ -224,18 +222,6 @@ enum ArchivePreparationSmokeTests {
     private static func isCancellation(_ result: Result<ArchiveBrowsingSession, Error>) -> Bool {
         if case .failure(let error) = result, case ArchiveBrowsingSession.SessionError.cancelled = error { return true }
         return false
-    }
-
-    @MainActor private static func nextMainTurn() async {
-        await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
-    }
-
-    @MainActor private static func wait(_ label: String, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(10)
-        while !condition() {
-            if Date() > deadline { check("\(label) completes", false); return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
     }
 
     private final class PreparationHarness {
@@ -276,10 +262,5 @@ enum ArchivePreparationSmokeTests {
             condition.unlock()
         }
         func release() { condition.lock(); released = true; condition.broadcast(); condition.unlock() }
-    }
-
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
     }
 }

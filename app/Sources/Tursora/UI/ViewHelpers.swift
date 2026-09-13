@@ -33,6 +33,61 @@ class AdaptiveLayerView: NSView {
     }
 }
 
+/// Top-left-origin document view for scroll views that stack rows downwards.
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+/// Root view that tells its controller when Light/Dark changes so custom
+/// surfaces (terminal colors, previews) can re-resolve semantic colors.
+final class AppearanceObservingView: NSView {
+    var onAppearanceChanged: (() -> Void)?
+    private let flipsCoordinates: Bool
+
+    init(flipped: Bool = false, frame: NSRect = .zero) {
+        flipsCoordinates = flipped
+        super.init(frame: frame)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var isFlipped: Bool { flipsCoordinates }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChanged?()
+    }
+}
+
+extension NSTextField {
+    /// 13 pt semibold section heading (Settings pages, dialogs).
+    static func heading(_ text: String) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.font = .systemFont(ofSize: 13, weight: .semibold)
+        return field
+    }
+
+    /// Wrapping secondary explanation shown under a control.
+    static func detail(_ text: String, size: CGFloat = 12) -> NSTextField {
+        let field = NSTextField(wrappingLabelWithString: text)
+        field.font = .systemFont(ofSize: size)
+        field.textColor = .secondaryLabelColor
+        return field
+    }
+}
+
+extension NSPasteboard {
+    /// The file URLs on the pasteboard, or none.
+    var fileURLs: [URL] {
+        (readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+    }
+}
+
+extension NSDraggingInfo {
+    /// The dragged file URLs, or none.
+    var fileURLs: [URL] { draggingPasteboard.fileURLs }
+}
+
 extension NSView {
     /// Pin a subview to all four edges of the receiver.
     func pinToEdges(_ subview: NSView, insets: NSEdgeInsets = NSEdgeInsets()) {

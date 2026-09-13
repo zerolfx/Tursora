@@ -55,7 +55,6 @@ final class PlacesModel {
     /// One ordered list covering built-ins ("builtin:desktop") and user
     /// folders ("path:/Users/…"), persisted whole so any item can move.
     private let orderKey = "favouritesOrder"
-    private let legacyKey = "favouriteBookmarks"
 
     private struct BuiltIn {
         let key: String
@@ -84,10 +83,7 @@ final class PlacesModel {
 
     private func storedOrder() -> [String] {
         if let order = UserDefaults.standard.stringArray(forKey: orderKey) { return order }
-        // First run (or upgrade from the old bookmarks list): built-ins, then any legacy folders.
-        var order = Self.builtIns().map { "builtin:" + $0.key }
-        order += (UserDefaults.standard.stringArray(forKey: legacyKey) ?? []).map { "path:" + $0 }
-        return order
+        return Self.builtIns().map { "builtin:" + $0.key }   // first run
     }
 
     private func saveOrder(_ order: [String]) {
@@ -173,7 +169,6 @@ final class PlacesModel {
     /// Back to the default built-in set and order.
     func resetFavourites() {
         UserDefaults.standard.removeObject(forKey: orderKey)
-        UserDefaults.standard.removeObject(forKey: legacyKey)
         rebuild(); notify()
     }
 

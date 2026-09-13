@@ -2,13 +2,9 @@ import AppKit
 
 /// Uses the existing favourite fixtures; never changes persisted favourites or
 /// presents a menu. Mouse hit-testing and dispatch use the production AppKit path.
-enum SidebarContextSmokeTests {
+enum SidebarContextSmokeTests: SmokeSuite {
     static func run(_ sidebar: SidebarViewController, firstURL: URL, secondURL: URL) {
         print("== sidebar context menus ==")
-        func check(_ name: String, _ condition: Bool) {
-            print("\(condition ? "ok  " : "FAIL") \(name)")
-            if !condition { exit(1) }
-        }
         let outline = sidebar.outlineView
         let originalSelection = outline.selectedRowIndexes
         let originalOpen = sidebar.onSelectPlace

@@ -10,7 +10,6 @@ final class StatusBarView: NSView {
     let zoomSlider = NSSlider()
     var onZoomChanged: ((Int) -> Void)?
     private var busyCount = 0
-    private var isShowingArchiveStatus = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -69,8 +68,8 @@ final class StatusBarView: NSView {
     var statusText: String { label.stringValue }
 
     func update(itemCount: Int, totalCount: Int? = nil, selectedCount: Int, archiveStatus: String? = nil, searchStatus: String? = nil) {
-        isShowingArchiveStatus = archiveStatus != nil || searchStatus != nil
-        label.lineBreakMode = isShowingArchiveStatus ? .byTruncatingTail : .byTruncatingMiddle
+        let hasContext = archiveStatus != nil || searchStatus != nil
+        label.lineBreakMode = hasContext ? .byTruncatingTail : .byTruncatingMiddle
         needsLayout = true
         var parts: [String] = []
         if let totalCount, totalCount != itemCount {

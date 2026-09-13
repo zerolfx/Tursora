@@ -46,8 +46,7 @@ struct TabSnapshot {
 
 extension TabPage {
     /// Keep physical left/right order without adding focus markers to names.
-    static func title(left: String, right: String?, activeIndex _: Int, custom: String?) -> String {
-        if let custom, !custom.isEmpty { return custom }
+    static func title(left: String, right: String?) -> String {
         guard let right else { return left }
         return "\(left) | \(right)"
     }
@@ -63,8 +62,7 @@ extension TabPage {
 
     var automaticTabTitle: String {
         Self.title(left: panes.first.map(paneTitle) ?? "…",
-                   right: panes.count == 2 ? paneTitle(panes[1]) : nil,
-                   activeIndex: activeIndex, custom: nil)
+                   right: panes.count == 2 ? paneTitle(panes[1]) : nil)
     }
 
     var tabTitle: String { customTitle ?? automaticTabTitle }

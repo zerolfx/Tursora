@@ -272,16 +272,12 @@ final class TabBarView: NSView {
         return items.first { $0.frame.contains(documentPoint) && !$0.isHidden }?.index
     }
 
-    private func droppedFileURLs(_ info: NSDraggingInfo) -> [URL] {
-        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-    }
-
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
     override func wantsPeriodicDraggingUpdates() -> Bool { true }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard sender.draggingSource as? TabBarView !== self else { return [] }
-        let urls = droppedFileURLs(sender)
+        let urls = sender.fileURLs
         guard !urls.isEmpty else { return [] }
         let point = convert(sender.draggingLocation, from: nil)
         scrollAtEdge(point)
@@ -295,7 +291,7 @@ final class TabBarView: NSView {
     override func draggingEnded(_ sender: NSDraggingInfo) { endHover() }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let urls = droppedFileURLs(sender)
+        let urls = sender.fileURLs
         let index = tabIndex(at: convert(sender.draggingLocation, from: nil))
         endHover()
         return performDrop(urls: urls, sourceMask: sender.draggingSourceOperationMask, onTabAt: index)

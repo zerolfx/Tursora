@@ -2,7 +2,8 @@ import AppKit
 
 /// Pane-owned navigation must keep both visible locations, editors and result
 /// contexts independent, including when the window's field editor is shared.
-enum PanePathsSmokeTests {
+enum PanePathsSmokeTests: SmokeSuite {
+    static let checkPrefix = "pane paths: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             let fixture = FileManager.default.temporaryDirectory
@@ -19,7 +20,7 @@ enum PanePathsSmokeTests {
                 let archiveSource = fixture.appendingPathComponent("Archive Documents")
                 let archiveInnerSource = archiveSource.appendingPathComponent("Inner")
                 for folder in [archiveSource, archiveInnerSource] { try makeFolder(folder) }
-                let archive = try await compress([archiveSource], to: fixture)
+                let archive = try await SmokeFixtures.compress([archiveSource], to: fixture)
                 let archiveBytes = try Data(contentsOf: archive)
                 AppPreferences.experimentalZIPBrowsingEnabled = true
                 minimumWidthControls(at: archiveInnerSource)
@@ -283,7 +284,7 @@ enum PanePathsSmokeTests {
     }
 
     @MainActor private static func listed(_ browser: BrowserViewController, at url: URL) async {
-        await wait("listing \(url.lastPathComponent)", detail: {
+        await waitUntil("listing \(url.lastPathComponent)", detail: {
             "current=\(String(describing: browser.currentURL)), address=\(String(describing: browser.addressBar.url)), model=\(String(describing: browser.model.url))"
         }) {
             samePath(browser.currentURL, url) && samePath(browser.model.url, url)
@@ -295,7 +296,7 @@ enum PanePathsSmokeTests {
     }
 
     @MainActor private static func searched(_ browser: BrowserViewController) async {
-        await wait("recursive search finishes", detail: { browser.searchSession.status.message }) {
+        await waitUntil("recursive search finishes", detail: { browser.searchSession.status.message }) {
             browser.isSearching && browser.model.isSearchResults && !browser.searchSession.status.isSearching
         }
         guard case .finished = browser.searchSession.status else {
@@ -304,22 +305,4 @@ enum PanePathsSmokeTests {
         browser.view.layoutSubtreeIfNeeded()
     }
 
-    @MainActor private static func wait(_ name: String, detail: () -> String = { "" }, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(15)
-        while !condition() {
-            if Date() > deadline { check(name, false, detail()); return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-    }
-
-    private static func compress(_ urls: [URL], to directory: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            FileOperations.compress(urls: urls, to: directory) { continuation.resume(with: $0) }
-        }
-    }
-
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") pane paths: \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
-    }
 }

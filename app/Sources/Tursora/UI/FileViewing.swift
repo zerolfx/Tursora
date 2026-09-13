@@ -42,3 +42,34 @@ protocol FileViewing: AnyObject {
     /// Forward a key event (Quick Look's arrow keys) to the view.
     func forwardKey(_ event: NSEvent)
 }
+
+/// ⌘-scroll and pinch both zoom one step per accumulated threshold
+/// (Dolphin's Ctrl-wheel); shared by the list and the grid.
+struct ZoomGestureAccumulator {
+    private var wheel: CGFloat = 0
+    private var magnification: CGFloat = 0
+
+    /// +1 / -1 once the accumulated ⌘-scroll reaches 8 pt, else nil.
+    mutating func step(scrollingDeltaY delta: CGFloat) -> Int? { Self.step(&wheel, delta, threshold: 8) }
+    /// +1 / -1 once the accumulated pinch reaches 0.12, else nil.
+    mutating func step(magnification delta: CGFloat) -> Int? { Self.step(&magnification, delta, threshold: 0.12) }
+
+    private static func step(_ total: inout CGFloat, _ delta: CGFloat, threshold: CGFloat) -> Int? {
+        total += delta
+        guard abs(total) >= threshold else { return nil }
+        defer { total = 0 }
+        return total > 0 ? 1 : -1
+    }
+}
+
+/// Remembers the window's backing scale so previews re-render only when it changes.
+struct BackingScaleTracker {
+    private var scale: CGFloat = 2
+
+    /// True when `window` reports a different scale than last time.
+    mutating func update(from window: NSWindow?) -> Bool {
+        guard let current = window?.backingScaleFactor, current != scale else { return false }
+        scale = current
+        return true
+    }
+}

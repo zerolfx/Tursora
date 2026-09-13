@@ -134,12 +134,13 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         outlineView.expandItem(nil, expandChildren: true)
     }
 
-    /// Row of the place with this URL, or -1. Also used by the smoke test.
+    /// Row of the first visible place with this URL, or -1. Also used by the smoke test.
     func row(for url: URL) -> Int {
         let target = url.standardizedFileURL
         for section in nodes {
             for node in section.children where node.place.url.standardizedFileURL == target {
-                return outlineView.row(forItem: node)
+                let row = outlineView.row(forItem: node)
+                if row >= 0 { return row }
             }
         }
         return -1
@@ -151,17 +152,9 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         foldersPanel?.follow(url)
         isSyncingSelection = true
         defer { isSyncingSelection = false }
-        let target = url.standardizedFileURL
-        for section in nodes {
-            for node in section.children where node.place.url.standardizedFileURL == target {
-                let row = outlineView.row(forItem: node)
-                if row >= 0 {
-                    outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-                    return
-                }
-            }
-        }
-        outlineView.deselectAll(nil)
+        let row = row(for: url)
+        if row >= 0 { outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false) }
+        else { outlineView.deselectAll(nil) }
     }
 
     /// Places remains at the top; the optional folder tree has its own scroll
@@ -288,11 +281,6 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         return pb
     }
 
-    private func droppedFileURLs(_ info: NSDraggingInfo) -> [URL] {
-        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-    }
-
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo,
                      proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
         let pb = info.draggingPasteboard
@@ -310,7 +298,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             return .move
         }
 
-        let urls = droppedFileURLs(info)
+        let urls = info.fileURLs
         guard !urls.isEmpty else { return [] }
 
         if let node = item as? PlaceNode, index == NSOutlineViewDropOnItemIndex {
@@ -366,7 +354,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             places.moveFavourite(from: from, to: to)
             return true
         }
-        let urls = droppedFileURLs(info)
+        let urls = info.fileURLs
         guard !urls.isEmpty else { return false }
         if let node = item as? PlaceNode, index == NSOutlineViewDropOnItemIndex {
             let op: NSDragOperation = (info.draggingSourceOperationMask == .copy

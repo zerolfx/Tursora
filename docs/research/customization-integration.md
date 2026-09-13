@@ -48,4 +48,4 @@ smoke 1–3 记录初期断言与选择问题；smoke 4 的 3,160 项通过属�
 
 最终 debug 构建、release app、DMG 均成功；严格签名、arm64、版本 / plist、应用内 MIT 原文一致性和 DMG 只读挂载 / 布局检查通过。应用可执行文件 SHA-256 为 `80eb5ae9aef933107eae53323b48465d82fadc14ef2c7db6f705b178bbf9daf2`；本地 DMG 为 `260821113afd691ea615e9c952b6f4d69531b0fd6c7cee61df28605ea6b6513a`。打包日志为上述目录中的 `package-delivery.out`、`dmg-delivery.out`。
 
-Python 工具检查共 83 项通过，含截图处理、alpha 验证及 Homebrew 生成器；Homebrew 隔离安装 / 卸载与网站实际浏览证据见各专项记录。专用应用、浏览器页、loopback server 和只读镜像均已关闭 / 卸载，主任务已释放验证锁。构建产物保持本地；分支推送、远端 CI、网站部署及包含这些功能的新版本发布尚未执行。
+Python 工具检查共 83 项通过，含截图处理、alpha 验证及 Homebrew 生成器；Homebrew 隔离安装 / 卸载与网站实际浏览证据见各专项记录。专用应用、浏览器页、loopback server 和只读镜像均已关闭 / 卸载，主任务已释放验证锁。构建产物保持本地；分支推送、远端 CI、网站部署及包含这些功能的新版本发布尚未执行。（2026-09-13 补记：这些内容随后已随 0.2.0 / 0.2.1 发布，见[发布核验](release-0.2.0.md)；本记录其余内容为当时的整合阶段证据。）

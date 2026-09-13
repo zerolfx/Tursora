@@ -3,13 +3,6 @@ import UniformTypeIdentifiers
 
 enum SearchScope: String, Codable, CaseIterable {
     case currentFolder, home
-
-    var title: String {
-        switch self {
-        case .currentFolder: return "Current Folder + Subfolders"
-        case .home: return "Home Folder + Subfolders"
-        }
-    }
 }
 
 enum SearchKind: String, Codable, CaseIterable {
@@ -17,7 +10,7 @@ enum SearchKind: String, Codable, CaseIterable {
 
     var title: String {
         switch self {
-        case .any: return "Any Kind"
+        case .any: return "Any Type"
         case .folder: return "Folders"
         case .document: return "Documents"
         case .image: return "Images"

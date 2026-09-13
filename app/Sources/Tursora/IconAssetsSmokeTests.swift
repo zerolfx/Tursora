@@ -3,7 +3,8 @@ import ImageIO
 
 /// A legacy ICNS bundle displays its own alpha silhouette. macOS does not
 /// provide the rounded mask that would hide an opaque square master image.
-enum IconAssetsSmokeTests {
+enum IconAssetsSmokeTests: SmokeSuite {
+    static let checkPrefix = "app icon: "
     static func run() {
         print("== app icon assets ==")
         let resources = URL(fileURLWithPath: #filePath)
@@ -89,10 +90,5 @@ enum IconAssetsSmokeTests {
         }
         guard rendered else { return nil }
         return stride(from: 3, to: rgba.count, by: 4).map { rgba[$0] }
-    }
-
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") app icon: \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
     }
 }

@@ -29,11 +29,11 @@ final class TerminalSettingsViewController: NSViewController {
     deinit { if let observer { preferences.notificationCenter.removeObserver(observer) } }
 
     override func loadView() {
-        let root = TerminalSettingsRootView(frame: NSRect(x: 0, y: 0, width: 580, height: 620))
+        let root = AppearanceObservingView(flipped: true, frame: NSRect(x: 0, y: 0, width: 580, height: 620))
         view = root
         root.onAppearanceChanged = { [weak self] in self?.refreshPreview() }
-        let title = label("Terminal", bold: true)
-        let shellNote = detail("Shell changes apply the next time you open or restart a terminal. Running sessions keep their shell.")
+        let title = NSTextField.heading("Terminal")
+        let shellNote = NSTextField.detail("Shell changes apply the next time you open or restart a terminal. Running sessions keep their shell.")
         shellMode.addItems(withTitles: ["System Login Shell", "Custom Shell"])
         wire(shellMode, #selector(changeShellMode(_:)))
         shellPath.placeholderString = "/bin/zsh"
@@ -76,7 +76,7 @@ final class TerminalSettingsViewController: NSViewController {
         applyColorsButton.bezelStyle = .rounded
         wire(applyColorsButton, #selector(applyColors(_:)))
         let colorsRow = row([label("Text"), foregroundField, label("Background"), backgroundField, applyColorsButton])
-        let appearanceNote = detail("Font and colors update open terminals immediately. Custom colors use #RRGGBB; programs can still choose their own ANSI colors.")
+        let appearanceNote = NSTextField.detail("Font and colors update open terminals immediately. Custom colors use #RRGGBB; programs can still choose their own ANSI colors.")
         preview.isSelectable = false
         preview.isBordered = false
         preview.drawsBackground = true
@@ -115,15 +115,9 @@ final class TerminalSettingsViewController: NSViewController {
     }
 
     private func wire(_ control: NSControl, _ action: Selector) { control.target = self; control.action = action }
-    private func label(_ text: String, bold: Bool = false) -> NSTextField {
+    private func label(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 13, weight: bold ? .semibold : .regular)
-        return label
-    }
-    private func detail(_ text: String) -> NSTextField {
-        let label = NSTextField(wrappingLabelWithString: text)
-        label.font = .systemFont(ofSize: 12)
-        label.textColor = .secondaryLabelColor
+        label.font = .systemFont(ofSize: 13)
         return label
     }
     private func row(_ views: [NSView]) -> NSStackView {
@@ -243,14 +237,5 @@ final class TerminalSettingsViewController: NSViewController {
         preferences.reset()
         message.stringValue = ""
         refreshControls(force: true)
-    }
-}
-
-private final class TerminalSettingsRootView: NSView {
-    var onAppearanceChanged: (() -> Void)?
-    override var isFlipped: Bool { true }
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        onAppearanceChanged?()
     }
 }

@@ -2,18 +2,14 @@ import AppKit
 import SwiftTerm
 
 /// Tests the complete catalog, storage, recorder and real responder-chain paths.
-enum ShortcutSmokeTests {
+enum ShortcutSmokeTests: SmokeSuite {
+    static let checkPrefix = "shortcuts: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             modelAndSettings()
             await routing()
             completion()
         }
-    }
-
-    private static func check(_ name: String, _ condition: Bool) {
-        print("\(condition ? "ok  " : "FAIL") shortcuts: \(name)")
-        if !condition { exit(1) }
     }
 
     @MainActor
@@ -156,7 +152,7 @@ enum ShortcutSmokeTests {
             if oldKey?.isVisible == true { oldKey?.makeKeyAndOrderFront(nil) }
         }
         store.resetAll()
-        let provider = EmptyProvider()
+        let provider = SmokeFixtures.EmptyProvider()
         let pathBar = BreadcrumbBar(frame: .zero)
         let tabBar = TabBarView(frame: .zero)
         try! store.set(.init(keyEquivalent: "l", modifierFlags: [.command, .control]), for: "menu.editLocation")
@@ -326,14 +322,7 @@ enum ShortcutSmokeTests {
         return nil
     }
     @MainActor private static func loaded(_ browser: BrowserViewController) async {
-        let deadline = Date().addingTimeInterval(10)
-        while browser.model.generation == 0 && Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
-        check("fixture loaded", browser.model.generation > 0)
-    }
-    private final class EmptyProvider: FileProvider {
-        let homeURL = FileManager.default.temporaryDirectory
-        func displayName(for url: URL) -> String { url.lastPathComponent }
-        func listDirectory(_ url: URL) throws -> [FileItem] { [] }
+        await expectEventually("fixture loaded") { browser.model.generation > 0 }
     }
     private final class KeySink: NSTextView {
         var received = 0

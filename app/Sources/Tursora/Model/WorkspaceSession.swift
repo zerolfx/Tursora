@@ -29,7 +29,7 @@ struct WorkspaceSessionState: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = try values.decode(Int.self, forKey: .version)
-        let entries = try values.decode([WorkspaceLossyEntry<WorkspaceWindowState>].self, forKey: .windows)
+        let entries = try values.decode([LossyDecoded<WorkspaceWindowState>].self, forKey: .windows)
         let kept = workspaceEntries(entries.map(\.value),
                                     selected: (try? values.decode(Int.self, forKey: .activeWindowIndex)) ?? 0,
                                     limit: Self.maximumWindows) { $0.sanitized() }
@@ -104,7 +104,7 @@ struct WorkspaceWindowState: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        let entries = try values.decode([WorkspaceLossyEntry<WorkspaceTabState>].self, forKey: .tabs)
+        let entries = try values.decode([LossyDecoded<WorkspaceTabState>].self, forKey: .tabs)
         let kept = workspaceEntries(entries.map(\.value),
                                     selected: (try? values.decode(Int.self, forKey: .selectedTabIndex)) ?? 0,
                                     limit: WorkspaceSessionState.maximumTabsPerWindow) { $0.sanitized() }
@@ -154,7 +154,7 @@ struct WorkspaceTabState: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        let entries = try values.decode([WorkspaceLossyEntry<WorkspacePaneState>].self, forKey: .panes)
+        let entries = try values.decode([LossyDecoded<WorkspacePaneState>].self, forKey: .panes)
         let kept = workspaceEntries(entries.map(\.value),
                                     selected: (try? values.decode(Int.self, forKey: .activePaneIndex)) ?? 0,
                                     limit: 2) { $0.sanitized() }
@@ -390,7 +390,9 @@ final class WorkspaceSessionStore {
     private static func posixError() -> NSError { NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
 }
 
-private struct WorkspaceLossyEntry<Value: Decodable>: Decodable {
+/// Decodes to nil instead of failing, so one malformed entry in a saved
+/// array or dictionary drops only itself (workspace and directory-view files).
+struct LossyDecoded<Value: Decodable>: Decodable {
     let value: Value?
     init(from decoder: Decoder) throws { value = try? Value(from: decoder) }
 }

@@ -4,7 +4,7 @@ import SwiftTerm
 
 /// Header/delegate checks use terminal views without processes. PTY checks use
 /// an isolated /bin/sh and never read the user's shell configuration.
-enum TerminalSmokeTests {
+enum TerminalSmokeTests: SmokeSuite {
     static func run(completion: @escaping () -> Void) {
         print("== terminal ==")
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-terminal-" + UUID().uuidString)
@@ -191,20 +191,12 @@ enum TerminalSmokeTests {
     private static func wait(_ probe: PTYProbe, for text: String, completion: @escaping () -> Void) {
         waitUntil("terminal: receives \(text.trimmingCharacters(in: .whitespacesAndNewlines))", condition: { probe.output.contains(text) }, detail: { probe.output }, completion: completion)
     }
+    /// Callback form of `expectEventually` for this suite's completion chain;
+    /// the PTY polling cadence is unchanged.
     private static func waitUntil(_ name: String, condition: @escaping () -> Bool, detail: @escaping () -> String = { "" }, completion: @escaping () -> Void) {
-        let deadline = Date().addingTimeInterval(10)
-        func poll() {
-            if condition() { check(name, true); completion(); return }
-            if Date() >= deadline { fail(name, detail()) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: poll)
+        Task { @MainActor in
+            await expectEventually(name, timeout: 10, interval: 30_000_000, detail: detail, condition)
+            completion()
         }
-        poll()
-    }
-    private static func check(_ name: String, _ condition: Bool, _ detail: String = "") {
-        if condition { print("ok  \(name)") } else { fail(name, detail) }
-    }
-    private static func fail(_ name: String, _ detail: String) -> Never {
-        print("FAIL \(name) \(detail)")
-        exit(1)
     }
 }

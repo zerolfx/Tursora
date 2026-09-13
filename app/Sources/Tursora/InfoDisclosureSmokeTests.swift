@@ -2,7 +2,8 @@ import AppKit
 
 /// Tests the observed Finder disclosure baseline and explicit-choice migration
 /// using an isolated preference domain; real user section choices stay intact.
-enum InfoDisclosureSmokeTests {
+enum InfoDisclosureSmokeTests: SmokeSuite {
+    static let checkPrefix = "Info disclosures: "
     private static let keys = ["general", "moreInfo", "name", "comments", "openWith", "preview", "sharing"]
     private static let initiallyOpen: Set<String> = ["general", "preview"]
 
@@ -58,14 +59,11 @@ enum InfoDisclosureSmokeTests {
     }
 
     private static func windows(_ defaults: UserDefaults) {
-        let fixture = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-info-disclosures-" + UUID().uuidString)
         var controllers: [InfoWindowController] = []
-        defer {
-            controllers.forEach { $0.close() }
-            try? FileManager.default.removeItem(at: fixture)
-        }
+        defer { controllers.forEach { $0.close() } }
         do {
-            try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+            let fixture = try SmokeFixtures.temporaryDirectory("info-disclosures")
+            defer { try? FileManager.default.removeItem(at: fixture) }
             let first = fixture.appendingPathComponent("First.txt"), second = fixture.appendingPathComponent("Second.txt")
             try "Info disclosure fixture".write(to: first, atomically: true, encoding: .utf8)
             try "Summary fixture".write(to: second, atomically: true, encoding: .utf8)
@@ -95,10 +93,5 @@ enum InfoDisclosureSmokeTests {
         } catch {
             check("temporary Info fixtures can be created: \(error.localizedDescription)", false)
         }
-    }
-
-    private static func check(_ name: String, _ success: Bool) {
-        print("\(success ? "ok  " : "FAIL") Info disclosures: \(name)")
-        if !success { exit(1) }
     }
 }

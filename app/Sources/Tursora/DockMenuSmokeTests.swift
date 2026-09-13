@@ -1,7 +1,8 @@
 import AppKit
 
 /// Dock commands open independent windows even when no browser owns focus.
-enum DockMenuSmokeTests {
+enum DockMenuSmokeTests: SmokeSuite {
+    static let checkPrefix = "Dock menu: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             print("== Dock menu destinations and window ownership ==")
@@ -173,10 +174,9 @@ enum DockMenuSmokeTests {
     }
 
     @MainActor private static func listed(_ browser: BrowserViewController, at url: URL) async {
-        let deadline = Date().addingTimeInterval(15)
-        while browser.currentURL?.standardizedFileURL != url.standardizedFileURL || browser.model.url?.standardizedFileURL != url.standardizedFileURL || browser.model.generation == 0 || browser.isPreparingArchive {
-            if Date() > deadline { check("directory listing completes", false, "expected=\(url.path), current=\(browser.currentURL?.path ?? "nil"), generation=\(browser.model.generation)"); return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
+        await waitUntil("directory listing", detail: { "expected=\(url.path), current=\(browser.currentURL?.path ?? "nil"), generation=\(browser.model.generation)" }) {
+            browser.currentURL?.standardizedFileURL == url.standardizedFileURL && browser.model.url?.standardizedFileURL == url.standardizedFileURL
+                && browser.model.generation > 0 && !browser.isPreparingArchive
         }
     }
 
@@ -206,10 +206,5 @@ enum DockMenuSmokeTests {
             guard path == root.path || path.hasPrefix(root.path + "/") else { throw CocoaError(.fileReadNoPermission) }
             return try local.listDirectory(url)
         }
-    }
-
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") Dock menu: \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
     }
 }

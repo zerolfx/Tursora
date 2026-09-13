@@ -12,7 +12,6 @@ final class FileNode {
 
     init(_ item: FileItem) { self.item = item }
     var url: URL { item.url }
-    var isLoaded: Bool { allChildren != nil }
 }
 
 /// Loads and sorts one directory, plus any subfolders the user expands in
@@ -49,7 +48,6 @@ final class DirectoryModel {
     var groupKey: GroupKey = .none { didSet { if groupKey != oldValue { resort() } } }
     /// Root entries before the name filter (hidden-file rule still applied) — for "3 of 12 items".
     var unfilteredCount: Int { (showHidden ? allNodes : allNodes.filter { !$0.item.isHidden }).count }
-    var foldersFirst = true     { didSet { resort() } }
     var sortKey: SortKey = .name { didSet { resort() } }
     var ascending = true        { didSet { resort() } }
 
@@ -125,16 +123,6 @@ final class DirectoryModel {
         if isSearchResults { onReloadResults?(completion); return }
         guard let url else { return }
         load(url, completion: completion)
-    }
-
-    // MARK: - Root access (row-based, for callers that only see the top level)
-
-    func item(at index: Int) -> FileItem? {
-        nodes.indices.contains(index) ? nodes[index].item : nil
-    }
-
-    func indexOf(url target: URL) -> Int? {
-        nodes.firstIndex { $0.url.standardizedFileURL == target.standardizedFileURL }
     }
 
     // MARK: - Tree
@@ -216,7 +204,7 @@ final class DirectoryModel {
         // stable, strict tie-breaker in either sorting direction.
         let nameAscending = nameOrder == .orderedSame
             ? a.url.path.compare(b.url.path) == .orderedAscending : nameOrder == .orderedAscending
-        if foldersFirst, a.isNavigable != b.isNavigable {
+        if a.isNavigable != b.isNavigable {
             return a.isNavigable          // folders always lead, regardless of direction
         }
         let ordered: Bool

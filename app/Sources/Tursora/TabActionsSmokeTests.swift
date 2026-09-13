@@ -2,7 +2,8 @@ import AppKit
 
 /// Tab actions retain the clicked page across asynchronous menus, while fresh
 /// tabs and detached windows reconstruct locations without moving ownership.
-enum TabActionsSmokeTests {
+enum TabActionsSmokeTests: SmokeSuite {
+    static let checkPrefix = "tab actions: "
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             let fixture = FileManager.default.temporaryDirectory
@@ -28,12 +29,10 @@ enum TabActionsSmokeTests {
     }
 
     private static func pureTitles() {
-        check("single pane title", TabPage.title(left: "Left", right: nil, activeIndex: 0, custom: nil) == "Left")
-        check("left-active split title has a separator without focus parentheses", TabPage.title(left: "Left", right: "Right", activeIndex: 0, custom: nil) == "Left | Right")
-        check("right-active split title keeps the same names and physical order", TabPage.title(left: "Left", right: "Right", activeIndex: 1, custom: nil) == "Left | Right")
-        check("literal folder-name parentheses remain intact", TabPage.title(left: "Plan (final)", right: "Archive (old)", activeIndex: 0, custom: nil) == "Plan (final) | Archive (old)")
-        check("custom title overrides both panes", TabPage.title(left: "Left", right: "Right", activeIndex: 1, custom: "Work") == "Work")
-        check("empty custom title returns automatic title", TabPage.title(left: "Left", right: nil, activeIndex: 0, custom: "") == "Left")
+        check("single pane title", TabPage.title(left: "Left", right: nil) == "Left")
+        check("left-active split title has a separator without focus parentheses", TabPage.title(left: "Left", right: "Right") == "Left | Right")
+        check("right-active split title keeps the same names and physical order", TabPage.title(left: "Left", right: "Right") == "Left | Right")
+        check("literal folder-name parentheses remain intact", TabPage.title(left: "Plan (final)", right: "Archive (old)") == "Plan (final) | Archive (old)")
     }
 
     @MainActor private static func menuActions(mode: ViewMode, folders: [URL], fixture: URL) async throws {
@@ -214,7 +213,7 @@ enum TabActionsSmokeTests {
         check("detached source can reopen with original split state", tabs.reopenClosedTab() && tabs.currentPage === sourcePage && sourcePage.active === source && source.isSearching)
 
         AppPreferences.experimentalZIPBrowsingEnabled = true
-        let archive = try await compress(folders[3], to: fixture)
+        let archive = try await SmokeFixtures.compress([folders[3]], to: fixture)
         let inside = archive.appendingPathComponent("Nested")
         let zipPane = tabs.newTab(at: inside)
         await listed(zipPane, at: inside)
@@ -239,28 +238,12 @@ enum TabActionsSmokeTests {
         check("\(action.title) dispatch reaches controller", NSApp.sendAction(selector, to: item.target, from: item))
     }
     @MainActor private static func listed(_ pane: BrowserViewController, at url: URL) async {
-        await wait("directory listing", detail: { "\(pane.currentURL?.path ?? "nil") vs \(url.path)" }) {
+        await waitUntil("directory listing", detail: { "\(pane.currentURL?.path ?? "nil") vs \(url.path)" }) {
             pane.currentURL?.standardizedFileURL == url.standardizedFileURL && pane.model.url?.standardizedFileURL == url.standardizedFileURL && pane.model.generation > 0 && !pane.isPreparingArchive && !pane.model.isSearchResults
         }
     }
     @MainActor private static func searched(_ pane: BrowserViewController) async {
-        await wait("search completes", detail: { pane.searchSession.status.message }) { pane.isSearching && !pane.searchSession.status.isSearching && pane.model.isSearchResults }
+        await waitUntil("search completes", detail: { pane.searchSession.status.message }) { pane.isSearching && !pane.searchSession.status.isSearching && pane.model.isSearchResults }
         check("search results available", !pane.model.items.isEmpty)
-    }
-    @MainActor private static func wait(_ name: String, detail: () -> String = { "" }, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(15)
-        while !condition() {
-            if Date() > deadline { check(name, false, detail()); return }
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-    }
-    private static func compress(_ source: URL, to destination: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            FileOperations.compress(urls: [source], to: destination) { continuation.resume(with: $0) }
-        }
-    }
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        print("\(success ? "ok  " : "FAIL") tab actions: \(name)\(detail.isEmpty ? "" : " — " + detail)")
-        if !success { fflush(stdout); exit(1) }
     }
 }

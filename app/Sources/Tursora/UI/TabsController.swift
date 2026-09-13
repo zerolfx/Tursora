@@ -57,7 +57,7 @@ final class TabsController: NSViewController {
             guard let self else { return [] }
             if let index, self.pages.indices.contains(index), let dest = self.pages[index].active.currentURL {
                 guard self.pages[index].active.canModifyCurrentLocation else { return [] }
-                return FileListViewController.dropOperation(for: urls, into: dest, sourceMask: mask)
+                return FileOperations.dropOperation(for: urls, into: dest, sourceMask: mask)
             }
             // Empty strip space: folders open as new tabs.
             return urls.allSatisfy { self.directoryForTabDrop($0) != nil } ? .generic : []
@@ -344,7 +344,6 @@ final class TabsController: NSViewController {
     private func refreshChrome() {
         let titles = pages.map(\.tabTitle)
         tabBar.reload(titles: titles, selected: currentIndex, toolTips: pages.map(\.tabToolTip))
-        tabBar.isHidden = false
         onTabsChanged?()
         onWorkspaceSessionChanged?()
     }

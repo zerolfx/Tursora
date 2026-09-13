@@ -251,16 +251,15 @@ final class FoldersPanelController: NSViewController, NSOutlineViewDataSource, N
     @objc private func refreshFolders(_ sender: Any?) { model.refresh() }
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
-        guard let node = item as? FolderTreeModel.Node, index == NSOutlineViewDropOnItemIndex,
-              let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] else { return [] }
-        return FileListViewController.dropOperation(for: urls, into: node.url, sourceMask: info.draggingSourceOperationMask)
+        guard let node = item as? FolderTreeModel.Node, index == NSOutlineViewDropOnItemIndex else { return [] }
+        return FileOperations.dropOperation(for: info.fileURLs, into: node.url, sourceMask: info.draggingSourceOperationMask)
     }
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
-        guard let node = item as? FolderTreeModel.Node, index == NSOutlineViewDropOnItemIndex,
-              let objects = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !objects.isEmpty else { return false }
-        let operation = FileListViewController.dropOperation(for: objects, into: node.url, sourceMask: info.draggingSourceOperationMask)
+        let urls = info.fileURLs
+        guard let node = item as? FolderTreeModel.Node, index == NSOutlineViewDropOnItemIndex, !urls.isEmpty else { return false }
+        let operation = FileOperations.dropOperation(for: urls, into: node.url, sourceMask: info.draggingSourceOperationMask)
         guard !operation.isEmpty else { return false }
-        onDropFiles?(objects, node.url, operation)
+        onDropFiles?(urls, node.url, operation)
         return true
     }
 }

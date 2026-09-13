@@ -197,7 +197,6 @@ final class TransferJournal {
     private let strictRoots: [URL]
     private let fingerprints: [TransferTreeFingerprint?]
     var affectedDirectories: [URL] { steps.flatMap { [$0.from.deletingLastPathComponent(), $0.to.deletingLastPathComponent()] } }
-    var isEmpty: Bool { steps.isEmpty }
     fileprivate init(storage: TransferStorage, steps: [TransferRename], strictRoots: [URL] = [], capturedFingerprints: [TransferTreeFingerprint?]? = nil) {
         self.storage = storage; self.steps = steps; self.strictRoots = strictRoots
         fingerprints = capturedFingerprints ?? strictRoots.map { try? TransferTreeFingerprint($0) }
@@ -232,7 +231,6 @@ final class TransferEngine {
     let options: TransferOptions
     private let handler: FileOperations.ConflictHandler
     private let asyncHandler: FileOperations.AsyncConflictHandler?
-    private let progress: ((Int, Int) -> Void)?
     private let storage = TransferStorage()
     private var undoSteps: [TransferRename] = []
     private var strictUndoRoots: [URL] = []
@@ -245,8 +243,8 @@ final class TransferEngine {
     private var directoryPins: [String: TransferIdentity] = [:]
 
     init(task: TransferTask, options: TransferOptions, conflict: @escaping FileOperations.ConflictHandler,
-         asyncConflict: FileOperations.AsyncConflictHandler?, progress: ((Int, Int) -> Void)?) {
-        self.task = task; self.options = options; handler = conflict; asyncHandler = asyncConflict; self.progress = progress
+         asyncConflict: FileOperations.AsyncConflictHandler?) {
+        self.task = task; self.options = options; handler = conflict; asyncHandler = asyncConflict
     }
     func run() -> FileOperations.TransferResult {
         var total: Int64 = 0
@@ -270,10 +268,9 @@ final class TransferEngine {
         task.setTotal(result.cancelled ? nil : total)
         remaining = task.sources.filter { FileOperations.itemExists(task.destination.appendingPathComponent($0.lastPathComponent)) }.count
         if !result.cancelled {
-            for (index, source) in task.sources.enumerated() where !scanFailed.contains(source.path) {
+            for source in task.sources where !scanFailed.contains(source.path) {
                 let destination = options.duplicateInPlace ? FileOperations.duplicateURL(for: source) : task.destination.appendingPathComponent(source.lastPathComponent)
                 transferOne(source, to: destination)
-                if let progress { let count = task.sources.count; DispatchQueue.main.async { progress(index + 1, count) } }
                 if result.cancelled { break }
             }
         }

@@ -9,8 +9,6 @@ final class TerminalDirectorySync {
     struct Update: Equatable {
         let state: State
         let directory: URL?
-        let requestedDirectory: URL?
-        let isReady: Bool
     }
 
     let directory: URL
@@ -21,10 +19,8 @@ final class TerminalDirectorySync {
     private var watcher: DispatchSourceFileSystemObject?
     private var wakeFD: Int32 = -1
     private var sequence: UInt64 = 0
-    private var requestedDirectory: URL?
     private var reportedDirectory: URL?
     private var responseSequence: UInt64 = 0
-    private var ready = false
     private var closed = false // queue confined
     private var invalidated = false // main thread confined
 
@@ -47,8 +43,8 @@ final class TerminalDirectorySync {
             guard mkfifo(fifo, 0o600) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             wakeFD = open(fifo, O_RDWR | O_NONBLOCK | O_CLOEXEC)
             guard wakeFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-            try write(Self.startupScript, to: ".zshenv")
-            try write(Self.integrationScript(directory: directory, token: token), to: "integration.zsh")
+            try write(Data(Self.startupScript.utf8), to: ".zshenv")
+            try write(Data(Self.integrationScript(directory: directory, token: token).utf8), to: "integration.zsh")
             let fd = open(directory.path, O_EVTONLY | O_CLOEXEC)
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: queue)
@@ -63,9 +59,9 @@ final class TerminalDirectorySync {
         }
     }
 
-    private func write(_ text: String, to name: String) throws {
+    private func write(_ data: Data, to name: String) throws {
         let url = directory.appendingPathComponent(name)
-        try Data(text.utf8).write(to: url, options: .atomic)
+        try data.write(to: url, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
@@ -74,12 +70,8 @@ final class TerminalDirectorySync {
         queue.async { [weak self] in
             guard let self, !self.closed else { return }
             self.sequence &+= 1
-            self.requestedDirectory = url
             do {
-                let data = Data("\(self.sequence)\0\(url.path)\0".utf8)
-                let path = self.directory.appendingPathComponent("request")
-                try data.write(to: path, options: .atomic)
-                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
+                try self.write(Data("\(self.sequence)\0\(url.path)\0".utf8), to: "request")
                 // One nonblocking byte is enough. A full pipe already contains
                 // a wakeup; the latest atomic request replaces all older ones.
                 var byte: UInt8 = 1
@@ -117,7 +109,6 @@ final class TerminalDirectorySync {
         guard !closed, let data = try? Data(contentsOf: directory.appendingPathComponent("response")),
               let response = Self.parseResponse(data, token: token), response.sequence <= sequence,
               response.sequence >= responseSequence else { return }
-        ready = true
         responseSequence = response.sequence
         reportedDirectory = response.directory
         let state: State = response.sequence == sequence ? (response.succeeded ? .synchronized : .failed) : .waiting
@@ -125,7 +116,7 @@ final class TerminalDirectorySync {
     }
 
     private func publish(_ state: State) {
-        let update = Update(state: state, directory: reportedDirectory, requestedDirectory: requestedDirectory, isReady: ready)
+        let update = Update(state: state, directory: reportedDirectory)
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.invalidated else { return }
             self.onChange?(update)

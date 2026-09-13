@@ -1,7 +1,7 @@
 import AppKit
 
 /// Exercises our update policy and actual controls without constructing Sparkle.
-enum UpdateSmokeTests {
+enum UpdateSmokeTests: SmokeSuite {
     static func run() {
         print("== software updates ==")
         let domain = "com.tursora.updates-smoke.\(UUID().uuidString)"
@@ -234,11 +234,6 @@ enum UpdateSmokeTests {
         updater.automaticallyChecksForUpdates = false
         menu.update()
         check("updates menu: opting out of scheduling leaves the manual menu command enabled", item.isEnabled)
-    }
-
-    private static func check(_ name: String, _ condition: Bool) {
-        print("\(condition ? "ok  " : "FAIL") \(name)")
-        if !condition { fflush(stdout); exit(1) }
     }
 
     private final class Counter { var value = 0 }

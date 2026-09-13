@@ -144,7 +144,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
     }
 
     override func loadView() {
-        let root = TerminalPanelRootView()
+        let root = AppearanceObservingView()
         root.onAppearanceChanged = { [weak self] in self?.applyAppearancePreferences() }
         view = root
         titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
@@ -191,8 +191,7 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         guard TerminalPanelPresentation.localDirectory(url.absoluteString, localHostNames: localHostNames) != nil else { return }
         pendingDirectory = url
         if directorySync != nil {
-            directorySyncUpdate = TerminalDirectorySync.Update(state: .waiting, directory: presentation.reportedDirectory,
-                                                               requestedDirectory: url, isReady: directorySyncUpdate?.isReady == true)
+            directorySyncUpdate = TerminalDirectorySync.Update(state: .waiting, directory: presentation.reportedDirectory)
         }
         directorySync?.request(url)
         if isViewLoaded { updateLocation() }
@@ -390,13 +389,5 @@ final class TerminalPanelController: NSViewController, LocalProcessTerminalViewD
         directorySync = nil
         presentation.state = .ended
         updateLocation()
-    }
-}
-
-private final class TerminalPanelRootView: NSView {
-    var onAppearanceChanged: (() -> Void)?
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        onAppearanceChanged?()
     }
 }

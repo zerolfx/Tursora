@@ -464,11 +464,6 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         updateDragOperations()
     }
 
-    private func droppedFileURLs(_ info: NSDraggingInfo) -> [URL] {
-        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-    }
-
     /// Where a drop would land: onto a folder row, between an expanded
     /// folder's children (= into that folder), or into the listed directory.
     func dropDestination(item: Any?, childIndex: Int) -> (url: URL, node: FileNode?)? {
@@ -479,31 +474,20 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         return model.url.map { ($0, nil) }          // root gap or a group row: the listed directory
     }
 
-    /// Finder rules: ⌥ copies; same volume moves; different volume copies.
-    /// Returns [] for a no-op (dropping items back into their own folder).
-    static func dropOperation(for urls: [URL], into destination: URL, sourceMask: NSDragOperation) -> NSDragOperation {
-        guard !urls.isEmpty else { return [] }
-        if urls.contains(where: { $0.standardizedFileURL == destination.standardizedFileURL }) { return [] }
-        let alreadyThere = urls.allSatisfy { $0.deletingLastPathComponent().standardizedFileURL == destination.standardizedFileURL }
-        if sourceMask == .copy { return .copy }
-        if alreadyThere { return [] }
-        return FileOperations.sameVolume(urls[0], destination) ? .move : .copy
-    }
-
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo,
                      proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
-        let urls = droppedFileURLs(info)
+        let urls = info.fileURLs
         guard let dest = dropDestination(item: item, childIndex: index) else { return [] }
         // Highlight the folder (or the whole list), never an insertion line.
         outlineView.setDropItem(dest.node, dropChildIndex: NSOutlineViewDropOnItemIndex)
-        return Self.dropOperation(for: urls, into: dest.url, sourceMask: info.draggingSourceOperationMask)
+        return FileOperations.dropOperation(for: urls, into: dest.url, sourceMask: info.draggingSourceOperationMask)
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo,
                      item: Any?, childIndex index: Int) -> Bool {
-        let urls = droppedFileURLs(info)
+        let urls = info.fileURLs
         guard let dest = dropDestination(item: item, childIndex: index) else { return false }
-        let operation = Self.dropOperation(for: urls, into: dest.url, sourceMask: info.draggingSourceOperationMask)
+        let operation = FileOperations.dropOperation(for: urls, into: dest.url, sourceMask: info.draggingSourceOperationMask)
         guard !operation.isEmpty else { return false }
         onDropFiles?(urls, dest.url, operation)
         return true
@@ -599,44 +583,28 @@ final class FileOutlineView: NSOutlineView {
     var onBecomeFirstResponder: (() -> Void)?
     var onZoom: ((Int) -> Void)?
     var onBackingScaleChanged: (() -> Void)?
-    private var previewBackingScale: CGFloat = 2
+    private var backingScale = BackingScaleTracker()
+    private var zoomGesture = ZoomGestureAccumulator()
+    private var pendingRename: DispatchWorkItem?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        updatePreviewBackingScale()
+        if backingScale.update(from: window) { onBackingScaleChanged?() }
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        updatePreviewBackingScale()
+        if backingScale.update(from: window) { onBackingScaleChanged?() }
     }
-
-    private func updatePreviewBackingScale() {
-        guard let scale = window?.backingScaleFactor, scale != previewBackingScale else { return }
-        previewBackingScale = scale
-        onBackingScaleChanged?()
-    }
-
-    private var pendingRename: DispatchWorkItem?
-    private var wheelAccumulator: CGFloat = 0
-    private var magnifyAccumulator: CGFloat = 0
 
     /// ⌘-scroll zooms (Dolphin's Ctrl-wheel); ordinary scrolling passes through.
     override func scrollWheel(with event: NSEvent) {
         guard event.modifierFlags.contains(.command) else { return super.scrollWheel(with: event) }
-        wheelAccumulator += event.scrollingDeltaY
-        if abs(wheelAccumulator) >= 8 {
-            onZoom?(wheelAccumulator > 0 ? 1 : -1)
-            wheelAccumulator = 0
-        }
+        if let step = zoomGesture.step(scrollingDeltaY: event.scrollingDeltaY) { onZoom?(step) }
     }
 
     override func magnify(with event: NSEvent) {
-        magnifyAccumulator += event.magnification
-        if abs(magnifyAccumulator) >= 0.12 {
-            onZoom?(magnifyAccumulator > 0 ? 1 : -1)
-            magnifyAccumulator = 0
-        }
+        if let step = zoomGesture.step(magnification: event.magnification) { onZoom?(step) }
     }
 
     override func becomeFirstResponder() -> Bool {

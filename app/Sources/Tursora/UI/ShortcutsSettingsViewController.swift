@@ -29,9 +29,7 @@ final class ShortcutsSettingsViewController: NSViewController, NSTableViewDataSo
         searchField.placeholderString = "Find a command"
         searchField.delegate = self
         searchField.setAccessibilityLabel("Find a keyboard shortcut command")
-        let detail = NSTextField(wrappingLabelWithString: "Select a command, click its shortcut, then press a new combination. Command shortcuts work throughout the app; Control-only and function keys stay with text fields and the shell while typing. File View keys apply only to the file list or icons.")
-        detail.font = .systemFont(ofSize: 12)
-        detail.textColor = .secondaryLabelColor
+        let detail = NSTextField.detail("Select a command, click its shortcut, then press a new combination. Command shortcuts work throughout the app; Control-only and function keys stay with text fields and the shell while typing. File View keys apply only to the file list or icons.")
         let command = NSTableColumn(identifier: .init("command"))
         command.title = "Command"; command.width = 350; command.minWidth = 180
         let shortcut = NSTableColumn(identifier: .init("shortcut"))
@@ -56,8 +54,7 @@ final class ShortcutsSettingsViewController: NSViewController, NSTableViewDataSo
         let edit = NSStackView(views: [recorder, clearButton, resetButton, NSView()])
         edit.orientation = .horizontal; edit.spacing = 8
         message.font = .systemFont(ofSize: 12); message.textColor = .systemRed
-        let footer = NSTextField(wrappingLabelWithString: "Clear the current owner before reusing a shortcut. Escape cancels recording; use Control–Escape or another combination to change archive cancellation. macOS shortcuts and standard text-editing, completion, selection and terminal controls remain managed by their own views.")
-        footer.font = .systemFont(ofSize: 11); footer.textColor = .secondaryLabelColor
+        let footer = NSTextField.detail("Clear the current owner before reusing a shortcut. Escape cancels recording; use Control–Escape or another combination to change archive cancellation. macOS shortcuts and standard text-editing, completion, selection and terminal controls remain managed by their own views.", size: 11)
         let stack = NSStackView(views: [detail, searchField, scroll, selectionLabel, edit, message, resetAllButton, footer])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false

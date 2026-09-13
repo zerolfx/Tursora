@@ -1,6 +1,6 @@
 import AppKit
 
-enum ArchiveWorkspaceSmokeTests {
+enum ArchiveWorkspaceSmokeTests: SmokeSuite {
     static func run(completion: @escaping () -> Void) {
         Task { @MainActor in
             let fm = FileManager.default
@@ -26,7 +26,7 @@ enum ArchiveWorkspaceSmokeTests {
                 try fm.createSymbolicLink(atPath: folder.appendingPathComponent("safe-link").path, withDestinationPath: "深 度/report #100%.txt")
                 let plainDirectory = fixture.appendingPathComponent("ordinary.zip", isDirectory: true)
                 try fm.createDirectory(at: plainDirectory, withIntermediateDirectories: false)
-                let created = try await compress([folder], to: fixture)
+                let created = try await SmokeFixtures.compress([folder], to: fixture)
                 let archive = fixture.appendingPathComponent("Sample #100%.zip")
                 try fm.moveItem(at: created, to: archive)
                 let archiveData = try Data(contentsOf: archive)
@@ -112,7 +112,7 @@ enum ArchiveWorkspaceSmokeTests {
                 check("cached entries revalidate targets before icon and preview reads", noteItem.readableContentURL == nil && !ThumbnailProvider.canPreview(noteItem) && noteItem.icon(size: 16).size.width == 16)
                 check("replaced snapshot links cannot read outside contents", try (try? workspace.readableURL(for: logicalNote)) == nil && String(contentsOf: outside) == "outside original")
                 check("alias ownership survives an externally replaced escaping member", workspace.session(for: aliasNote) === session && workspace.logicalURL(for: aliasNote) == logicalNote && (try? workspace.readableURL(for: aliasNote)) == nil)
-                let multipleZIP = try await compress([folder, outside], to: fixture)
+                let multipleZIP = try await SmokeFixtures.compress([folder, outside], to: fixture)
                 let multipleSession = try await prepare(multipleZIP, workspace: workspace)
                 check("archive workspace preserves multiple roots without an extra wrapper", Set(try provider.listDirectory(multipleZIP).map(\.name)) == Set([folder.lastPathComponent, outside.lastPathComponent]) && multipleSession.rootURL != session.rootURL)
                 let empty = fixture.appendingPathComponent("empty.zip")
@@ -181,14 +181,5 @@ enum ArchiveWorkspaceSmokeTests {
                 continuation.resume(with: result)
             }
         }
-    }
-    private static func compress(_ urls: [URL], to directory: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            FileOperations.compress(urls: urls, to: directory) { continuation.resume(with: $0) }
-        }
-    }
-    private static func check(_ name: String, _ success: Bool, _ detail: String = "") {
-        if success { print("ok   \(name)") }
-        else { print("FAIL  \(name) \(detail)"); fflush(stdout); exit(1) }
     }
 }

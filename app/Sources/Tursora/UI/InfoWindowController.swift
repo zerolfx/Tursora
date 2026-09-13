@@ -912,7 +912,6 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     var displayedHeaderSize: String { headerSize.stringValue }
     func value(for label: String) -> String? { valueFields[label]?.stringValue }
     var nameFieldValue: String? { nameField?.stringValue }
-    var commentText: String? { commentsView?.string }
     var openWithTitles: [String] { openWithPopup?.itemTitles ?? [] }
     var permissionRowCount: Int { permissionsTable?.numberOfRows ?? 0 }
     var sectionKeys: [String] { sections.map(\.key) }
@@ -1006,10 +1005,6 @@ final class InfoSection: NSStackView {
         isExpanded.toggle()
         onToggle?()
     }
-}
-
-private final class FlippedView: NSView {
-    override var isFlipped: Bool { true }
 }
 
 /// Info windows take key (for the name field) but never main, so the

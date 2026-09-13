@@ -215,7 +215,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard let window else { return }
         let representedURL = browser.archiveSourceURL ?? url
         window.title = provider.displayName(for: representedURL)
-        window.subtitle = ""
         window.representedURL = representedURL
         sidebar.syncSelection(to: browser.archiveSourceURL?.deletingLastPathComponent() ?? url)
         terminalPanel?.followDirectory(terminalWorkingDirectory)
@@ -741,41 +740,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             forwardButton = button; return item
         case ToolbarID.up:      return navItem(id, "Enclosing Folder", "arrow.up", #selector(goUp(_:)))
         case ToolbarID.split:
-            let button = NSButton(image: NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: "Split View")!,
-                                  target: self, action: #selector(toggleSplit(_:)))
-            button.bezelStyle = .texturedRounded
-            button.setButtonType(.pushOnPushOff)
-            button.imagePosition = .imageOnly
-            let item = NSToolbarItem(itemIdentifier: id)
-            item.paletteLabel = "Split View"
-            item.view = button
-            item.target = self
-            item.action = #selector(toggleSplit(_:))
-            item.autovalidates = false
-            item.visibilityPriority = .high
-            let overflow = NSMenuItem(title: splitActionTitle, action: #selector(toggleSplit(_:)), keyEquivalent: "")
-            overflow.target = self
-            item.menuFormRepresentation = overflow
+            let (item, button) = toggleItem(id, "Split View", "rectangle.split.2x1", #selector(toggleSplit(_:)), overflowTitle: splitActionTitle)
             splitButton = button
             splitToolbarItem = item
             syncSplitToolbar()
             return item
         case ToolbarID.terminal:
-            let button = NSButton(image: NSImage(systemSymbolName: "terminal", accessibilityDescription: "Terminal")!,
-                                  target: self, action: #selector(toggleTerminal(_:)))
-            button.bezelStyle = .texturedRounded
-            button.setButtonType(.pushOnPushOff)
-            button.imagePosition = .imageOnly
-            let item = NSToolbarItem(itemIdentifier: id)
-            item.paletteLabel = "Terminal"
-            item.view = button
-            item.target = self
-            item.action = #selector(toggleTerminal(_:))
-            item.autovalidates = false
-            item.visibilityPriority = .high
-            let overflow = NSMenuItem(title: "Show Terminal", action: #selector(toggleTerminal(_:)), keyEquivalent: "")
-            overflow.target = self
-            item.menuFormRepresentation = overflow
+            let (item, button) = toggleItem(id, "Terminal", "terminal", #selector(toggleTerminal(_:)), overflowTitle: "Show Terminal")
             terminalButton = button
             terminalToolbarItem = item
             syncTerminalToolbar()
@@ -858,6 +829,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         item.view = button
         item.isNavigational = true
         item.autovalidates = false
+        return (item, button)
+    }
+
+    /// Split / Terminal: a push-on-push-off button whose state the window syncs by hand.
+    private func toggleItem(_ id: NSToolbarItem.Identifier, _ label: String, _ symbol: String,
+                            _ action: Selector, overflowTitle: String) -> (NSToolbarItem, NSButton) {
+        let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: label)!,
+                              target: self, action: action)
+        button.bezelStyle = .texturedRounded
+        button.setButtonType(.pushOnPushOff)
+        button.imagePosition = .imageOnly
+        let item = NSToolbarItem(itemIdentifier: id)
+        item.paletteLabel = label
+        item.view = button
+        item.target = self
+        item.action = action
+        item.autovalidates = false
+        item.visibilityPriority = .high
+        let overflow = NSMenuItem(title: overflowTitle, action: action, keyEquivalent: "")
+        overflow.target = self
+        item.menuFormRepresentation = overflow
         return (item, button)
     }
 

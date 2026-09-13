@@ -81,38 +81,22 @@ enum FileOperations {
         let ext = url.pathExtension
         let base = url.deletingPathExtension().lastPathComponent
         let first = dir.appendingPathComponent(ext.isEmpty ? "\(base) copy" : "\(base) copy.\(ext)")
-        if !itemExists(first) { return first }
-        var n = 2
-        while true {
-            let name = ext.isEmpty ? "\(base) copy \(n)" : "\(base) copy \(n).\(ext)"
-            let candidate = dir.appendingPathComponent(name)
-            if !itemExists(candidate) { return candidate }
-            n += 1
-        }
+        return itemExists(first) ? uniqueURL(for: first) : first
     }
 
     // MARK: - Instant operations
 
-    /// Recursive results and expanded lists can select both a folder and its
-    /// descendants. Mutate each selected tree once, preserving source identity
-    /// and input order. This is lexical: never resolve a selected symlink into
-    /// its target or confuse adjacent names such as "Notes" and "Notes old".
-    static func topLevelSources(_ urls: [URL], excludingAncestorURLs: Set<URL> = []) -> [URL] {
-        let paths = urls.map { $0.standardizedFileURL.path }
-        let excludedPaths = Set(excludingAncestorURLs.map { $0.standardizedFileURL.path })
-        let selectedPaths = Set(paths).subtracting(excludedPaths)
-        var emitted = Set<String>()
-        return zip(urls, paths).compactMap { url, path in
-            guard emitted.insert(path).inserted else { return nil }
-            var parent = (path as NSString).deletingLastPathComponent
-            while parent != path, !parent.isEmpty {
-                if selectedPaths.contains(parent) { return nil }
-                let next = (parent as NSString).deletingLastPathComponent
-                if next == parent { break }
-                parent = next
-            }
-            return url
-        }
+    /// Creates "untitled folder" (or "untitled folder 2", …) inside `directory`.
+    static func createFolder(in directory: URL, name: String = "untitled folder") throws -> URL {
+        let base = directory.appendingPathComponent(name)
+        let url = itemExists(base) ? uniqueURL(for: base) : base
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+        return url
+    }
+
+    /// Moves one item to an exact destination path (undoing a move or trash).
+    static func moveItem(at url: URL, to destination: URL) throws {
+        try FileManager.default.moveItem(at: url, to: destination)
     }
 
     /// A selected directory covers descendants only through actual directories.
@@ -176,6 +160,18 @@ enum FileOperations {
         for url in mutationSources(urls) { try FileManager.default.removeItem(at: url) }
     }
 
+    /// Finder's drop rule, shared by the list, grid, sidebar, folder tree and tab strip:
+    /// ⌥ forces a copy, the same volume moves, another volume copies, and a drop
+    /// onto an item's own folder or onto itself does nothing.
+    static func dropOperation(for urls: [URL], into destination: URL, sourceMask: NSDragOperation) -> NSDragOperation {
+        guard !urls.isEmpty else { return [] }
+        if urls.contains(where: { $0.standardizedFileURL == destination.standardizedFileURL }) { return [] }
+        let alreadyThere = urls.allSatisfy { $0.deletingLastPathComponent().standardizedFileURL == destination.standardizedFileURL }
+        if sourceMask == .copy { return .copy }
+        if alreadyThere { return [] }
+        return sameVolume(urls[0], destination) ? .move : .copy
+    }
+
     static func sameVolume(_ a: URL, _ b: URL) -> Bool {
         let ka: Set<URLResourceKey> = [.volumeIdentifierKey]
         guard let va = try? a.resourceValues(forKeys: ka).volumeIdentifier,
@@ -191,13 +187,12 @@ enum FileOperations {
     @discardableResult
     static func transfer(_ urls: [URL], to directory: URL, kind: Kind,
                          conflict: @escaping ConflictHandler,
-                         progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
                          task suppliedTask: TransferTask? = nil,
                          options: TransferOptions = .init(),
                          asyncConflict: AsyncConflictHandler? = nil,
                          completion: @escaping (TransferResult) -> Void) -> TransferTask {
         let task = suppliedTask ?? TransferTask(sources: urls, destination: directory, kind: kind)
-        let engine = TransferEngine(task: task, options: options, conflict: conflict, asyncConflict: asyncConflict, progress: progress)
+        let engine = TransferEngine(task: task, options: options, conflict: conflict, asyncConflict: asyncConflict)
         DispatchQueue.global(qos: .userInitiated).async {
             let result = engine.run()
             DispatchQueue.main.async { completion(result) }
@@ -213,61 +208,6 @@ enum FileOperations {
     static func itemExists(_ url: URL) -> Bool {
         var info = stat()
         return lstat(url.path, &info) == 0
-    }
-
-    // MARK: - Standard conflict dialog (Finder's, rebuilt — macOS has no public one)
-
-    private static func describe(_ url: URL) -> (date: Date?, size: Int64, isDir: Bool) {
-        let v = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey, .isPackageKey])
-        return (v?.contentModificationDate, Int64(v?.fileSize ?? 0), (v?.isDirectory ?? false) && !(v?.isPackage ?? false))
-    }
-
-    /// One alert per conflict; "Apply to all" appears when more are coming.
-    static func askConflict(in window: NSWindow?, _ c: Conflict) -> ConflictDecision {
-        if SmokeTest.isRequested { return ConflictDecision(resolution: .cancel) }
-        let verb = c.kind == .move ? "moving" : "copying"
-        let name = c.destination.lastPathComponent
-        let existing = describe(c.destination), incoming = describe(c.source)
-        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
-        let age: String
-        switch (incoming.date, existing.date) {
-        case let (i?, e?) where i > e: age = "The item you’re \(verb) is newer."
-        case let (i?, e?) where i < e: age = "The item you’re \(verb) is older."
-        default: age = incoming.size == existing.size ? "Both items were modified at the same time." : ""
-        }
-        func line(_ what: String, _ d: (date: Date?, size: Int64, isDir: Bool)) -> String {
-            let when = d.date.map { f.string(from: $0) } ?? "unknown date"
-            return d.isDir ? "\(what): folder, modified \(when)" : "\(what): \(ByteCountFormatter.string(fromByteCount: d.size, countStyle: .file)), modified \(when)"
-        }
-
-        let alert = NSAlert()
-        alert.messageText = c.bothFolders
-            ? "A folder named “\(name)” already exists in this location. Do you want to replace it with the one you’re \(verb), or merge them?"
-            : "An item named “\(name)” already exists in this location. Do you want to replace it with the one you’re \(verb)?"
-        alert.informativeText = [age, line("Existing", existing), line(c.kind == .move ? "Moving" : "Copying", incoming)]
-            .filter { !$0.isEmpty }.joined(separator: "\n")
-        alert.addButton(withTitle: "Keep Both")                       // default: never destructive
-        if c.bothFolders { alert.addButton(withTitle: "Merge") }
-        if c.remaining > 1 { alert.addButton(withTitle: "Skip") }
-        alert.addButton(withTitle: "Stop")
-        let replace = alert.addButton(withTitle: "Replace")
-        replace.hasDestructiveAction = true
-        if c.remaining > 1 {
-            alert.showsSuppressionButton = true
-            alert.suppressionButton?.title = "Apply to all (\(c.remaining) items)"
-        }
-        let response = alert.runModal()
-        let clicked = alert.buttons.first { $0.tag == response.rawValue }?.title ?? "Stop"
-        let resolution: ConflictResolution
-        switch clicked {
-        case "Keep Both": resolution = .keepBoth
-        case "Merge":     resolution = .merge
-        case "Skip":      resolution = .skip
-        case "Replace":   resolution = .replace
-        default:          resolution = .cancel
-        }
-        return ConflictDecision(resolution: resolution,
-                                applyToAll: c.remaining > 1 && alert.suppressionButton?.state == .on && resolution != .cancel)
     }
 
     static func report(_ failures: [Failure], in window: NSWindow?) {
