@@ -63,7 +63,7 @@ Historical entries record development dates and their smoke-test counts where av
 - Remove an unused PlacesModel constant and simplify the archive readable-URL helper's always-enabled option without changing application behavior.
 - Keep verification scope and detailed evidence in dated feature research records.
 - Improve the product page's secondary-text contrast and prevent the header from clipping content after direct anchor navigation.
-- Add a Chinese product page for editable paths, tabs, split panes and read-only ZIP browsing, using actual application screenshots. A dependency-free Python builder produces portable static output and validates local references. Desktop and narrow-screen browser checks cover workflow selection, screenshot dialogs, direct fragments and the no-JavaScript fallback; the page is locally previewed and has not been deployed. See [the recorded scope](research/computer-use-2026-09-12-inline-zip.md#整理阶段与产品页).
+- Add a Chinese product page for editable paths, tabs, split panes and read-only ZIP browsing, using actual application screenshots. A dependency-free Python builder produces portable static output and validates local references. Desktop and narrow-screen browser checks cover workflow selection, screenshot dialogs, direct fragments and the no-JavaScript fallback; the page is locally previewed and has not been deployed. See [the recorded scope](research/computer-use-2026-09-12-inline-zip.md#tidy-up-stage-and-the-product-page).
 
 ## 2026-09-12 baseline — settings, native services and optional workspaces
 

@@ -1,37 +1,37 @@
-# 0.2.1 正式发布核验
+# 0.2.1 release verification
 
-2026-09-13。[Tursora 0.2.1](https://github.com/zerolfx/Tursora/releases/tag/v0.2.1) 已发布为最新稳定版，非 draft / prerelease。用户已授权完成终端和文档改动后推送、发布；旧版本标签及资产未修改。
+2026-09-13. [Tursora 0.2.1](https://github.com/zerolfx/Tursora/releases/tag/v0.2.1) has been published as the latest stable version, not a draft or prerelease. The user authorised pushing and publishing once the terminal and documentation changes were finished; the tags and assets of older versions were not modified.
 
-## 源码与发布
+## Source and release
 
-`v0.2.1` 精确指向 `c95f4d5aaaf483dd8176873685ac614b47c8100a`，build `1789288838` 是该提交的 Unix committer timestamp；作者与提交者均为项目要求的 zerol 身份，普通 fast-forward 推送没有重写历史。
+`v0.2.1` points exactly at `c95f4d5aaaf483dd8176873685ac614b47c8100a`, and build `1789288838` is that commit's Unix committer timestamp; author and committer are both the zerol identity the project requires, and the ordinary fast-forward push rewrote no history.
 
-- 最终 102 份 Swift 源码连续通过三轮完整 smoke，每轮 3,435 项，前后哈希一致、stderr 为空。83 项发布工具测试、release 包和本地 DMG 验证通过；保留隐藏任务、目录同步、退出取消、窄界面等实机范围见[终端验证](terminal-navigation-0.2.1.md)。
-- 对应提交的 [Build](https://github.com/zerolfx/Tursora/actions/runs/34748295219) 和 [Pages](https://github.com/zerolfx/Tursora/actions/runs/34748295179) 均成功后，才启动 [Release 34748456904](https://github.com/zerolfx/Tursora/actions/runs/34748456904)。Release 的构建、更新签名、校验和与发布步骤全部通过，发布时间 `2026-09-13T08:50:03Z`。
-- GitHub API 的最新 release 为 `v0.2.1`，标签 ref 与上述提交相同；证据位于 `/private/tmp/tursora-0.2.1-qa-u1_phjba/release/{release,latest,tag}.json`。
+- The final 102 Swift source files passed three consecutive rounds of the full smoke, 3,435 checks per round, with identical hashes before and after and empty stderr. The 83 release-tooling tests, the release bundle and the local DMG verification all passed; for the on-machine scope — keeping hidden tasks, directory syncing, cancelling on quit, a narrow interface — see [the terminal verification](terminal-navigation-0.2.1.md).
+- [Release 34748456904](https://github.com/zerolfx/Tursora/actions/runs/34748456904) was started only after [Build](https://github.com/zerolfx/Tursora/actions/runs/34748295219) and [Pages](https://github.com/zerolfx/Tursora/actions/runs/34748295179) for that commit had both succeeded. The release's build, update-signing, checksum and publish steps all passed, with a publication time of `2026-09-13T08:50:03Z`.
+- The latest release from the GitHub API is `v0.2.1`, and its tag ref is the same commit as above; the evidence is at `/private/tmp/tursora-0.2.1-qa-u1_phjba/release/{release,latest,tag}.json`.
 
-## 实际公开资产
+## The actual public assets
 
-使用 `gh release download` 下载正式文件，逐一与 GitHub asset digest / size 及 SHA256SUMS 核对，没有用本地试包替代公开产物。
+The official files were downloaded with `gh release download` and checked one by one against the GitHub asset digest / size and SHA256SUMS; no local trial build stood in for the public artefacts.
 
-| 资产 | 字节 | SHA-256 |
+| Asset | Bytes | SHA-256 |
 |---|---:|---|
 | `Tursora-0.2.1-macOS-arm64.dmg` | 5,852,598 | `3458aa15670b75e8469398e4d0928ed73e6f038567c9ae7dba049e509333460b` |
 | `appcast.xml` | 2,575 | `9d8b654d711731c44072f976d23694e49a13981ad559720f7769a4abc6b4cce1` |
 | `SHA256SUMS.txt` | 174 | `cc356b563d51f201cbe3d05d5ef0bb4299367346987304d302401a0f0133bdcc` |
 
-只读挂载检查版本 / build / bundle id、arm64、`codesign --verify --deep --strict`、MIT / SwiftTerm / Sparkle 许可证、图标和运行资源；许可证逐字节匹配发布提交。Applications symlink、安装背景许可证和两图标 / 箭头布局通过。`verify-bundle` / `verify-appcast` 校验元数据；另用 cryptography 的 Ed25519 验证器和包内公钥验证完整 DMG 签名，公钥也匹配发布源码，全程未读取私钥。保留 pristine app 副本并再次验证签名后卸载镜像。
+A read-only mount was used to check the version / build / bundle id, arm64, `codesign --verify --deep --strict`, the MIT / SwiftTerm / Sparkle licences, and the icon and runtime resources; the licences match the release commit byte for byte. The Applications symlink, the licence for the installer background and the two-icon / arrow layout all passed. `verify-bundle` / `verify-appcast` validated the metadata; separately, cryptography's Ed25519 verifier and the public key inside the bundle verified the signature over the complete DMG, and that public key also matches the released source — no private key was read at any point. A pristine copy of the app was kept and its signature verified again before the image was unmounted.
 
-报告 `/private/tmp/tursora-0.2.1-qa-u1_phjba/release/verification.json` 为 passed；实际原包位于该目录的 `verified-0.2.1-3tklxqe7/Tursora.app`。正常 TLS 访问 `releases/latest/download/appcast.xml` 返回 HTTP 200，与版本化下载逐字节一致，仅含 0.2.1 / build 1789288838 一项；`live-feed.json` 保存该核对及再次确认的 latest / tag。此应用仍是 ad-hoc 签名、未 Apple 公证；更新签名不代替 Gatekeeper 公证。
+The report `/private/tmp/tursora-0.2.1-qa-u1_phjba/release/verification.json` reads passed; the actual original bundle is at `verified-0.2.1-3tklxqe7/Tursora.app` in that directory. A normal TLS request to `releases/latest/download/appcast.xml` returned HTTP 200, byte-for-byte identical to the versioned download and containing only the single 0.2.1 / build 1789288838 entry; `live-feed.json` holds that comparison and the re-confirmed latest / tag. This app is still ad-hoc signed and not notarised by Apple; an update signature is no substitute for Gatekeeper notarisation.
 
-## 正式包启动与更新源
+## Launching the official bundle and the update feed
 
-从 pristine app 再复制隔离测试包，仅调整副本的名称、bundle id 与测试文件环境并重签，使用 `com.tursora.releaseqa021.s0913`、独立工作区 / 目录属性文件和 ZDOTDIR，不修改用户原应用、偏好或 dotfiles。正式包正常启动；Settings → Updates → Check for Updates 访问生产 feed 后显示 **You’re up to date! Tursora Release QA 0.2.1 is currently the newest version available.** 证据为 QA 目录 `screenshots/live-update-check.jpg`，测试应用随后正常退出，精确进程查询确认已退出。
+An isolated test bundle was copied again from the pristine app, adjusting only the copy's name, bundle id and test file environment before re-signing it: `com.tursora.releaseqa021.s0913`, its own workspace / directory attributes file and its own ZDOTDIR, leaving the user's original app, preferences and dotfiles untouched. The official bundle launched normally; after Settings → Updates → Check for Updates reached the production feed it showed **You’re up to date! Tursora Release QA 0.2.1 is currently the newest version available.** The evidence is `screenshots/live-update-check.jpg` in the QA directory; the test app then quit normally, which an exact process query confirmed.
 
-该检查证明正式版本可启动并查询生产源，不宣称本次完成了从旧版生产安装器替换与自动重启，也不等同于另一台标准用户或受管理 Mac 的首次安装测试。安装说明支持可写目录与针对已核验应用副本的 quarantine 属性处理；没有提供 0.1.0 迁移流程。
+This check proves that the official version launches and can query the production feed. It does not claim that replacing an older production installation and restarting automatically was done this time, nor is it equivalent to a first-install test on another standard-user or managed Mac. The installation instructions support writable directories and the handling of the quarantine attribute on an app copy that has been verified; no 0.1.0 migration procedure is provided.
 
-## 安装入口、网站与截图
+## Installation entry points, the website and screenshots
 
-README、默认英文首页、中文页和共享 agent 安装指南更新至 0.2.1；保留 tap / 单 cask trust / install 三步及实际安装路径说明。cask 在正式资产通过上述校验后，才由 `update-homebrew.py --auto-updates` 从真实 DMG 生成，固定本表 SHA-256。本地生成一致性、Ruby 语法、83 项工具测试和双语站点构建通过。最终跟进提交的线上安装结果以 [Homebrew 工作流](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) 为准；本地生成检查不等同于实际 brew 安装。
+The README, the default English home page, the Chinese page and the shared agent installation guide were updated to 0.2.1, keeping the three steps of tap / trusting the single cask / install and the description of the actual installation paths. The cask was generated by `update-homebrew.py --auto-updates` from the real DMG only after the official assets had passed the checks above, pinning the SHA-256 values in this table. Local generation consistency, Ruby syntax, the 83 tooling tests and the bilingual site build all passed. For the online installation result of the final follow-up commit, the [Homebrew workflow](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) is authoritative; a local generation check is not the same as an actual brew install.
 
-源码发布阶段的两种语言已完成 1200 / 390 px 浏览器检查，10 个部署文件及默认根 URL 的 11 次正常 TLS 下载均与 `c95f4d5` 和本地构建一致。后续安装版本文案与 cask 使用独立跟进提交，不移动 release 标签。截图已记录鼠标移出、悬浮痕迹检查与透明圆角处理，详见[截图审计](screenshot-audit-2026-09-13.md)；历史研究图片的证据范围保持其实际拍摄阶段。
+Both languages were checked in a browser at 1200 / 390 px during the source release stage, and 11 normal TLS downloads covering the 10 deployed files and the default root URL all matched `c95f4d5` and the local build. The later installation version wording and the cask go into a separate follow-up commit; the release tag is not moved. The screenshots record moving the mouse away, the check for hover traces and the transparent rounded-corner treatment — see [the screenshot audit](screenshot-audit-2026-09-13.md); the evidence scope of historical research images stays at the stage at which they were actually taken.

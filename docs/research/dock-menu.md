@@ -1,40 +1,40 @@
-# Dock 右键菜单（2026-09-12）
+# Dock context menu (2026-09-12)
 
-用户要求 Tursora 的 Dock 图标像 Finder 一样提供常用动作。本轮增加应用自定义菜单：`New Window`，分隔线，`Downloads`、`Applications`。每个动作都打开新的 Tursora 窗口，不复用或导航已有 pane；New Window 沿用应用的 Home 起点。常用目录入口是 Tursora 的取舍，不声称完全复制 Finder 的实际 Dock 菜单项目或顺序。
+The user asked for Tursora's Dock icon to offer common actions the way Finder's does. This round adds the application's own custom menu: `New Window`, a separator, `Downloads`, `Applications`. Every action opens a new Tursora window and never reuses or navigates an existing pane; New Window keeps the application's Home as its starting point. The entries for common directories are Tursora's own choice, and no claim is made that they reproduce the actual items or the order of Finder's Dock menu.
 
-## 本机 Finder 文案证据
+## Finder wording evidence from this machine
 
-只读核对本机 Finder 资源：
+A read-only check against this machine's Finder resources:
 
 ```sh
 strings /System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/MenuBar.nib
 plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resources/en.lproj/LocalizableMerged.strings
 ```
 
-| 本机资源 | 提取结果 | 本轮使用范围 |
+| Resource on this machine | What was extracted | How far it is used this round |
 |---|---|---|
-| `LocalizableMerged.strings` | `N80 = New Finder Window`、`FR12 = New Window` | Tursora 沿用自己 File 菜单的 `New Window`，不用 Finder 的应用名称 |
-| `MenuBar.nib` | `300850.title` 附近的 `Downloads`、`cmdGoToDownloads:` | 常用目录英文标签 |
-| `MenuBar.nib` | `258.title` 附近的 `Applications`、`cmdGoToApplications:` | 常用目录英文标签 |
-| `MenuBar.nib` / `LocalizableMerged.strings` | `Home`、`cmdGoHome:`；`FF21 = Home` | 核对既有 New Window 的 Home 语义；不再添加重复 Home 项 |
+| `LocalizableMerged.strings` | `N80 = New Finder Window`, `FR12 = New Window` | Tursora keeps the `New Window` of its own File menu and does not use Finder's application name |
+| `MenuBar.nib` | `Downloads` and `cmdGoToDownloads:` near `300850.title` | The English label of a common directory |
+| `MenuBar.nib` | `Applications` and `cmdGoToApplications:` near `258.title` | The English label of a common directory |
+| `MenuBar.nib` / `LocalizableMerged.strings` | `Home`, `cmdGoHome:`; `FF21 = Home` | Cross-checks the Home semantics of the existing New Window; no duplicate Home item is added |
 
-这些资源能核对文案和命令名称，不能证明项目在 Finder 的 Dock 菜单中出现，不能推导当前 Finder Dock 菜单的层级或顺序。本轮未用资源字符串冒充 Finder Dock 的实际点击观察。
+These resources can confirm the wording and the command names, but they cannot prove that the items appear in Finder's Dock menu, and nothing about the hierarchy or order of the current Finder Dock menu can be derived from them. This round does not pass resource strings off as observations of actual clicks in Finder's Dock.
 
-## AppKit 依据与实现选择
+## AppKit basis and implementation choices
 
-[Apple 的 `applicationDockMenu(_:)` 文档](https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationdockmenu%28_%3A%29)允许应用代理返回动态 `NSMenu`，无须为本项目增加 nib。文档说明 Dock 使用菜单项的 target / action 向应用分发动作，发送者可能为空。因此每项使用不同 selector 和明确的 `AppDelegate` target，不从 `sender`、菜单索引或 `representedObject` 推导目的地；其他窗口获得焦点也不会改变动作目标。
+[Apple's `applicationDockMenu(_:)` documentation](https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationdockmenu%28_%3A%29) lets the application delegate return a dynamic `NSMenu`, with no need to add a nib to this project. The documentation says the Dock dispatches actions to the application through each menu item's target / action, and that the sender may be nil. Each item therefore uses a distinct selector and an explicit `AppDelegate` target, and never derives its destination from `sender`, the menu index or `representedObject`; another window taking focus does not change an action's target either.
 
-[Apple 的 Dock menus 指南](https://developer.apple.com/design/human-interface-guidelines/dock-menus)建议提供简短、常用、在应用未处于前台或没有窗口时仍有用的动作，并在其他界面保留相应入口。Tursora 的 New Window 已存在于 File 菜单，两个目录也可通过地址栏打开。这里仅返回三项自定义动作；标准 Dock 项目由 macOS 管理，不另造窗口列表、近期目录、标签或 Trash 功能。
+[Apple's Dock menus guidance](https://developer.apple.com/design/human-interface-guidelines/dock-menus) recommends offering short, frequently used actions that remain useful when the application is not in front or has no windows, and keeping a matching entry point elsewhere in the interface. Tursora's New Window already exists in the File menu, and both directories can also be opened from the address bar. Only these three custom actions are returned here; the standard Dock items are managed by macOS, and no separate window list, recent directories, tags or Trash feature is built.
 
-- `DockMenuDirectories.system` 在模型层通过 `FileManager` 的标准目录 API 解析 Downloads（user domain）和 Applications（local domain），Home 使用现有 `FileProvider.homeURL`。不硬编码用户目录，不创建缺失目录；系统未返回目的地时对应项禁用，直接分发该动作也不执行。
-- `DockMenu.make` 仅构建菜单，无文件系统读写；`AppDelegate.applicationDockMenu` 返回菜单。固定动作调用既有 `newWindow(at:)`，保留窗口注册、关闭清理与层叠行为，再激活应用。
-- 每次动作都创建独立窗口与初始 pane，不改变已有分栏、活动标签、路径、过滤、分组、选区、搜索请求或撤销栈。不增加新的文件操作。
-- 应用保留原有的 Dock 重开与拖入路径处理；本轮只补充右键菜单。
+- `DockMenuDirectories.system` resolves Downloads (user domain) and Applications (local domain) in the model layer through `FileManager`'s standard directory API, while Home uses the existing `FileProvider.homeURL`. No user directory is hard-coded and no missing directory is created; when the system returns no destination the corresponding item is disabled, and dispatching that action directly does nothing either.
+- `DockMenu.make` only builds the menu, with no filesystem reads or writes; `AppDelegate.applicationDockMenu` returns the menu. The fixed actions call the existing `newWindow(at:)`, keeping window registration, close cleanup and cascading behaviour, and then activate the application.
+- Every action creates its own window and initial pane, and changes no existing split, active tab, path, filter, grouping, selection, search request or undo stack. No new file operation is added.
+- The application keeps its existing Dock reopen and drag-in path handling; this round only adds the context menu.
 
-## 验证状态
+## Verification status
 
-`DockMenuSmokeTests.swift` 接入完整 smoke 链，使用临时目录和注入的 provider / 标准目录配置，覆盖目的地、目录不可用、菜单顺序 / 分隔 / 显式动作，以及无窗口时的空 sender 分发。真实窗口路径检查还覆盖两种文件视图下已有分栏、后台标签、过滤、分组与选区保持，测试仅关闭自己创建的窗口。
+`DockMenuSmokeTests.swift` is wired into the full smoke chain and uses a temporary directory with an injected provider / standard directory configuration, covering the destinations, an unavailable directory, menu order / separator / explicit actions, and dispatch with a nil sender when there is no window. The real window path checks also cover an existing split, background tabs, filtering, grouping and the selection being preserved under both file views, and the test closes only the windows it created itself.
 
-最终源码（含 Dock 与后续 IME 修复）的完整 smoke **连续三轮通过，每轮 2,123 项**，均 exit 0、stderr 为空。计数已按三份最终日志的 `ok` 行复核，修正原记录少计 16 项的问题；源码未变。`0.1.0` 发布包构建、strict codesign、plist、arm64 架构与包内 ICNS 一致性均通过；独立副本的窗口及目录导航已目视检查。
+The full smoke test on the final source (including the Dock work and the IME fix that followed) **passed three rounds in a row, 2,123 checks each**, all exiting 0 with empty stderr. The count has been rechecked against the `ok` lines of the three final logs, correcting the undercount of 16 in the original record; the source itself did not change. The `0.1.0` release bundle build, strict codesign, the plist, the arm64 architecture and the consistency of the ICNS inside the bundle all pass; the windows and directory navigation of a separate copy have been inspected visually.
 
-**实机边界：**界面工具通过 bundle ID、Dock.app 路径及先聚焦 Dock 三种方式均无法读取系统 Dock，因此没有完成真实 Dock 右键点击或由 Dock 激活应用的观察。菜单内容、空 sender 分发、新窗口目录和既有 pane 状态保持由上述自动化覆盖，不能改写为 Dock 实机验证通过。此前 2,024 项三轮与界面截图属于加入 Dock 前的阶段。
+**On-machine limits:** the interface tooling could not read the system Dock by any of the three routes — by bundle ID, by the Dock.app path, or by focusing the Dock first — so there is no real right-click on the Dock and no observation of the application being activated from the Dock. The menu contents, nil-sender dispatch, the new window's directory and the preservation of existing pane state are covered by the automation above, and that cannot be rewritten as a passing on-machine Dock verification. The earlier three rounds of 2,024 checks and the interface screenshots belong to the stage before the Dock work was added.

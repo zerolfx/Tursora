@@ -1,13 +1,13 @@
-# Finder 操作与分享菜单对照（2026-09-12）
+# Finder actions and share menu comparison (2026-09-12)
 
-当前系统 Finder 资源：
+Finder resources on the current system:
 
 ```bash
 strings /System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/MenuBar.nib
 ```
 
-输出中直接核验的文字：New Folder、Open、Get Info、Rename、Duplicate、Copy、Paste、Move to Trash、Share。Share 相邻的图标资源名为 `square.and.arrow.up`，action 为 `cmdShare:`。其余现有操作图标见 [原始菜单图标记录](finder-menu-icons.md)。
+Strings verified directly in the output: New Folder, Open, Get Info, Rename, Duplicate, Copy, Paste, Move to Trash, Share. The icon resource next to Share is named `square.and.arrow.up` and its action is `cmdShare:`. For the icons of the other existing actions, see [the original menu icon record](finder-menu-icons.md).
 
-Tursora 的工具栏 More 菜单聚合已实现的文件操作，按活动 pane 的选择验证；这是适合当前功能范围的整理，不声称复刻 Finder 更多菜单的全部项目或顺序。三点按钮使用 `ellipsis.circle`（图标选型，未从 Finder nib 证实）。Share 使用 `NSSharingServicePickerToolbarItem`，从活动 pane 提供选中的 URL；无选择时禁用。测试只验证传入对象和启用状态，不发送文件。
+Tursora's More menu in the toolbar gathers the file operations that are implemented and validates them against the active pane's selection; this is an arrangement that suits the current feature scope, and it does not claim to reproduce every item or the ordering of Finder's More menu. The three-dot button uses `ellipsis.circle` (an icon choice, not confirmed from the Finder nib). Share uses `NSSharingServicePickerToolbarItem` and supplies the selected URLs from the active pane; it is disabled when there is no selection. The tests only verify the objects passed in and the enabled state, and send no files.
 
-用户明确的产品边界：不支持任何 Tags 功能，不支持 Import from iPhone。已删除旧的 Tags 分组及文件标签读取；不改动磁盘上用户已有标签。系统分享选择器列出的第三方服务由系统与已安装应用决定。
+Product boundaries the user stated explicitly: no Tags functionality of any kind, and no Import from iPhone. The old Tags group and the reading of file tags have been removed; existing user tags on disk are not modified. The third-party services listed by the system share picker are determined by the system and the installed applications.

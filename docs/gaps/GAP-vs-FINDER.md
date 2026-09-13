@@ -1,116 +1,116 @@
-# Tursora vs Finder — 功能差距与难度
+# Tursora vs Finder — feature gaps and difficulty
 
-依据本机 Finder 的菜单 nib（`Finder.app/Contents/Resources/Base.lproj/MenuBar.nib`、`ArrangeByMenu.nib`，用 `strings` 抽出的菜单项）逐项对照。
-Tags 与 Import from iPhone 明确不做；Recents、Shared / iCloud / AirDrop 暂不在此表展开。系统服务器挂载纳入 Go 菜单对照。
+Compared item by item against this machine's Finder menu nibs (`Finder.app/Contents/Resources/Base.lproj/MenuBar.nib` and `ArrangeByMenu.nib`, with the menu items extracted using `strings`).
+Tags and Import from iPhone are explicitly out of scope; Recents and Shared / iCloud / AirDrop are not broken out in this table for now. System server mounts are folded into the Go menu comparison.
 
-**难度**按一个熟悉 AppKit 的人、含 smoke test 与真机验证估：
-S ≤ 半天（< 100 行，标准 API 直接可用）· M 1–2 天（100–400 行，新 view/controller 或改 model）· L 3–5 天（400–1000 行，新子系统或跨层）· XL > 1 周（> 1000 行，或依赖没有公开 API 的东西）。
-估算方法：7 个按类别的 agent 对着 Tursora 源码逐项估（工时、行数、要碰的文件、API），再由部分对抗性复核（"更难"/"更容易"各一方）校正；余下由我按同样尺度校正。**粗体** = 高频且成本低到中。
+**Difficulty** is estimated for someone familiar with AppKit, and includes the smoke test and on-device verification:
+S ≤ half a day (< 100 lines, a standard API is directly usable) · M 1–2 days (100–400 lines, a new view/controller or a model change) · L 3–5 days (400–1000 lines, a new subsystem or a change across layers) · XL > 1 week (> 1000 lines, or a dependency on something with no public API).
+How the estimates were made: 7 agents, one per category, estimated every item against the Tursora source (hours, lines, files to touch, APIs), then part of the list was corrected by an adversarial review (one side arguing "harder", the other "easier"); I corrected the rest on the same scale. **Bold** = frequently used and cheap to moderate.
 
-## File 菜单
+## File menu
 
-| Finder | Tursora | 难度 | 备注 |
+| Finder | Tursora | Difficulty | Notes |
 |---|---|---|---|
-| **Get Info**（⌘I）/ Show Inspector（⌥⌘I）/ Get Summary Info（⌃⌘I） | ✅ 已做 | — | 默认 General / Preview 展开、其余折叠，记住显式选择；[证据](../research/info-disclosures.md)。未做：Stationery pad、ACL、改 owner/group（要提权，无公开 API → 单独算 L）、Apply to enclosed items |
-| **Rename（多选 = 批量重命名对话框）** | ✅ 已做 | — | 替换文本 / 添加文本 / 格式三种模式 + 实时预览；连锁改名走两遍临时名；措辞证据与推断项见[批量重命名](../research/finder-batch-rename.md) |
-| **New Folder with Selection**（⌃⌘N） | ❌ | S | createDirectory + 现有 transfer；撤销要合成一个组 |
-| **Compress** / Compress with password | 普通 ZIP ✅；密码 ❌ | 密码 M | 压缩 / 解压支持重名保留、撤销重做；可选当前 pane 只读 ZIP 浏览默认启用（浏览交互参考 Windows） |
-| **Make Alias**（⌃⌘A）/ Show Original（⌘R） | ❌ | M | `URL.bookmarkData(options: .suitableForBookmarkFile)` + `writeBookmarkData`；⌘R 与我们的 Reload 冲突 |
-| Always Open With（⌥ + Open With） | ❌ | S | `setDefaultApplication(at:toOpen:)`（已在 Get Info 的 Change All 用上）；上下文菜单要保留备选项对 |
-| **Show Package Contents** | ❌ | S | 右键 .app 直接 navigate 进包目录 |
-| Add to Dock | ❌ | M | 只有写 `com.apple.dock.plist` + 重启 Dock 这条路，格式未文档化 |
-| Print | ❌ | S | `NSWorkspace.open(_:withApplicationAt:configuration:)` 让默认程序打印，无回执 |
-| Share… | ✅ 工具栏系统分享选择器 | — | 按活动 pane 的选中文件分享；不直接发送 |
-| Slideshow（⌥空格） | ❌ | S | `QLPreviewPanel.enterFullScreenMode`；方向键当前会改选择，要拦 |
-| Customize Folder（文件夹颜色/表情，macOS 26） | ❌ | XL | 存储格式私有（可能在 IconServices 数据库里），不可靠 |
-| Copy as Pathname（⌥⌘C） | ✅ Copy Path | S | 只是把快捷键对齐，做成 Copy 的 ⌥ 备选项 |
-| New Smart Folder / Burn Folder / Burn Disc | ❌ | XL | 已有应用内保存搜索；尚不支持 Finder .savedSearch 互通或刻录 |
-| Eject All（⌥⌘E） | ❌ | S | 逐个 `unmountAndEjectDevice`，要放后台；同一物理盘的分区会一起弹 |
+| **Get Info** (⌘I) / Show Inspector (⌥⌘I) / Get Summary Info (⌃⌘I) | ✅ Done | — | General / Preview are expanded by default and the rest collapsed, and an explicit choice is remembered; [evidence](../research/info-disclosures.md). Not done: Stationery pad, ACLs, changing owner/group (needs elevated privileges and has no public API → counted separately as L), Apply to enclosed items |
+| **Rename (a multi-selection opens the batch rename dialog)** | ✅ Done | — | Three modes — replace text / add text / format — plus a live preview; chained renames go through temporary names in two passes; for the wording evidence and what is inferred see [batch rename](../research/finder-batch-rename.md) |
+| **New Folder with Selection** (⌃⌘N) | ❌ | S | createDirectory plus the existing transfer; undo has to be combined into one group |
+| **Compress** / Compress with password | Plain ZIP ✅; password ❌ | M for the password | Compress / extract keep colliding names and support undo and redo; the optional read-only ZIP browsing in the current pane is enabled by default (the browsing interaction follows Windows) |
+| **Make Alias** (⌃⌘A) / Show Original (⌘R) | ❌ | M | `URL.bookmarkData(options: .suitableForBookmarkFile)` plus `writeBookmarkData`; ⌘R clashes with our Reload |
+| Always Open With (⌥ with Open With) | ❌ | S | `setDefaultApplication(at:toOpen:)` (already used by Change All in Get Info); the context menu has to keep the alternate pair |
+| **Show Package Contents** | ❌ | S | Right-click a .app and navigate straight into the bundle directory |
+| Add to Dock | ❌ | M | The only route is writing `com.apple.dock.plist` and restarting the Dock, and the format is undocumented |
+| Print | ❌ | S | `NSWorkspace.open(_:withApplicationAt:configuration:)` lets the default application print it, with no receipt |
+| Share… | ✅ The system share picker in the toolbar | — | Shares the files selected in the active pane; it does not send anything itself |
+| Slideshow (⌥ space) | ❌ | S | `QLPreviewPanel.enterFullScreenMode`; the arrow keys currently change the selection and would have to be intercepted |
+| Customize Folder (folder color/emoji, macOS 26) | ❌ | XL | The storage format is private (possibly inside the IconServices database) and unreliable |
+| Copy as Pathname (⌥⌘C) | ✅ Copy Path | S | Only the shortcut needs aligning, as the ⌥ alternate of Copy |
+| New Smart Folder / Burn Folder / Burn Disc | ❌ | XL | Saved searches already exist inside the app; interchange with Finder .savedSearch files and disc burning are not supported yet |
+| Eject All (⌥⌘E) | ❌ | S | `unmountAndEjectDevice` one by one, which has to run in the background; partitions on the same physical disk eject together |
 
-## Edit 菜单
+## Edit menu
 
-| Finder | Tursora | 难度 | 备注 |
+| Finder | Tursora | Difficulty | Notes |
 |---|---|---|---|
-| **Move Items Here**（⌥⌘V） | ❌ | S | 已有 transfer(.move)；做成 Paste 的 ⌥ 备选项 |
-| Paste Exactly / Duplicate Exactly（⌥） | ❌ | M | 保留属主/权限要 `NSWorkspace.requestAuthorization(to: .replaceFile)`，异步授权与现有 transfer 的队列要接起来 |
-| **Deselect All**（⌥⌘A） | ❌ | S | 几行；侧栏/地址栏有焦点时不可用（和 Finder 一样） |
-| Show Clipboard | ❌ | M | 一个列出剪贴板 URL 的窗口，定时刷新 |
+| **Move Items Here** (⌥⌘V) | ❌ | S | transfer(.move) already exists; make it the ⌥ alternate of Paste |
+| Paste Exactly / Duplicate Exactly (⌥) | ❌ | M | Preserving owner and permissions needs `NSWorkspace.requestAuthorization(to: .replaceFile)`, and the asynchronous authorization has to be joined to the existing transfer queue |
+| **Deselect All** (⌥⌘A) | ❌ | S | A few lines; unavailable while the sidebar or the address bar has focus (the same as Finder) |
+| Show Clipboard | ❌ | M | A window listing the URLs on the clipboard, refreshed on a timer |
 
-## View 菜单
+## View menu
 
-| Finder | Tursora | 难度 | 备注 |
+| Finder | Tursora | Difficulty | Notes |
 |---|---|---|---|
-| **as Columns**（⌘3） | ❌ | L | 第三个 `FileViewing` 实现（NSBrowser 或自绘），末列预览、←→ 进出、拖放、改名、右键都要有；⌘3 与标签页 ⌘1–9 冲突 |
-| as Gallery（⌘4） | ❌ | L | 大 QLPreviewView + 底部缩略条；QLPreviewView 要单例复用，有焦点和自动播放的怪癖 |
-| **Show Preview**（⇧⌘P 右侧预览栏） | ❌ | M | 复用 Get Info 的 FileInfo + QLPreviewView；我们的 ⇧⌘P 现在是"显示缩略图"，要先挪 |
-| **Show View Options**（⌘J，每文件夹视图设置） | 每目录持久化 ✅；Finder 式完整对话框 ❌ | 对话框 M | 现有模式 / 排序 / 两种缩放 / 分组 / 隐藏 / 预览按目录保存；View 与 Settings 有策略、默认和重置入口。应用私有路径库，不写 `.DS_Store`；没有 ⌘J、列布局或自由摆放设置 |
-| Clean Up / Snap to Grid / 图标自由摆放 | ❌ | L | 图标视图从流式网格改成自由布局 + 每文件夹坐标持久化；NSCollectionView 内部拖动现在被当成文件投放拒绝 |
-| Toolbar（⌥⌘T）/ Path Bar（⌥⌘P）/ Status Bar（⌘/）/ Tab Bar（⇧⌘T）开关 | 只有 Sidebar | M | 本身简单；⇧⌘T 与我们的"恢复关闭的标签"冲突 |
-| **Customize Toolbar…** | ❌ | M | `allowsUserCustomization = true` + 更多 allowed items；delegate 现在对调色板的副本也存引用，要改 |
-| Show All Tabs（标签总览） | ❌ | M | 截图隐藏 view 在 macOS 14 上可能是空位图，要先试 |
-| Increase/Decrease Icon Size | ✅ 缩放 | — | |
-| Enter Full Screen | ✅ 系统 | — | |
+| **as Columns** (⌘3) | ❌ | L | A third `FileViewing` implementation (NSBrowser or drawn by hand), needing a preview in the last column, ←→ to move in and out, drag and drop, renaming and a context menu; ⌘3 clashes with ⌘1–9 for tabs |
+| as Gallery (⌘4) | ❌ | L | A large QLPreviewView plus a thumbnail strip at the bottom; QLPreviewView has to be reused as a single instance and has quirks around focus and autoplay |
+| **Show Preview** (⇧⌘P, the preview pane on the right) | ❌ | M | Reuses Get Info's FileInfo plus QLPreviewView; our ⇧⌘P currently means "show thumbnails" and would have to move first |
+| **Show View Options** (⌘J, per-folder view settings) | Per-directory persistence ✅; the full Finder-style dialog ❌ | M for the dialog | The existing mode / sorting / both zoom steps / grouping / hidden files / previews are saved per directory; View and Settings have entry points for the policy, the default and a reset. The app uses a private path store and does not write `.DS_Store`; there is no ⌘J, no column layout and no free-placement settings |
+| Clean Up / Snap to Grid / free icon placement | ❌ | L | The icon view would change from a flow grid to a free layout with per-folder coordinates persisted; a drag inside NSCollectionView is currently rejected as a file drop |
+| Toolbar (⌥⌘T) / Path Bar (⌥⌘P) / Status Bar (⌘/) / Tab Bar (⇧⌘T) toggles | Sidebar only | M | Simple in itself; ⇧⌘T clashes with our "reopen closed tab" |
+| **Customize Toolbar…** | ❌ | M | `allowsUserCustomization = true` plus more allowed items; the delegate currently also keeps a reference to the palette's copy, which has to change |
+| Show All Tabs (the tab overview) | ❌ | M | Capturing a hidden view on macOS 14 may yield an empty bitmap, so it has to be tried first |
+| Increase/Decrease Icon Size | ✅ Zoom | — | |
+| Enter Full Screen | ✅ System | — | |
 
-## Go 菜单
+## Go menu
 
-Dock 已提供 New Window / Downloads / Applications 三个入口，均新开窗口；系统标准项仍由 macOS 管理。以下 Go 菜单缺项不因 Dock 快捷入口而视为已补齐，见 [Dock 记录](../research/dock-menu.md)。
+The Dock already offers three entry points — New Window / Downloads / Applications — each of which opens a new window; the standard system items are still managed by macOS. The Go menu items missing below are not treated as filled in by those Dock shortcuts, see the [Dock record](../research/dock-menu.md).
 
-| Finder | Tursora | 难度 | 备注 |
+| Finder | Tursora | Difficulty | Notes |
 |---|---|---|---|
-| **Computer / Desktop / Documents / Downloads / Applications / Utilities / Library（⌥）** | 只有 Home | S | ⇧⌘C 与 Copy to Other Pane、⇧⌘D 与 Split View 冲突，要先让位 |
-| **Recent Folders ▸**（含 Clear Menu） | ❌ | M | 跨会话持久化；每个新标签的首次 Home 也会被记，要过滤 |
-| Go to Folder（⇧⌘G） | ✅ 进地址栏编辑 | — | 行为等价 |
-| Connect to Server（⌘K） | ✅ 系统 NetFS | 历史 / 发现待做 | SMB、NFS、WebDAV、legacy AFP；真实服务端互操作未实测 |
+| **Computer / Desktop / Documents / Downloads / Applications / Utilities / Library (⌥)** | Home only | S | ⇧⌘C clashes with Copy to Other Pane and ⇧⌘D with Split View, so those have to give way first |
+| **Recent Folders ▸** (including Clear Menu) | ❌ | M | Persisted across sessions; the first Home of every new tab would also be recorded and has to be filtered out |
+| Go to Folder (⇧⌘G) | ✅ Starts editing in the address bar | — | Equivalent behaviour |
+| Connect to Server (⌘K) | ✅ The system NetFS | History / discovery still to do | SMB, NFS, WebDAV, legacy AFP; interoperability with a real server has not been tested |
 
-## Window 菜单
+## Window menu
 
-| Finder | Tursora | 难度 | 备注 |
+| Finder | Tursora | Difficulty | Notes |
 |---|---|---|---|
-| Move Tab to New Window / Merge All Windows | Detach Tab ✅；Merge All Windows ❌ | 合并 M | 标签右键按 Dolphin 语义将一到两个逻辑位置及搜索请求在新窗口重建；历史、过滤、任务和撤销栈不迁移，不宣称 Finder 完整状态搬迁。依据与验证见[专项记录](../research/pane-paths-and-tab-actions.md) |
-| Cycle Through Windows（⌘`） | ❌ | S | 没有公开的 cycleWindows:，自己按 orderedWindows 轮；系统级 ⌘` 热键可能先吃掉按键 |
+| Move Tab to New Window / Merge All Windows | Detach Tab ✅; Merge All Windows ❌ | M for merging | The tab context menu follows Dolphin's semantics and rebuilds one or two logical locations and the search request in a new window; history, filters, tasks and the undo stack do not move with it, and no claim is made of transferring Finder's complete state. For the evidence and the verification see the [dedicated record](../research/pane-paths-and-tab-actions.md) |
+| Cycle Through Windows (⌘`) | ❌ | S | There is no public cycleWindows:, so we would cycle through orderedWindows ourselves; the system-level ⌘` hotkey may swallow the key first |
 
-## 非菜单行为
+## Behaviour outside the menus
 
-| Finder | Tursora | 难度 | 备注 |
+| Finder | Tursora | Difficulty | Notes |
 |---|---|---|---|
-| **Spring-loaded folders** | ✅ | — | `NSSpringLoadingDestination`：列表、图标、Places 侧栏、文件夹树四处；延迟与开关来自系统的 `com.apple.springing.*`。面包屑分段是**投放目标**但不弹开；未实现 Finder 的「弹开后回滚」（[记录](../research/drag-and-drop.md)） |
-| **Finder 设置窗口** | ✅ General / Shortcuts / Terminal / Updates | 扩展项 M–L | 扩展名显示、所有应用命令快捷键、每目录记忆 / 统一默认、终端 Shell / 字体 / 颜色、默认启用的终端 / ZIP 和更新选项；废纸篓策略、Keep folders on top 等未实现 |
-| 显示/隐藏文件扩展名 + 改扩展名警告 | 显示开关 ✅；警告 ❌ | 警告 M | 全局只改列表 / 图标标签，普通文件夹名不变；重命名、排序、过滤保留真名；不是 Finder 逐文件 flag 策略的完整复制 |
-| Quick Actions（Rotate / Markup / Create PDF） | ❌ | L | Finder 的注册表是私有的，Markup 无公开 API；只能自己实现 Rotate/Create PDF |
-| 右键 ▸ Services 菜单 | ❌ | S | `NSApp.servicesMenu`；一个 NSMenu 只能有一个父菜单，上下文菜单要复制 |
-| 废纸篓视图（Put Back、清空） | ✅ 用户废纸篓 | 卷级废纸篓 M | 边栏与 Go 菜单入口、普通列表 + `Trash` 状态语境、Finder 文案的 `Empty Trash…`、自建 put-back 日志（Finder 的 put-back 路径在 `.DS_Store` 私有记录里，不解析）。缺少 Full Disk Access 时窗格内显示横幅并提供跳转设置与重试，不弹模态。卷级废纸篓未实现（[记录](../research/trash.md)） |
-| Finder 别名双击解析 | symlink 跟随 ✅；Finder alias 自动解析 ❌ | S | 每目录视图库不新增 alias 解析；以后可用 `URL(resolvingAliasFileAt:options: .withoutMounting)` 在打开时解析目标 |
-| FinderSync 角标（云同步状态） | ❌ | XL | 只有 iCloud 的 ubiquity 键是公开的；Dropbox 等的角标无公开 API |
-| 中文本地化 | ❌ | L | 代码里建的菜单/字符串全部抽出；SPM 资源包在 .app 与裸二进制两种启动方式下都要找得到 |
-| 快捷键与 Finder 对齐（⌘1–4、⌘L、⇧⌘T、⇧⌘P、⌘O、⌘I） | ⌘I ✅ | M | 菜单在运行中重建；同键多项的备选项要保持相邻 |
+| **Spring-loaded folders** | ✅ | — | `NSSpringLoadingDestination` in four places: the list, the icons, the Places sidebar and the folder tree; the delay and the switch come from the system's `com.apple.springing.*`. A breadcrumb segment is a **drop target** but does not spring open; Finder's "spring open, then roll back" is not implemented ([record](../research/drag-and-drop.md)) |
+| **Finder's settings window** | ✅ General / Shortcuts / Terminal / Updates | M–L for the extras | Showing extensions, shortcuts for every application command, per-directory memory / one shared default, the terminal shell / font / colors, the terminal and ZIP options that are on by default, and the update options; the trash policy, Keep folders on top and the like are not implemented |
+| Show/hide file extensions plus the warning when an extension changes | The display switch ✅; the warning ❌ | M for the warning | The global switch only changes the list and icon labels, and ordinary folder names stay as they are; renaming, sorting and filtering keep the real name; this is not a complete copy of Finder's per-file flag policy |
+| Quick Actions (Rotate / Markup / Create PDF) | ❌ | L | Finder's registry is private and Markup has no public API; only Rotate and Create PDF could be implemented ourselves |
+| Context menu ▸ Services | ❌ | S | `NSApp.servicesMenu`; one NSMenu can only have a single parent menu, so the context menu needs a copy |
+| Trash view (Put Back, empty) | ✅ The user trash | M for per-volume trash | Sidebar and Go menu entry points, an ordinary list with the `Trash` status context, `Empty Trash…` in Finder's wording, and our own put-back log (Finder's put-back paths live in private `.DS_Store` records, which we do not parse). Without Full Disk Access the pane shows a banner offering a jump to Settings and a retry, rather than a modal. Per-volume trash is not implemented ([record](../research/trash.md)) |
+| Double-clicking a Finder alias resolves it | Following symlinks ✅; resolving a Finder alias automatically ❌ | S | The per-directory view store gains no alias resolution; later `URL(resolvingAliasFileAt:options: .withoutMounting)` could resolve the target when opening |
+| FinderSync badges (cloud sync status) | ❌ | XL | Only iCloud's ubiquity keys are public; there is no public API for the badges of Dropbox and the like |
+| Chinese localization | ❌ | L | Every menu and string built in code has to be extracted; the SPM resource bundle has to be findable both when launched as a .app and as a bare binary |
+| Shortcuts aligned with Finder (⌘1–4, ⌘L, ⇧⌘T, ⇧⌘P, ⌘O, ⌘I) | ⌘I ✅ | M | The menus are rebuilt at runtime; alternates that share a key have to stay adjacent |
 
-## 建议顺序（按成本）
+## Suggested order (by cost)
 
-1. S：Deselect All、Move Items Here、Copy as Pathname 对齐、New Folder with Selection、Show Package Contents、Always Open With、Print、Slideshow、Eject All、Go 菜单快捷键、Cycle Through Windows、Services 菜单、别名解析
-2. M：Make Alias / Show Original、Recent Folders、Show Preview 预览栏、Customize Toolbar、Bar 开关、Show All Tabs、Move Tab to New Window、改扩展名警告、Paste Exactly、Show Clipboard、Add to Dock、Finder 默认快捷键预设（现已可逐项配置）
-3. L：排序键 Date Created / Date Added / Date Last Opened、列表可选列与文件夹大小已完成（[记录](../research/sort-columns-folder-sizes.md)；Version / Comments / Tags 三列与列宽持久化仍未实现）。Column 视图、Gallery 视图、完整偏好策略、图标自由摆放、废纸篓视图、Quick Actions、中文本地化、服务器发现 / 历史 / 重连；Show View Options 完整对话框另列 M（每目录持久化已实现）
-4. XL / 不建议：Customize Folder、Smart Folders、FinderSync 角标
+1. S: Deselect All, Move Items Here, aligning Copy as Pathname, New Folder with Selection, Show Package Contents, Always Open With, Print, Slideshow, Eject All, the Go menu shortcuts, Cycle Through Windows, the Services menu, alias resolution
+2. M: Make Alias / Show Original, Recent Folders, the Show Preview pane, Customize Toolbar, the bar toggles, Show All Tabs, Move Tab to New Window, the warning when an extension changes, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (each one is already configurable individually)
+3. L: The Date Created / Date Added / Date Last Opened sort keys and the optional list columns with folder sizes are done ([record](../research/sort-columns-folder-sizes.md); the Version / Comments / Tags columns and persisting column widths are still not implemented). Column view, Gallery view, the full preference policy, free icon placement, the trash view, Quick Actions, Chinese localization, server discovery / history / reconnect; the full Show View Options dialog is listed separately as M (per-directory persistence is implemented)
+4. XL / not recommended: Customize Folder, Smart Folders, FinderSync badges
 
-## 2026-09-12 更新
+## 2026-09-12 update
 
-- [x] 工具栏 More 常用文件操作与系统分享按钮。
-- [x] ZIP Compress / Extract，重名保留、后台处理、撤销重做。密码与其他格式未实现。
-- [x] 复制 / 移动 / Duplicate 独立进度任务，支持大文件传输中暂停 / 继续 / 取消、安全 Replace 和成功项撤销；验证范围及不可暂停系统调用边界见[专项记录](../research/file-operation-tasks.md)。
-- [x] Connect to Server（⌘K）与系统挂载网络卷的浏览 / Eject；真实服务端互操作尚未实测。
-- [x] 基础设置窗口、扩展名显示开关、自定义名称过滤快捷键。
-- [x] 每目录视图记忆、统一默认、保存当前默认与恢复目录默认；列表 / 图标均保存，完整 Finder 视图选项对话框仍未实现。自动与实机验证见[目录视图验证记录](../research/computer-use-2026-09-12-directory-views.md)。
-- [x] 默认启用的终端面板与当前 pane ZIP 只读浏览实验；归档支持复制 / 拖出、Quick Look 与分享，不支持写回。
-- Tags、Import from iPhone 为明确不做的产品边界。
+- [x] The toolbar's More menu with common file operations, and the system share button.
+- [x] ZIP Compress / Extract, with colliding names kept, background processing and undo/redo. Passwords and other formats are not implemented.
+- [x] Copy / Move / Duplicate as separate progress tasks, supporting pause / resume / cancel part way through a large transfer, a safe Replace and undo of the items that succeeded; for the verification scope and the boundary of system calls that cannot be paused see the [dedicated record](../research/file-operation-tasks.md).
+- [x] Connect to Server (⌘K) and browsing / ejecting network volumes mounted by the system; interoperability with a real server has not been tested yet.
+- [x] A basic settings window, the switch for showing extensions, and a customizable shortcut for the name filter.
+- [x] Per-directory view memory, one shared default, saving the current settings as the default and restoring a directory's default; both the list and the icons are saved, and the full Finder view options dialog is still not implemented. For the automated and on-device verification see the [directory view verification record](../research/computer-use-2026-09-12-directory-views.md).
+- [x] The terminal panel enabled by default, and the experiment with read-only ZIP browsing in the current pane; an archive supports copying / dragging out, Quick Look and sharing, but not writing back.
+- Tags and Import from iPhone are product boundaries that are explicitly out of scope.
 
-## 2026-09-12 标签栏与外观
+## 2026-09-12 tab bar and appearance
 
-- [x] 标签中性选中层级、居中标题、悬停关闭、固定新增按钮。
-- [x] 多标签横向滚动与全部标签文字菜单；不替代上表待做的缩略图总览。
-- [x] 系统亮 / 暗外观与现有 layer 表面动态更新；[本轮验证状态](../research/tabs-and-appearance.md)。
+- [x] A neutral selection level for tabs, centred titles, a close button on hover and a fixed add button.
+- [x] Horizontal scrolling with many tabs and a text menu of all tabs; this does not replace the thumbnail overview still listed as to do in the table above.
+- [x] The system light / dark appearance with the existing layer surfaces updating dynamically; [this round's verification status](../research/tabs-and-appearance.md).
 
-## 2026-09-13 定制与目录树
+## 2026-09-13 customization and the directory tree
 
-- [x] 所有应用命令快捷键已可配置，包含菜单未绑定项、Return / Space 与标签备用键；支持冲突提示、清除、单项 / 全部重置。文本编辑、选择、补全及 shell 控制仍走原生视图。
-- [x] 终端 Shell / 等宽字体 / 字号 / 主题 / 自定义文本背景色及工具栏开关。
-- [x] Places 下方的 Folders 树是 Dolphin 式补充；保留 Finder 式收藏侧栏，不把两种导航混为一棵树。
-- [x] 最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过，交付 app / DMG、实机与截图验证范围见[定制功能整合记录](../research/customization-integration.md)；远端 CI / 发布仍单独处理。
+- [x] Shortcuts for every application command are now configurable, including menu items with no binding, Return / Space and the tab alternates; conflict hints, clearing, and resetting one at a time or all at once are supported. Text editing, selection, completion and shell control still go through the native views.
+- [x] The terminal shell / monospaced font / font size / theme / custom text background color, and the toolbar toggle.
+- [x] The Folders tree below Places is a Dolphin-style addition; the Finder-style favorites sidebar stays, and the two kinds of navigation are not merged into one tree.
+- [x] The final 3,194-check smoke test over 95 Swift sources passed three times in a row; for the scope of the delivered app / DMG, the on-device run and the screenshot verification see the [customization integration record](../research/customization-integration.md); remote CI and releases are still handled separately.

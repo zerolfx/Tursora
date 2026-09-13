@@ -1,50 +1,50 @@
-# 标签栏与亮暗外观
+# Tab bar and light / dark appearance
 
-## Apple 参考与证据范围
+## Apple references and the scope of the evidence
 
-本轮以 **Safari 的独立标签栏**为主要视觉参考。2026-09-12 在本机 Safari 打开两个临时 Apple 页面，与原起始页形成三标签，实际查看深色界面，再关闭临时标签恢复原页面。观察到：标签在地址工具栏下方；后台标签共用连续底条；当前标签为柔和的胶囊形亮面；标题居中；多标签等分可用宽度。Safari 的新增入口位于上方工具栏，Tursora 则放在标签栏右端，便于文件工作流发现；没有宣称完全复制 Safari 布局或网页着色。
+This round takes **Safari's separate tab bar** as the main visual reference. On 2026-09-12 two temporary Apple pages were opened in Safari on this machine, making three tabs together with the original start page, the dark interface was looked at directly, and the temporary tabs were then closed to restore the original page. Observed: the tabs sit below the address toolbar; background tabs share one continuous base strip; the current tab is a soft, capsule-shaped light surface; titles are centred; several tabs divide the available width equally. Safari's control for adding a tab sits in the toolbar above, while Tursora puts it at the right end of the tab bar, where a file workflow will find it; no claim is made to reproduce Safari's layout or web page tinting exactly.
 
-![Safari 深色标签栏实机参考](../images/research/safari-tabs-dark.jpg)
+![Safari dark tab bar, reference taken on a real machine](../images/research/safari-tabs-dark.jpg)
 
-Finder 是辅助对照：也支持 `⌘T`，新建第二个标签即可显示标签栏。本机深色实测同样有连续底条、较亮的当前标签和居中标题；关闭临时标签后恢复原窗口。没有取得这些应用私有控件的尺寸或材质参数。
+Finder is a secondary comparison: it also supports `⌘T`, and creating a second tab is enough to show the tab bar. Measured on this machine in dark mode it likewise has a continuous base strip, a lighter current tab and centred titles; closing the temporary tab restored the original window. No size or material parameters of these applications' private controls were obtained.
 
-Apple 官方文档提供另外两种应用的参考：
+Apple's own documentation provides references for two further applications:
 
-- [Safari 标签设置](https://support.apple.com/en-au/guide/safari/ibrw1045/mac)：Separate 将标签置于工具栏下方；Compact 将活动标签变成地址搜索框。Tursora 每个 pane 有独立地址栏，因此采用前者的分层方式。
-- [Safari 标签整理](https://support.apple.com/en-au/guide/safari/ibrwbb6e21e4/mac)：标签超过可见宽度时可横向滑动。Tursora 保留可读宽度，溢出后滚动，并提供文字菜单入口。
-- [Safari 标签关闭](https://support.apple.com/en-gb/guide/safari/ibrwd0cea393/mac)及[系统窗口标签](https://support.apple.com/en-gb/guide/mac-help/mchla4695cce/mac)：关闭控件在悬停后出现，减少常驻操作噪声。
-- [Terminal 标签设置](https://support.apple.com/en-asia/guide/terminal/trmltab/mac)：标题可表达目录、路径和进程，也可自定义。Tursora 延续目录 / 搜索 / 分栏标题与完整路径 tooltip。
-- [Apple 外观适配](https://developer.apple.com/documentation/uikit/supporting-dark-mode-in-your-interface)和[AppKit 语义颜色](https://developer.apple.com/documentation/appkit/ui-element-colors)：用语义颜色和模板图像适配外观；转换成 CGColor 后需在更新周期重新解析。前一文档虽位于 UIKit URL，也明确包含 AppKit / NSView 的说明。
+- [Safari tab settings](https://support.apple.com/en-au/guide/safari/ibrw1045/mac): Separate places the tabs below the toolbar; Compact turns the active tab into the address and search field. Every Tursora pane has its own address bar, so the layered arrangement of the former was adopted.
+- [Organising Safari tabs](https://support.apple.com/en-au/guide/safari/ibrwbb6e21e4/mac): when the tabs exceed the visible width they can be scrolled sideways. Tursora keeps a readable width, scrolls once they overflow, and offers a textual menu entry point.
+- [Closing Safari tabs](https://support.apple.com/en-gb/guide/safari/ibrwd0cea393/mac) and [system window tabs](https://support.apple.com/en-gb/guide/mac-help/mchla4695cce/mac): the close control appears on hover, which reduces permanent visual noise.
+- [Terminal tab settings](https://support.apple.com/en-asia/guide/terminal/trmltab/mac): the title can express the directory, the path and the process, and can also be customised. Tursora carries on the directory / search / split titles and the full-path tooltip.
+- [Apple's appearance adaptation guide](https://developer.apple.com/documentation/uikit/supporting-dark-mode-in-your-interface) and [AppKit semantic colours](https://developer.apple.com/documentation/appkit/ui-element-colors): use semantic colours and template images to adapt to the appearance; once converted to a CGColor they have to be re-resolved during the update cycle. The first document sits at a UIKit URL but explicitly includes instructions for AppKit / NSView.
 
-Safari 有上述深色实机观察；Terminal 本轮参考为官方文档。均未声称量取它们的精确像素参数。新增圆角、间距及配色混合比例是 Tursora 的设计选择。
+Safari has the dark-mode observation on a real machine described above; the Terminal reference this round is the official documentation. Neither claims to have measured their exact pixel parameters. The new corner radii, spacing and colour blend ratios are Tursora's own design choices.
 
-Finder 文案证据通过只读资源提取核对：
+The Finder wording evidence was checked by extracting read-only resources:
 
 ```sh
 strings /System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/MenuBar.nib
 plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resources/en.lproj/LocalizableMerged.strings
 ```
 
-前者包含 `New Tab`、`Show All Tabs`、`Hide Tab Bar`、`New Window as Tab`；后者 `FR13 = New Tab`、`FV17 = Open in New Tab`、`FV18 = Open in New Tab and Close`、`N151.1 = Open in New Tab`、`N151.2 = Open in New Tabs`。本轮不改 Dolphin 七项右键文案，不把文字溢出菜单称为 Finder 的缩略图总览。
+The first contains `New Tab`, `Show All Tabs`, `Hide Tab Bar` and `New Window as Tab`; the second has `FR13 = New Tab`, `FV17 = Open in New Tab`, `FV18 = Open in New Tab and Close`, `N151.1 = Open in New Tab` and `N151.2 = Open in New Tabs`. This round does not change the seven Dolphin context-menu strings, and does not call the textual overflow menu a Finder-style thumbnail overview.
 
-## 产品介绍边界
+## Boundaries of the product description
 
-标签页本身是 Finder 和 Safari 已有的通用能力，不再作为 README / 产品页的独立卖点。技术文档保留快捷键、菜单和行为说明；产品介绍聚焦双分栏、每 pane 独立可编辑路径等工作流。
+Tabs themselves are a common capability that Finder and Safari already have, so they are no longer a separate selling point on the README / product page. The technical documentation keeps the shortcut, menu and behaviour descriptions; the product description focuses on workflows such as split panes and a separately editable path per pane.
 
-## 实现约定
+## Implementation conventions
 
-标签栏采用中性底条和柔和的选中面；标题两侧预留相同空间，关闭按钮悬停显示且不挤动文字。新增按钮固定在右侧；标签过多时横向滚动，选择标签会将它带入可见区域，溢出菜单列出所有标题。
+The tab bar uses a neutral base strip and a soft selected surface; the same amount of space is reserved on either side of the title, and the close button appears on hover without pushing the text around. The button for a new tab is pinned to the right; when there are too many tabs the bar scrolls sideways, selecting a tab brings it into view, and the overflow menu lists every title.
 
-应用默认跟随系统亮 / 暗外观，不写入全局外观偏好。标签绘制实时解析语义颜色；补全面板、活动 pane 指示线及传输任务卡片也在外观改变时刷新 layer 颜色。分栏标题固定为 `Left | Right`，不为非活动侧添加括号；活动侧由 pane 指示线表达。过滤、分组、拖拽与七项标签右键动作保留。文件区和侧栏移除所有 Reveal in Finder 入口；搜索结果既有的 Reveal in Enclosing Folder 仍在 Tursora 内导航。
+The application follows the system light / dark appearance by default and does not write a global appearance preference. Tab drawing resolves semantic colours live; the completion panel, the active pane indicator line and the transfer task cards also refresh their layer colours when the appearance changes. The split title is fixed as `Left | Right`, with no parentheses added for the inactive side; the active side is expressed by the pane indicator line. Filtering, grouping, dragging and the seven tab context-menu actions are kept. Every Reveal in Finder entry point is removed from the file area and the sidebar; the existing Reveal in Enclosing Folder in search results still navigates inside Tursora.
 
-## 验证状态
+## Verification status
 
-本轮 Dock 与后续输入法调整之前的截图阶段，组合源码完整 smoke **连续三轮通过，每轮 2,024 项**，三次均 exit 0、stderr 为空。该数量是包含本专题的组合套件总数；之前 1,500 项三轮结果仅代表上一阶段，后续 Dock / 输入法调整阶段的最终结果见 [Dock 研究记录](dock-menu.md)。
+In the screenshot stage of this round, before the Dock work and the later input-method adjustments, the full smoke over the combined sources **passed three rounds in a row with 2,024 checks per round**, all three with exit 0 and empty stderr. That figure is the total for the combined suite, this topic included; the earlier three-round result of 1,500 checks represents the previous stage only, and the final result for the later Dock / input-method stage is in the [Dock research record](dock-menu.md).
 
-`TabAppearanceSmokeTests.swift` 覆盖窄宽窗口几何、居中标题与关闭目标、悬停不挤动文字、溢出滚动和当前标签可见性、过期菜单目标，以及滚动后的点击、分栏拖放、重排和重载取消。亮 / 暗与活动 / 非活动配色检查包含文字对比度、实际绘制像素及既有文字控件更新。
+`TabAppearanceSmokeTests.swift` covers narrow and wide window geometry, centred titles and the close target, hover not pushing the text around, overflow scrolling and the visibility of the current tab, stale menu targets, and clicks after scrolling, drag and drop between split panes, reordering and reload cancellation. The light / dark and active / inactive colour checks include text contrast, the pixels actually drawn, and updates to existing text controls.
 
-`AppearanceSmokeTests.swift` 在实际挂入窗口的视图上验证亮 → 暗 → 亮的 layer 重绘，覆盖补全面板打开期间与隐藏后重开、活动 pane 指示线和传输卡片边框；不依赖只检查源码中的颜色常量。
+`AppearanceSmokeTests.swift` verifies the light → dark → light layer redraw on views actually installed in a window, covering the completion panel while it is open and after it has been hidden and reopened, the active pane indicator line and the transfer card borders; it does not rely on merely checking colour constants in the source.
 
-上述截图阶段已生成 release 包，构建日志为 `/private/tmp/tursora-tabs-appearance-verification/release-final.log`；根任务确认 strict codesign、Info.plist lint 及包内图标资源一致性检查通过。随后在真实系统暗色和仅作用于应用进程的浅色外观下驱动打包应用，没有修改系统外观偏好。检查从初始 560 px 宽窗口到 1200×720 窗口，实见选中 / 未选中标签的居中标题与中性底条、`Left | Right` 分栏标题、活动 pane 指示线，以及暗色路径补全面板。当前实机截图为[暗色分栏](../images/features/split-panes.png)、[浅色分栏](../images/features/split-panes-light.png)、[标签栏](../images/features/tabs.png)和[路径编辑与补全](../images/features/path-navigation.png)。截图角区透明处理及原生内部像素核对见[透明截图记录](screenshot-transparency.md)。
+A release bundle was produced in that screenshot stage, with the build log at `/private/tmp/tursora-tabs-appearance-verification/release-final.log`; the root task confirmed that strict codesign, the Info.plist lint and the consistency check of the icon resources inside the bundle all passed. The packaged app was then driven under the real system dark appearance and under a light appearance applied to the application process only, without changing the system appearance preference. The check ran from an initial 560 px wide window up to a 1200×720 window and actually saw the centred titles and neutral base strip of selected / unselected tabs, the `Left | Right` split title, the active pane indicator line and the dark path completion panel. The current screenshots from the real machine are [dark split panes](../images/features/split-panes.png), [light split panes](../images/features/split-panes-light.png), [the tab bar](../images/features/tabs.png) and [path editing and completion](../images/features/path-navigation.png). The transparency treatment of the screenshot corners and the check against the native interior pixels are in the [transparent screenshot record](screenshot-transparency.md).
 
-侧栏实际右键菜单的辅助功能树包含 `Open`、`Open in New Tab`、`Open in Other Pane`、`Remove from Favourites`、`Reset Favourites`，没有 Reveal in Finder。当前[侧栏截图](../images/features/favorites.png)为菜单关闭状态，不能拿它证明菜单内容。以上均为 2,024 项阶段发布包的原生检查，不替代后续 Dock / 输入法调整后的最终构建与验证，也不宣称所有溢出、拖放和菜单边界均重做了实机测试。
+The accessibility tree of the sidebar's actual context menu contains `Open`, `Open in New Tab`, `Open in Other Pane`, `Remove from Favourites` and `Reset Favourites`, with no Reveal in Finder. The current [sidebar screenshot](../images/features/favorites.png) shows the menu closed, so it cannot be used as proof of the menu's contents. All of the above are native checks of the release bundle from the 2,024-check stage; they do not replace the final build and verification after the later Dock / input-method adjustments, and no claim is made that every overflow, drag-and-drop and menu boundary was re-tested on a real machine.

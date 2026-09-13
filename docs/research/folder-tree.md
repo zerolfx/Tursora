@@ -1,37 +1,37 @@
-# 文件夹树与 Dolphin Places 对照（2026-09-13）
+# The Folder Tree Compared with Dolphin Places (2026-09-13)
 
-用户明确要求 Dolphin 有文件树就实现。此项在 `codex/customization-and-distribution` 开发，最终组合验证与实机证据见页末。
+The user explicitly asked for a file tree on the grounds that Dolphin has one. It was developed on `codex/customization-and-distribution`; the final combined verification and the packaged-app evidence are at the end of this page.
 
-## 固定依据
+## Pinned Basis
 
-本地 `upstream/dolphin` 固定提交 `5e457ee9e88aa6277fbf056cd5c32462c5318866`：
+The local `upstream/dolphin` is pinned to commit `5e457ee9e88aa6277fbf056cd5c32462c5318866`:
 
-- `src/dolphinmainwindow.cpp` 的 Folders / Places dock 创建代码：两者独立，均允许左右停靠；Folders 用 F7，Places 用 F9，默认显示 Places、隐藏 Folders，活动 URL 连接到树面板。
-- `src/panels/folders/folderspanel.cpp`：首次显示时才创建模型，`setShowDirectoriesOnly(true)`，支持展开和单击打开目录。
-- `src/panels/folders/dolphin_folderspanelsettings.kcfg`：默认不显示隐藏文件夹、LimitToHome 开启，允许自动滚动。
+- The Folders / Places dock creation code in `src/dolphinmainwindow.cpp`: the two are independent and both may dock left or right; Folders uses F7 and Places uses F9, Places is shown by default and Folders hidden, and the active URL is connected to the tree panel.
+- `src/panels/folders/folderspanel.cpp`: the model is created only when the panel is first shown, `setShowDirectoriesOnly(true)`, with support for expansion and for opening a directory with a single click.
+- `src/panels/folders/dolphin_folderspanelsettings.kcfg`: hidden folders are not shown by default, LimitToHome is on, and auto-scrolling is allowed.
 
-[官方面板说明](https://docs.kde.org/stable_kf6/en/dolphin/dolphin/panels.html)分别解释 Places（收藏位置和设备）与 Folders（目录层级）。它们能同时显示，Places 并不是文件树的另一种名字。
+The [official panel documentation](https://docs.kde.org/stable_kf6/en/dolphin/dolphin/panels.html) explains Places (favourite locations and devices) and Folders (the directory hierarchy) separately. They can be shown at the same time, and Places is not another name for the file tree.
 
-## Tursora 实现与取舍
+## The Tursora Implementation and Its Trade-offs
 
-- 保留原 Favorites / Locations 列表；View → Show Folders（默认 F7，可自定义）在侧栏下方展开独立 **Folders**，可拖动两者之间的分隔线。默认隐藏，折叠整个侧栏暂停目录树；再次打开恢复。
-- 使用原生 `NSOutlineView`，只显示可导航的文件夹，不进入应用包。按需后台加载展开节点和活动路径的祖先，不在启动时递归扫描磁盘；隐藏面板取消过期结果和文件监听。
-- 单击树节点导航当前活动 pane；切换 pane、标签和普通目录时展开并选中活动路径。ZIP 对应原归档所在目录，不展示临时解包副本或把逻辑 ZIP 路径当成本地目录。
-- 右键操作捕获实际目标 URL，提供 Open、Open in New Tab、Open in Other Pane；文件拖到目录沿用既有同卷 Move / 跨卷 Copy / Option 强制 Copy 判断，变更通过 Browser 的 FileOperations 与撤销流程。
-- Show Hidden Folders 与 Limit to Home Directory 是目录树自己的选项，不改变文件区的隐藏、过滤、排序和分组。Home 内默认从 Home 展示，Home 外从 `/` 展示；路径不存在或读取失败在面板内显示，不弹模态对话框。
-- 会话文件兼容旧版本，新增显示状态、侧栏内分隔比例及两个选项；不存整棵目录树、展开全集或文件缓存。关闭会话恢复时沿用原不保存策略。
-- 与 Dolphin 的差别：本轮采用同一侧栏中的上下布局，没有实现可拆卸、可移到右侧的 dock 框架；没有新增 Dolphin 的 Places F9 默认快捷键，以保留现有 Toggle Sidebar 习惯（可自行改键）。
+- The existing Favorites / Locations lists are kept; View → Show Folders (F7 by default, customizable) opens a separate **Folders** section below them in the sidebar, with a draggable divider between the two. It is hidden by default, and collapsing the whole sidebar suspends the directory tree; opening it again resumes.
+- It uses a native `NSOutlineView` and shows only folders that can be navigated into, without entering application bundles. Expanded nodes and the ancestors of the active path are loaded in the background on demand, with no recursive disk scan at launch; hiding the panel cancels stale results and file monitoring.
+- A single click on a tree node navigates the currently active pane; switching pane, tab or normal directory expands and selects the active path. A ZIP maps to the directory containing the original archive; the temporary unpacked copy is not shown, and a logical ZIP path is not treated as a local directory.
+- Right-click actions capture the actual target URL and offer Open, Open in New Tab and Open in Other Pane; dragging a file onto a directory follows the existing same-volume Move / cross-volume Copy / Option-forces-Copy decision, and the change goes through the Browser's FileOperations and undo flow.
+- Show Hidden Folders and Limit to Home Directory are the directory tree's own options and do not change hiding, filtering, sorting or grouping in the file area. Inside Home the tree shows from Home by default, outside Home from `/`; a path that does not exist or fails to read is reported inside the panel, with no modal dialog.
+- The session file stays compatible with the older version and adds the visibility state, the divider ratio inside the sidebar, and the two options; it does not store the whole directory tree, the full set of expansions or a file cache. Restoring a closed session keeps the existing policy of not saving those.
+- Differences from Dolphin: this round uses a stacked layout within the same sidebar and does not implement a dock framework that can be detached or moved to the right; Dolphin's F9 default shortcut for Places was not added, so as to keep the existing Toggle Sidebar habit (the key can be changed by hand).
 
-## 实现边界
+## Implementation Boundaries
 
-`FolderTreeModel` 负责 provider 读取、节点身份、过期请求拒绝及目录变更刷新；`FoldersPanelController` 负责树与上下文菜单；`SidebarViewController` 组合两面板；`MainWindowController` 负责活动 pane、会话和动作路由。树隐藏时不启动 provider 枚举，缓存刷新保持仍存在节点的身份；节点被删除时清除选区，不能把旧行号套到下一个目录。
+`FolderTreeModel` handles provider reads, node identity, rejecting stale requests and refreshing on directory changes; `FoldersPanelController` handles the tree and the context menu; `SidebarViewController` combines the two panels; `MainWindowController` handles the active pane, the session and action routing. No provider enumeration starts while the tree is hidden, and a cache refresh keeps the identity of nodes that still exist; when a node is deleted the selection is cleared, so an old row number cannot be carried over to the next directory.
 
-`NSOutlineView.shouldExpandItem` 只回答权限，不修改 expanded 集合或发起读取；AppKit 辅助功能查询也会调用它。只有真实 `outlineViewItemDidExpand` 才记录并异步调用模型加载，避免在展开中途用 Loading 更新重建行。同步重载 / 重选抑制回调，路径定位等排队刷新完成后再交付，移除节点清理等待回调；选中行在最终布局后滚到完整可见区。
+`NSOutlineView.shouldExpandItem` only answers whether expansion is permitted; it does not modify the expanded set or start a read, and AppKit accessibility queries call it as well. Only a real `outlineViewItemDidExpand` records the expansion and calls the model's load asynchronously, which avoids a Loading update rebuilding rows in the middle of an expansion. A synchronous reload / reselect suppresses the callbacks, path location is delivered only after the queued refresh finishes, and removing a node cleans up the waiting callbacks; the selected row is scrolled fully into view after the final layout.
 
-## 验证状态
+## Verification Status
 
-`FolderTreeSmokeTests` 覆盖模型与窗口路径，包括辅助功能查询不加载其他目录的回归；最终 95 份 Swift 源码 3,194 项 smoke 连续三轮通过（`smoke-7` / `8` / `9`），均 exit 0、stderr 为空、源码未变。交付 app / DMG 构建与签名、包内容及安装布局核对通过；精确源码清单和组合日志见[定制功能整合记录](customization-integration.md)。
+`FolderTreeSmokeTests` covers the model and the window path, including a regression that accessibility queries do not load other directories; the final 3,194 smoke checks over 95 Swift source files passed three times in a row (`smoke-7` / `8` / `9`), each exit 0 with empty stderr and unchanged sources. The delivered app / DMG build with its signing, the bundle contents and the installation layout passed their checks; the exact source manifest and the combined logs are in the [customization integration record](customization-integration.md).
 
-打包应用实测已完成：F7 打开独立 Folders，实际沿源码层级展开并单击 Model 导航，选中行完整可见，其他分支保持折叠且 Loading 结束；拖动上下分隔线后继续跟随，右键 UI → Open in Other Pane 保留左侧并激活右侧。修复地址栏布局后，从 1100 × 740 实际拖到窗口最小 560 × 380，树、分栏和导航保持响应，再恢复原尺寸。正常退出并仅让 QA 副本以浅色重开后，树可见性、分隔比例、分栏及两个标签恢复，未启动终端；系统外观与生产偏好未改。
+The packaged-app measurements are complete: F7 opened a separate Folders section that expanded down the actual source hierarchy, and a single click on Model navigated, with the selected row fully visible, the other branches still collapsed and Loading finished; after the divider between the two sections was dragged it kept following, and the right-click UI → Open in Other Pane kept the left side and activated the right. After the address bar layout was fixed, dragging from 1100 × 740 down to the real window minimum of 560 × 380 kept the tree, the split panes and navigation responsive, and the original size was then restored. After a normal quit with only the QA copy reopened in light mode, tree visibility, the divider ratio, the split panes and both tabs were restored and no terminal was started; the system appearance and the production preferences were not changed.
 
-真实 `folders.png` 与工作区恢复图已透明化，内部保护像素不变；29 张截图全量检查通过。原始图片、具体操作与阶段边界见[整合记录](customization-integration.md)和[截图审计](screenshot-audit-2026-09-13.md)。本轮不把上述点击和菜单验证扩大为所有原生拖放手势已经实测。
+The real `folders.png` and the workspace restore image have been made transparent with their protected interior pixels unchanged; all 29 screenshots passed the full check. For the original images, the exact operations and the stage boundaries see the [integration record](customization-integration.md) and the [screenshot audit](screenshot-audit-2026-09-13.md). This round does not extend the click and menu verification above into a claim that every native drag-and-drop gesture has been measured.

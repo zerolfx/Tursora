@@ -1,17 +1,17 @@
-# 排序键、可选列与文件夹大小 —— Finder 取证、实现边界与验证
+# Sort keys, optional columns and folder sizes — Finder evidence, implementation limits and verification
 
-覆盖三件事：`DirectoryModel.SortKey` 新增的三个日期键、详情视图的可选列（表头右键菜单 + 每目录持久化），以及新的
-`Model/FolderSizes.swift`（文件夹条目数 / 递归字节数）。
+Covers three things: the three new date keys in `DirectoryModel.SortKey`, the optional columns of the detail view (header
+context menu + per-directory persistence), and the new `Model/FolderSizes.swift` (folder item count / recursive byte total).
 
-相关文档：[SPEC.md §5](../SPEC.md)、[DECISIONS.md](../DECISIONS.md) D67–D69、
-[research/finder-group-labels.md](finder-group-labels.md)（分组标签的同源取证）、
-[research/directory-view-properties.md](directory-view-properties.md)（每目录视图记忆）。
+Related documents: [SPEC.md §5](../SPEC.md), [DECISIONS.md](../DECISIONS.md) D67–D69,
+[research/finder-group-labels.md](finder-group-labels.md) (evidence for the group labels from the same source),
+[research/directory-view-properties.md](directory-view-properties.md) (per-directory view memory).
 
-## 1. Finder 取证
+## 1. Finder evidence
 
-全部来自本机 macOS 26.5 的 Finder 自身资源，命令与原始输出如下。
+All of it comes from the Finder's own resources on this machine's macOS 26.5; the commands and raw output follow.
 
-### 1.1 排序键标签 —— `ArrangeByMenu.nib`
+### 1.1 Sort key labels — `ArrangeByMenu.nib`
 
 ```
 $ strings -a /System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/ArrangeByMenu.nib \
@@ -26,7 +26,7 @@ None
 Size
 ```
 
-同一 nib 中的 selector 证明这些标签同时用于 Sort By 与 Arrange By：
+Selectors in the same nib prove that these labels serve both Sort By and Arrange By:
 
 ```
 $ strings -a .../ArrangeByMenu.nib | grep -iE "cmdSortBy" | sort -u
@@ -36,13 +36,13 @@ cmdSortByLastModifiedBy: cmdSortByName:          cmdSortByNone:
 cmdSortBySharedBy:       cmdSortBySize:          cmdSortBySnapToGrid:
 ```
 
-Tursora 采用其中的 **Name / Date Modified / Date Created / Date Last Opened / Date Added / Size / Kind** 七项，顺序即
-`ViewOptionsWindow.nib` 中的列顺序（见 1.2）。未采用的 `Label`、`Shared By`、`Last Modified By`、`Snap to Grid`
-属于我们尚未实现的能力（标签、共享），不在本次范围。
+Tursora adopts seven of them — **Name / Date Modified / Date Created / Date Last Opened / Date Added / Size / Kind** — in
+the column order of `ViewOptionsWindow.nib` (see 1.2). The ones left out, `Label`, `Shared By`, `Last Modified By` and
+`Snap to Grid`, belong to capabilities we have not implemented yet (tags, sharing) and are out of scope here.
 
-### 1.2 列标题与顺序、"Calculate all sizes" —— `ViewOptionsWindow.nib`
+### 1.2 Column titles and order, "Calculate all sizes" — `ViewOptionsWindow.nib`
 
-按文件内出现顺序（未排序），即 Finder "Show Columns:" 复选框的实际排列：
+In order of appearance inside the file (unsorted), which is the real arrangement of Finder's "Show Columns:" checkboxes:
 
 ```
 $ strings -a .../Base.lproj/ViewOptionsWindow.nib | grep -nE "^(Show Columns:|Date Modified|Date Created|Date Last Opened|Date Added|Size|Kind|Version|Comments|Tags|Calculate all sizes)$"
@@ -59,7 +59,8 @@ $ strings -a .../Base.lproj/ViewOptionsWindow.nib | grep -nE "^(Show Columns:|Da
 556:Calculate all sizes
 ```
 
-同一 nib 的 binding 键名证实这些是列表视图（list view）的设置，且 "Calculate all sizes" 是一个独立开关：
+The binding key names in the same nib confirm that these are list view settings and that "Calculate all sizes" is a
+separate switch:
 
 ```
 value: viewOptionsSettingsController.targetedViewOptionsSettings.listViewCalculateAllSizes
@@ -69,10 +70,11 @@ value: viewOptionsSettingsController.targetedViewOptionsSettings.listViewShowCom
 value: viewOptionsSettingsController.targetedViewOptionsSettings.listViewShowVersion
 ```
 
-Tursora 实现 Finder 九列中我们已有数据的六列（Date Modified / Date Created / Date Last Opened / Date Added /
-Size / Kind）。**Version、Comments、Tags 未实现**（无版本号、无 Finder 注释写入、无标签系统），记在缺口清单里。
+Tursora implements the six of Finder's nine columns for which we already have the data (Date Modified / Date Created /
+Date Last Opened / Date Added / Size / Kind). **Version, Comments and Tags are not implemented** (no version number, no
+writing of Finder comments, no tag system); they are recorded in the gap lists.
 
-### 1.3 "N items" 措辞 —— `en.lproj/LocalizableMerged.strings`
+### 1.3 The "N items" wording — `en.lproj/LocalizableMerged.strings`
 
 ```
 $ plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resources/en.lproj/LocalizableMerged.strings
@@ -81,92 +83,111 @@ $ plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Res
 'I_ITEMS_V3' = '^0 items'
 ```
 
-即单数 "1 item"、其余 "N items"。`FolderSizes.itemCountText` 照此实现，与状态栏既有措辞
-（`StatusBarView`："1 item" / "N items"）一致。
+That is, "1 item" in the singular and "N items" otherwise. `FolderSizes.itemCountText` follows this and matches the
+existing status bar wording (`StatusBarView`: "1 item" / "N items").
 
-## 2. 仍属推断 / 与 Finder 有意不同的部分
+## 2. Parts that are still inferred / deliberately different from Finder
 
-| 项 | Finder 实际 | Tursora | 理由 |
+| Item | What Finder does | Tursora | Rationale |
 |---|---|---|---|
-| 关闭 "Calculate all sizes" 时文件夹的 Size 列 | 显示 `--` | 显示 "N items" | 本次任务明确要求；`--` 是纯粹的空信息，条目数是一次目录读取就能拿到的真实数据。措辞仍取自 Finder 的 `I_ITEMS_*`。**这是与 Finder 的有意差异。** |
-| "N items" 是否计入隐藏项 | 未取证 | **不计**（`.skipsHiddenFiles`）| 与 Finder 简介窗口的"可见项"直觉一致；推断。 |
-| 递归字节数是否计入隐藏文件 | 未取证 | **计入** | 大小要真实；与条目数的口径不同，是有意的：数量描述"你能看见多少"，大小描述"占了多少盘"。推断。 |
-| 递归字节数是否计入符号链接自身 | 未取证 | **不计** | 链接的字节属于目标所在的文件夹；避免重复计数。Darwin 的 URL 枚举器本身也不跟随符号链接（见 DEVELOPMENT.md 搜索小节）。推断。 |
-| 排序 Size 时文件夹用什么值 | 未取证 | 计算开启且已知 → 字节数；否则 → 条目数；都未知 → 视为最小 | 让排序对"已经算出来的东西"生效，并在结果到达后重排。推断。 |
-| 三个新日期键中"无日期"项的位置 | 未取证 | 升序降序都排在最后 | 与"文件夹永远在前"同类的方向无关规则：翻转顺序不应把"没有日期"顶到最前。**`dateModified` 保持原有的 `.distantPast` 语义不变**，以免改动既有行为。 |
-| 列宽是否持久化 | Finder 会记 | **不记** | 本次范围外；每次打开用默认宽度。 |
-| 表头右键菜单的具体内容 | 未取证（Finder 确有该菜单） | 六个可选列 + 分隔线 + "Calculate all sizes" | 菜单存在与两类条目是推断；每条文字本身有取证（1.2）。 |
+| The Size column for folders when "Calculate all sizes" is off | shows `--` | shows "N items" | Explicitly required by this task; `--` carries no information at all, while the item count is real data that one directory read already gives us. The wording still comes from Finder's `I_ITEMS_*`. **This is a deliberate difference from Finder.** |
+| Whether "N items" counts hidden items | no evidence | **it does not** (`.skipsHiddenFiles`)| Consistent with the "visible items" intuition of Finder's Get Info window; inferred. |
+| Whether the recursive byte total counts hidden files | no evidence | **it does** | The size has to be real; using a different basis from the item count is deliberate: the count describes "how much you can see", the size describes "how much disk it takes". Inferred. |
+| Whether the recursive byte total counts symlinks themselves | no evidence | **it does not** | A link's bytes belong to the folder the target lives in; this avoids double counting. Darwin's own URL enumerator does not follow symlinks either (see the search section of DEVELOPMENT.md). Inferred. |
+| What value folders use when sorting by Size | no evidence | calculation on and known → the byte total; otherwise → the item count; neither known → treated as the smallest | Lets sorting act on "whatever has already been computed" and re-sorts once results arrive. Inferred. |
+| Where items with "no date" land under the three new date keys | no evidence | last in both ascending and descending order | A direction-independent rule of the same kind as "folders always first": flipping the order should not push "no date" to the top. **`dateModified` keeps its existing `.distantPast` semantics unchanged**, so that existing behaviour is not disturbed. |
+| Whether column widths persist | Finder remembers them | **we do not** | Out of scope here; the default width is used every time. |
+| The exact contents of the header context menu | no evidence (Finder does have that menu) | six optional columns + a separator + "Calculate all sizes" | That the menu exists and has these two kinds of entry is inferred; the text of each entry itself has evidence (1.2). |
 
-## 3. 实现
+## 3. Implementation
 
-### 3.1 排序键
+### 3.1 Sort keys
 
-`DirectoryModel.SortKey` 增加 `dateCreated / dateAdded / dateLastOpened`，rawValue 与 `GroupKey` 同名键一致。
-比较器新增纯函数 `DirectoryModel.compareDates(_:_:nameAscending:ascending:)`：日期相同回落到名称（名称顺序随方向
-翻转，与既有键一致），`nil` 两个方向都垫底。文件夹依旧无条件在前。
+`DirectoryModel.SortKey` gains `dateCreated / dateAdded / dateLastOpened`, with rawValues identical to the same-named
+`GroupKey` keys. The comparator gains the pure function `DirectoryModel.compareDates(_:_:nameAscending:ascending:)`:
+equal dates fall back to the name (name order flips with the direction, as with the existing keys), and `nil` sinks to
+the bottom in both directions. Folders still come first unconditionally.
 
-菜单三处同步：`MainMenu.swift` 的 View ▸ Sort By、`BrowserViewController.sortMenuItem()` 的右键 Sort By、
-`FileListViewController.Column.sortKey` 的表头点击（`sortDescriptorPrototype` ↔ `SortKey`）。
-`DirectoryViewProperties` 的 `sortKey` 仍按 rawValue 宽容解码，旧文件写入的四个键照常加载，未知键回落 `.name`。
+Three menus stay in sync: View ▸ Sort By in `MainMenu.swift`, the context-menu Sort By from
+`BrowserViewController.sortMenuItem()`, and header clicks through `FileListViewController.Column.sortKey`
+(`sortDescriptorPrototype` ↔ `SortKey`). The `sortKey` of `DirectoryViewProperties` still decodes leniently by rawValue,
+the four keys written by older files load as before, and an unknown key falls back to `.name`.
 
-图标视图没有列，只跟随模型的排序键。
+The icon view has no columns and simply follows the model's sort key.
 
-### 3.2 可选列
+### 3.2 Optional columns
 
-`FileListViewController.Column` 扩为 `name, dateModified, dateCreated, dateLastOpened, dateAdded, size, kind,
-location`（顺序 = 1.2 的 Finder 顺序，`location` 仍是搜索专用、排在最后）。
-新增三列默认隐藏，可在表头右键菜单勾选，也可点击表头排序。
+`FileListViewController.Column` grows to `name, dateModified, dateCreated, dateLastOpened, dateAdded, size, kind,
+location` (the order is Finder's from 1.2; `location` is still search-only and stays last).
+The three new columns are hidden by default, can be ticked in the header context menu, and can be clicked to sort.
 
-`UI/FileListColumns.swift` 持有：`ListColumnHeaderMenu`（`NSMenuDelegate`，每次打开重建以刷新对勾）、
-`FileListViewController` 的显隐/持久化扩展、`BrowserViewController.canCalculateFolderSizes` 与窗口命令。
-`NSTableHeaderView` 自带的 `menu` 为空时右键会落到文件上下文菜单，所以显式赋值。
+`UI/FileListColumns.swift` holds: `ListColumnHeaderMenu` (an `NSMenuDelegate`, rebuilt on each open to refresh the
+checkmarks), the show/hide and persistence extensions of `FileListViewController`, and
+`BrowserViewController.canCalculateFolderSizes` together with the window commands.
+When the `menu` that `NSTableHeaderView` provides is empty, a right-click falls through to the file context menu, so it
+is assigned explicitly.
 
-`DirectoryViewProperties` 新增 `listColumns: [String]`（默认 `["dateModified", "kind", "size"]`）与
-`calculateAllSizes: Bool`（默认 `false`），两者都参与 `normalized`（去重 + 排序，保证同一列集合无论顺序都相等）、
-`Use Current Settings as Default` 与 `Restore This Folder to Default`。解码宽容：缺键 → 默认值；
-未知列标识符保留在模型层、由视图过滤，不会因为新版本写入的列而隐藏我们已有的列。列宽不持久化。
+`DirectoryViewProperties` gains `listColumns: [String]` (default `["dateModified", "kind", "size"]`) and
+`calculateAllSizes: Bool` (default `false`); both take part in `normalized` (deduplicate + sort, so the same set of
+columns is equal regardless of order), in `Use Current Settings as Default` and in `Restore This Folder to Default`.
+Decoding is lenient: a missing key → the default value; unknown column identifiers are kept in the model layer and
+filtered by the view, so columns we already have are never hidden because a newer version wrote a column. Column widths
+do not persist.
 
-### 3.3 文件夹大小
+### 3.3 Folder sizes
 
-`Model/FolderSizes.swift`，每个 `DirectoryModel` 一个实例：
+`Model/FolderSizes.swift`, one instance per `DirectoryModel`:
 
-- **状态全在主线程**，只有两次文件系统遍历在串行后台队列上跑；结果带着 generation 与取消 token 回主线程。
-- **条目数**：一次 `contentsOfDirectory(options: .skipsHiddenFiles)`。
-- **递归字节数**：仅在 "Calculate all sizes" 打开时；`FileManager.enumerator`，`errorHandler` 一律继续，
-  跳过符号链接，每 256 项检查一次取消，超过 `entryLimit`（500,000 项）放弃并只保留条目数。
-- **缓存键 = (标准化路径, 修改时间)**：文件夹自身列表变了就自动换键重算；子树深处的变化不改祖先的 mtime，
-  所以额外监听 `DirectoryChanges`，把变更目录及其所有已测量祖先从缓存里删掉后重新请求。
-- **取消**：`cancel()` 取消当前 token 并递增 generation；`DirectoryModel.load`（切换目录）与
-  `beginSearchResults` 调用它。晚到的结果 generation 不匹配，直接丢弃，不会落到新目录里。
-- **ZIP / 搜索结果只算条目数**：`allowsRecursiveSizes`（由 `restoreViewProperties` 按 `isBrowsingArchive` 设置）、
-  `request(allowsRecursiveSizes:)`（`DirectoryModel` 按 `isSearchResults` 传入）、以及逐项的 `isArchiveEntry`，
-  三道都拦递归遍历，条目数照常。
+- **All state lives on the main thread**; only the two filesystem traversals run on a serial background queue, and
+  results come back to the main thread carrying a generation and a cancellation token.
+- **Item count**: a single `contentsOfDirectory(options: .skipsHiddenFiles)`.
+- **Recursive byte total**: only while "Calculate all sizes" is on; `FileManager.enumerator`, an `errorHandler` that
+  always continues, symlinks skipped, cancellation checked every 256 items, and above `entryLimit` (500,000 items) it
+  gives up and keeps only the item count.
+- **Cache key = (standardised path, modification time)**: when the folder's own listing changes the key changes
+  automatically and it is recomputed; a change deep in the subtree does not alter an ancestor's mtime, so
+  `DirectoryChanges` is also observed, and the changed directory plus all of its already-measured ancestors are dropped
+  from the cache and requested again.
+- **Cancellation**: `cancel()` cancels the current token and increments the generation; `DirectoryModel.load` (switching
+  directory) and `beginSearchResults` call it. Late results whose generation does not match are discarded outright and
+  never land in the new directory.
+- **ZIP / search results only count items**: `allowsRecursiveSizes` (set by `restoreViewProperties` according to
+  `isBrowsingArchive`), `request(allowsRecursiveSizes:)` (passed in by `DirectoryModel` according to `isSearchResults`),
+  and the per-item `isArchiveEntry` — all three block the recursive traversal, while the item count works as usual.
 
-Size 列文本走 `FolderSizes.displaySize(for:)`；Size 排序走 `sortValue(for:)`，新值到达时
-`DirectoryModel.folderMetricsDidChange` 在排序键为 `.size` 时重排，否则只重绘。
+The Size column text goes through `FolderSizes.displaySize(for:)`; Size sorting goes through `sortValue(for:)`, and when
+a new value arrives `DirectoryModel.folderMetricsDidChange` re-sorts if the sort key is `.size` and otherwise only
+redraws.
 
-## 4. 验证
+## 4. Verification
 
-- `cd app && swift build`：干净，无新增警告。
-- `SortColumnSizesSmokeTests`（`checkPrefix` = `sort/columns/sizes: `）在 `SmokeTest.run` 的 `steps` 中注册，
-  fixture 位于 `$TMPDIR/tursora-sort-columns-sizes-<UUID>`，不触碰用户文件或偏好设置。覆盖：
-  - 纯比较器：三个日期键的相等、`nil`、方向、名称回落与严格性。
-  - 措辞：`0 items` / `1 item` / `7 items`、字节格式与文件一致。
-  - 菜单：View ▸ Sort By 的七项与 rawValue、Folder View Settings 的 "Calculate all sizes"、可选列的 Finder 顺序。
-  - 持久化：列集合与 `calculateAllSizes` 经 `DirectoryViewPropertiesStore` 往返；旧版本文档（无新键）回落默认；
-    未知排序键回落 Name；重复列去重。
-  - 计算器：条目数（跳点文件、含符号链接）、递归字节（跳符号链接、含隐藏字节、下钻子目录）、
-    ZIP / 搜索只算条目数、取消后不投递且不重排、`reset()`。
-  - 真实列表：表头菜单条目与对勾、勾选/取消列、每目录记忆与"恢复默认"、Size 列的 "N items" 文本、
-    打开计算后异步出现的字节数与 Size 排序的重排、导航离开后不把旧目录的行留下、拆分窗格各自独立的列集合。
-  - 两种视图：详情与图标都按三个新键（升/降）排序，文件夹恒在前。
-- 计算机视觉（computer-use）检查：**未进行**。打包应用中的表头右键菜单外观、菜单对勾与实际列宽尚未人工看过。
+- `cd app && swift build`: clean, no new warnings.
+- `SortColumnSizesSmokeTests` (`checkPrefix` = `sort/columns/sizes: `) is registered in the `steps` of `SmokeTest.run`,
+  with its fixture in `$TMPDIR/tursora-sort-columns-sizes-<UUID>`, touching no user files or preferences. Coverage:
+  - The pure comparator: equality, `nil`, direction, name fallback and strictness for all three date keys.
+  - Wording: `0 items` / `1 item` / `7 items`, and byte formatting identical to that of files.
+  - Menus: the seven entries of View ▸ Sort By and their rawValues, "Calculate all sizes" in Folder View Settings, and
+    the Finder order of the optional columns.
+  - Persistence: the column set and `calculateAllSizes` round-tripping through `DirectoryViewPropertiesStore`; older
+    documents (without the new keys) falling back to the defaults; an unknown sort key falling back to Name; duplicate
+    columns deduplicated.
+  - The calculator: item counts (dotfiles skipped, symlinks included), recursive bytes (symlinks skipped, hidden bytes
+    included, subdirectories descended into), ZIP / search counting items only, no delivery and no re-sort after
+    cancellation, and `reset()`.
+  - A real list: the header menu entries and their checkmarks, ticking/unticking columns, per-directory memory and
+    "restore defaults", the "N items" text in the Size column, the byte total appearing asynchronously after turning
+    calculation on and the re-sort of Size sorting, no rows of the old directory left behind after navigating away, and
+    independent column sets in split panes.
+  - Both views: detail and icon both sort by the three new keys (ascending/descending) with folders always first.
+- Computer-use check: **not done**. The appearance of the header context menu in the packaged app, the menu checkmarks
+  and the actual column widths have not been looked at by a human yet.
 
-## 5. 已知边界
+## 5. Known limits
 
-- 递归大小按逻辑字节（`.fileSizeKey`）累加，不是磁盘占用；与文件行的大小口径一致，但和 Finder 简介里的
-  "on disk" 数字会有差异。
-- 一个 `FolderSizes` 只有一条串行队列：同一目录里若有超大子树，它后面的文件夹要排队。
-- 缓存超过 4096 条整体清空，而不是按 LRU 淘汰。
-- Version / Comments / Tags 三列未实现；列宽不持久化。
-- `dateModified` 的 `nil` 语义保持旧行为（升序垫底、降序置顶），只有三个新键采用"两向垫底"。
+- Recursive sizes add up logical bytes (`.fileSizeKey`), not disk usage; this matches the basis used for file rows, but
+  it will differ from the "on disk" number in Finder's Get Info.
+- One `FolderSizes` has a single serial queue: if one directory contains a huge subtree, the folders behind it queue up.
+- Above 4096 entries the cache is cleared wholesale rather than evicted by LRU.
+- The Version / Comments / Tags columns are not implemented; column widths do not persist.
+- The `nil` semantics of `dateModified` keep the old behaviour (bottom when ascending, top when descending); only the
+  three new keys sink to the bottom in both directions.

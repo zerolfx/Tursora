@@ -1,26 +1,26 @@
-# Homebrew 分发（2026-09-13）
+# Homebrew distribution (2026-09-13)
 
-## 当前版本：0.2.1
+## Current version: 0.2.1
 
-`Casks/tursora.rb` 已从实际公开的 0.2.1 DMG、release JSON 和 SHA256SUMS 生成，保持 `auto_updates true`。DMG 为 5,852,598 字节，SHA-256 `3458aa15670b75e8469398e4d0928ed73e6f038567c9ae7dba049e509333460b`；真实资产、代码签名、Ed25519 更新签名和安装布局见[发布核验](release-0.2.1.md)。本地 83 项工具测试、cask 精确重生成和 Ruby 语法检查通过；对应 main 推送的实际安装 / 卸载结果由 [Homebrew 工作流](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) 单独记录。下文保留早期版本和安装说明调整的历史证据。
+`Casks/tursora.rb` has been generated from the actually published 0.2.1 DMG, release JSON and SHA256SUMS, and keeps `auto_updates true`. The DMG is 5,852,598 bytes, SHA-256 `3458aa15670b75e8469398e4d0928ed73e6f038567c9ae7dba049e509333460b`; the real assets, the code signature, the Ed25519 update signature and the install layout are in the [release verification](release-0.2.1.md). The 83 local tool tests, the exact regeneration of the cask and the Ruby syntax check all passed; the actual install / uninstall results for the corresponding push to main are recorded separately by the [Homebrew workflow](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml). The sections below keep the historical evidence from earlier versions and from the changes to the installation instructions.
 
-## 结论与一手依据
+## Conclusions and primary sources
 
-可以先支持自己的 Homebrew tap，无需购买 Apple Developer Program。用户提到的每年 99 美元对应 Apple 会员；Developer ID 签名与公证改善首次启动体验，和能否写一个自己的 cask 是不同环节。[Apple 会员说明](https://developer.apple.com/programs/)、[Developer ID](https://developer.apple.com/developer-id/)。
+We can support our own Homebrew tap first, without buying into the Apple Developer Program. The 99 US dollars a year the user mentioned is for Apple membership; Developer ID signing and notarisation improve the first-launch experience, which is a separate matter from whether we can write a cask of our own. [Apple membership](https://developer.apple.com/programs/), [Developer ID](https://developer.apple.com/developer-id/).
 
-Homebrew 当前对官方 `homebrew/cask` 的要求是：macOS 可执行产物必须通过其 Gatekeeper 检查，不能依靠关闭或绕过 Gatekeeper。因此当前 ad-hoc、未公证的 Tursora 不声称已符合官方库收录条件，也不提交官方库。上述限制来自[官方库接纳规则](https://docs.brew.sh/Acceptable-Casks#platform-compatibility-and-macos-security-protections)。
+Homebrew's current requirement for the official `homebrew/cask` is that a macOS executable product must pass its Gatekeeper check, and must not rely on turning Gatekeeper off or working around it. The current ad-hoc, un-notarised Tursora therefore makes no claim of meeting the conditions for inclusion in the official repository, and is not submitted to it. That restriction comes from the [acceptance rules for the official repository](https://docs.brew.sh/Acceptable-Casks#platform-compatibility-and-macos-security-protections).
 
-Homebrew 支持在普通 Git 仓库中放置 `Casks/`，双参数 `brew tap <name> <URL>` 不要求仓库以 `homebrew-` 命名。因此复用 Tursora 公开仓库，不新增外部仓库。[Tap 维护](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap)、[双参数 tap 与完整名称](https://docs.brew.sh/Taps)。
+Homebrew supports placing `Casks/` in an ordinary Git repository, and the two-argument `brew tap <name> <URL>` does not require the repository to be named with a `homebrew-` prefix. The public Tursora repository is therefore reused, and no extra external repository is added. [Maintaining a tap](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap), [two-argument tap and full names](https://docs.brew.sh/Taps).
 
-## 本轮实现
+## What this round implements
 
-- [Casks/tursora.rb](../../Casks/tursora.rb) 固定真实公开版本 `0.2.0`，架构 Apple Silicon、最低 macOS 14。下载正式 DMG，SHA-256 为 `2593f312772b6d7ee6a885c8017ce43b31d094fc2744f764e76e027178d1aef7`，由同版本 release JSON、校验文件与实际资产生成。
-- 安装使用标准 `app "Tursora.app"`，不执行额外 shell、删除隔离属性或修改系统安全设置。保留 Homebrew 默认下载隔离，首次启动仍按 README 中可信来源的步骤处理。没有 `zap`，卸载不删偏好、会话或用户文件。
-- 0.2.0 已含 Sparkle 并发布 appcast，因此当前 cask 标记 `auto_updates true`；历史 `0.1.0` 没有 updater，旧 cask 不带此标记。用 `brew upgrade --cask --greedy zerolfx/tursora/tursora` 可让 Homebrew 检查具有自带更新能力的版本。
-- [update-homebrew.py](../../app/tools/update-homebrew.py) 从保存的 GitHub release JSON、同版本校验文件与已下载资产生成 cask。拒绝草稿、预发布、非稳定标签、非官方或可变地址、重名资产、冲突校验、字节/大小/digest 不符；不处理凭据、不联网、不自动提交或发布。`--auto-updates` 还要求同版公开 `appcast.xml`，并拒绝历史 `0.1.0`。
-- [Homebrew 工作流](../../.github/workflows/homebrew.yml) 在专用 macOS runner 验证 cask 安装与卸载，不启动应用，不改系统安全策略。原始 cask 的 main 工作流已成功；0.2.0 cask 的远端结果以对应提交的 [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) 为准，远端执行结果不能由本地测试代替。
+- [Casks/tursora.rb](../../Casks/tursora.rb) pins the real published version `0.2.0`, with Apple Silicon architecture and macOS 14 as the minimum. It downloads the official DMG, whose SHA-256 is `2593f312772b6d7ee6a885c8017ce43b31d094fc2744f764e76e027178d1aef7`, generated from the same version's release JSON, checksum file and actual asset.
+- Installation uses the standard `app "Tursora.app"`; it runs no extra shell, removes no quarantine attribute and changes no system security settings. Homebrew's default download quarantine is kept, and first launch still follows the trusted-source steps in the README. There is no `zap`, so uninstalling does not delete preferences, sessions or user files.
+- 0.2.0 already includes Sparkle and publishes an appcast, so the current cask is marked `auto_updates true`; the historical `0.1.0` had no updater and the old cask carried no such marker. `brew upgrade --cask --greedy zerolfx/tursora/tursora` makes Homebrew check versions that update themselves.
+- [update-homebrew.py](../../app/tools/update-homebrew.py) generates the cask from a saved GitHub release JSON, the checksum file for the same version and the already downloaded asset. It rejects drafts, prereleases, non-stable tags, unofficial or mutable addresses, duplicate asset names, conflicting checksums, and any mismatch of bytes, size or digest; it handles no credentials, makes no network calls, and neither commits nor publishes automatically. `--auto-updates` additionally requires a published `appcast.xml` of the same version, and rejects the historical `0.1.0`.
+- The [Homebrew workflow](../../.github/workflows/homebrew.yml) verifies cask install and uninstall on a dedicated macOS runner, without launching the app and without changing system security policy. The main workflow for the original cask has already succeeded; the remote result for the 0.2.0 cask is governed by the [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) for the corresponding commit, and a remote run's result cannot be substituted by local tests.
 
-0.2.0 cask 已随 [PR #9](https://github.com/zerolfx/Tursora/pull/9) 合入 main，其[真实安装检查](https://github.com/zerolfx/Tursora/actions/runs/34741008373)通过。按用户明确要求，主安装流程依次执行以下三条，每步成功后再继续：完整 URL 添加 tap、显式仅信任 Tursora cask、安装。第二步是此文档流程的必做步骤，见 D58：
+The 0.2.0 cask was merged into main with [PR #9](https://github.com/zerolfx/Tursora/pull/9), and its [real install check](https://github.com/zerolfx/Tursora/actions/runs/34741008373) passed. At the user's explicit request, the main installation flow runs the following three commands in order, continuing to the next only after each one succeeds: add the tap with the full URL, explicitly trust only the Tursora cask, install. The second step is a required step of the flow in this document, see D58:
 
 ```sh
 brew tap zerolfx/tursora https://github.com/zerolfx/Tursora
@@ -28,31 +28,31 @@ brew trust --cask zerolfx/tursora/tursora
 brew install --cask zerolfx/tursora/tursora
 ```
 
-当前三步流程已由主任务在新的隔离信任目录中顺序验证：tap、`trust --cask`、install dry run 均 exit 0；信任 JSON 只有此 cask，没有 tap / formula / command 授权，用户 Homebrew 未变。证据为 `/private/tmp/tursora-three-step-install-3liuppa5/verification.json`。这是流程与信任范围检查，未重新安装应用；此前真实 DMG 安装 / 卸载及新增显式 trust 的 CI 结果分别记录。
+The three-step flow has now been verified in sequence by the main task in a new, isolated trust directory: the tap, `trust --cask` and the install dry run all exited 0; the trust JSON contains only this cask, with no tap / formula / command authorisation, and the user's Homebrew was left unchanged. The evidence is `/private/tmp/tursora-three-step-install-3liuppa5/verification.json`. This is a check of the flow and of the trust scope; the app was not reinstalled. The earlier real DMG install / uninstall and the CI result for the newly added explicit trust are recorded separately.
 
-## 当前安装位置与普通账户说明
+## Current install location and a note on ordinary accounts
 
-用户明确安装位置不必统一。新增[英文纯 Markdown 安装指南](../../site/install.md)，站点地址为 `https://zerolfx.github.io/Tursora/install.md`，供用户或获得安装请求的 agent 按实际条件执行。先检查既有安装与用户意图，选用实际可写的 `/Applications`、`~/Applications` 或其他目录；不强制迁移已有应用。上面的三条命令沿用 Homebrew 默认目的地；若选择其他目录，将实际绝对目录赋给 `app_dir`，第三条添加 `--appdir="$app_dir"`。已有 Homebrew 管理的安装走正常版本检查 / 升级，直接 DMG 复制遇到同名应用则先确认冲突，不能默默覆盖。
+The user stated explicitly that the install location does not have to be uniform. A new [English plain-Markdown installation guide](../../site/install.md) has been added, with the site address `https://zerolfx.github.io/Tursora/install.md`, for a user or for an agent that receives an installation request to follow according to the actual conditions. Check the existing installation and the user's intent first, then choose `/Applications`, `~/Applications` or another directory that is actually writable; do not force an existing application to be moved. The three commands above use Homebrew's default destination; if another directory is chosen, assign the actual absolute directory to `app_dir` and add `--appdir="$app_dir"` to the third command. An installation already managed by Homebrew goes through the normal version check / upgrade; a direct DMG copy that meets an application of the same name has to have the conflict confirmed first, and must not silently overwrite it.
 
-`--appdir` 只改变应用落点，不改变 tap / Caskroom 等 prefix 的权限。Homebrew 默认只有安装它的拥有者能修改 prefix；普通账户是否可用由实际权限决定。没有可用 Homebrew 时，直接下载正式 DMG 与同版校验文件，核对完整 SHA-256 后复制出只读镜像，不为了安装应用而擅自安装 Homebrew、提权或修改所有权。[Homebrew 参数](https://docs.brew.sh/Manpage#global-cask-options)、[默认权限](https://docs.brew.sh/FAQ#what-are-the-default-ownership-and-permissions-used-by-homebrew)。
+`--appdir` only changes where the application lands; it does not change the permissions of the prefix, including the tap and the Caskroom. By default only the owner who installed Homebrew can modify the prefix; whether an ordinary account can use it is decided by the actual permissions. Where Homebrew is not available, download the official DMG and the checksum file for the same version directly, verify the full SHA-256, and copy the app out of the read-only image; do not install Homebrew, elevate privileges or change ownership on your own initiative just to install the app. [Homebrew options](https://docs.brew.sh/Manpage#global-cask-options), [default permissions](https://docs.brew.sh/FAQ#what-are-the-default-ownership-and-permissions-used-by-homebrew).
 
-首次启动的定向命令为 `xattr -dr com.apple.quarantine "$app_path"`，`app_path` 必须是实际已安装、可信且通过下载校验的应用副本。仅删除该属性，不用 `sudo`，不清全部属性，不关闭系统策略；cask 本身仍保留 quarantine。普通账户与组织管理限制是两个问题，设备策略若仍阻止运行需 IT 处理，不能承诺该命令可绕过管理规则。[Apple 管理限制](https://support.apple.com/en-euro/guide/deployment/dep61dc030/web)。本节记录指南与一手资料核查，不新增非管理员账户安装或首次 Gatekeeper 启动的验证结论；部署结果另由主任务记录。
+The targeted command for the first launch is `xattr -dr com.apple.quarantine "$app_path"`, where `app_path` must be an actually installed, trusted copy of the app that passed the download verification. It removes only that attribute; it does not use `sudo`, does not clear all attributes and does not turn off system policy; the cask itself still keeps quarantine. An ordinary account and organisational management restrictions are two different problems: if device policy still blocks the app from running, IT has to handle it, and no promise can be made that this command works around management rules. [Apple management restrictions](https://support.apple.com/en-euro/guide/deployment/dep61dc030/web). This section records the guide and the check against primary sources; it adds no verification conclusion about installing under a non-administrator account or about the first Gatekeeper launch. Deployment results are recorded separately by the main task.
 
-## 安装排错：仓库地址与单项信任
+## Installation troubleshooting: repository address and single-item trust
 
-2026-09-13 用户先报告找不到 `homebrew-tursora`，重试后报告 `untrusted tap`。没有收到完整原始命令 / 输出，不能断言用户具体省略了哪一步；以下是独立复现和已核对的 Homebrew 行为。
+On 2026-09-13 the user first reported that `homebrew-tursora` could not be found, and after retrying reported an `untrusted tap`. The complete original command / output was not received, so it cannot be asserted which step the user actually left out; what follows is independent reproduction and verified Homebrew behaviour.
 
-单参数 `brew tap zerolfx/tursora`，或尚未 tap 时直接安装 fully-qualified cask，会按约定访问 `https://github.com/zerolfx/homebrew-tursora`。我们复用的真实仓库是 `https://github.com/zerolfx/Tursora`，必须先双参数 tap。即使 remote 正确，本地目录依然叫 `Library/Taps/zerolfx/homebrew-tursora`；仅看到 `Cloning into` 的目录名并不表示失败。[官方 tap 规则](https://docs.brew.sh/Taps)。
+The single-argument `brew tap zerolfx/tursora`, or installing a fully-qualified cask before tapping, goes by convention to `https://github.com/zerolfx/homebrew-tursora`. The real repository we reuse is `https://github.com/zerolfx/Tursora`, so the two-argument tap has to come first. Even when the remote is correct, the local directory is still called `Library/Taps/zerolfx/homebrew-tursora`; seeing only that directory name in `Cloning into` does not mean it failed. [Official tap rules](https://docs.brew.sh/Taps).
 
-`untrusted tap` 是 Homebrew 的第三方安装定义信任检查，与 Apple 公证无关。安装定义是可执行 Ruby；当前主流程明确先授权 Tursora cask，再安装，不扩大到整个 tap，也不关闭全局信任检查。
+`untrusted tap` is Homebrew's trust check on third-party installation definitions, and has nothing to do with Apple notarisation. An installation definition is executable Ruby; the current main flow explicitly authorises the Tursora cask first and then installs, without widening this to the whole tap and without turning off the global trust check.
 
-[官方说明](https://docs.brew.sh/Tap-Trust)规定 fully-qualified install 本身也会信任指定项。此前两条 tap / install 的默认流程及遇错才显式 trust 是**历史排错阶段**；用户随后要求把单 cask trust 放进主安装命令，现由 D58 的三步流程取代。这个文档选择不等于所有 Homebrew 安装都必须靠单独 trust 才能成功；下面的自动信任成功记录仍如实保留。没有替用户修改本机 Homebrew 信任设置。
+[The official documentation](https://docs.brew.sh/Tap-Trust) states that a fully-qualified install itself also trusts the specified item. The earlier default flow of two commands, tap / install, with an explicit trust only after an error, was a **historical troubleshooting stage**; the user then asked for the single-cask trust to be part of the main install commands, and the three-step flow in D58 now supersedes it. This choice of documentation does not mean that every Homebrew install must rely on a separate trust to succeed; the record below of a successful automatic trust is kept as it is. The user's own Homebrew trust settings on this machine were not modified on their behalf.
 
-历史排错验证：在自有隔离 Homebrew 6.0.22 中清除旧测试 tap 后，省略 URL 的 tap 实际失败并显示默认仓库不存在；双参数从公开仓库 clone 成功，remote 精确匹配，cask 解析为 0.2.0 和正式 SHA。随后用两个新的临时信任目录并明确启用信任检查：短名称安装的 dry run 复现 `untrusted tap`；单项 trust 后安装 dry run 成功。另一个空信任目录直接 fully-qualified install dry run 也成功；两份 JSON 均只有一个 cask、没有全 tap / formula / command 信任。本次不安装或启动应用，不修改用户 prefix 或信任文件。证据在 `/private/tmp/tursora-tap-diagnosis-3mrphmee/{result.json,trust-result.json}`；dry run 不替代前面的真实 DMG 安装 / 卸载记录。
+Historical troubleshooting verification: in our own isolated Homebrew 6.0.22, after the old test tap had been cleared, the tap with the URL omitted did in fact fail and reported that the default repository does not exist; the two-argument form cloned the public repository successfully, the remote matched exactly, and the cask resolved to 0.2.0 with the official SHA. Then, with two new temporary trust directories and the trust check explicitly enabled: the dry run of an install by short name reproduced `untrusted tap`; after a single-item trust, the install dry run succeeded. In another empty trust directory a fully-qualified install dry run also succeeded directly; both JSON files contained only one cask, with no whole-tap / formula / command trust. The app was neither installed nor launched this time, and the user's prefix and trust files were not modified. The evidence is in `/private/tmp/tursora-tap-diagnosis-3mrphmee/{result.json,trust-result.json}`; a dry run does not replace the real DMG install / uninstall record above.
 
-## 新稳定版本的维护
+## Maintaining a new stable version
 
-先按 [RELEASING.md](../RELEASING.md) 发布并核验真实 release，再更新 cask。下面以**已经发布的** `0.2.0` 演示维护过程；后续把 tag 与文件名替换为新发布版本。临时目录必须新建，避免混入不同版本文件。
+Publish and verify a real release according to [RELEASING.md](../RELEASING.md) first, then update the cask. The maintenance process is demonstrated below with the **already published** `0.2.0`; for later releases, substitute the new tag and file names. The temporary directory must be created fresh, so that files from different versions cannot be mixed in.
 
 ```sh
 release_dir="$(mktemp -d -t tursora-homebrew-release)"
@@ -69,33 +69,33 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s app/tools -p 'test_hom
 ruby -c Casks/tursora.rb
 ```
 
-`--auto-updates` 仅适用于已经发布 appcast 的含 Sparkle 版本。审阅 cask diff，确认 version、SHA、immutable URL、最低系统和架构与真实包一致后，按项目规则提交并合入。不能提前把 cask 指向未发布资产；不能把 `sha256` 换成 `:no_check`。如果以后获得 Developer ID 并完成公证，先验证包的 Gatekeeper 结果，再移除 cask 的未公证提示并评估官方库接纳条件。
+`--auto-updates` applies only to a version that includes Sparkle and has already published an appcast. Review the cask diff and confirm that the version, the SHA, the immutable URL, the minimum system and the architecture match the real package, then commit and merge according to the project rules. The cask must not be pointed at unpublished assets ahead of time, and `sha256` must not be replaced with `:no_check`. If a Developer ID is obtained later and notarisation is completed, verify the package's Gatekeeper result first, then remove the cask's un-notarised note and assess the conditions for acceptance into the official repository.
 
-## 初始 0.1.0 cask 的本地验证（历史）
+## Local verification of the initial 0.1.0 cask (historical)
 
-验证目录 `/private/tmp/tursora-distribution-qa`；未修改用户 Homebrew 的 prefix、taps、trust、日志或已安装 Tursora，也未触碰 `/Applications`。
+The verification directory was `/private/tmp/tursora-distribution-qa`; the user's Homebrew prefix, taps, trust, logs and installed Tursora were not modified, and `/Applications` was not touched.
 
-1. 实时 GitHub API 确认 `v0.1.0` 是公开稳定最新版，ZIP 为 4,101,534 字节；下载 ZIP / SHA256SUMS，实际 SHA 与 API digest、校验文件三者一致。生成工具输出与提交的 cask 逐字节相同。
-2. Homebrew 6.0.22 在独立临时 prefix 读取 cask，正确解析版本、架构与 macOS 14。采用当前 `depends_on macos: :sonoma` 语法，无旧字符串比较弃用警告。
-3. 真正执行 `brew install --cask --appdir=<owned temporary directory> zerolfx/tursora/tursora` 成功。包版本 `0.1.0`、arm64、strict codesign 通过；`com.apple.quarantine` 存在。没有使用 `--no-quarantine`，没有移除隔离，也没有启动应用。
-4. `brew uninstall --cask zerolfx/tursora/tursora` 成功，临时 app 路径不再存在。
-5. 发布边界测试 6 个方法通过，Ruby 语法通过；这些独立工具检查不代替最终组合应用 smoke。
+1. The live GitHub API confirmed that `v0.1.0` is the public, stable, latest version, with a ZIP of 4,101,534 bytes; the ZIP / SHA256SUMS were downloaded, and the actual SHA, the API digest and the checksum file all three agreed. The generator tool's output was byte-for-byte identical to the committed cask.
+2. Homebrew 6.0.22 read the cask in a separate temporary prefix and resolved the version, the architecture and macOS 14 correctly. The current `depends_on macos: :sonoma` syntax is used, with no deprecation warning about the old string comparison.
+3. `brew install --cask --appdir=<owned temporary directory> zerolfx/tursora/tursora` was actually executed and succeeded. The package version was `0.1.0`, arm64, and strict codesign passed; `com.apple.quarantine` was present. `--no-quarantine` was not used, the quarantine was not removed, and the app was not launched.
+4. `brew uninstall --cask zerolfx/tursora/tursora` succeeded, and the temporary app path no longer existed.
+5. The 6 release-boundary test methods passed and the Ruby syntax check passed; these standalone tool checks do not replace the final combined application smoke.
 
-## 0.2.0 正式 DMG 的隔离安装验证
+## Isolated install verification of the official 0.2.0 DMG
 
-[正式 0.2.0](https://github.com/zerolfx/Tursora/releases/tag/v0.2.0) 于 [Release 34739914582](https://github.com/zerolfx/Tursora/actions/runs/34739914582) 发布。主任务保存并核验 `/private/tmp/tursora-release-0.2.0-verified/` 的真实 release JSON、SHA256SUMS、DMG 与 appcast；应用包、签名和布局细节由[发布记录](release-0.2.0.md)统一维护。
+[The official 0.2.0](https://github.com/zerolfx/Tursora/releases/tag/v0.2.0) was published by [Release 34739914582](https://github.com/zerolfx/Tursora/actions/runs/34739914582). The main task saved and verified the real release JSON, SHA256SUMS, DMG and appcast in `/private/tmp/tursora-release-0.2.0-verified/`; the application bundle, the signature and the layout details are maintained centrally in the [release record](release-0.2.0.md).
 
-本轮 `update-homebrew.py --auto-updates` 以这三份实际输入生成 cask，DMG 为 5,794,277 字节、SHA 如上。6 个发布边界测试和 Ruby 语法通过。复用此前**自有隔离** Homebrew 6.0.22 runtime `/private/tmp/tursora-distribution-qa/homebrew`，确认旧 Caskroom 为空，再仅更新其中的测试 tap；cache / logs / config / temp / apps 使用新建目录 `/private/tmp/tursora-homebrew-0.2.0-i_9y61y8/`。没有覆盖 HOME、接触用户 prefix 或 `/Applications`。
+This round's `update-homebrew.py --auto-updates` generated the cask from those three actual inputs; the DMG is 5,794,277 bytes with the SHA given above. The 6 release-boundary tests and the Ruby syntax check passed. The **self-owned isolated** Homebrew 6.0.22 runtime at `/private/tmp/tursora-distribution-qa/homebrew` used earlier was reused: the old Caskroom was confirmed to be empty, and only the test tap inside it was updated; cache / logs / config / temp / apps used the newly created directory `/private/tmp/tursora-homebrew-0.2.0-i_9y61y8/`. HOME was not overridden, and neither the user's prefix nor `/Applications` was touched.
 
-实际 `brew install --cask --appdir=<该目录>/apps zerolfx/tursora/tursora` 从正式 URL 下载并安装成功。首次 sandbox 无 DNS 权限只造成下载失败，允许网络的同范围重试成功；没有预装伪造资产或去掉 quarantine。随后核对：
+`brew install --cask --appdir=<that directory>/apps zerolfx/tursora/tursora` actually downloaded from the official URL and installed successfully. The lack of DNS permission in the first sandbox only caused the download to fail; a retry in the same scope with network access allowed succeeded; no fake asset was pre-installed and the quarantine was not removed. The following were then checked:
 
-- 包版本 `0.2.0`、build `1789275959` 与 cask / 正式 release 相同，`auto_updates` 为 true。
-- `lipo <file> -verify_arch arm64` 与 `codesign --verify --deep --strict` 通过。
-- `com.apple.quarantine` 保留；MIT 文件与根 LICENSE 字节一致，Sparkle / SwiftTerm 声明存在。
-- 不启动应用；正常 `brew uninstall --cask zerolfx/tursora/tursora` 成功，临时 app 及 Caskroom 记录均不存在。
+- The package version `0.2.0` and build `1789275959` are the same as in the cask / the official release, and `auto_updates` is true.
+- `lipo <file> -verify_arch arm64` and `codesign --verify --deep --strict` passed.
+- `com.apple.quarantine` is kept; the MIT file is byte-identical to the root LICENSE, and the Sparkle / SwiftTerm notices are present.
+- The app was not launched; the normal `brew uninstall --cask zerolfx/tursora/tursora` succeeded, and neither the temporary app nor the Caskroom record exists any more.
 
-`cask-info.json`、`installed-verification.json`、`install-network.{out,err}`、`uninstall.{out,err}` 与 `scope.json` 保留在新目录。此检查不等于首次 Gatekeeper 启动，也不等于旧版经生产 feed 下载、安装和重启。本节记录 follow-up 合入前的本地验证；其合入和远端结果以对应 PR、[Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) 与 [Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml) 为准。主任务在 PR 与最终证据 JSON 记录精确运行，不用旧 0.1.0 job 代替新版结果。
+`cask-info.json`, `installed-verification.json`, `install-network.{out,err}`, `uninstall.{out,err}` and `scope.json` are kept in the new directory. This check is not the same as a first Gatekeeper launch, nor the same as an older version being downloaded, installed and relaunched through the production feed. This section records the local verification before the follow-up was merged; its merge and the remote results are governed by the corresponding PR, the [Homebrew runs](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml) and the [Pages runs](https://github.com/zerolfx/Tursora/actions/workflows/pages.yml). The main task records the exact runs in the PR and in the final evidence JSON, and does not use the old 0.1.0 job in place of the new version's results.
 
-## 首次远端 CI 与工具链修正
+## The first remote CI run and the toolchain fix
 
-PR #8 的首个 Homebrew job 已从自有 tap 安装真实 0.1.0 并通过严格 codesign，随后 Xcode 26.6 的 lipo 将 `-verify_arch arm64 <file>` 中的文件误当作后续架构参数。按工具提示把输入文件放到命令前：`lipo <file> -verify_arch arm64`；本机最终 0.2.0 包验证通过；随后 [PR 重跑](https://github.com/zerolfx/Tursora/actions/runs/34739465732) 和 [main 运行](https://github.com/zerolfx/Tursora/actions/runs/34739716318) 均成功，安装 / 版本 / quarantine / 卸载步骤完成。它们验证当时的 0.1.0 cask，不能当作新 0.2.0 cask 的远端结果。失败不代表安装或签名失败，也没有执行到后续版本 / quarantine 核验。[原始 job](https://github.com/zerolfx/Tursora/actions/runs/34739359685/job/103676301695)。此修正只影响 CI 参数顺序，101 份 Swift 源码与已通过的三轮 3,329 项检查完全一致。
+The first Homebrew job of PR #8 did install the real 0.1.0 from our own tap and passed strict codesign, after which lipo in Xcode 26.6 mistook the file in `-verify_arch arm64 <file>` for a further architecture argument. Following the tool's hint, the input file was put before the command: `lipo <file> -verify_arch arm64`; the final local verification of the 0.2.0 package passed; the subsequent [PR re-run](https://github.com/zerolfx/Tursora/actions/runs/34739465732) and [main run](https://github.com/zerolfx/Tursora/actions/runs/34739716318) both succeeded, completing the install / version / quarantine / uninstall steps. They verify the 0.1.0 cask as it was then, and cannot be taken as a remote result for the new 0.2.0 cask. The failure does not mean that installation or signing failed, and the later version / quarantine checks were not reached. [The original job](https://github.com/zerolfx/Tursora/actions/runs/34739359685/job/103676301695). This fix affects only the argument order in CI; the 101 Swift source files and the three rounds of 3,329 checks that already passed are entirely unaffected.

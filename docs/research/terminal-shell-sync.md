@@ -1,77 +1,77 @@
-# 终端与浏览目录双向同步，以及 bash / fish 支持
+# Two-way sync between the terminal and the browsed directory, plus bash / fish support
 
-2026-09-13。在 [0.2.1 单向跟随](terminal-navigation-0.2.1.md) 的基础上补两件事：一是反向同步，shell 自己换目录时让窗口当前 pane 跟过去；二是把原本只有 zsh 的自动同步扩展到 bash 和 fish，并让三种 shell 都通过 OSC 7 汇报自己的目录。
+2026-09-13. Two things are added on top of [the one-way following in 0.2.1](terminal-navigation-0.2.1.md): first, reverse sync, so that when the shell changes directory on its own the window's current pane follows it; and second, extending the automatic sync, until now zsh-only, to bash and fish, with all three shells reporting their own directory through OSC 7.
 
-0.2.1 的硬性边界全部保留：**不向 shell 输入任何字符，不发信号，不修改用户的启动文件**；面板不读写文件系统，导航仍走 `MainWindowController → BrowserViewController.navigate`；朝 shell 的目录变更只在安全的提示符发生。
+All of 0.2.1's hard limits stay in force: **no characters are typed into the shell, no signals are sent, and the user's startup files are not modified**; the panel neither reads nor writes the filesystem, navigation still goes through `MainWindowController → BrowserViewController.navigate`, and a directory change towards the shell happens only at a safe prompt.
 
-## 证据与来源
+## Evidence and sources
 
-- Finder 资源里没有“目录跟随”一类的开关文案。`plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resources/en.lproj/LocalizableMerged.strings` 共 2,129 条，只有 `N67 = "Open in Terminal"` 与终端相关；`strings` 扫 `Base.lproj/*.nib` 没有匹配。**两个复选框的文案“Terminal follows the browser folder”“Browser follows the shell folder”是本项目自拟的中性措辞，不是 Finder 用词**，记为推断项。
-- Dolphin 依据沿用 [0.2.1 记录](terminal-navigation-0.2.1.md)：`terminalpanel.cpp` 的 `urlChanged()` 要求面板可见。本轮工作树里没有 `upstream/dolphin` 检出，**没有重新核对 Dolphin 反向同步的实现细节**；“只在面板可见时同步”这一条沿用已记录的可见性前提，Dolphin 反向方向的具体代码未在本轮验证，记为未核对。
-- OSC 7 的接收侧来自 SwiftTerm 1.15.0：`EscapeSequenceParser.swift:530` 把 OSC 7 交给 `Terminal.oscSetCurrentDirectory`，后者在 `isProcessTrusted` 为真时把原始字符串交给 `hostCurrentDirectoryUpdated`，`AppleTerminalView` 再转成 `hostCurrentDirectoryUpdate(source:directory:)`。macOS 的 `MacTerminalView.isProcessTrusted` 恒为 `true`，`LocalProcess` 默认在主队列投递，因此回调在主线程。
-- fish 4.0.2 自己也会在 PWD 变化时发 OSC 7：受控会话里同一次 `cd` 收到两条完全相同的报告（见下方“去重”）。本轮同时观察到 fish 发送 OSC 133，SwiftTerm 记为 `Unknown OSC code: 133`，不影响功能。
+- Finder's resources contain no switch wording of the "directory following" kind. `plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Resources/en.lproj/LocalizableMerged.strings` has 2,129 entries, of which only `N67 = "Open in Terminal"` relates to the terminal; a `strings` scan of `Base.lproj/*.nib` found no match. **The wording of the two checkboxes, "Terminal follows the browser folder" and "Browser follows the shell folder", is this project's own neutral phrasing, not Finder's**, and is recorded as inferred.
+- The Dolphin evidence carries over from [the 0.2.1 record](terminal-navigation-0.2.1.md): `urlChanged()` in `terminalpanel.cpp` requires the panel to be visible. There is no `upstream/dolphin` checkout in this working tree, so **Dolphin's implementation of reverse sync was not re-checked**; the rule "sync only while the panel is visible" carries over the visibility precondition already recorded, while Dolphin's actual code for the reverse direction was not verified in this stage and is recorded as unchecked.
+- The receiving side of OSC 7 comes from SwiftTerm 1.15.0: `EscapeSequenceParser.swift:530` hands OSC 7 to `Terminal.oscSetCurrentDirectory`, which passes the raw string to `hostCurrentDirectoryUpdated` when `isProcessTrusted` is true, and `AppleTerminalView` then turns it into `hostCurrentDirectoryUpdate(source:directory:)`. On macOS, `MacTerminalView.isProcessTrusted` is always `true`, and `LocalProcess` delivers on the main queue by default, so the callback arrives on the main thread.
+- fish 4.0.2 also emits OSC 7 by itself whenever PWD changes: in a controlled session, a single `cd` produced two completely identical reports (see "an unchanged directory is not news" below). This stage also observed fish sending OSC 133, which SwiftTerm logs as `Unknown OSC code: 133`; it does not affect behaviour.
 
-## 设计
+## Design
 
-### 反向同步（shell → 浏览器）
+### Reverse sync (shell → browser)
 
-`TerminalPanelController.hostCurrentDirectoryUpdate` 收到本机 OSC 7 后，除了更新标题提示，还通过新的 `onShellDirectoryChanged` 把目录交给窗口；`MainWindowController.followShellDirectory` 调用 `browser.navigate(to:)`，也就是当前标签的当前 pane。分栏、多标签、两种文件视图都自然适用，因为走的是同一条导航路径。面板本身不做任何文件系统访问。
+When `TerminalPanelController.hostCurrentDirectoryUpdate` receives a local OSC 7, it updates the title hint and also hands the directory to the window through the new `onShellDirectoryChanged`; `MainWindowController.followShellDirectory` calls `browser.navigate(to:)`, that is, the current pane of the current tab. Split panes, multiple tabs and both file views all follow naturally, because this is the same navigation path as everything else. The panel itself performs no filesystem access.
 
-四道防回环与噪声的闸门：
+Four gates guard against feedback loops and noise:
 
-1. **面板不可见就不驱动浏览器。** 与 Dolphin 的可见性前提一致；隐藏的面板仍然保留 shell、通道和目录显示，只是不再改变文件视图。
-2. **等于本面板刚请求过的目录就忽略。** `requestedDirectory` 记录浏览器 → shell 的最后一次请求。
-3. **等于浏览器当前目录就忽略。** `pendingDirectory` 始终跟着浏览目录走，这条是最强的一道。
-4. **目录没变就不是新闻。** `reportedShellDirectory` 单独记录 OSC 7 上一次报的目录。bash 每个提示符都汇报，fish 因为自带 hook 会汇报两次；只有真正换了目录才通知窗口。它必须与 `presentation.reportedDirectory` 分开，因为后者也被 zsh 的响应文件写入。
+1. **An invisible panel does not drive the browser.** This matches Dolphin's visibility precondition; a hidden panel still keeps its shell, its channel and its directory display, it just no longer changes the file view.
+2. **A directory equal to the one this panel has just requested is ignored.** `requestedDirectory` records the last browser → shell request.
+3. **A directory equal to the browser's current directory is ignored.** `pendingDirectory` always tracks the browsed directory; this is the strongest gate of the four.
+4. **An unchanged directory is not news.** `reportedShellDirectory` separately records the directory OSC 7 reported last time. bash reports at every prompt, and fish reports twice because of its own built-in hook; the window is notified only when the directory has really changed. It has to be kept separate from `presentation.reportedDirectory`, because that one is also written by zsh's response file.
 
-比较目录用 `TerminalPanelPresentation.isSameDirectory`，即比较 `standardizedFileURL.path`，这样 `/tmp` 与 `/private/tmp` 两种写法算同一处。
+Directories are compared with `TerminalPanelPresentation.isSameDirectory`, which compares `standardizedFileURL.path`, so that the two spellings `/tmp` and `/private/tmp` count as the same place.
 
-### 目录路径的规范化陷阱
+### The directory-path normalisation trap
 
-`URL.standardizedFileURL`（等价于 `NSString.standardizingPath`）在 macOS 上会**去掉开头的 `/private`**。OSC 7 里 shell 报的是真实的 `$PWD`，原来的 `localDirectory` 用 `standardizedFileURL`，会把 `/private/tmp/x` 改写成 `/tmp/x`，于是“shell 说的目录”和请求的目录对不上。现在只用 `URL.standardized`（纯词法消解 `.` 与 `..`），保留 shell 自己的写法；跨写法的相等判断交给 `isSameDirectory`。这一条已加入自动检查。
+`URL.standardizedFileURL` (equivalent to `NSString.standardizingPath`) **strips a leading `/private`** on macOS. Over OSC 7 the shell reports its real `$PWD`, and the old `localDirectory` used `standardizedFileURL`, rewriting `/private/tmp/x` into `/tmp/x`, so the directory the shell said and the directory that was requested no longer matched. It now uses only `URL.standardized` (purely lexical resolution of `.` and `..`), preserving the shell's own spelling; equality across spellings is left to `isSameDirectory`. This is now covered by an automated check.
 
-### 两个开关
+### The two switches
 
-`TerminalPreferences.Configuration` 新增 `terminalFollowsBrowser`、`browserFollowsShell`，默认都为真，`browserFollowsShell` 为真即保持 0.2.1 的既有行为不变。`Configuration` 改为逐字段 `decodeIfPresent` 解码：0.2.1 存下来的 JSON 没有这两个键，用合成解码会整体解码失败并把用户的 shell、字体、配色一起重置。Settings → Terminal 两个复选框，关掉正向同步时仍然更新 Restart 目标，标题提示会说明原因。
+`TerminalPreferences.Configuration` gains `terminalFollowsBrowser` and `browserFollowsShell`, both defaulting to true, and with `browserFollowsShell` true the existing behaviour of 0.2.1 is unchanged. `Configuration` now decodes field by field with `decodeIfPresent`: JSON saved by 0.2.1 has neither of these keys, and the synthesised decoder would fail the whole decode and reset the user's shell, font and colours along with it. Settings → Terminal gets two checkboxes; turning the forward sync off still updates the Restart target, and the title hint explains why.
 
-### 三种 shell 的集成
+### Integrating the three shells
 
-`TerminalShellIntegration` 按可执行文件名识别 zsh / bash / fish；`/bin/sh`（在 macOS 上其实是 bash）等仍然只得到普通交互终端。启动仍是 argv 形式：`TerminalLaunchConfiguration` 新增 `shellArguments`，包装脚本改成 `cd -- "$1" || exit 1; tursora_shell="$2"; shift 2; exec "$tursora_shell" "$@"`，目录、shell 路径和集成文件路径都是独立 argv，不进入可执行文本。
+`TerminalShellIntegration` recognises zsh, bash and fish by executable name; `/bin/sh` (which on macOS is really bash) and anything else still gets a plain interactive terminal. Launching still goes through argv: `TerminalLaunchConfiguration` gains `shellArguments`, and the wrapper script becomes `cd -- "$1" || exit 1; tursora_shell="$2"; shift 2; exec "$tursora_shell" "$@"`, so the directory, the shell path and the integration file path are all separate argv entries and never enter executable text.
 
-| shell | 加载方式 | 请求何时生效 | 汇报方式 |
+| shell | How it is loaded | When a request takes effect | How it reports |
 | --- | --- | --- | --- |
-| zsh | 临时 `ZDOTDIR`（先恢复原值再读用户 `.zshenv`） | FIFO 唤醒 ZLE，空提示符立即生效 | 响应文件 + precmd 里的 OSC 7 |
-| bash | 临时 `--rcfile` | 用户画出的下一个提示符 | `PROMPT_COMMAND` 里的 OSC 7 |
-| fish | `--init-command` | 用户画出的下一个提示符 | `--on-variable PWD` 的 OSC 7 |
+| zsh | a temporary `ZDOTDIR` (restores the original value before reading the user's `.zshenv`) | a FIFO wakes ZLE, so it takes effect immediately at an empty prompt | a response file plus OSC 7 from precmd |
+| bash | a temporary `--rcfile` | the next prompt the user draws | OSC 7 from `PROMPT_COMMAND` |
+| fish | `--init-command` | the next prompt the user draws | OSC 7 from `--on-variable PWD` |
 
-- **zsh**：`_ts_<token>_prompt` 在 `_ts_<token>_apply` 之后调用新的 `_ts_<token>_osc7`。编码在 `emulate -L zsh -o no_multibyte` 下逐字节进行，`printf -v hex '%%%02X' "'$char"` 取字节值，因此非 ASCII 路径按 UTF-8 字节百分号编码。ZLE 唤醒路径不发 OSC 7，避免在 widget 里写终端。
-- **bash**：bash 对登录 shell 不读 `--rcfile`，所以会话改成交互非登录 shell，由生成的 rcfile 自己按登录顺序读 `/etc/profile` 和 `~/.bash_profile` → `~/.bash_login` → `~/.profile` → `~/.bashrc` 的第一个可读者。**另一个坑：bash 只在第一个短选项之前解析长选项**，`-i --rcfile x` 会让 bash 报 `--: invalid option` 并打印用法，因此参数顺序必须是 `--rcfile <file> -i`。编码函数用 `local LC_ALL=C` 让 `${#s}` 和 `${s:i:1}` 按字节切分。`PROMPT_COMMAND` 追加而不是覆盖，钩子先存 `$?` 再 `return`，提示符里的退出码不受影响。
-- **fish**：`--init-command` 在 `config.fish` 之后求值，用户配置仍然说了算。百分号编码用 `string escape --style=url` 再把 `%2F` 换回 `/`，无论 fish 是否转义分隔符结果都正确。请求在 `--on-event fish_prompt` 的钩子里消费，NUL 分隔字段用 `read --null --local` 读。
+- **zsh**: `_ts_<token>_prompt` calls the new `_ts_<token>_osc7` after `_ts_<token>_apply`. Encoding runs byte by byte under `emulate -L zsh -o no_multibyte`, with `printf -v hex '%%%02X' "'$char"` taking the byte value, so a non-ASCII path is percent-encoded as UTF-8 bytes. The ZLE wake-up path does not emit OSC 7, to avoid writing to the terminal from inside a widget.
+- **bash**: bash does not read `--rcfile` for a login shell, so the session is now an interactive non-login shell, and the generated rcfile itself reads, in login order, `/etc/profile` and then the first readable of `~/.bash_profile` → `~/.bash_login` → `~/.profile` → `~/.bashrc`. **Another trap: bash parses long options only before the first short option**, so `-i --rcfile x` makes bash report `--: invalid option` and print its usage; the argument order therefore has to be `--rcfile <file> -i`. The encoding function uses `local LC_ALL=C` so that `${#s}` and `${s:i:1}` slice by bytes. `PROMPT_COMMAND` is appended to rather than overwritten, and the hook saves `$?` before it returns, so the exit code shown in the prompt is unaffected.
+- **fish**: `--init-command` is evaluated after `config.fish`, so the user's configuration still has the last word. Percent-encoding uses `string escape --style=url` and then turns `%2F` back into `/`, which gives the right result whether or not fish escapes the separator. Requests are consumed in an `--on-event fish_prompt` hook, and the NUL-separated fields are read with `read --null --local`.
 
-三种脚本都只把生成的通道目录和十六进制 token 写进可执行文本，路径按数据读取；都没有 `trap`、`kill` 或 `eval`。请求只在成功应用后才被记为已消费，因此用户随后手动 `cd` 不会在下一个提示符被拉回去。
+All three scripts put only the generated channel directory and the hexadecimal token into executable text; paths are read as data. None of them use `trap`, `kill` or `eval`. A request is recorded as consumed only after it has been applied successfully, so a manual `cd` by the user afterwards is not dragged back at the next prompt.
 
-## 边界与已知限制
+## Limits and known restrictions
 
-- **bash 和 fish 的正向同步在用户画出下一个提示符时才生效**，空闲时不会动。只有 zsh 有 FIFO/ZLE 的即时路径。这句话写进了面板标题提示和设置里正向复选框的 tooltip。
-- bash 和 fish 没有确认通道：失败的 `cd`（例如目录不存在）不会像 zsh 那样报告 `failed`，请求会在后续每个提示符重试，界面一直显示等待。
-- bash 会话不再是登录 shell，`shopt login_shell` 为 off、`$0` 不是 `-bash`；依赖这两点的用户配置会看到差别。用户之后自己覆盖 `PROMPT_COMMAND` 也会去掉钩子。
-- fish 的 `fish_prompt` 事件钩子里 `_ts_<token>_osc7` 的输出在本机没有被观察到送达终端（apply 的 `cd` 确实执行了），所以“浏览器请求落在 shell 已经在的目录上”这种情况不靠它。面板改为在这种情况下直接把状态记为已同步，同时 `TerminalDirectorySync` 对 bash / fish 不再发布 `waiting`（没有应答通道，晚到的 `waiting` 会覆盖刚到的 OSC 7 结果）。**fish 事件钩子输出为何没到达没有进一步定位**，记为未查明。
-- bash 的 rcfile 路径和 fish 的整段 init-command（含通道目录与 token）都在 argv 里，同机用户用 `ps` 可见。通道目录本身仍是 0700、文件 0600；token 只用于校验 zsh 的响应格式，fish 不用响应文件。
-- fish 只在 `/opt/homebrew/bin/fish` 存在时验证；缺失时对应检查打印一行 `ok … skipped`。其他安装路径（MacPorts、`/usr/local`）未验证。
-- bash 的字节编码用 `local LC_ALL=C`，本轮只用 ASCII 加空格的路径验证过；zsh 的字节编码路径有现成的 `雪` 与换行目录覆盖。
-- 反向同步只改当前标签的当前 pane，不改另一半分栏，也不改其他窗口。面板隐藏期间 shell 换过的目录，在重新显示后不会补报，要等 shell 下一次换目录。
-- 依旧不做一个窗口多个终端会话，这次明确不在范围内。
+- **Forward sync for bash and fish takes effect only when the user draws the next prompt**; nothing happens while the shell sits idle. Only zsh has the immediate FIFO/ZLE path. That sentence is written into the panel's title hint and into the tooltip of the forward checkbox in Settings.
+- bash and fish have no acknowledgement channel: a failed `cd` (into a directory that does not exist, for example) is not reported as `failed` the way zsh does; the request is retried at every subsequent prompt and the interface keeps showing a wait.
+- The bash session is no longer a login shell: `shopt login_shell` is off and `$0` is not `-bash`; user configurations that depend on either will see a difference. A user who later overwrites `PROMPT_COMMAND` themselves also removes the hook.
+- Output from `_ts_<token>_osc7` inside fish's `fish_prompt` event hook was not observed reaching the terminal on this machine (the `cd` from apply did run), so the case where the browser requests the directory the shell is already in does not rely on it. The panel now records that case as synced directly, and `TerminalDirectorySync` no longer publishes `waiting` for bash and fish (there is no acknowledgement channel, and a late `waiting` would overwrite an OSC 7 result that had just arrived). **Why the fish event hook's output does not arrive was not investigated further** and is recorded as unexplained.
+- bash's rcfile path and fish's entire init-command (including the channel directory and the token) are in argv, visible through `ps` to other users on the same machine. The channel directory itself is still 0700 and its files 0600; the token is used only to validate the format of zsh's responses, and fish uses no response file.
+- fish is verified only when `/opt/homebrew/bin/fish` exists; when it is missing, the corresponding checks print a single `ok … skipped` line. Other install locations (MacPorts, `/usr/local`) are not verified.
+- bash's byte encoding uses `local LC_ALL=C` and has been verified in this stage only with ASCII paths plus spaces; zsh's byte-encoding path is already covered by the existing `雪` and newline directories.
+- Reverse sync changes only the current pane of the current tab, not the other half of a split and not other windows. A directory the shell moved to while the panel was hidden is not reported retroactively when the panel is shown again; that waits for the shell's next directory change.
+- Multiple terminal sessions in one window are still not implemented, and are explicitly out of scope this time.
 
-## 验证
+## Verification
 
-`cd app && swift build` 干净，无新增警告。整轮 smoke 在实现完成后一次通过：`exit=0 ok=3509 fail=0`，用时 176 秒（基线 e202c2e 为 3,432 项）。新增 77 项检查，覆盖：
+`cd app && swift build` is clean, with no new warnings. The full smoke run passed on the first attempt once the implementation was complete: `exit=0 ok=3509 fail=0`, taking 176 seconds (the baseline at e202c2e was 3,432 checks). The 77 new checks cover:
 
-- 纯函数：三种 shell 的识别与 `/bin/sh` 不识别、argv 拼装与 bash 长选项顺序、三段脚本的内容约束（读用户启动文件、保留 `PROMPT_COMMAND`、按 NUL 读请求、不含 `eval` / `kill` / `trap`）、`/private` 写法保留与 `..` 消解。
-- 偏好：两个方向默认开、旧版 JSON 迁移后保留 shell 与外观、两个设置页互相同步、存储往返、Restore Defaults、540 点页面内的布局。
-- 面板（无进程）：只有 shell 知道的目录才交给浏览器、远端主机报告被忽略、自己的请求回来不成环、同一目录换写法不算移动、每个提示符重复汇报不重复导航、隐藏时不驱动、重新显示后恢复、关掉反向不报告、关掉正向仍然改 Restart 目标并解释原因。
-- 窗口：详细视图与图标视图下当前 pane 跟随、分栏时只有活动 pane 跟随、切换活动 pane 后跟随对象随之切换、新标签成为当前后跟随、隐藏终端后窗口不再跟随。
-- 真实 PTY：zsh 里手输 `cd` 经 OSC 7 让面板收到目录、浏览器请求在空闲提示符生效且不反弹、隐藏面板只更新目录不导航、关掉反向开关后不导航、浏览器跟上后再出提示符不再产生新报告；bash 收到请求后空闲不动、下一个提示符才应用、临时 rcfile 读到了用户的 `.bash_profile`、手输 `cd` 经 OSC 7 汇报、已消费的请求不会撤销用户的 `cd`；fish 同样一组检查，缺失时跳过。
+- Pure functions: recognising the three shells and not recognising `/bin/sh`; argv assembly and bash's long-option ordering; content constraints on all three scripts (reading the user's startup files, preserving `PROMPT_COMMAND`, reading requests NUL-separated, containing no `eval`, `kill` or `trap`); and preserving the `/private` spelling while resolving `..`.
+- Preferences: both directions on by default; migrating older JSON keeps the shell and the appearance; the two settings pages stay in sync with each other; storage round-trips; Restore Defaults; and the layout fitting inside a 540-point page.
+- The panel (with no process): only a directory the shell knows is handed to the browser; a report from a remote host is ignored; the panel's own request coming back does not form a loop; a different spelling of the same directory does not count as a move; a report repeated at every prompt does not navigate repeatedly; nothing is driven while hidden; behaviour resumes once the panel is shown again; with reverse sync off nothing is reported; and with forward sync off the Restart target still changes and the reason is explained.
+- The window: the current pane follows in both the details view and the icon view; in a split only the active pane follows; switching the active pane moves what follows along with it; a new tab follows once it becomes current; and the window stops following once the terminal is hidden.
+- A real PTY: in zsh, a hand-typed `cd` reaches the panel as a directory over OSC 7, a browser request takes effect at an idle prompt without bouncing back, a hidden panel only updates the directory without navigating, nothing navigates once the reverse switch is off, and a prompt drawn after the browser has caught up produces no new report; in bash, a request does nothing while the shell is idle and is applied only at the next prompt, the temporary rcfile did read the user's `.bash_profile`, a hand-typed `cd` is reported over OSC 7, and a consumed request does not undo the user's `cd`; fish gets the same set of checks, skipped when it is missing.
 
-诊断过程中修正的问题都在上面的“边界与已知限制”和“设计”里：bash 长选项顺序、fish 事件钩子输出、`/private` 规范化、重复汇报去重。`/private` 那条同时修好了既有 `TerminalDirectorySyncSmokeTests` 在加入 OSC 7 之后出现的失配，该套件的失败详情也补上了实际目录与期望目录。
+Every problem fixed while diagnosing appears above under "Limits and known restrictions" and "Design": bash's long-option ordering, the fish event hook's output, `/private` normalisation, and deduplicating repeated reports. The `/private` fix also repaired the mismatch that appeared in the existing `TerminalDirectorySyncSmokeTests` once OSC 7 was added, and that suite's failure details now also include the actual directory and the expected directory.
 
-**本轮只有自动化验证。** 没有打包 release、没有实机 GUI / computer-use 观察、没有截图更新，也没有在真实用户 shell 配置下试用；这些都不能当作已完成。
+**This stage has automated verification only.** There is no release package, no hands-on GUI or computer-use observation, no screenshot update, and no trial under a real user's shell configuration; none of these may be treated as done.

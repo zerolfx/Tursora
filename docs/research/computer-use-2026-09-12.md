@@ -1,46 +1,46 @@
-# 新功能实机检查（2026-09-12）
+# Checking the new features on a real machine (2026-09-12)
 
-环境：macOS 26.3（25D125），深色模式；通过 computer use 操作 `app/build/Tursora.app`。初始检查版本为 `cba1ccb` 对应的 0.1.0（2）。本记录补充自动化 smoke，不把 UI 树或模型检查当成视觉验证。
+Environment: macOS 26.3 (25D125), dark mode; `app/build/Tursora.app` driven through computer use. The version first checked was 0.1.0 (2), corresponding to `cba1ccb`. This record supplements the automated smoke run; it does not treat UI tree or model checks as visual verification.
 
-文件操作全部使用 `/tmp/tursora-visual-check` 内本轮创建的样本：`Sample Files/Welcome.txt`、`Sample Files/Notes/Checklist.txt` 与保留顶层目录的 `Sample.zip`。没有对用户文件做改名或归档操作。
+Every file operation used samples created this round inside `/tmp/tursora-visual-check`: `Sample Files/Welcome.txt`, `Sample Files/Notes/Checklist.txt` and a `Sample.zip` that keeps the top-level directory. No user file was renamed or archived.
 
-## 已完成的操作
+## Operations carried out
 
-| 检查 | 实际结果 |
+| Check | Actual result |
 |---|---|
-| 设置窗口 | General、Keyboard、Experimental 各区域文字和控件完整，无重叠；初始两项实验功能均关闭 |
-| 过滤快捷键 | 录制 ⌘Q 被冲突校验拦截，应用没有退出；录制 ⇧⌘F 后能聚焦过滤框，Reset 恢复 ⌘F |
-| 文件名过滤 | `*.zip` 只保留 ZIP，计数正确；Escape 清空，没有多余的 Filter / 文件夹范围行 |
-| 隐藏扩展名 | `Sample.zip` 显示为 `Sample`，文件夹名不变；恢复显示后立即更新 |
-| 取消改名 | List 与 Icons 的编辑框均包含完整 `Sample.zip`，选中 basename；输入 `MustNotRename` 再 Escape 均恢复原名，磁盘检查无错误改名产物 |
-| 窗口布局 | 侧栏与内容区域共用平直边界；Home 图标与其他项目大小协调；标题栏无重复路径；折叠 / 展开侧栏时左上角按钮位置稳定 |
-| Favorites 与分组 | 点击 Home 后 Group 菜单仍能打开；Kind 分组可用，图标视图实际显示 Folders / Other 标题 |
-| 终端 | F4 显示并正确渲染 zsh；`pwd` 正确；`sleep 30` 可用 Ctrl-C 中断 |
-| 终端与目录切换 | 未提交的 `printf terminal-input-kept` 在浏览器导航后保持不变；Restart in Current Folder 在含空格的路径启动新会话，`pwd` 正确 |
-| 终端生命周期 | 前台命令运行时 Restart 显示确认，Cancel 可取消；F4 隐藏重开获得新会话；禁用设置后面板消失 |
-| ZIP 浏览 | 独立只读窗口保留顶层 `Sample Files`，可进入 Notes，Back / Up 可用，根目录按钮禁用；底部临时副本说明完整换行 |
-| 打开 ZIP 内文件 | Return 打开 Welcome.txt，TextEdit 显示预期内容及应用临时目录路径；关闭 ZIP 浏览窗口后文档仍可读；测试结束关闭该文档，没有编辑 |
-| More 菜单与分享 | 操作随选择启用，菜单没有文件 Tags 或 Import from iPhone；原生分享弹窗显示选中文件名 / 类型和系统服务，未发送 |
-| 压缩与解压 | Compress 生成 `Sample Files.zip`；显式 Extract 在浏览实验开启时仍可用，同名目录保留并生成 `Sample Files 2`；撤销移除产物，重做恢复 |
-| 默认 ZIP 行为 | 关闭 ZIP 浏览实验后，普通 Open 恢复解压，生成并选中 `Sample Files 3` |
-| 归档内容核对 | 用 ZIP 读取和磁盘字节比较确认两个文本文件压缩 / 解压内容一致 |
-| 服务器表单 | ⌘K 打开表单；`sftp://example.invalid/test` 被本地校验拦截并显示支持的协议，文字没有截断；取消正常 |
-| 图标 | About 窗口显示抽象蓝色尾鳍和一层背景，没有旧版内嵌方形图块 |
+| Settings window | Text and controls in the General, Keyboard and Experimental sections are complete and do not overlap; both experimental features start off |
+| Filter shortcut | Recording ⌘Q was caught by conflict validation and the app did not quit; after recording ⇧⌘F the filter field can be focused, and Reset restores ⌘F |
+| File name filter | `*.zip` keeps only the ZIPs and the count is correct; Escape clears it, with no extra Filter / folder scope row |
+| Hiding extensions | `Sample.zip` is shown as `Sample` and folder names are unchanged; turning the display back on updates immediately |
+| Cancelling a rename | The editors in List and in Icons both contain the full `Sample.zip` with the basename selected; typing `MustNotRename` and then pressing Escape restores the original name in both, and a disk check found no wrongly renamed artefacts |
+| Window layout | The sidebar and the content area share a flat boundary; the Home icon is sized in keeping with the other items; the title bar has no duplicated path; the buttons at the top left stay in place while the sidebar is collapsed / expanded |
+| Favorites and grouping | The Group menu still opens after clicking Home; grouping by Kind works, and the icon view really shows the Folders / Other headings |
+| Terminal | F4 shows zsh and renders it correctly; `pwd` is right; `sleep 30` can be interrupted with Ctrl-C |
+| Terminal and directory switching | An uncommitted `printf terminal-input-kept` stays as it is after navigating in the browser; Restart in Current Folder starts a new session in a path containing a space, with the correct `pwd` |
+| Terminal lifecycle | While a foreground command is running, Restart shows a confirmation and Cancel cancels it; hiding with F4 and reopening gives a new session; the panel disappears once the setting is disabled |
+| ZIP browsing | The separate read-only window keeps the top-level `Sample Files`, Notes can be entered, Back / Up work and the buttons are disabled at the root; the note about the temporary copy at the bottom wraps in full |
+| Opening a file inside a ZIP | Return opens Welcome.txt, and TextEdit shows the expected content and the path inside the app's temporary directory; the document is still readable after the ZIP browsing window is closed; the document was closed at the end of the test and was not edited |
+| The More menu and sharing | Actions enable with the selection, and the menu has no file Tags or Import from iPhone; the native share popover shows the selected file's name / type and the system services, and nothing was sent |
+| Compress and extract | Compress produces `Sample Files.zip`; an explicit Extract still works while the browsing experiment is on, keeping the directory of the same name and producing `Sample Files 2`; undo removes the product and redo brings it back |
+| Default ZIP behaviour | With the ZIP browsing experiment turned off, an ordinary Open goes back to extracting, producing `Sample Files 3` and selecting it |
+| Checking archive content | Reading the ZIP and comparing bytes on disk confirmed that the two text files come through compression / extraction unchanged |
+| Server form | ⌘K opens the form; `sftp://example.invalid/test` is caught by local validation, which lists the supported protocols with no text truncated; cancelling works |
+| Icon | The About window shows the abstract blue fin over one background layer, with none of the older inset square blocks |
 
-## 发现并修复的问题
+## Problems found and fixed
 
-刷新列表后，首个文件夹会藏到列标题下面，AX 仍有该项目，磁盘内容和项目计数也正确。最初通过 List + Kind 下 Extract → Undo → Redo 发现；随后在不分组的列表中 Compress 也能复现。向上滚动和取消分组不能恢复，打开 / 关闭终端触发重新布局后恢复。
+After the list refreshed, the first folder would hide underneath the column headers, while AX still had the item and the disk content and item counts were correct. It was first found through Extract → Undo → Redo in List + Kind; it could then also be reproduced with Compress in an ungrouped list. Scrolling up and turning grouping off did not bring it back; opening / closing the terminal, which triggers a relayout, did.
 
-根因为滚动恢复把原始 clip y 强制夹到零，而系统表头使真正顶部可以位于负 y。现按原生顶部保存逻辑距离，再交给 `NSClipView.constrainBoundsRect` 恢复；水平位置也保留。
+The root cause was that scroll restoration clamped the original clip y to zero, whereas the system header means that the true top can sit at a negative y. The logical distance is now saved relative to the native top and restoration is left to `NSClipView.constrainBoundsRect`; the horizontal position is preserved as well.
 
-已构建含修复的 0.1.0（3）release 包并再次通过 computer use 操作：普通列表 Compress 生成 `Sample Files 2.zip` 后，首行完整显示且点击可选中；Kind 下 Open 解压生成 `Sample Files 4`，Undo / Redo 后所有文件夹和组头完整可见，点击首个 `Sample Files` 正确选中；取消分组后首行仍完整显示。没有依靠切换终端或调整窗口来恢复。
+A 0.1.0 (3) release package containing the fix was built and driven through computer use again: after Compress in a plain list produced `Sample Files 2.zip`, the first row was fully visible and could be selected by clicking; under Kind, Open extracted to `Sample Files 4`, and after Undo / Redo every folder and group header was fully visible, with a click on the first `Sample Files` selecting it correctly; the first row was still fully visible once grouping was turned off. Nothing relied on toggling the terminal or resizing the window to recover.
 
-自动化新增受控表头 inset、非零逻辑位置、水平滚动和列表缩短检查；归档操作刷新链还比较实际行与表头的几何位置、行高度和点击命中，避免只检查 AX 数量。
+Automation gained checks for a controlled header inset, a non-zero logical position, horizontal scrolling and a shortened list; the refresh chain for archive operations also compares the actual geometry of the row against the header, the row height and the hit test of a click, rather than checking AX counts alone.
 
-最终 debug 构建通过，**618 项 smoke 连续三轮通过**（比此前增加 13 项）；日志为 `/tmp/tursora-cua-fix-smoke-{1,2,3}.log`。最终 release 包已重建，ad-hoc 签名验证通过。
+The final debug build passed, with **618 smoke checks passing three rounds in a row** (13 more than before); the logs are `/tmp/tursora-cua-fix-smoke-{1,2,3}.log`. The final release package was rebuilt and its ad-hoc signature verified.
 
-## 收尾与边界
+## Wrap-up and limits
 
-测试后已恢复：显示全部扩展名、⌘F、终端关闭、ZIP 浏览关闭；清空过滤并取消分组。测试文档已关闭。
+Restored after the test: showing all extensions, ⌘F, the terminal off, ZIP browsing off; the filter cleared and grouping turned off. The test document has been closed.
 
-尚未覆盖：真实服务器认证 / 挂载 / 读写 / Eject，关闭所属浏览窗口时的 PTY 回收，以及浅色模式和所有屏幕尺寸。无真实服务器可用，本轮只验证连接表单及协议校验。终端使用用户配置的本地 shell，未执行远程连接。
+Not covered yet: real server authentication / mounting / reading and writing / Eject, PTY reaping when the owning browsing window is closed, and light mode and every screen size. No real server was available, so this round verified only the connection form and protocol validation. The terminal uses the user's configured local shell, and no remote connection was made.
