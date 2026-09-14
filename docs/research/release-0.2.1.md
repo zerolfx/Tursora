@@ -1,5 +1,7 @@
 # 0.2.1 release verification
 
+> Historical record. The current stable release is [0.3.0](release-0.3.0.md); the evidence below is what was actually verified for 0.2.1 at the time.
+
 2026-09-13. [Tursora 0.2.1](https://github.com/zerolfx/Tursora/releases/tag/v0.2.1) has been published as the latest stable version, not a draft or prerelease. The user authorised pushing and publishing once the terminal and documentation changes were finished; the tags and assets of older versions were not modified.
 
 ## Source and release

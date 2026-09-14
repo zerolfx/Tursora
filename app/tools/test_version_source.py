@@ -18,8 +18,29 @@ SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
 # current version at all. Dependency versions (SwiftTerm, Sparkle, Swift) and
 # references to past releases are unaffected: only the version being shipped
 # would go stale.
+#
+# One kind of sentence names the current version on purpose: "New in 0.3.0"
+# records when a feature arrived and must NOT follow later releases, which is
+# exactly what the placeholder would do. Those lines carry HISTORICAL_MARKER,
+# and the line it precedes is exempt. No regex can tell "the version you
+# download" from "the version this arrived in", so the distinction is declared.
 PLACEHOLDER_FILES = ("site/index.html", "site/zh.html", "site/install.md")
 VERSIONLESS_FILES = ("README.md",)
+HISTORICAL_MARKER = "<!-- historical-version -->"
+
+
+def without_historical_lines(text):
+    """Drop lines marked as recording when a feature arrived, and the line after."""
+    kept, skip_next = [], False
+    for line in text.split("\n"):
+        if HISTORICAL_MARKER in line:
+            skip_next = True
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        kept.append(line)
+    return "\n".join(kept)
 
 
 class VersionSource(unittest.TestCase):
@@ -45,9 +66,22 @@ class VersionSource(unittest.TestCase):
     def test_prose_does_not_repeat_the_current_version(self):
         for name in PLACEHOLDER_FILES + VERSIONLESS_FILES:
             with self.subTest(file=name):
-                text = (ROOT / name).read_text(encoding="utf-8")
+                text = without_historical_lines((ROOT / name).read_text(encoding="utf-8"))
                 self.assertNotIn(self.version, text,
                                  f"{name} names the current version; use {{{{VERSION}}}} or drop it")
+
+    def test_historical_marker_only_exempts_a_real_version_line(self):
+        """A marker that shields no version would silently weaken the guard."""
+        for name in PLACEHOLDER_FILES:
+            text = (ROOT / name).read_text(encoding="utf-8")
+            lines = text.split("\n")
+            for index, line in enumerate(lines):
+                if HISTORICAL_MARKER not in line:
+                    continue
+                with self.subTest(file=name, line=index + 1):
+                    self.assertLess(index + 1, len(lines), "marker has no line to exempt")
+                    self.assertRegex(lines[index + 1], r"\d+\.\d+\.\d+",
+                                     "the marked line names no version, so the marker is dead")
 
     def test_placeholder_files_use_the_placeholder(self):
         for name in PLACEHOLDER_FILES:

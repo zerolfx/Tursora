@@ -1,8 +1,8 @@
 # Homebrew distribution (2026-09-13)
 
-## Current version: 0.2.1
+## Current version: 0.3.0
 
-`Casks/tursora.rb` has been generated from the actually published 0.2.1 DMG, release JSON and SHA256SUMS, and keeps `auto_updates true`. The DMG is 5,852,598 bytes, SHA-256 `3458aa15670b75e8469398e4d0928ed73e6f038567c9ae7dba049e509333460b`; the real assets, the code signature, the Ed25519 update signature and the install layout are in the [release verification](release-0.2.1.md). The 83 local tool tests, the exact regeneration of the cask and the Ruby syntax check all passed; the actual install / uninstall results for the corresponding push to main are recorded separately by the [Homebrew workflow](https://github.com/zerolfx/Tursora/actions/workflows/homebrew.yml). The sections below keep the historical evidence from earlier versions and from the changes to the installation instructions.
+`Casks/tursora.rb` is generated from the actually published 0.3.0 DMG, release JSON and `SHA256SUMS.txt`, and keeps `auto_updates true`. That DMG is 6,403,387 bytes, SHA-256 `9706add96eab66828b86700125c657537cedff5c92680108d79e96283ef99557`; the published assets, the code signature, the Ed25519 update signature and the production feed are verified in [the 0.3.0 release record](release-0.3.0.md). The generator refuses anything but a verified, published stable release, so the cask can never be built from a local image. This round did not run an isolated `brew install` / `brew uninstall`; the Homebrew workflow checks the cask on its own runner. The 0.2.1 figures below are kept as the history of the previous cask.
 
 ## Conclusions and primary sources
 
