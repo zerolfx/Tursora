@@ -4,6 +4,11 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Fixed
+
+- Sorting by a date, size or kind now orders folders together with files instead of keeping them in a block at the top. Finder only keeps folders on top when sorting by name, and so does Tursora now; sorting by Name is unchanged.
+- A finished file operation no longer shows a full progress bar and the name of the last file it handled. The row keeps its state, its byte total and its completed and skipped counts.
+
 ## [0.3.0] - 2026-09-14
 
 ### Added

@@ -86,6 +86,33 @@ $ plutil -convert json -o - /System/Library/CoreServices/Finder.app/Contents/Res
 That is, "1 item" in the singular and "N items" otherwise. `FolderSizes.itemCountText` follows this and matches the
 existing status bar wording (`StatusBarView`: "1 item" / "N items").
 
+### 1.4 "Keep folders on top" — `PreferencesWindow.nib`
+
+Added 2026-09-14, when a user reported that Date Modified stranded folders in a block at the top. Finder's General
+preferences pane carries one label and two checkboxes:
+
+```
+$ strings -a /System/Library/CoreServices/Finder.app/Contents/Resources/Base.lproj/PreferencesWindow.nib \
+  | grep -iE "folders on top|in windows when sorting|^On Desktop$" | sort -u
+In windows when sorting by name
+On Desktop
+Keep folders on top:
+```
+
+The outlets in the same nib confirm which control is which: `_sortFoldersFirstBtn` / `sortFoldersFirst:` and
+`_sortFoldersFirstOnDesktopBtn` / `sortFoldersFirstOnDesktop:`. The window option is therefore scoped to name sorting
+by its own wording — Finder offers no way to keep folders on top under Date Modified, Size or Kind. The preference is
+also absent from this machine's domain, so the shipped default is off:
+
+```
+$ defaults read com.apple.finder _FXSortFoldersFirst
+The domain/default pair of (com.apple.finder, _FXSortFoldersFirst) does not exist
+```
+
+This supersedes the "folders always first" reading recorded when the sort keys were built; see D76. Tursora keeps
+folders leading under Name (the case Finder's option describes) and lets them sort with files under every other key.
+Making the Name case switchable, as Finder's checkbox does, is still open.
+
 ## 2. Parts that are still inferred / deliberately different from Finder
 
 | Item | What Finder does | Tursora | Rationale |
@@ -95,7 +122,7 @@ existing status bar wording (`StatusBarView`: "1 item" / "N items").
 | Whether the recursive byte total counts hidden files | no evidence | **it does** | The size has to be real; using a different basis from the item count is deliberate: the count describes "how much you can see", the size describes "how much disk it takes". Inferred. |
 | Whether the recursive byte total counts symlinks themselves | no evidence | **it does not** | A link's bytes belong to the folder the target lives in; this avoids double counting. Darwin's own URL enumerator does not follow symlinks either (see the search section of DEVELOPMENT.md). Inferred. |
 | What value folders use when sorting by Size | no evidence | calculation on and known → the byte total; otherwise → the item count; neither known → treated as the smallest | Lets sorting act on "whatever has already been computed" and re-sorts once results arrive. Inferred. |
-| Where items with "no date" land under the three new date keys | no evidence | last in both ascending and descending order | A direction-independent rule of the same kind as "folders always first": flipping the order should not push "no date" to the top. **`dateModified` keeps its existing `.distantPast` semantics unchanged**, so that existing behaviour is not disturbed. |
+| Where items with "no date" land under the three new date keys | no evidence | last in both ascending and descending order | A direction-independent rule: flipping the order should not push "no date" to the top. **`dateModified` keeps its existing `.distantPast` semantics unchanged**, so that existing behaviour is not disturbed. |
 | Whether column widths persist | Finder remembers them | **we do not** | Out of scope here; the default width is used every time. |
 | The exact contents of the header context menu | no evidence (Finder does have that menu) | six optional columns + a separator + "Calculate all sizes" | That the menu exists and has these two kinds of entry is inferred; the text of each entry itself has evidence (1.2). |
 
@@ -178,7 +205,8 @@ redraws.
     "restore defaults", the "N items" text in the Size column, the byte total appearing asynchronously after turning
     calculation on and the re-sort of Size sorting, no rows of the old directory left behind after navigating away, and
     independent column sets in split panes.
-  - Both views: detail and icon both sort by the three new keys (ascending/descending) with folders always first.
+  - Both views: detail and icon both sort by the three new keys (ascending/descending). Folders led every key at the
+    time; since D76 they lead under Name only, and a folder dated between two files is asserted to land between them.
 - Computer-use check: **not done**. The appearance of the header context menu in the packaged app, the menu checkmarks
   and the actual column widths have not been looked at by a human yet.
 

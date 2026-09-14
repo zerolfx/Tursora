@@ -331,10 +331,11 @@ final class TransferTaskRowView: AdaptiveLayerView {
         errorsLabel.isHidden = snapshot.failures.isEmpty
         errorsDisclosureButton.isHidden = snapshot.failures.count <= 3
         errorsDisclosureButton.title = showsAllErrors ? "Show Fewer Errors" : "Show All \(snapshot.failures.count) Errors"
-        currentItemLabel.stringValue = snapshot.currentItem.map { "Current: \($0.lastPathComponent)" } ?? ""
-        currentItemLabel.toolTip = snapshot.currentItem?.path
+        let current = snapshot.isTerminal ? nil : snapshot.currentItem
+        currentItemLabel.stringValue = current.map { "Current: \($0.lastPathComponent)" } ?? ""
+        currentItemLabel.toolTip = current?.path
         let copied = ByteCountFormatter.string(fromByteCount: snapshot.completedBytes, countStyle: .file)
-        progressIndicator.isHidden = snapshot.totalBytes == 0
+        progressIndicator.isHidden = snapshot.isTerminal || snapshot.totalBytes == 0
         if let total = snapshot.totalBytes {
             bytesLabel.stringValue = total == 0 ? "No file data to transfer"
                 : "\(copied) of \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))"

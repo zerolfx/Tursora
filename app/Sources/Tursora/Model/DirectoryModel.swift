@@ -232,8 +232,12 @@ final class DirectoryModel {
         // stable, strict tie-breaker in either sorting direction.
         let nameAscending = nameOrder == .orderedSame
             ? a.url.path.compare(b.url.path) == .orderedAscending : nameOrder == .orderedAscending
-        if a.isNavigable != b.isNavigable {
-            return a.isNavigable          // folders always lead, regardless of direction
+        // Finder keeps folders on top only "In windows when sorting by name"
+        // (PreferencesWindow.nib). Under every other key folders take part in the
+        // sort like any other item, so a recently changed folder appears next to
+        // the files changed at the same time. See D76, which supersedes D16.
+        if sortKey == .name, a.isNavigable != b.isNavigable {
+            return a.isNavigable          // ahead of files in either direction
         }
         let ordered: Bool
         switch sortKey {

@@ -23,6 +23,7 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
                 try await folderMetrics(sizes)
                 try await cancellation(sizes)
                 try await sorting(dates)
+                try await foldersInterleave(fixture)
                 try await listColumns(dates)
                 try await sizeColumn(sizes, other: dates)
                 completion()
@@ -350,6 +351,56 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
 
     // MARK: - Sorting in both views
 
+    /// Reported as a bug: with Date Modified selected, folders stayed in a block
+    /// at the top instead of being ordered with the files. Finder keeps folders on
+    /// top only "In windows when sorting by name" (PreferencesWindow.nib), so a
+    /// folder modified between two files must land between them. The fixture is
+    /// built so that a folders-first comparator cannot produce the right answer.
+    @MainActor private static func foldersInterleave(_ fixture: URL) async throws {
+        let manager = FileManager.default
+        let root = fixture.appendingPathComponent("interleave", isDirectory: true)
+        try manager.createDirectory(at: root, withIntermediateDirectories: true)
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        // Names deliberately disagree with the dates, so a name sort cannot pass by luck.
+        let plan: [(String, Bool, TimeInterval)] = [
+            ("zulu.txt", false, 0),          // oldest
+            ("middle", true, 100),           // a folder between the two files
+            ("alpha.txt", false, 200),       // newest
+        ]
+        for (name, isDirectory, offset) in plan {
+            let url = root.appendingPathComponent(name, isDirectory: isDirectory)
+            if isDirectory { try manager.createDirectory(at: url, withIntermediateDirectories: true) }
+            else { try Data(repeating: 0x61, count: 4).write(to: url) }
+            try manager.setAttributes([.modificationDate: base.addingTimeInterval(offset)], ofItemAtPath: url.path)
+        }
+        let store = DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("views.json"))
+        let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(),
+                                      initialURL: root, viewPropertiesStore: store)
+        defer { wc.close() }
+        wc.window?.setContentSize(NSSize(width: 1100, height: 640))
+        wc.window?.makeKeyAndOrderFront(nil)
+        await listed(wc.browser, at: root)
+        let browser = wc.browser
+        for mode: ViewMode in [.details, .icons] {
+            browser.setViewMode(mode)
+            browser.fileList.setSort(key: .dateModified, ascending: true)
+            await drainMainQueue()
+            check("\(mode): a folder modified between two files sorts between them",
+                  browser.model.items.map(\.name) == ["zulu.txt", "middle", "alpha.txt"],
+                  browser.model.items.map(\.name).joined(separator: ", "))
+            browser.fileList.setSort(key: .dateModified, ascending: false)
+            await drainMainQueue()
+            check("\(mode): reversing the date order reverses the folder with it",
+                  browser.model.items.map(\.name) == ["alpha.txt", "middle", "zulu.txt"],
+                  browser.model.items.map(\.name).joined(separator: ", "))
+            browser.fileList.setSort(key: .name, ascending: true)
+            await drainMainQueue()
+            check("\(mode): the folder still leads when sorting by name",
+                  browser.model.items.map(\.name) == ["middle", "alpha.txt", "zulu.txt"],
+                  browser.model.items.map(\.name).joined(separator: ", "))
+        }
+    }
+
     @MainActor private static func sorting(_ fixture: DateFixture) async throws {
         let store = DirectoryViewPropertiesStore(fileURL: fixture.store)
         let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(),
@@ -373,9 +424,6 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
                     check("\(mode)/\(key.rawValue)/\(ascending ? "ascending" : "descending"): the listing follows the key",
                           shown.map(\.name) == expected.map(\.name),
                           "got \(shown.map(\.name)) want \(expected.map(\.name))")
-                    check("\(mode)/\(key.rawValue)/\(ascending ? "ascending" : "descending"): folders still lead",
-                          shown.prefix(2).allSatisfy(\.isNavigable),
-                          shown.map { "\($0.name)\($0.isNavigable ? "/" : "")" }.joined(separator: ", "))
                 }
             }
         }
@@ -445,12 +493,11 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
         (.dateLastOpened, \FileItem.accessDate),
     ]
 
-    /// The order the model should produce: folders first, then the key, with
-    /// undated items last and the name as the tie-break.
+    /// The order the model should produce under a date key: folders take part in
+    /// the sort like files (D76), undated items last, the name as the tie-break.
     private static func expectedOrder(_ items: [FileItem], date: KeyPath<FileItem, Date?>,
                                       ascending: Bool) -> [FileItem] {
         items.sorted { a, b in
-            if a.isNavigable != b.isNavigable { return a.isNavigable }
             let nameOrder = a.name.localizedStandardCompare(b.name)
             let nameAscending = nameOrder == .orderedSame
                 ? a.url.path.compare(b.url.path) == .orderedAscending : nameOrder == .orderedAscending
