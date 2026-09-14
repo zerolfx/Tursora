@@ -4,6 +4,11 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Changed
+
+- A tab now stops growing at a browser-like width instead of stretching to the window edge, and the new-tab button sits just after the last tab rather than at the far right of an almost empty strip. The width cap gives way when a title genuinely needs more room and the strip can spare it.
+- A split tab's two folder names are separated by a hairline drawn down the height of the tab instead of a `|` character in the text. Each name now truncates on its own, so a short one is no longer shortened beside a long one.
+
 ### Fixed
 
 - Sorting by a date, size or kind now orders folders together with files instead of keeping them in a block at the top. Finder only keeps folders on top when sorting by name, and so does Tursora now; sorting by Name is unchanged.

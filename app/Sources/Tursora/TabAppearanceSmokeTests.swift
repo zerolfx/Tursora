@@ -6,6 +6,7 @@ enum TabAppearanceSmokeTests: SmokeSuite {
     static func run() {
         print("== tab layout and appearance ==")
         geometry()
+        softWidthCap()
         let bar = TabBarView(frame: NSRect(x: 0, y: 0, width: 720, height: TabBarView.height))
         let window = NSWindow(contentRect: bar.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -61,6 +62,7 @@ enum TabAppearanceSmokeTests: SmokeSuite {
         if let action = currentItem.action { NSApp.sendAction(action, to: currentItem.target, from: currentItem) }
         bar.layoutSubtreeIfNeeded()
         check("choosing current tab reveals it after manual scrolling", bar.layoutForTesting.viewportFrame.contains(bar.tabFrameForTesting(0)))
+        splitTitleDivider(bar, window: window)
         mouseInteractions(bar, window: window, titles: many)
         bar.reload(titles: titles, selected: 1)
         bar.frame.size.width = 720
@@ -134,6 +136,148 @@ enum TabAppearanceSmokeTests: SmokeSuite {
         bar.reload(titles: ["Survivor"], selected: 0)
         target.mouseUp(with: event(.leftMouseUp, to))
         check("model reload cancels an in-flight reorder safely", moved == nil && bar.titles == ["Survivor"])
+    }
+
+    /// A tab stops growing well before the window edge, but the cap yields to a
+    /// title that needs the room, and New Tab follows the tabs it adds to (D79).
+    private static func softWidthCap() {
+        let height = TabBarView.height
+        let lone = TabStripLayout(width: 1600, height: height, tabCount: 1)
+        check("a lone tab stops at the preferred width instead of filling the strip",
+              lone.tabWidth == TabStripLayout.preferredTabWidth, "\(lone.tabWidth)")
+        check("New Tab follows a lone tab instead of sitting at the trailing edge",
+              lone.addButtonFollowsTabs
+                  && abs(lone.addButtonFrame.minX - (lone.viewportFrame.maxX + TabStripLayout.controlGap)) < 0.01,
+              "add=\(lone.addButtonFrame.minX) viewport=\(lone.viewportFrame.maxX)")
+        check("New Tab nowhere near the trailing edge of a mostly empty strip",
+              lone.addButtonFrame.maxX < 1600 / 3, "\(lone.addButtonFrame.maxX)")
+        check("a short title never shrinks a tab below the preferred width",
+              TabStripLayout(width: 1600, height: height, tabCount: 1, naturalTabWidth: 60).tabWidth
+                  == TabStripLayout.preferredTabWidth)
+        let long = TabStripLayout(width: 1600, height: height, tabCount: 1, naturalTabWidth: 360)
+        check("a long title passes the preferred width when the strip has the room",
+              long.tabWidth == 360, "\(long.tabWidth)")
+        check("no title grows a tab past the ceiling",
+              TabStripLayout(width: 1600, height: height, tabCount: 1, naturalTabWidth: 5000).tabWidth
+                  == TabStripLayout.maximumTabWidth)
+        let pair = TabStripLayout(width: 1600, height: height, tabCount: 2, naturalTabWidth: 300)
+        check("every tab keeps one width, so a drag hit test stays uniform",
+              pair.tabWidth == 300 && pair.frameForTab(1).minX - pair.frameForTab(0).minX == pair.tabWidth)
+        let crowded = TabStripLayout(width: 900, height: height, tabCount: 5, naturalTabWidth: 400)
+        check("a crowded strip shares its room equally rather than honouring the title",
+              crowded.tabWidth < TabStripLayout.preferredTabWidth, "\(crowded.tabWidth)")
+        check("tabs that fill the strip leave New Tab at the trailing edge",
+              !crowded.addButtonFollowsTabs
+                  && abs(crowded.addButtonFrame.maxX - (900 - TabStripLayout.horizontalInset)) < 0.01)
+        let packed = TabStripLayout(width: 400, height: height, tabCount: 20)
+        check("an overflowing strip keeps New Tab beside the overflow control",
+              packed.isOverflowing && !packed.addButtonFollowsTabs
+                  && packed.addButtonFrame.minX > packed.overflowButtonFrame!.minX)
+    }
+
+    /// A split name is divided by a drawn rule that runs the height of the tab,
+    /// not by a "|" character sitting on the text baseline (D78).
+    private static func splitTitleDivider(_ bar: TabBarView, window: NSWindow) {
+        bar.frame.size.width = 720
+        let split = TabTitle(left: "Design", right: "Delivery")
+        bar.reload(titles: [split, TabTitle("Research")], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        check("a plain tab draws no rule", bar.titleDividerFrameForTesting(1) == nil)
+        check("a plain tab has no trailing name", bar.trailingTitleFrameForTesting(1) == nil)
+        guard let rule = bar.titleDividerFrameForTesting(0),
+              let trailing = bar.trailingTitleFrameForTesting(0) else {
+            check("a split tab draws a rule between its two names", false, "no rule or trailing label")
+            return
+        }
+        let leading = bar.titleFrameForTesting(0), tab = bar.tabFrameForTesting(0)
+        check("a split tab draws a rule between its two names",
+              leading.maxX <= rule.minX + 0.01 && rule.maxX <= trailing.minX + 0.01,
+              "\(leading) \(rule) \(trailing)")
+        check("the rule runs the height of the tab rather than the height of the text",
+              rule.height >= tab.height - 1.01 && rule.minY <= tab.minY + 0.51 && rule.height > leading.height,
+              "rule=\(rule) tab=\(tab) text=\(leading)")
+        check("the rule is a hairline", rule.width == TabBarView.titleDividerWidth)
+        check("the rule keeps air on both sides",
+              abs(rule.minX - leading.maxX - TabBarView.titleDividerGap) < 0.01
+                  && abs(trailing.minX - rule.maxX - TabBarView.titleDividerGap) < 0.01)
+        check("both names are visible and never overlap",
+              leading.width > 0 && trailing.width > 0 && leading.maxX <= trailing.minX)
+        check("the pair sits centred in the tab",
+              abs((leading.minX + trailing.maxX) / 2 - tab.midX) < 1,
+              "\(leading.minX) \(trailing.maxX) \(tab.midX)")
+        check("no name carries the separator character",
+              !bar.tabTitles[0].left.contains("|") && !(bar.tabTitles[0].right?.contains("|") ?? false))
+        check("the plain form still joins for tooltips and renaming", bar.titles[0] == "Design | Delivery")
+        // The owner chose the plain rule over dimming the inactive side, so
+        // neither half may be rendered as the quieter one (D78).
+        bar.reload(titles: [split, TabTitle(left: "Notes", right: "Drafts")], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        check("both halves of a split name render in the same colour",
+              bar.actualRenderedTitleColorForTesting(0) == bar.trailingRenderedTitleColorForTesting(0)
+                  && bar.actualRenderedTitleColorForTesting(1) == bar.trailingRenderedTitleColorForTesting(1))
+        check("a background split tab dims both halves together, not one of them",
+              bar.actualRenderedTitleColorForTesting(1) != bar.actualRenderedTitleColorForTesting(0))
+        check("a background split tab still draws its rule", bar.titleDividerFrameForTesting(1) != nil)
+        check("the divider is quieter on a background tab than on the selected one",
+              bar.titleDividerColorsForTesting(appearance: NSAppearance(named: .aqua)!, active: true)
+                  .selected.alphaComponent
+                  > bar.titleDividerColorsForTesting(appearance: NSAppearance(named: .aqua)!, active: true)
+                      .inactive.alphaComponent)
+
+        // Two long names share the room; a short one keeps all it needs.
+        let wide = String(repeating: "Wide ", count: 20), narrow = "Doc"
+        bar.reload(titles: [TabTitle(left: wide, right: wide)], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        if let both = bar.trailingTitleFrameForTesting(0) {
+            check("two long names are truncated to the same width",
+                  abs(bar.titleFrameForTesting(0).width - both.width) < 1,
+                  "\(bar.titleFrameForTesting(0).width) \(both.width)")
+        } else { check("two long names are truncated to the same width", false, "no trailing label") }
+        bar.reload(titles: [TabTitle(left: narrow, right: wide)], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        let short = bar.titleFrameForTesting(0)
+        check("a short name is not truncated beside a long one",
+              short.width < bar.tabFrameForTesting(0).width / 3 && short.width > 0, "\(short.width)")
+        if let rest = bar.trailingTitleFrameForTesting(0) {
+            check("the long name takes the room the short one leaves", rest.width > short.width * 2)
+        } else { check("the long name takes the room the short one leaves", false, "no trailing label") }
+        // A name must render whole when the tab has room for it. NSTextField
+        // insets its text inside its cell, so a label framed at the raw glyph
+        // width truncates with an ellipsis even in a half-empty tab — the exact
+        // failure D78 exists to remove. The cell reports that itself.
+        bar.reload(titles: [TabTitle(left: "Documents", right: "Downloads")], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        check("neither half of a split name is truncated when the tab has room",
+              bar.isTitleFullyShownForTesting(0) == true && bar.isTrailingTitleFullyShownForTesting(0) == true,
+              "tab=\(bar.tabWidth) leading=\(bar.titleFrameForTesting(0).width) trailing=\(String(describing: bar.trailingTitleFrameForTesting(0)?.width))")
+        bar.reload(titles: [TabTitle("Documents")], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        check("a plain name is not truncated either", bar.isTitleFullyShownForTesting(0) == true)
+
+        // The strip must do its own measuring. Every check above this point
+        // survives `naturalTabWidth` returning 0, because a fair share binds
+        // below the preferred width in those fixtures. This one does not: at one
+        // tab in a 720 pt strip the share is 672, so the measurement decides.
+        bar.reload(titles: [TabTitle("Doc")], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        check("a short title settles a lone tab at the preferred width",
+              bar.tabWidth == TabStripLayout.preferredTabWidth, "\(bar.tabWidth)")
+        bar.reload(titles: [TabTitle(left: wide, right: wide)], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        let measured = bar.tabWidth
+        check("the strip measures a long title and grows the tab past the preferred width",
+              measured > TabStripLayout.preferredTabWidth && measured <= TabStripLayout.maximumTabWidth,
+              "\(measured)")
+        // And the measurement must count the divider, not just the two names.
+        let pair = ("Quarterly Planning", "Delivery Review")
+        bar.reload(titles: [TabTitle(left: pair.0, right: pair.1)], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        let splitWidth = bar.tabWidth
+        bar.reload(titles: [TabTitle(pair.0)], selected: 0)
+        bar.layoutSubtreeIfNeeded()
+        check("a split tab is wider than the same tab unsplit", splitWidth > bar.tabWidth,
+              "split=\(splitWidth) plain=\(bar.tabWidth)")
+        _ = window
     }
 
     private static func geometry() {

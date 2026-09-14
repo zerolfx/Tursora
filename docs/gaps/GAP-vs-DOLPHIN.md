@@ -7,7 +7,7 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 
 | Dolphin feature | Tursora | Notes |
 |---|---|---|
-| A separate address bar for each split pane, with both sides shown at once in the tab title | ✅ | Each pane has an editable path; the title keeps the physical left-right order separated by a vertical bar, the active side is marked by the pane indicator line, and the tooltip shows the full logical path; [evidence and verification status](../research/pane-paths-and-tab-actions.md) |
+| A separate address bar for each split pane, with both sides shown at once in the tab title | ✅ | Each pane has an editable path; the title keeps the physical left-right order with the two names divided by a hairline the strip draws down the height of the tab rather than by a `\|` character (D78), the active side is marked by the pane indicator line, and the tooltip shows the full logical path; [evidence and verification status](../research/pane-paths-and-tab-actions.md) |
 | Tab context menu (New / Detach / Rename / Close Other / Close Left / Close Right / Close) | ✅ | Each action captures the identity of the tab that was right-clicked; a custom name can be cleared; Detach opens a new window from the locations and the search request, and carries over neither history nor tasks. Always showing the tab bar is this app's own default |
 | Filter bar (`show_filter_bar`, filters the current view by name as you type) | ✅ `⌘F` by default, customizable | Substring plus wildcards, cleared when the directory changes |
 | Grouping (`group_by`) | ✅ Follows Finder's Use Groups / Group By, 9 keys (including None; Tags is explicitly out of scope) | Group headers stick in the list, and the icon view is split into sections |

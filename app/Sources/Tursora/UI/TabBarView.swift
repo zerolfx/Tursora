@@ -4,6 +4,11 @@ import AppKit
 /// the trailing controls; the controller owns tab identity and all actions.
 final class TabBarView: NSView {
     static let height: CGFloat = 36
+    /// The rule drawn between the two halves of a split tab's name, and the air
+    /// on either side of it (D78).
+    static let titleDividerWidth: CGFloat = 1
+    static let titleDividerGap: CGFloat = 7
+    static var titleDividerSpan: CGFloat { titleDividerGap * 2 + titleDividerWidth }
 
     var onSelect: ((Int) -> Void)?
     var onClose: ((Int) -> Void)?
@@ -18,7 +23,9 @@ final class TabBarView: NSView {
     var dropOperationForTab: ((Int?, [URL], NSDragOperation) -> NSDragOperation)?
     static let autoActivationDelay: TimeInterval = 0.8
 
-    private(set) var titles: [String] = []
+    private(set) var tabTitles: [TabTitle] = []
+    /// The single-string form of each tab's name, for checks and menus.
+    var titles: [String] { tabTitles.map(\.plain) }
     private(set) var selectedIndex = 0
     private(set) var toolTips: [String] = []
     private var items: [TabItemView] = []
@@ -86,14 +93,19 @@ final class TabBarView: NSView {
     override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: Self.height) }
 
     func reload(titles: [String], selected: Int, toolTips: [String]? = nil) {
+        reload(titles: titles.map(TabTitle.init), selected: selected, toolTips: toolTips)
+    }
+
+    func reload(titles: [TabTitle], selected: Int, toolTips: [String]? = nil) {
         // Directory notifications can reload the strip during mouse tracking.
         // Stop the provisional reorder before rebinding views to model indices.
         cancelDrag()
         endHover()
         reloadGeneration += 1
-        revealSelection = revealSelection || selected != selectedIndex || titles.count != self.titles.count
-        self.titles = titles
-        self.toolTips = toolTips ?? titles
+        revealSelection = revealSelection || selected != selectedIndex || titles.count != tabTitles.count
+        tabTitles = titles
+        naturalTabWidth = titles.reduce(0) { max($0, TabItemView.naturalWidth(for: $1)) }
+        self.toolTips = toolTips ?? titles.map(\.plain)
         selectedIndex = selected
         while items.count < titles.count {
             let item = TabItemView(bar: self)
@@ -104,7 +116,7 @@ final class TabBarView: NSView {
         for (index, item) in items.enumerated() {
             item.index = index
             item.title = titles[index]
-            item.toolTip = self.toolTips.indices.contains(index) ? self.toolTips[index] : titles[index]
+            item.toolTip = self.toolTips.indices.contains(index) ? self.toolTips[index] : titles[index].plain
             item.isSelected = index == selected
         }
         needsLayout = true
@@ -155,6 +167,11 @@ final class TabBarView: NSView {
         return (palette.background, palette.rail, palette.selectedFill, palette.selectedText, palette.inactiveText)
     }
 
+    func titleDividerColorsForTesting(appearance: NSAppearance, active: Bool) -> (selected: NSColor, inactive: NSColor) {
+        let palette = Self.palette(appearance: appearance, active: active)
+        return (palette.titleDivider, palette.inactiveTitleDivider)
+    }
+
     private static func palette(appearance: NSAppearance, active: Bool) -> TabStripColors {
         var result: TabStripColors!
         appearance.performAsCurrentDrawingAppearance {
@@ -174,7 +191,9 @@ final class TabBarView: NSView {
                 selectedText: label,
                 inactiveText: resolved(.secondaryLabelColor),
                 hoverFill: label.withAlphaComponent(dark ? 0.07 : 0.045),
-                divider: label.withAlphaComponent(0.1))
+                divider: label.withAlphaComponent(0.1),
+                titleDivider: label.withAlphaComponent(0.18),
+                inactiveTitleDivider: label.withAlphaComponent(0.12))
         }
         return result
     }
@@ -198,7 +217,16 @@ final class TabBarView: NSView {
     // MARK: - Layout and overflow
 
     var tabWidth: CGFloat { layoutForTesting.tabWidth }
-    var layoutForTesting: TabStripLayout { TabStripLayout(width: bounds.width, height: bounds.height, tabCount: items.count) }
+    var layoutForTesting: TabStripLayout {
+        TabStripLayout(width: bounds.width, height: bounds.height, tabCount: items.count,
+                       naturalTabWidth: naturalTabWidth)
+    }
+
+    /// The width the widest current title needs with nothing truncated. Lets a
+    /// tab pass the preferred width when the strip can spare the room (D79).
+    /// Recomputed when the titles change, because `layout()`, `draw()` and the
+    /// drag handlers all read the geometry and measuring text is not free.
+    private var naturalTabWidth: CGFloat = 0
 
     override func layout() {
         super.layout()
@@ -326,6 +354,18 @@ final class TabBarView: NSView {
         guard items.indices.contains(index) else { return .zero }
         return convert(items[index].frame, from: documentView)
     }
+    /// Both of these convert to the strip's own coordinates, like the leading
+    /// title and the close button, so a check can compare all four directly.
+    func trailingTitleFrameForTesting(_ index: Int) -> NSRect? {
+        guard items.indices.contains(index), let frame = items[index].trailingLabelFrame else { return nil }
+        return convert(frame, from: items[index])
+    }
+
+    func titleDividerFrameForTesting(_ index: Int) -> NSRect? {
+        guard items.indices.contains(index), let frame = items[index].dividerFrame else { return nil }
+        return convert(frame, from: items[index])
+    }
+
     func titleFrameForTesting(_ index: Int) -> NSRect {
         guard items.indices.contains(index) else { return .zero }
         return convert(items[index].labelFrame, from: items[index])
@@ -334,6 +374,20 @@ final class TabBarView: NSView {
         guard items.indices.contains(index) else { return .zero }
         return convert(items[index].closeFrame, from: items[index])
     }
+    /// Whether the label renders its whole string. Asks the cell, which is the
+    /// only authority on where AppKit actually clips.
+    func isTitleFullyShownForTesting(_ index: Int) -> Bool? {
+        items.indices.contains(index) ? items[index].isLeadingTitleFullyShown : nil
+    }
+
+    func isTrailingTitleFullyShownForTesting(_ index: Int) -> Bool? {
+        items.indices.contains(index) ? items[index].isTrailingTitleFullyShown : nil
+    }
+
+    func trailingRenderedTitleColorForTesting(_ index: Int) -> NSColor? {
+        items.indices.contains(index) ? items[index].trailingTitleColor : nil
+    }
+
     func actualRenderedTitleColorForTesting(_ index: Int) -> NSColor? {
         guard items.indices.contains(index) else { return nil }
         return items[index].titleColor
@@ -450,6 +504,9 @@ struct TabStripColors {
     let inactiveText: NSColor
     let hoverFill: NSColor
     let divider: NSColor
+    /// The rule drawn between the two halves of a split tab's name.
+    let titleDivider: NSColor
+    let inactiveTitleDivider: NSColor
 }
 
 private final class TabScrollView: NSScrollView {
@@ -463,14 +520,66 @@ private final class TabScrollView: NSScrollView {
 private final class TabItemView: NSView {
     unowned let bar: TabBarView
     var index = 0
-    var title: String = "" {
-        didSet { label.stringValue = title; toolTip = title; setAccessibilityLabel(title) }
+    var title = TabTitle("") {
+        didSet {
+            label.stringValue = title.left
+            trailingLabel.stringValue = title.right ?? ""
+            trailingLabel.isHidden = !title.isSplit
+            setAccessibilityLabel(title.accessibilityLabel)
+            needsLayout = true
+            needsDisplay = true
+        }
+    }
+    /// Text height, the close button's reserved width on both sides, and the
+    /// room the drawn divider takes between the two halves of a split name.
+    static let titleHeight: CGFloat = 16
+    static let titleInset: CGFloat = 28
+    static let titlePadding: CGFloat = 6
+    private static let titleFont = NSFont.systemFont(ofSize: 12)
+
+    /// Every title label is built here, so the field a measurement is taken
+    /// from cannot drift from the fields that actually render.
+    private static func makeTitleField() -> NSTextField {
+        let field = NSTextField(labelWithString: "")
+        field.font = titleFont
+        field.lineBreakMode = .byTruncatingMiddle
+        field.alignment = .center
+        field.setAccessibilityElement(false)
+        return field
+    }
+
+    /// A truncating cell clips before its text reaches the frame edge, so a
+    /// label framed at the raw glyph width renders an ellipsis even in a tab
+    /// with room to spare. `intrinsicContentSize` does not cover it either: it
+    /// reports only half the shortfall. Rather than hardcode the 8 pt this
+    /// machine wants, ask a real cell where it stops offering to expand — which
+    /// on measurement is exactly the width at which the whole string renders.
+    private static let labelInset: CGFloat = {
+        let probe = makeTitleField()
+        probe.stringValue = "Mwq"
+        let glyphs = ceil(("Mwq" as NSString).size(withAttributes: [.font: titleFont]).width)
+        for extra in stride(from: CGFloat(0), through: 24, by: 1) {
+            probe.frame = NSRect(x: 0, y: 0, width: glyphs + extra, height: titleHeight)
+            if probe.cell?.expansionFrame(withFrame: probe.bounds, in: probe).isEmpty ?? true { return extra }
+        }
+        return 8
+    }()
+
+    /// The width this title needs with nothing truncated, including the room
+    /// the drawn rule takes between the two halves of a split name.
+    static func naturalWidth(for title: TabTitle) -> CGFloat {
+        var content = textWidth(title.left)
+        if let right = title.right { content += textWidth(right) + TabBarView.titleDividerSpan }
+        return content + (titleInset + titlePadding) * 2
     }
     var isSelected = false {
         didSet { refreshAppearance(); setAccessibilityValue(isSelected ? 1 : 0) }
     }
     var isDropTarget = false { didSet { needsDisplay = true } }
-    private let label = NSTextField(labelWithString: "")
+    private let label = TabItemView.makeTitleField()
+    private let trailingLabel = TabItemView.makeTitleField()
+    /// Set by `layout()`; nil for a tab that is not split.
+    private(set) var dividerFrame: NSRect?
     private let closeButton = NSButton()
     fileprivate var hovered = false {
         didSet { needsDisplay = true; closeButton.isHidden = !hovered }
@@ -479,19 +588,26 @@ private final class TabItemView: NSView {
     private var dragStart: NSPoint?
     private var didDrag = false
     var labelFrame: NSRect { label.frame }
+    var trailingLabelFrame: NSRect? { title.isSplit ? trailingLabel.frame : nil }
     var closeFrame: NSRect { closeButton.frame }
     var titleColor: NSColor? { label.textColor }
+    var trailingTitleColor: NSColor? { trailingLabel.textColor }
+    /// A cell offers an expansion frame exactly when it judges its own text
+    /// clipped, so this is AppKit's answer rather than our arithmetic's.
+    private func isFullyShown(_ field: NSTextField) -> Bool {
+        guard let cell = field.cell, !field.stringValue.isEmpty else { return true }
+        return cell.expansionFrame(withFrame: field.bounds, in: field).isEmpty
+    }
+    var isLeadingTitleFullyShown: Bool { isFullyShown(label) }
+    var isTrailingTitleFullyShown: Bool { !title.isSplit || isFullyShown(trailingLabel) }
     var isCloseVisible: Bool { !closeButton.isHidden }
 
     init(bar: TabBarView) {
         self.bar = bar
         super.init(frame: .zero)
         wantsLayer = true
-        label.font = .systemFont(ofSize: 12)
-        label.lineBreakMode = .byTruncatingMiddle
-        label.alignment = .center
-        label.setAccessibilityElement(false)
-        addSubview(label)
+        for field in [label, trailingLabel] { addSubview(field) }
+        trailingLabel.isHidden = true
         closeButton.bezelStyle = .accessoryBarAction
         closeButton.isBordered = false
         closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")
@@ -510,7 +626,41 @@ private final class TabItemView: NSView {
     override func layout() {
         super.layout()
         closeButton.frame = NSRect(x: 4, y: (bounds.height - 20) / 2, width: 20, height: 20)
-        label.frame = NSRect(x: 28, y: (bounds.height - 16) / 2, width: max(0, bounds.width - 56), height: 16)
+        let content = NSRect(x: Self.titleInset, y: (bounds.height - Self.titleHeight) / 2,
+                             width: max(0, bounds.width - Self.titleInset * 2), height: Self.titleHeight)
+        guard let right = title.right else {
+            label.frame = content
+            trailingLabel.frame = .zero
+            dividerFrame = nil
+            return
+        }
+        let text = max(0, content.width - TabBarView.titleDividerSpan)
+        let leftNatural = Self.textWidth(title.left), rightNatural = Self.textWidth(right)
+        // Each half keeps its natural width while both fit. When they do not, a
+        // half that needs less than its share keeps all of it and the other
+        // takes the rest, so a short name is never truncated next to a long one.
+        let half = text / 2
+        var leftWidth = leftNatural, rightWidth = rightNatural
+        if leftNatural + rightNatural > text {
+            if leftNatural <= half { rightWidth = text - leftNatural }
+            else if rightNatural <= half { leftWidth = text - rightNatural }
+            else { leftWidth = half; rightWidth = text - half }
+        }
+        let originX = content.minX + max(0, (content.width - leftWidth - rightWidth - TabBarView.titleDividerSpan) / 2)
+        label.frame = NSRect(x: originX, y: content.minY, width: leftWidth, height: content.height)
+        let dividerX = originX + leftWidth + TabBarView.titleDividerGap
+        // The rule runs the whole height of the tab, flush with the selected
+        // pill's outline, so it cannot be mistaken for a letterform.
+        dividerFrame = NSRect(x: dividerX, y: 0.5, width: TabBarView.titleDividerWidth, height: max(0, bounds.height - 1))
+        trailingLabel.frame = NSRect(x: dividerX + TabBarView.titleDividerWidth + TabBarView.titleDividerGap, y: content.minY,
+                                     width: rightWidth, height: content.height)
+    }
+
+    /// What a label needs to render `value` whole: its glyphs plus the inset a
+    /// truncating cell keeps. Framing a field at the glyph width alone
+    /// truncates it, which is the ellipsis D78 exists to remove.
+    static func textWidth(_ value: String) -> CGFloat {
+        ceil((value as NSString).size(withAttributes: [.font: titleFont]).width) + labelInset
     }
 
     override func updateTrackingAreas() {
@@ -525,6 +675,7 @@ private final class TabItemView: NSView {
     func refreshAppearance() {
         needsDisplay = true
         label.textColor = isSelected ? bar.colors.selectedText : bar.colors.inactiveText
+        trailingLabel.textColor = label.textColor
         closeButton.contentTintColor = bar.colors.selectedText
     }
 
@@ -540,6 +691,10 @@ private final class TabItemView: NSView {
         } else if index > 0 && index - 1 != bar.selectedIndex {
             palette.divider.setFill()
             NSRect(x: 0, y: 8, width: 0.5, height: max(0, bounds.height - 16)).fill()
+        }
+        if let dividerFrame {
+            (isSelected ? palette.titleDivider : palette.inactiveTitleDivider).setFill()
+            dividerFrame.fill()
         }
         if isDropTarget {
             NSColor.controlAccentColor.withAlphaComponent(0.18).setFill(); path.fill()

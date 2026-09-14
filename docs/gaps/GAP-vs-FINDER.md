@@ -104,7 +104,7 @@ The Dock already offers three entry points — New Window / Downloads / Applicat
 
 ## 2026-09-12 tab bar and appearance
 
-- [x] A neutral selection level for tabs, centred titles, a close button on hover and a fixed add button.
+- [x] A neutral selection level for tabs, centred titles and a close button on hover. A tab stops at a browser-like width instead of stretching to the window edge, and the add button follows the tabs when they leave the strip part-empty (D79).
 - [x] Horizontal scrolling with many tabs and a text menu of all tabs; this does not replace the thumbnail overview still listed as to do in the table above.
 - [x] The system light / dark appearance with the existing layer surfaces updating dynamically; [this round's verification status](../research/tabs-and-appearance.md).
 

@@ -91,7 +91,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Back / Forward | ⌘[ / ⌘] | `chevron.backward` / `chevron.forward` |
 | Enclosing Folder | ⌘↑ | `arrow.up.folder` (selects the folder you left) |
 | Home | ⇧⌘H | `house` |
-| Trash | — | `trash` | The user's Trash as an ordinary listing; per-volume trashes are not offered |
+| Trash | — | `trash` (the user's Trash as an ordinary listing; per-volume trashes are not offered) |
 | Edit Location | ⌘L | — (Finder: Make Alias) |
 | Go to Folder… | ⇧⌘G | `arrow.forward.folder` (opens the breadcrumb's edit mode, like ⌘L) |
 | Connect to Server… | ⌘K | `rectangle.connected.to.line.below` |
@@ -153,7 +153,7 @@ Each pane has its own visible address bar above its search and file content. Cli
 | ⌥⇥ | Focus the other pane |
 | Click anywhere in a pane (incl. its status bar) | Activates it; a 3 pt accent bar marks the active pane. Panes stay ≥ 160 pt and never collapse |
 
-Closing a background tab preserves the current tab; closing the current tab prefers its right neighbor and falls back to the left. The strip stays visible with one tab; the `+` button's tooltip is "New Tab (⌘T)"; a tab's close button shows on hover. Split titles show both sides in physical order as `Left | Right`, unchanged when pane focus moves. A custom name overrides the title; tooltips retain full logical paths.
+Closing a background tab preserves the current tab; closing the current tab prefers its right neighbor and falls back to the left. The strip stays visible with one tab; the `+` button's tooltip is "New Tab (⌘T)"; a tab's close button shows on hover. Split titles show both sides in physical order, divided by a rule the strip draws down the height of the tab rather than by a `|` character, and unchanged when pane focus moves. A custom name overrides the title; tooltips retain full logical paths.
 
 Right-clicking a tab opens the following Dolphin-inspired actions without first switching tabs. Each command captures the clicked page, so reordering tabs cannot change its target. The `+` button and `⌘T` use the same New Tab behavior for the current page, including rerunning a search. Opening an explicit folder in a new tab opens that folder. No additional shortcuts are assigned.
 

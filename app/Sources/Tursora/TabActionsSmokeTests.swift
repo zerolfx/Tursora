@@ -29,10 +29,21 @@ enum TabActionsSmokeTests: SmokeSuite {
     }
 
     private static func pureTitles() {
-        check("single pane title", TabPage.title(left: "Left", right: nil) == "Left")
-        check("left-active split title has a separator without focus parentheses", TabPage.title(left: "Left", right: "Right") == "Left | Right")
-        check("right-active split title keeps the same names and physical order", TabPage.title(left: "Left", right: "Right") == "Left | Right")
-        check("literal folder-name parentheses remain intact", TabPage.title(left: "Plan (final)", right: "Archive (old)") == "Plan (final) | Archive (old)")
+        check("single pane title", TabPage.title(left: "Left", right: nil) == TabTitle("Left"))
+        check("left-active split title keeps the two names apart without focus parentheses",
+              TabPage.title(left: "Left", right: "Right") == TabTitle(left: "Left", right: "Right"))
+        check("right-active split title keeps the same names and physical order",
+              TabPage.title(left: "Left", right: "Right") == TabTitle(left: "Left", right: "Right"))
+        check("literal folder-name parentheses remain intact",
+              TabPage.title(left: "Plan (final)", right: "Archive (old)") == TabTitle(left: "Plan (final)", right: "Archive (old)"))
+        // A split title is structured, not punctuated: nothing downstream may
+        // recover the halves by splitting a string on a character (D78).
+        let split = TabPage.title(left: "Left", right: "Right")
+        check("a split title reports itself as split and joins only for plain uses",
+              split.isSplit && split.plain == "Left | Right" && split.accessibilityLabel == "Left, Right")
+        check("a single-pane title is not split", !TabPage.title(left: "Left", right: nil).isSplit)
+        check("a folder name containing the plain separator stays one half",
+              TabTitle(left: "a | b", right: "c").left == "a | b")
     }
 
     @MainActor private static func menuActions(mode: ViewMode, folders: [URL], fixture: URL) async throws {
@@ -118,7 +129,7 @@ enum TabActionsSmokeTests: SmokeSuite {
 
         tabs.renameTabTitleProvider = { _, reply in reply("\n  ") }
         dispatch(.rename, in: menu)
-        check("\(mode): blank rename restores automatic split title", first.customTitle == nil && first.tabTitle == "Left | Right")
+        check("\(mode): blank rename restores automatic split title", first.customTitle == nil && first.tabTitle == TabTitle(left: "Left", right: "Right"))
         first.activate(left)
         let firstIndex = tabs.pages.firstIndex { $0 === first }!
         check("\(mode): background pane activation preserves its title and the current tab", tabs.tabBar.titles[firstIndex] == "Left | Right" && tabs.currentPage === second)
@@ -173,7 +184,7 @@ enum TabActionsSmokeTests: SmokeSuite {
         source.startSearch(request)
         await searched(source)
         let sourcePage = tabs.currentPage
-        check("search title distinguishes results from origin", sourcePage.tabTitle == "Search: needle")
+        check("search title distinguishes results from origin", sourcePage.tabTitle == TabTitle("Search: needle"))
         tabs.newTab(at: folders[2]); await listed(tabs.current, at: folders[2])
         dispatch(.newTab, in: tabs.tabContextMenu(at: 0)!)
         let copied = tabs.current

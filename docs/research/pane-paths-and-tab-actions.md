@@ -1,6 +1,6 @@
 # Split-pane address bars and tab actions
 
-**Later change**: this record keeps the evidence from its own stage; the split-pane title has since been simplified at the user's request to `Left | Right`, dropping the parentheses around the inactive side. For tab appearance and its verification, see [the later record](tabs-and-appearance.md).
+**Later change**: this record keeps the evidence from its own stage; the split-pane title has since been simplified at the user's request to `Left | Right`, dropping the parentheses around the inactive side, and the joining character has since been replaced by a drawn rule (D78) — `Left | Right` remains the plain form used by the Rename Tab sheet and the All Tabs menu; the tab tooltip is still built from the panes' full paths, as recorded below, and the session store still saves only a user-typed custom title. For tab appearance and its verification, see [the later record](tabs-and-appearance.md).
 
 This stage gives every pane its own editable path and fills in the split-pane tab titles and the tab context menu. The final source has completed **1,500 smoke checks three times in a row**, a release build and signing checks, plus the hands-on verification of the packaged app described below; this document records the pinned Dolphin source, the implementation trade-offs and the actual scope of verification separately.
 

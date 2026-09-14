@@ -46,9 +46,10 @@ struct TabSnapshot {
 
 extension TabPage {
     /// Keep physical left/right order without adding focus markers to names.
-    static func title(left: String, right: String?) -> String {
-        guard let right else { return left }
-        return "\(left) | \(right)"
+    /// The two halves stay separate so the strip can draw a real rule between
+    /// them instead of spelling one with a character (D78).
+    static func title(left: String, right: String?) -> TabTitle {
+        TabTitle(left: left, right: right)
     }
 
     private func paneTitle(_ pane: BrowserViewController) -> String {
@@ -60,12 +61,13 @@ extension TabPage {
         return pane.isBrowsingArchive ? url.lastPathComponent : provider.displayName(for: url)
     }
 
-    var automaticTabTitle: String {
+    var automaticTabTitle: TabTitle {
         Self.title(left: panes.first.map(paneTitle) ?? "…",
                    right: panes.count == 2 ? paneTitle(panes[1]) : nil)
     }
 
-    var tabTitle: String { customTitle ?? automaticTabTitle }
+    /// A title the user typed replaces both halves and is never split.
+    var tabTitle: TabTitle { customTitle.map(TabTitle.init) ?? automaticTabTitle }
 
     var tabToolTip: String {
         let locations = panes.enumerated().map { index, pane in
@@ -170,7 +172,7 @@ extension TabsController {
             self.setTitle(title, for: page)
         }
         if let renameTabTitleProvider {
-            renameTabTitleProvider(page.tabTitle, completion)
+            renameTabTitleProvider(page.tabTitle.plain, completion)
             return
         }
         guard !SmokeTest.isRequested else {
@@ -179,7 +181,7 @@ extension TabsController {
         }
         guard let window = view.window else { return }
         let field = NSTextField(string: page.customTitle ?? "")
-        field.placeholderString = page.automaticTabTitle
+        field.placeholderString = page.automaticTabTitle.plain
         field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
         let alert = NSAlert()
         alert.messageText = "Rename Tab"
