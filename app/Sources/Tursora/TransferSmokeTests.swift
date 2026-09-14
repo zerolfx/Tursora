@@ -871,6 +871,19 @@ enum TransferSmokeTests: SmokeSuite {
         await waitUntil("Keep Both Apply to all finishes without another prompt") { task.snapshot.isTerminal }
         TransferTasksWindowController.shared.refresh()
         check("real Keep Both controls preserve originals and apply to every conflict", task.snapshot.state == .completed && !row.hasPendingConflict && (try? String(contentsOf: destination.appendingPathComponent("one.txt"))) == "existing" && (try? String(contentsOf: destination.appendingPathComponent("two.txt"))) == "existing" && (try? String(contentsOf: destination.appendingPathComponent("one 2.txt"))) == "incoming" && (try? String(contentsOf: destination.appendingPathComponent("two 2.txt"))) == "incoming")
+        // Reported as a bug: a finished task kept a full progress bar and the
+        // name of the last file, which reads as work still in flight. A terminal
+        // task keeps its state, its byte total and its counts, and loses both.
+        check("a completed row hides the progress bar",
+              row.progressIndicator.isHidden,
+              "state=\(task.snapshot.state) totalBytes=\(String(describing: task.snapshot.totalBytes))")
+        check("a completed row clears the current item", row.currentItemLabel.stringValue.isEmpty,
+              row.currentItemLabel.stringValue)
+        check("a completed row still reports its bytes and outcome",
+              row.bytesLabel.stringValue.contains(" of ") && row.stateLabel.stringValue == "Completed",
+              "\(row.bytesLabel.stringValue) | \(row.stateLabel.stringValue)")
+        check("a completed row offers no Pause or Cancel",
+              row.pauseButton.isHidden && row.cancelButton.isHidden)
     }
 
     @MainActor private static func listed(_ browser: BrowserViewController, at url: URL) async {

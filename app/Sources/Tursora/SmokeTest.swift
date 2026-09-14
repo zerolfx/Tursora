@@ -351,7 +351,8 @@ enum SmokeTest: SmokeSuite {
         check("sidebar rows", wc.sidebar.outlineView.numberOfRows > 2, "\(wc.sidebar.outlineView.numberOfRows) rows")
         check("sidebar synced to Home", wc.sidebar.outlineView.selectedRow >= 0)
         check("table rows match model", b.fileList.tableView.numberOfRows == b.model.items.count)
-        check("folders sorted first", {
+        // Home is listed under the default Name key, where folders do lead.
+        check("folders sorted first when sorting by name", {
             let items = b.model.items
             guard let firstFile = items.firstIndex(where: { !$0.isNavigable }) else { return true }
             return !items[firstFile...].contains { $0.isNavigable }
