@@ -94,7 +94,7 @@ Also excluded, 2026-09-15, after comparing against Iruka: **Intel support** — 
 ## Search limits and follow-ups
 
 - Standalone recursive name search, Spotlight content search, AND conditions on type / date, and persisted saved searches are implemented. See [research and verification](research/search.md).
-- Broader scopes and incremental live results will be assessed later; Finder `.savedSearch` interchange, searching inside ZIPs, and ratings / tags are out of scope for this round. Unindexed content still depends on the user's system indexing settings, and the app does not build its own full-text index. Both a single result set and the Spotlight candidates are capped at 50,000 items; a real positive content-search hit is still to be verified separately.
+- Broader scopes and incremental live results will be assessed later; Finder `.savedSearch` interchange, searching inside ZIPs, and ratings / tags are out of scope for this round. Unindexed content is searched by reading the files (`Using: Scan Files`, D85) rather than by building a full-text index. Both a single result set and the Spotlight candidates are capped at 50,000 items; a real positive content-search hit is still to be verified separately.
 
 - Still to assess: the order of the sources when moving / deleting with a symbolic link and `link/child` both explicitly selected, since moving the link first invalidates the descendant path. Search does not traverse links, so this round's search results cannot produce that combination; an ordinary expanded view or the clipboard still can.
 

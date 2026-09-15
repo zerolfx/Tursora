@@ -6,6 +6,9 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
     let contentField = NSTextField(string: "")
     let scopePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     let kindPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    /// Where a content search looks. Only meaningful with text in Content,
+    /// so it is disabled until there is some.
+    let contentSourcePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     let datePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     let saveNameField = NSTextField(string: "")
     let savedPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -44,6 +47,7 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
     private var savedIDs: [UUID] = []
     private var storeObserver: NSObjectProtocol?
     private static let indexedTextExplanation = "Searches text indexed by macOS; only supported files. Unindexed or excluded files may be missing."
+    private static let scanExplanation = "Reads the files themselves, so folders macOS has not indexed are searched too. Slower, and it skips binary files."
 
     private enum DateChoice: Int, CaseIterable {
         case any, today, lastSevenDays, lastThirtyDays, custom
@@ -117,6 +121,10 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         scopeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         scopeLabel.setAccessibilityLabel("Search Root Folder")
 
+        contentSourcePopup.addItems(withTitles: ContentSource.allCases.map(\.title))
+        contentSourcePopup.setAccessibilityLabel("Search File Contents Using")
+        contentSourcePopup.target = self
+        contentSourcePopup.action = #selector(conditionsChanged(_:))
         kindPopup.addItems(withTitles: SearchKind.allCases.map(\.title))
         kindPopup.setAccessibilityLabel("Search File Type")
         kindPopup.target = self
@@ -182,6 +190,7 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let rows: [NSView] = [header, labeled("Content", contentField),
+                              labeled("Using", contentSourcePopup),
                               labeled("In", scopePopup), scopeLabel, conditions, customDateRows,
                               actions, savedRows, statusLabel]
         optionRows.orientation = .vertical
@@ -267,6 +276,8 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         if contentField.stringValue != request.content { contentField.stringValue = request.content }
         scopePopup.selectItem(at: request.scope == .home ? 1 : 0)
         kindPopup.selectItem(at: SearchKind.allCases.firstIndex(of: request.kind) ?? 0)
+        contentSourcePopup.selectItem(at: ContentSource.allCases.firstIndex(of: request.contentSource) ?? 0)
+        syncContentSourceAvailability()
         let hasDates = request.modifiedAfter != nil || request.modifiedBefore != nil
         let dateChoice = !hasDates ? DateChoice.any : keepsDateChoice ? existingDateChoice : .custom
         datePopup.selectItem(at: dateChoice.rawValue)
@@ -284,8 +295,19 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
         return SearchRequest(rootURL: rootURL, scope: scopePopup.indexOfSelectedItem == 1 ? .home : .currentFolder,
                              name: nameField.currentEditor()?.string ?? nameField.stringValue,
                              content: contentField.currentEditor()?.string ?? contentField.stringValue,
+                             contentSource: ContentSource.allCases[max(0, contentSourcePopup.indexOfSelectedItem)],
                              kind: SearchKind.allCases[max(0, kindPopup.indexOfSelectedItem)],
                              modifiedAfter: dates.0, modifiedBefore: dates.1)
+    }
+
+    /// The setting only means something with text to look for, and its tooltip
+    /// explains the trade-off the user is choosing between.
+    func syncContentSourceAvailability() {
+        let text = contentField.currentEditor()?.string ?? contentField.stringValue
+        contentSourcePopup.isEnabled = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let source = ContentSource.allCases[max(0, contentSourcePopup.indexOfSelectedItem)]
+        contentSourcePopup.toolTip = source == .index ? Self.indexedTextExplanation : Self.scanExplanation
+        contentField.toolTip = contentSourcePopup.toolTip
     }
 
     private func selectedDateBounds() -> (Date?, Date?) {
@@ -553,6 +575,7 @@ final class SearchPanelController: NSViewController, NSTextFieldDelegate, NSMenu
 
     func controlTextDidChange(_ notification: Notification) {
         guard let field = notification.object as? NSTextField, field === contentField || field === nameField else { return }
+        if field === contentField { syncContentSourceAvailability() }
         if let editor = field.currentEditor() as? NSTextView, editor.hasMarkedText() {
             cancelPendingSearch()
             return

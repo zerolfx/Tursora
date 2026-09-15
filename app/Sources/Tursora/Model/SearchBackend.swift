@@ -1,9 +1,14 @@
 import Foundation
 
 /// A filename search always walks the filesystem, including unindexed folders.
-/// Content is delegated to the system index; no file contents are read here.
+/// A content search goes to the system index or reads the files itself,
+/// whichever the request asks for (D85).
 final class LocalSearchBackend: SearchBackend {
     static let maximumResults = 50_000
+    /// A content scan is bounded by files read, not by matches: the result
+    /// cap never fires for a needle that is not there, and a user who typed
+    /// a rare word should not silently start reading an entire volume.
+    static let maximumScannedFiles = 20_000
 
     func start(_ request: SearchRequest, event: @escaping (SearchEvent) -> Void) -> SearchCancellable {
         if request.usesSpotlight {
@@ -40,6 +45,14 @@ final class LocalSearchBackend: SearchBackend {
         var count = 0
         var limited = false
         var lastBatch = Date()
+        // A content scan reads bytes, so it needs bounds a metadata walk does
+        // not: the result cap counts matches and cannot stop a rare needle
+        // from walking a whole volume.
+        let needle = request.trimmedContent
+        let scanning = request.scansContent
+        var tally = ContentScanner.Tally()
+        var examined = 0
+        var examinedLimit = false
         while !cancellation.isCancelled, let url = enumerator.nextObject() as? URL {
             autoreleasepool {
                 let parent = url.deletingLastPathComponent().standardizedFileURL
@@ -49,9 +62,19 @@ final class LocalSearchBackend: SearchBackend {
                 // exclude package descendants. Do not call skipDescendants()
                 // on a link leaf: Darwin defers that skip to the next directory,
                 // silently hiding an unrelated sibling's children.
-                if request.matchesMetadata(item) {
-                    batch.append(item)
-                    count += 1
+                guard request.matchesMetadata(item) else { return }
+                guard scanning else { batch.append(item); count += 1; return }
+                // Folders hold no text of their own, and a package is a
+                // directory: opening one as a file fails and would be
+                // reported to the user as an unreadable item.
+                guard !item.isNavigable, !item.isDirectory else { return }
+                examined += 1
+                let outcome = ContentScanner.scanFile(at: item.contentURL, for: needle)
+                tally.record(outcome)
+                switch outcome {
+                case .match, .truncated(matched: true):
+                    batch.append(item); count += 1
+                default: break
                 }
             }
             if batch.count >= 128 || (!batch.isEmpty && Date().timeIntervalSince(lastBatch) >= 0.15) {
@@ -61,12 +84,21 @@ final class LocalSearchBackend: SearchBackend {
                 lastBatch = Date()
             }
             if count >= maximumResults { limited = true; break }
+            if scanning, examined >= maximumScannedFiles { examinedLimit = true; break }
         }
         guard !cancellation.isCancelled else { return }
         if !batch.isEmpty { event(.batch(batch)) }
-        var message = limited
-            ? "Showing the first \(maximumResults) results. Narrow the conditions to search further."
-            : "Recursive search complete: \(count) result\(count == 1 ? "" : "s")."
+        var message: String
+        if limited {
+            message = "Showing the first \(maximumResults) results. Narrow the conditions to search further."
+        } else if examinedLimit {
+            message = "Stopped after reading \(maximumScannedFiles) files with \(count) result\(count == 1 ? "" : "s"). Narrow the folder or add a name condition."
+        } else if scanning {
+            message = "Scanned \(examined) file\(examined == 1 ? "" : "s"): \(count) result\(count == 1 ? "" : "s")."
+        } else {
+            message = "Recursive search complete: \(count) result\(count == 1 ? "" : "s")."
+        }
+        if scanning, !tally.summary.isEmpty { message += " " + tally.summary }
         if skipped > 0 {
             message += " \(skipped) unreadable item\(skipped == 1 ? "" : "s") skipped."
             if let firstError { message += " " + firstError }

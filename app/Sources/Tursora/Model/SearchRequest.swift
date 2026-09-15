@@ -40,6 +40,23 @@ enum SearchKind: String, Codable, CaseIterable {
     }
 }
 
+/// Where a content search looks. Spotlight is fast but only sees what it has
+/// indexed, and it cannot tell "this folder is not indexed" from "nothing
+/// matched" — both come back as zero results. Scanning reads the files itself,
+/// so it works on an external drive, a network volume or a folder excluded from
+/// indexing, at the cost of doing the reading. Dolphin exposes the same choice
+/// as "Search using: File Indexing / Simple search" (D85).
+enum ContentSource: String, Codable, CaseIterable {
+    case index, disk
+
+    var title: String {
+        switch self {
+        case .index: return "Spotlight Index"
+        case .disk: return "Scan Files"
+        }
+    }
+}
+
 /// Conditions, never results, are persisted. A saved Home search follows the
 /// current user's home; a saved folder search keeps its original absolute URL.
 struct SearchRequest: Codable, Equatable {
@@ -47,6 +64,8 @@ struct SearchRequest: Codable, Equatable {
     var scope: SearchScope = .currentFolder
     var name: String = ""
     var content: String = ""
+    /// Only consulted when `content` is non-empty.
+    var contentSource: ContentSource = .index
     var kind: SearchKind = .any
     /// Inclusive lower bound and exclusive upper bound.
     var modifiedAfter: Date?
@@ -58,9 +77,45 @@ struct SearchRequest: Codable, Equatable {
 
     var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
     var trimmedContent: String { content.trimmingCharacters(in: .whitespacesAndNewlines) }
-    var usesSpotlight: Bool { !trimmedContent.isEmpty }
+    var usesSpotlight: Bool { !trimmedContent.isEmpty && contentSource == .index }
+    /// A content search that reads the files rather than asking the index.
+    var scansContent: Bool { !trimmedContent.isEmpty && contentSource == .disk }
 
     static let contentLimitMessage = "Content uses Spotlight: only indexed, supported files. Missing results may be unindexed or excluded."
+    static let scanLimitMessage = "Scanning reads text files directly, so unindexed folders are searched; binary files and anything past \(ContentScanner.maximumBytes / 1024) KB per file are not."
+
+    /// Synthesized decoding does NOT fall back to a property's default when the
+    /// key is absent — it throws — and `SavedSearchStore` decodes the whole
+    /// array with `try?`, so one new field would have silently emptied every
+    /// saved search a user had. Decode each key on its own instead.
+    private enum CodingKeys: String, CodingKey {
+        case rootURL, scope, name, content, contentSource, kind, modifiedAfter, modifiedBefore
+    }
+
+    init(rootURL: URL, scope: SearchScope = .currentFolder, name: String = "", content: String = "",
+         contentSource: ContentSource = .index, kind: SearchKind = .any,
+         modifiedAfter: Date? = nil, modifiedBefore: Date? = nil) {
+        self.rootURL = rootURL
+        self.scope = scope
+        self.name = name
+        self.content = content
+        self.contentSource = contentSource
+        self.kind = kind
+        self.modifiedAfter = modifiedAfter
+        self.modifiedBefore = modifiedBefore
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        rootURL = try values.decode(URL.self, forKey: .rootURL)
+        scope = (try? values.decode(SearchScope.self, forKey: .scope)) ?? .currentFolder
+        name = (try? values.decode(String.self, forKey: .name)) ?? ""
+        content = (try? values.decode(String.self, forKey: .content)) ?? ""
+        contentSource = (try? values.decode(ContentSource.self, forKey: .contentSource)) ?? .index
+        kind = (try? values.decode(SearchKind.self, forKey: .kind)) ?? .any
+        modifiedAfter = try? values.decode(Date.self, forKey: .modifiedAfter)
+        modifiedBefore = try? values.decode(Date.self, forKey: .modifiedBefore)
+    }
 
     var validationError: String? {
         guard rootURL.isFileURL else { return "Choose a local or mounted folder to search." }
