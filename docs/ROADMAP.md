@@ -44,6 +44,15 @@ Deselect All, Move Items Here (⌥⌘V), aligning the Copy as Pathname shortcut,
 
 Batch rename, Make Alias / Show Original, Recent Folders, a preview pane on the right (reusing Get Info's FileInfo), Customize Toolbar, Toolbar / Path Bar / Status Bar / Tab Bar switches, Show All Tabs, Move Tab to New Window / Merge, spring-loaded folders, the warning when changing an extension, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (individual commands can already be customized one by one), a list of recently closed tabs, additional information columns, folder item-count / recursive-size columns.
 
+## Agreed next, 2026-09-15
+
+Chosen by the owner after comparing against Iruka. In order:
+
+1. **Batch rename: the `#` placeholder.** KIO's Enumerate semantics — one run of `#` is replaced in place by the index and its length sets the zero padding, so `Photo ###.jpg` gives `Photo 001.jpg`. It subsumes Name and Index (`name #`) and Name and Counter (`name #####`) and adds free placement and padding, so Format collapses from three kinds to two: Number and Date. Date stays because `#` cannot express a timestamp and dropping it would regress a shipped 0.3.0 feature. The existing full-list live preview is kept — KIO shows only one read-only line, so this is a place Tursora is already ahead. Closes the deviation recorded in [GAP-vs-DOLPHIN](gaps/GAP-vs-DOLPHIN.md) line 36.
+2. **A docked preview pane, with Markdown rendered.** Markdown rendering is a condition of the pane, not a follow-up: Quick Look shows Markdown as plain text. Syntax highlighting for code is explicitly excluded. The pane must dock beside the file view rather than float like the Inspector, survive navigation, and persist in `WorkspaceSession`; ⇧⌘P is taken by Show Previews and has to move first.
+3. **Column view.** A third `FileViewing` conformer, with the per-mode zoom ladder and a store migration it drags along. ⌘3 is taken by tab selection, so the binding is ⌥⌘3.
+4. **Content search that does not need an index.** Searching file contents where Spotlight has no index.
+
 ## Big items (L)
 
 Column view, Gallery view, fuller preferences (confirmation policy and so on), free icon placement, a Trash view (needs Full Disk Access), Quick Actions, Chinese localization, docking / floating panels anywhere, server history / discovery / reconnect, multiple terminal sessions and terminal session restore. The core persistence of per-directory view attributes is implemented; the full Show View Options dialog, persisting the column layout and applying recursively are still to do.
@@ -51,6 +60,10 @@ Column view, Gallery view, fuller preferences (confirmation policy and so on), f
 ## Not doing / waiting for a public API
 
 Tags, Import from iPhone (explicitly excluded by the product design); Customize Folder (private storage), Finder `.savedSearch` interchange (in-app saved searches already exist), FinderSync badges (only iCloud is public), the desktop, selection mode.
+
+Excluded by the product design, 2026-09-15: **git in any form** — branch state, staging, commits, or a diff review pane; and **developer-only remote access** — SFTP and SSHFS mounts, SCP transfers, S3 buckets, and "mount as root". Tursora is a file manager for everyday use, not a development console, and these carry credential handling and background-daemon problems out of proportion to their audience. Ordinary remote volumes stay supported and are unaffected: `ServerConnection` already mounts `smb://`, `nfs://`, `afp://` and `http(s)://` WebDAV through macOS itself. Comparing two arbitrary files or folders is **not** covered by this exclusion and remains open.
+
+Also excluded, 2026-09-15, after comparing against Iruka: **Intel support** — Tursora ships Apple Silicon only and a Universal binary is a deliberate non-goal, so the arm64-only build in `app/tools/make-app.sh` and the `lipo -archs` assertion in CI are correct rather than a limitation to fix; **in-place text and code editing** — Tursora browses and manages files, it does not edit their contents; and **syntax highlighting** for code previews. Markdown rendering is *not* excluded: it is a condition of the preview pane below.
 
 ## Follow-up verification for the new features
 
