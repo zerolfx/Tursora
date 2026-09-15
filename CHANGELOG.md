@@ -4,6 +4,8 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-16
+
 ### Added
 
 - Search can now look inside files that macOS has not indexed. A new **Using** setting beside the Content field chooses between **Spotlight Index**, which is fast but only sees indexed files, and **Scan Files**, which reads the files themselves — so an external drive, a network volume or a folder excluded from indexing is searched too. Scanning skips binary files and anything over 64 MB, reads the first 1 MB of each file, stops after 20,000 files, and says in the status line what it scanned and what it skipped. The setting is remembered with a saved search; existing saved searches keep using the index.
