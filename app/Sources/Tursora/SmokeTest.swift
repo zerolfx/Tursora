@@ -54,6 +54,7 @@ enum SmokeTest: SmokeSuite {
             DirectoryViewPropertiesSmokeTests.run,
             SortColumnSizesSmokeTests.run,
             { done in
+                MarkdownRendererSmokeTests.run()
                 IconAssetsSmokeTests.run()
                 ServerConnectionSmokeTests.run()
                 SettingsSmokeTests.run()
@@ -61,6 +62,7 @@ enum SmokeTest: SmokeSuite {
                 WorkspaceSessionModelSmokeTests.run()
                 done()
             },
+            PreviewPaneSmokeTests.run,
             WorkspaceSessionSmokeTests.run,
             { done in TabAppearanceSmokeTests.run(); InfoDisclosureSmokeTests.run(); done() },
             { done in AppearanceSmokeTests.run(browser: wc.browser, completion: done) },

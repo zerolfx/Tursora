@@ -4,6 +4,10 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Added
+
+- A preview pane docked beside the file view (**View ▸ Show Preview**, ⇧⌘P). It shows the selected item, or the current folder when nothing is selected, and stays open as you navigate. Markdown is rendered as rich text — headings, lists, block quotes, fenced code, inline emphasis and GitHub tables — following your light or dark appearance; everything else falls back to Quick Look. Drag its edge to resize between 220 and 720 pt; the pane's width and whether it was open are restored with your session. Links in a rendered document are shown but not followed, and nothing a document references is loaded. The thumbnail toggle that used to hold ⇧⌘P is now ⌃⌘P.
+
 ### Changed
 
 - Batch rename can put the number anywhere in the name. `Name Format:` is now **Number** or **Date**, and under Number the custom text is a pattern: a run of `#` becomes the sequence number and the length of the run sets the leading zeros, so `Photo ###` gives `Photo 001`. The run can sit anywhere, not only after the name — `v## final` gives `v07 final` — and a number too wide for the run is never shortened. This replaces Name and Index and Name and Counter, which were the same rule with and without padding and are both still expressible (`name #` and `name #####`). Name and Date is unchanged. Every resulting name is still previewed before you rename.

@@ -67,7 +67,8 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | as Icons / as List | ⌥⌘1 / ⌥⌘2 | `square.grid.2x2` / `list.bullet` | Swaps grid/outline, keeps selection and focus (Finder: ⌘1/⌘2; ours are taken by tabs) |
 | Zoom In / Zoom Out | ⌘+ / ⌘- (⌘= also) | `plus.magnifyingglass` / `minus.magnifyingglass` | Steps the per-mode ladder (icons 32…512, list 16…64) |
 | Actual Size | ⌘0 | — | 64 pt icons / 16 pt rows |
-| Show Previews | ⇧⌘P | — | Thumbnails from 32 pt up (Finder's ⇧⌘P is the preview pane) |
+| Show Preview | ⇧⌘P | `sidebar.right` | The docked preview pane: follows the selection, renders Markdown, falls back to Quick Look; width and visibility restored with the session |
+| Show Previews | ⌃⌘P | — | Thumbnails from 32 pt up. Finder's ⇧⌘P is its preview pane, which Tursora's pane now takes, so this moved off it (D82) |
 | Filter | ⌘F | `magnifyingglass` | Focuses the toolbar name-filter field; checkmark while filtering |
 | Search… | ⇧⌘F | `doc.text.magnifyingglass` | Expands recursive search options beside the existing toolbar query; unavailable inside ZIP locations |
 | Show Hidden Files | ⇧⌘. | — | Saved by the selected folder-view policy; transient in ZIP and search pages |
@@ -83,7 +84,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Show Sidebar | ⌃⌘S | `sidebar.leading` | (Finder: ⌥⌘S) |
 | Show Folders | F7 | `list.bullet.indent` | Shows the optional directory tree alongside Places |
 | Show / Hide Terminal | F4 | — | Present only when Terminal panel is enabled in Settings; hiding retains the session |
-| Command Palette… | ⇧⌘O | `command` | Fuzzy search over every command, sidebar favourite and the active pane's history folders; ↑/↓ move, Return runs, Esc closes (⇧⌘P is Show Previews; Finder has no equivalent) |
+| Command Palette… | ⇧⌘O | `command` | Fuzzy search over every command, sidebar favourite and the active pane's history folders; ↑/↓ move, Return runs, Esc closes (⇧⌘P is the preview pane; Finder has no equivalent for the palette) |
 
 ### Go
 | Item | Shortcut | Icon |

@@ -61,7 +61,7 @@ Finder has **no** command palette feature and no title that could be cited. The 
 
 ### 1.2 Shortcut choice
 
-- ⇧⌘P already belongs to View → `Show Previews` (`MainMenu.viewMenu`) and cannot be reused.
+- ⇧⌘P was taken when this round was written: it belonged to View → `Show Previews`, so it could not be reused. It has since moved to the docked preview pane and `Show Previews` to ⌃⌘P (D82, 2026-09-15); ⇧⌘P is still not available to the palette, so the conclusion stands for a different reason.
 - ⇧⌘O is free among the existing default bindings (the ⇧⌘ combinations already taken inside `MainMenu` are N/T/W/D/P/F/H/G/[/]/`.`).
 - ⇧⌘O is the same key as Xcode's "Open Quickly", which is an **inferred** familiarity argument:
   Xcode is not installed on this machine, so there is no evidence for it.
@@ -187,8 +187,8 @@ directly after `ShortcutSmokeTests`:
   de-duplicated; typing a command name ranks it first; no match gives an empty list; an empty query
   keeps everything; equal scores sort by category/title.
 - Catalog registration: `menu.showCommandPalette` is a customisable catalog command; ⇧⌘O by default;
-  `Show Previews` is still ⇧⌘P; the matching menu item exists in the View menu; no other command
-  claims ⇧⌘O.
+  the matching menu item exists in the View menu; no other command claims ⇧⌘O. The check originally also
+  asserted `Show Previews` was ⇧⌘P; since D82 it asserts that the two P bindings do not collide.
 - The real panel (**run once in the list view and once in the icon view**): the panel opens as a
   child window; the initial query is empty and every row is listed; favourite rows agree with the
   sidebar Favourites; the current pane's history shows up as Recent rows; typing filters down to the

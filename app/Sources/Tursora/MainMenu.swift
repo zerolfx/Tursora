@@ -182,7 +182,13 @@ enum MainMenu {
         add(menu, "Zoom In", #selector(BrowserViewController.zoomIn(_:)), "+", symbol: "plus.magnifyingglass")
         add(menu, "Zoom Out", #selector(BrowserViewController.zoomOut(_:)), "-", symbol: "minus.magnifyingglass")
         add(menu, "Actual Size", #selector(BrowserViewController.zoomActualSize(_:)), "0")
-        add(menu, "Show Previews", #selector(BrowserViewController.togglePreviews(_:)), "p", [.command, .shift])
+        // ⇧⌘P is Finder's preview pane, so the pane takes it and the
+        // thumbnail toggle moves to ⌃⌘P (D82). A user who had already
+        // customised either binding keeps their own choice: the store
+        // only supplies a default where the user set nothing.
+        add(menu, "Show Preview", #selector(MainWindowController.togglePreviewPane(_:)), "p", [.command, .shift],
+            symbol: "sidebar.right")
+        add(menu, "Show Previews", #selector(BrowserViewController.togglePreviews(_:)), "p", [.command, .control])
         menu.addItem(.separator())
         add(menu, "Search…", #selector(MainWindowController.showSearch(_:)), "f", [.command, .shift], symbol: "doc.text.magnifyingglass")
         add(menu, "Filter", #selector(MainWindowController.focusFilter(_:)), "f", symbol: "magnifyingglass")

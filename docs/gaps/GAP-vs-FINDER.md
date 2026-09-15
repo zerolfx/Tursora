@@ -42,7 +42,7 @@ How the estimates were made: 7 agents, one per category, estimated every item ag
 |---|---|---|---|
 | **as Columns** (⌘3) | ❌ | L | A third `FileViewing` implementation (NSBrowser or drawn by hand), needing a preview in the last column, ←→ to move in and out, drag and drop, renaming and a context menu; ⌘3 clashes with ⌘1–9 for tabs |
 | as Gallery (⌘4) | ❌ | L | A large QLPreviewView plus a thumbnail strip at the bottom; QLPreviewView has to be reused as a single instance and has quirks around focus and autoplay |
-| **Show Preview** (⇧⌘P, the preview pane on the right) | ❌ | M | Reuses Get Info's FileInfo plus QLPreviewView; our ⇧⌘P currently means "show thumbnails" and would have to move first |
+| **Show Preview** (⇧⌘P, the preview pane on the right) | ✅ | — | A pane docked beside the file view, following the selection and surviving navigation and a quit; Markdown is rendered rather than shown as plain text, which Quick Look does not do (D81, D83). Thumbnails moved to ⌃⌘P so the pane could take Finder's key (D82) |
 | **Show View Options** (⌘J, per-folder view settings) | Per-directory persistence ✅; the full Finder-style dialog ❌ | M for the dialog | The existing mode / sorting / both zoom steps / grouping / hidden files / previews are saved per directory; View and Settings have entry points for the policy, the default and a reset. The app uses a private path store and does not write `.DS_Store`; there is no ⌘J, no column layout and no free-placement settings |
 | Clean Up / Snap to Grid / free icon placement | ❌ | L | The icon view would change from a flow grid to a free layout with per-folder coordinates persisted; a drag inside NSCollectionView is currently rejected as a file drop |
 | Toolbar (⌥⌘T) / Path Bar (⌥⌘P) / Status Bar (⌘/) / Tab Bar (⇧⌘T) toggles | Sidebar only | M | Simple in itself; ⇧⌘T clashes with our "reopen closed tab" |
@@ -82,7 +82,7 @@ The Dock already offers three entry points — New Window / Downloads / Applicat
 | Double-clicking a Finder alias resolves it | Following symlinks ✅; resolving a Finder alias automatically ❌ | S | The per-directory view store gains no alias resolution; later `URL(resolvingAliasFileAt:options: .withoutMounting)` could resolve the target when opening |
 | FinderSync badges (cloud sync status) | ❌ | XL | Only iCloud's ubiquity keys are public; there is no public API for the badges of Dropbox and the like |
 | Chinese localization | ❌ | L | Every menu and string built in code has to be extracted; the SPM resource bundle has to be findable both when launched as a .app and as a bare binary |
-| Shortcuts aligned with Finder (⌘1–4, ⌘L, ⇧⌘T, ⇧⌘P, ⌘O, ⌘I) | ⌘I ✅ | M | The menus are rebuilt at runtime; alternates that share a key have to stay adjacent |
+| Shortcuts aligned with Finder (⌘1–4, ⌘L, ⇧⌘T, ⇧⌘P, ⌘O, ⌘I) | ⌘I and ⇧⌘P ✅ | M | ⇧⌘P now opens the preview pane as it does in Finder, which moved the thumbnail toggle to ⌃⌘P (D82). The menus are rebuilt at runtime; alternates that share a key have to stay adjacent |
 
 ## Suggested order (by cost)
 
