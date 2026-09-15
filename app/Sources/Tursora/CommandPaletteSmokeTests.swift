@@ -118,10 +118,14 @@ enum CommandPaletteSmokeTests: SmokeSuite {
         let action = ShortcutCatalog.action(CommandPalette.commandID)
         check("the palette is a customisable catalog command",
               action?.title == "Command Palette…" && action?.category == "View" && action?.context == .application)
-        check("its default shortcut is ⇧⌘O, since ⇧⌘P belongs to Show Previews",
+        // ⇧⌘P went to the preview pane in D82, matching Finder, and the
+        // thumbnail toggle moved to ⌃⌘P. The palette keeps ⇧⌘O either way;
+        // what this pins is that no two of the three collide.
+        check("its default shortcut is ⇧⌘O and the P bindings do not collide",
               action?.defaultShortcut == .init(keyEquivalent: "o", modifierFlags: [.command, .shift])
               && ShortcutCatalog.action("menu.togglePreviews")?.defaultShortcut
-                  == .init(keyEquivalent: "p", modifierFlags: [.command, .shift]))
+                  == .init(keyEquivalent: "p", modifierFlags: [.command, .control]),
+              "previews=\(String(describing: ShortcutCatalog.action("menu.togglePreviews")?.defaultShortcut))")
         let item = CommandPaletteRunner.menuItem(id: CommandPalette.commandID, in: NSApp.mainMenu)
         check("the View menu carries the item the palette dispatches through",
               item?.title == "Command Palette…" && item?.menu?.title == "View",

@@ -68,11 +68,14 @@ struct WorkspaceWindowState: Codable, Equatable {
     var foldersFraction: Double = 0.45
     var foldersShowHidden: Bool = false
     var foldersLimitToHome: Bool = true
+    var previewVisible: Bool = false
+    var previewWidth: Double = 360
 
     init(tabs: [WorkspaceTabState], selectedTabIndex: Int = 0, frame: WorkspaceWindowFrame? = nil,
          sidebarWidth: Double = 190, sidebarCollapsed: Bool = false, isMiniaturized: Bool = false,
          foldersVisible: Bool = false, foldersFraction: Double = 0.45,
-         foldersShowHidden: Bool = false, foldersLimitToHome: Bool = true) {
+         foldersShowHidden: Bool = false, foldersLimitToHome: Bool = true,
+         previewVisible: Bool = false, previewWidth: Double = 360) {
         self.tabs = tabs
         self.selectedTabIndex = selectedTabIndex
         self.frame = frame
@@ -83,6 +86,8 @@ struct WorkspaceWindowState: Codable, Equatable {
         self.foldersFraction = foldersFraction
         self.foldersShowHidden = foldersShowHidden
         self.foldersLimitToHome = foldersLimitToHome
+        self.previewVisible = previewVisible
+        self.previewWidth = previewWidth
     }
 
     func sanitized() -> Self? {
@@ -94,12 +99,15 @@ struct WorkspaceWindowState: Codable, Equatable {
                     sidebarCollapsed: sidebarCollapsed, isMiniaturized: isMiniaturized,
                     foldersVisible: foldersVisible,
                     foldersFraction: foldersFraction.isFinite ? min(0.8, max(0.2, foldersFraction)) : 0.45,
-                    foldersShowHidden: foldersShowHidden, foldersLimitToHome: foldersLimitToHome)
+                    foldersShowHidden: foldersShowHidden, foldersLimitToHome: foldersLimitToHome,
+                    previewVisible: previewVisible,
+                    previewWidth: previewWidth.isFinite ? min(720, max(220, previewWidth)) : 360)
     }
 
     private enum CodingKeys: String, CodingKey {
         case tabs, selectedTabIndex, frame, sidebarWidth, sidebarCollapsed, isMiniaturized
         case foldersVisible, foldersFraction, foldersShowHidden, foldersLimitToHome
+        case previewVisible, previewWidth
     }
 
     init(from decoder: Decoder) throws {
@@ -120,6 +128,9 @@ struct WorkspaceWindowState: Codable, Equatable {
         foldersFraction = fraction.isFinite ? min(0.8, max(0.2, fraction)) : 0.45
         foldersShowHidden = (try? values.decode(Bool.self, forKey: .foldersShowHidden)) ?? false
         foldersLimitToHome = (try? values.decode(Bool.self, forKey: .foldersLimitToHome)) ?? true
+        previewVisible = (try? values.decode(Bool.self, forKey: .previewVisible)) ?? false
+        let preview = (try? values.decode(Double.self, forKey: .previewWidth)) ?? 360
+        previewWidth = preview.isFinite ? min(720, max(220, preview)) : 360
     }
 }
 

@@ -42,14 +42,14 @@ Deselect All, Move Items Here (⌥⌘V), aligning the Copy as Pathname shortcut,
 
 ## After that (M)
 
-Batch rename, Make Alias / Show Original, Recent Folders, a preview pane on the right (reusing Get Info's FileInfo), Customize Toolbar, Toolbar / Path Bar / Status Bar / Tab Bar switches, Show All Tabs, Move Tab to New Window / Merge, spring-loaded folders, the warning when changing an extension, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (individual commands can already be customized one by one), a list of recently closed tabs, additional information columns, folder item-count / recursive-size columns.
+Batch rename, Make Alias / Show Original, Recent Folders, ~~a preview pane on the right~~ (done 2026-09-15), Customize Toolbar, Toolbar / Path Bar / Status Bar / Tab Bar switches, Show All Tabs, Move Tab to New Window / Merge, spring-loaded folders, the warning when changing an extension, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (individual commands can already be customized one by one), a list of recently closed tabs, additional information columns, folder item-count / recursive-size columns.
 
 ## Agreed next, 2026-09-15
 
 Chosen by the owner after comparing against Iruka. In order:
 
 1. **Batch rename: the `#` placeholder.** KIO's Enumerate semantics — one run of `#` is replaced in place by the index and its length sets the zero padding, so `Photo ###.jpg` gives `Photo 001.jpg`. It subsumes Name and Index (`name #`) and Name and Counter (`name #####`) and adds free placement and padding, so Format collapses from three kinds to two: Number and Date. Date stays because `#` cannot express a timestamp and dropping it would regress a shipped 0.3.0 feature. The existing full-list live preview is kept — KIO shows only one read-only line, so this is a place Tursora is already ahead. Closes the deviation recorded in [GAP-vs-DOLPHIN](gaps/GAP-vs-DOLPHIN.md) line 36.
-2. **A docked preview pane, with Markdown rendered.** Markdown rendering is a condition of the pane, not a follow-up: Quick Look shows Markdown as plain text. Syntax highlighting for code is explicitly excluded. The pane must dock beside the file view rather than float like the Inspector, survive navigation, and persist in `WorkspaceSession`; ⇧⌘P is taken by Show Previews and has to move first.
+2. ~~**A docked preview pane, with Markdown rendered.**~~ **Done, 2026-09-15** (D81–D83). Markdown rendering is a condition of the pane, not a follow-up: Quick Look shows Markdown as plain text. Syntax highlighting for code is explicitly excluded. The pane must dock beside the file view rather than float like the Inspector, survive navigation, and persist in `WorkspaceSession`; ⇧⌘P is taken by Show Previews and has to move first.
 3. **Column view.** A third `FileViewing` conformer, with the per-mode zoom ladder and a store migration it drags along. ⌘3 is taken by tab selection, so the binding is ⌥⌘3.
 4. **Content search that does not need an index.** Searching file contents where Spotlight has no index.
 

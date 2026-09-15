@@ -15,6 +15,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     var isTerminalVisible: Bool { terminalItem != nil }
     private var terminalHeight: CGFloat?
     var terminalTaskConfirmation: TerminalTaskConfirmation.Decision = TerminalTaskConfirmation.confirm
+    /// The preview pane, built like the terminal: the controller is retained
+    /// across hides so its scroll position and Quick Look survive, while only
+    /// the split item comes and goes. It is appended to `splitViewController`,
+    /// never to `contentSplitController`, whose divider index the terminal
+    /// hard-codes; and never inside a tab, whose split assumes exactly two
+    /// arranged subviews.
+    private(set) var previewPanel: PreviewPanelController?
+    private var previewItem: NSSplitViewItem?
+    var isPreviewVisible: Bool { previewItem != nil }
+    private var previewWidth: CGFloat?
+    private var previewObserver: NSObjectProtocol?
     private var isCheckingTerminalClose = false
     private var preferencesObserver: NSObjectProtocol?
     private var shortcutsObserver: NSObjectProtocol?
@@ -163,7 +174,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                                     isMiniaturized: window?.isMiniaturized ?? false,
                                     foldersVisible: sidebar.foldersVisible, foldersFraction: sidebar.foldersFraction,
                                     foldersShowHidden: sidebar.foldersPanel?.model.showsHiddenFolders ?? false,
-                                    foldersLimitToHome: sidebar.foldersPanel?.model.limitsToHome ?? true)
+                                    foldersLimitToHome: sidebar.foldersPanel?.model.limitsToHome ?? true,
+                                    previewVisible: isPreviewVisible,
+                                    previewWidth: Double(previewPanel?.view.bounds.width ?? previewWidth ?? 360))
     }
 
     /// The application owns window ordering and minimization after every
@@ -193,6 +206,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             sidebar.setFoldersPanelVisible(state.foldersVisible, active: !state.sidebarCollapsed)
         } else { sidebar.setFoldersPanelVisible(false) }
         tabs.restoreWorkspaceTabs(state.tabs, selectedIndex: state.selectedTabIndex)
+        // The width is remembered before the pane is shown, so the restored
+        // pane opens at the size it was closed at rather than the default.
+        previewWidth = CGFloat(state.previewWidth)
+        if state.previewVisible { togglePreviewPane(nil) }
         window?.contentView?.layoutSubtreeIfNeeded()
         window?.initialFirstResponder = browser.focusView
         window?.makeFirstResponder(browser.focusView)
@@ -222,6 +239,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         terminalPanel?.followDirectory(terminalWorkingDirectory)
         validateNavigation()
         syncFilterUI()
+        refreshPreview()
     }
 
     @objc func toggleTerminal(_ sender: Any?) {
@@ -255,6 +273,65 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// A terminal may work beside a ZIP, never inside its temporary snapshot.
     private var terminalWorkingDirectory: URL {
         browser.archiveSourceURL?.deletingLastPathComponent() ?? browser.currentURL ?? provider.homeURL
+    }
+
+    @objc func togglePreviewPane(_ sender: Any?) {
+        if isPreviewVisible { hidePreviewPane(); return }
+        let panel = previewPanel ?? PreviewPanelController()
+        panel.onClose = { [weak self] in self?.hidePreviewPane() }
+        previewPanel = panel
+        // A file can change while it stays selected — an editor saves over it,
+        // a build rewrites it. Without this the pane keeps showing the old
+        // render for as long as the selection does not move, because `show`
+        // short-circuits on an unchanged URL.
+        if previewObserver == nil {
+            previewObserver = NotificationCenter.default.addObserver(
+                forName: .tursoraDirectoriesChanged, object: nil, queue: .main) { [weak self] _ in
+                    self?.refreshPreview(force: true)
+                }
+        }
+        let item = NSSplitViewItem(viewController: panel)
+        item.minimumThickness = 220
+        item.maximumThickness = 720
+        item.canCollapse = true
+        item.holdingPriority = NSLayoutConstraint.Priority(259)
+        previewItem = item
+        splitViewController.addSplitViewItem(item)
+        splitViewController.view.layoutSubtreeIfNeeded()
+        let total = splitViewController.view.bounds.width
+        let desired = previewWidth ?? min(360, max(220, total * 0.28))
+        if total > 0 {
+            splitViewController.splitView.setPosition(
+                total - desired, ofDividerAt: splitViewController.splitViewItems.count - 2)
+        }
+        refreshPreview()
+    }
+
+    /// `QLPreviewView` can keep playing media after its window goes away, so
+    /// the pane is torn down explicitly rather than left to ARC.
+    func shutdownPreview() {
+        if let previewObserver { NotificationCenter.default.removeObserver(previewObserver) }
+        previewObserver = nil
+        previewPanel?.shutdown()
+        previewPanel = nil
+        previewItem = nil
+    }
+
+    func hidePreviewPane() {
+        guard let previewItem else { return }
+        previewWidth = previewPanel?.view.bounds.width
+        previewPanel?.paneHidden()
+        splitViewController.removeSplitViewItem(previewItem)
+        self.previewItem = nil
+        window?.makeFirstResponder(browser.focusView)
+    }
+
+    /// The pane follows the same targets Get Info uses, so a selection, a
+    /// navigation with nothing selected, and a search all behave the same way
+    /// they already do elsewhere.
+    func refreshPreview(force: Bool = false) {
+        guard let previewPanel, isPreviewVisible else { return }
+        previewPanel.show(browser.infoTargets.count == 1 ? browser.infoTargets.first : nil, force: force)
     }
 
     func hideTerminal() {
@@ -601,6 +678,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if let valid = validateViewPropertiesMenuItem(item) { return valid }
         switch item.action {
+        case #selector(togglePreviewPane(_:)):
+            item.title = isPreviewVisible ? "Hide Preview" : "Show Preview"
+            item.state = isPreviewVisible ? .on : .off
+            return true
         case #selector(toggleTerminal(_:)):
             item.title = isTerminalVisible ? "Hide Terminal" : "Show Terminal"
             item.state = isTerminalVisible ? .on : .off
@@ -667,6 +748,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func selectionDidChange(in pane: BrowserViewController) {
         guard pane === browser else { return }
         validateNavigation()
+        refreshPreview()
     }
 
     private func validateFileAction(_ item: NSMenuItem) -> Bool {
@@ -712,6 +794,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     var isSidebarCollapsed: Bool { splitViewController.splitViewItems[0].isCollapsed }
     var isFoldersPanelVisible: Bool { sidebar.foldersVisible && !isSidebarCollapsed }
+    /// The sidebar is looked up as `splitViewItems[0]` in three places, so a
+    /// pane added ahead of it would break that silently.
+    var isSidebarFirstSplitItemForTesting: Bool {
+        splitViewController.splitViewItems.first?.viewController === sidebar
+    }
 
     @objc func toggleFoldersPanel(_ sender: Any?) {
         let show = !isFoldersPanelVisible
@@ -909,6 +996,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         removeEventMonitors()
         shutdownTerminal()
+        shutdownPreview()
         sidebar.setFoldersActive(false)
         if let shortcutsObserver { NotificationCenter.default.removeObserver(shortcutsObserver) }
         shortcutsObserver = nil

@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// document page. Reads and layout are bounded, and never run in a file view.
 enum TextThumbnailRenderer {
     static let maxReadBytes = 65_536
-    private static let maxLayoutCharacters = 8_192
+    static let maxLayoutCharacters = 8_192
 
     struct Snippet {
         let text: String
@@ -30,7 +30,9 @@ enum TextThumbnailRenderer {
         return ["md", "markdown", "yaml", "yml", "toml", "ini", "log"].contains(item.url.pathExtension.lowercased())
     }
 
-    static func readSnippet(from url: URL) -> Snippet? {
+    /// `limit` caps the characters returned. The default is the icon
+    /// budget; the preview pane asks for far more of the file.
+    static func readSnippet(from url: URL, limit: Int = maxLayoutCharacters) -> Snippet? {
         guard url.isFileURL else { return nil }
         // Opening a FIFO normally blocks before a file handle can inspect it.
         // Nonblocking open followed by fstat also rejects replacement devices.
@@ -42,14 +44,14 @@ enum TextThumbnailRenderer {
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0,
               metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else { return nil }
-        var bytes = [UInt8](repeating: 0, count: maxReadBytes)
+        var bytes = [UInt8](repeating: 0, count: max(maxReadBytes, min(limit * 4, 2_097_152)))
         let count = bytes.withUnsafeMutableBytes { Darwin.read(descriptor, $0.baseAddress, $0.count) }
         guard count > 0 else { return nil }
         let data = Data(bytes.prefix(count))
         guard let text = decode(data, isTruncated: metadata.st_size > off_t(count)) else { return nil }
         let excerpt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !excerpt.isEmpty else { return nil }
-        return Snippet(text: String(excerpt.prefix(maxLayoutCharacters)), bytesRead: count)
+        return Snippet(text: String(excerpt.prefix(limit)), bytesRead: count)
     }
 
     static func decode(_ data: Data, isTruncated: Bool = false) -> String? {
