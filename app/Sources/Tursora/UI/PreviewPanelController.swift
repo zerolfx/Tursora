@@ -62,6 +62,9 @@ final class PreviewPanelController: NSViewController {
     private(set) var isShowingMarkdown = false
 
     var onClose: (() -> Void)?
+    /// The docked pane can be closed; inside a column there is nothing to close.
+    var showsCloseButton = true
+    private var closeButton: NSButton?
     /// Reported rather than acted on; see `MarkdownTextView.clickedOnLink`.
     var onLinkClicked: ((URL?) -> Void)?
 
@@ -78,6 +81,8 @@ final class PreviewPanelController: NSViewController {
         close.bezelStyle = .inline
         close.isBordered = false
         close.toolTip = "Hide Preview"
+        close.isHidden = !showsCloseButton
+        closeButton = close
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let header = NSStackView(views: [titleLabel, spacer, close])
@@ -198,4 +203,5 @@ final class PreviewPanelController: NSViewController {
     var isEmptyStateVisibleForTesting: Bool { !emptyLabel.isHidden }
     var renderedTextForTesting: String { textView.string }
     var isQuickLookVisibleForTesting: Bool { quickLook.map { !$0.isHidden } ?? false }
+    var isCloseButtonHiddenForTesting: Bool { closeButton?.isHidden ?? true }
 }

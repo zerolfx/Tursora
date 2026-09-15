@@ -47,6 +47,14 @@ protocol FileViewing: AnyObject {
     func frameOnScreen(for url: URL) -> NSRect
     /// Forward a key event (Quick Look's arrow keys) to the view.
     func forwardKey(_ event: NSEvent)
+
+    /// Folders the view shows beyond the pane's own, so a change broadcast
+    /// for one of them is not filtered out. Only the column view has any.
+    var displayedDirectoryURLs: [URL] { get }
+}
+
+extension FileViewing {
+    var displayedDirectoryURLs: [URL] { [] }
 }
 
 /// ⌘-scroll and pinch both zoom one step per accumulated threshold

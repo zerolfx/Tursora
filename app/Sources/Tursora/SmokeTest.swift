@@ -63,6 +63,7 @@ enum SmokeTest: SmokeSuite {
                 done()
             },
             PreviewPaneSmokeTests.run,
+            ColumnViewSmokeTests.run,
             WorkspaceSessionSmokeTests.run,
             { done in TabAppearanceSmokeTests.run(); InfoDisclosureSmokeTests.run(); done() },
             { done in AppearanceSmokeTests.run(browser: wc.browser, completion: done) },
@@ -207,13 +208,18 @@ enum SmokeTest: SmokeSuite {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-saved-mode-" + UUID().uuidString).appendingPathComponent("views.json")
         let store = DirectoryViewPropertiesStore(fileURL: file)
         defer { try? store.flush(); try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
-        for mode: ViewMode in [.icons, .details] {
+        for mode in ViewMode.allCases {
             var properties = DirectoryViewProperties()
             properties.viewMode = mode
             store.setDefault(properties)
             let pane = BrowserViewController(provider: provider, initialURL: provider.homeURL, viewPropertiesStore: store)
             _ = pane.view
-            let expected: FileViewing = mode == .icons ? pane.iconGrid : pane.fileList
+            let expected: FileViewing
+            switch mode {
+            case .icons: expected = pane.iconGrid
+            case .details: expected = pane.fileList
+            case .columns: expected = pane.columnView
+            }
             check("new pane mounts saved \(mode) view", pane.viewMode == mode && pane.fileView === expected)
             check("saved \(mode) view is attached", expected.viewController.parent === pane && expected.viewController.view.superview != nil)
             check("saved \(mode) zoom matches the view", pane.zoomIndex == properties.zoomIndex(for: mode))
@@ -258,7 +264,7 @@ enum SmokeTest: SmokeSuite {
                 b.fileList.cutURLs = []
                 b.fileList.collapse(folderNode)
             }
-            for mode in [ViewMode.details, .icons] {
+            for mode in ViewMode.allCases {
                 b.setViewMode(mode)
                 wc.window?.contentView?.layoutSubtreeIfNeeded()
                 b.fileView.select(urls: [file])
@@ -273,7 +279,10 @@ enum SmokeTest: SmokeSuite {
                     if let editor, let delegate = editor.delegate as? NSTextField {
                         _ = delegate.delegate?.control?(delegate, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
                     } else {
-                        editor?.cancelOperation(nil)
+                        // NSTextView does not implement cancelOperation: itself; a real
+                        // Escape reaches it through doCommand(by:), which walks the
+                        // responder chain — the column view's browser handles it there.
+                        editor?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
                     }
                     check("\(mode.rawValue): Escape cancels typed rename", FileManager.default.fileExists(atPath: file.path) && !FileManager.default.fileExists(atPath: directory.appendingPathComponent("changed-name.txt").path))
                     wc.window?.makeFirstResponder(b.focusView)

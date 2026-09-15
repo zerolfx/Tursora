@@ -34,6 +34,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var backButton: LongPressMenuButton?
     private var forwardButton: LongPressMenuButton?
     private var viewModeControl: NSSegmentedControl?
+    /// Segment order is Icons, List, Columns — the order of the View menu.
+    static func segment(for mode: ViewMode) -> Int {
+        switch mode { case .icons: return 0; case .details: return 1; case .columns: return 2 }
+    }
+    static func mode(forSegment segment: Int) -> ViewMode {
+        switch segment { case 0: return .icons; case 2: return .columns; default: return .details }
+    }
     private var splitButton: NSButton?
     private var splitToolbarItem: NSToolbarItem?
     private var terminalButton: NSButton?
@@ -507,9 +514,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private func validateNavigation() {
         backButton?.isEnabled = browser.canGoBack
         forwardButton?.isEnabled = browser.canGoForward
-        viewModeControl?.selectedSegment = browser.viewMode == .icons ? 0 : 1
+        viewModeControl?.selectedSegment = Self.segment(for: browser.viewMode)
         viewModeControl?.setToolTip(shortcutTooltip("as Icons", action: "menu.viewAsIcons"), forSegment: 0)
         viewModeControl?.setToolTip(shortcutTooltip("as List", action: "menu.viewAsList"), forSegment: 1)
+        viewModeControl?.setToolTip(shortcutTooltip("as Columns", action: "menu.viewAsColumns"), forSegment: 2)
         syncSplitToolbar()
         syncTerminalToolbar()
         shareItem?.isEnabled = !sharingItems.isEmpty
@@ -518,7 +526,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     var selectedToolbarViewModeForTesting: ViewMode? {
         guard let control = viewModeControl else { return nil }
-        return control.selectedSegment == 0 ? .icons : .details
+        return Self.mode(forSegment: control.selectedSegment)
     }
 
     var splitToolbarButtonForTesting: NSButton? { splitButton }
@@ -604,7 +612,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     @objc func toggleSplit(_ sender: Any?) { tabs.toggleSplit() }
     @objc private func viewModeChanged(_ sender: NSSegmentedControl) {
-        browser.setViewMode(sender.selectedSegment == 0 ? .icons : .details)
+        browser.setViewMode(Self.mode(forSegment: sender.selectedSegment))
     }
     @objc func focusOtherPane(_ sender: Any?) { tabs.focusOtherPane() }
 
@@ -897,11 +905,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let control = NSSegmentedControl(images: [
                 NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Icons")!,
                 NSImage(systemSymbolName: "list.bullet", accessibilityDescription: "List")!,
+                NSImage(systemSymbolName: "rectangle.split.3x1", accessibilityDescription: "Columns")!,
             ], trackingMode: .selectOne, target: self, action: #selector(viewModeChanged(_:)))
             control.segmentStyle = .automatic
             control.setToolTip(shortcutTooltip("as Icons", action: "menu.viewAsIcons"), forSegment: 0)
             control.setToolTip(shortcutTooltip("as List", action: "menu.viewAsList"), forSegment: 1)
-            control.selectedSegment = browser.viewMode == .icons ? 0 : 1
+            control.setToolTip(shortcutTooltip("as Columns", action: "menu.viewAsColumns"), forSegment: 2)
+            control.selectedSegment = Self.segment(for: browser.viewMode)
             viewModeControl = control
             let item = NSToolbarItem(itemIdentifier: id)
             item.label = "View"

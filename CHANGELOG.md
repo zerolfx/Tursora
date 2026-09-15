@@ -6,6 +6,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ### Added
 
+- **View ▸ as Columns** (⌥⌘3): Finder's column view. A selected folder opens its contents in the column to the right and the chain follows your selection; a selected file is previewed in the last column, with Markdown rendered. Selecting never changes the pane's location — only opening a folder does — so Back, the path bar and the terminal keep referring to the first column's folder. Columns start at Finder's width and resize by dragging; the mode and its own zoom step are remembered per folder like the other two views.
 - A preview pane docked beside the file view (**View ▸ Show Preview**, ⇧⌘P). It shows the selected item, or the current folder when nothing is selected, and stays open as you navigate. Markdown is rendered as rich text — headings, lists, block quotes, fenced code, inline emphasis and GitHub tables — following your light or dark appearance; everything else falls back to Quick Look. Drag its edge to resize between 220 and 720 pt; the pane's width and whether it was open are restored with your session. Links in a rendered document are shown but not followed, and nothing a document references is loaded. The thumbnail toggle that used to hold ⇧⌘P is now ⌃⌘P.
 
 ### Changed

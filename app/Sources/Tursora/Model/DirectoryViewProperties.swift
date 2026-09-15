@@ -6,6 +6,7 @@ struct DirectoryViewProperties: Codable, Equatable {
     var viewMode: ViewMode = .details
     var detailsZoomIndex = ZoomLevel.defaultIndex(for: .details)
     var iconsZoomIndex = ZoomLevel.defaultIndex(for: .icons)
+    var columnsZoomIndex = ZoomLevel.defaultIndex(for: .columns)
     var sortKey: DirectoryModel.SortKey = .name
     var ascending = true
     var groupKey: GroupKey = .none
@@ -25,18 +26,26 @@ struct DirectoryViewProperties: Codable, Equatable {
     init() {}
 
     func zoomIndex(for mode: ViewMode) -> Int {
-        ZoomLevel.clamp(mode == .details ? detailsZoomIndex : iconsZoomIndex, for: mode)
+        switch mode {
+        case .details: return ZoomLevel.clamp(detailsZoomIndex, for: mode)
+        case .icons: return ZoomLevel.clamp(iconsZoomIndex, for: mode)
+        case .columns: return ZoomLevel.clamp(columnsZoomIndex, for: mode)
+        }
     }
 
     mutating func setZoomIndex(_ index: Int, for mode: ViewMode) {
-        if mode == .details { detailsZoomIndex = ZoomLevel.clamp(index, for: mode) }
-        else { iconsZoomIndex = ZoomLevel.clamp(index, for: mode) }
+        switch mode {
+        case .details: detailsZoomIndex = ZoomLevel.clamp(index, for: mode)
+        case .icons: iconsZoomIndex = ZoomLevel.clamp(index, for: mode)
+        case .columns: columnsZoomIndex = ZoomLevel.clamp(index, for: mode)
+        }
     }
 
     fileprivate var normalized: Self {
         var result = self
         result.detailsZoomIndex = zoomIndex(for: .details)
         result.iconsZoomIndex = zoomIndex(for: .icons)
+        result.columnsZoomIndex = zoomIndex(for: .columns)
         if result.lastGroupKey == .none { result.lastGroupKey = .kind }
         // Sorted and deduplicated so two equal column sets compare equal and
         // a reordering alone never counts as an effective user change.
@@ -45,7 +54,7 @@ struct DirectoryViewProperties: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case viewMode, detailsZoomIndex, iconsZoomIndex, sortKey, ascending
+        case viewMode, detailsZoomIndex, iconsZoomIndex, columnsZoomIndex, sortKey, ascending
         case groupKey, lastGroupKey, showHidden, showPreviews
         case listColumns, calculateAllSizes
     }
@@ -60,6 +69,10 @@ struct DirectoryViewProperties: Codable, Equatable {
         }
         if let value = try? values.decode(Int.self, forKey: .iconsZoomIndex) {
             setZoomIndex(value, for: .icons)
+        }
+        // Absent in every file written before the column view; keeps the default.
+        if let value = try? values.decode(Int.self, forKey: .columnsZoomIndex) {
+            setZoomIndex(value, for: .columns)
         }
         if let raw = try? values.decode(String.self, forKey: .sortKey),
            let value = DirectoryModel.SortKey(rawValue: raw) { sortKey = value }
@@ -84,6 +97,7 @@ struct DirectoryViewProperties: Codable, Equatable {
         try values.encode(value.viewMode.rawValue, forKey: .viewMode)
         try values.encode(value.detailsZoomIndex, forKey: .detailsZoomIndex)
         try values.encode(value.iconsZoomIndex, forKey: .iconsZoomIndex)
+        try values.encode(value.columnsZoomIndex, forKey: .columnsZoomIndex)
         try values.encode(value.sortKey.rawValue, forKey: .sortKey)
         try values.encode(value.ascending, forKey: .ascending)
         try values.encode(value.groupKey.rawValue, forKey: .groupKey)
