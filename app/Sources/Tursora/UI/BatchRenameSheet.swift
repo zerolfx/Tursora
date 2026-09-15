@@ -57,6 +57,15 @@ final class BatchRenameSheetController: NSWindowController, NSTextFieldDelegate,
     private let addPanel = NSGridView()
     private let formatPanel = NSGridView()
     private var startNumberRow: NSGridRow?
+    private var formatHintRow: NSGridRow?
+    /// `#` is not guessable, so the sheet says what it does rather than
+    /// leaving it to the release notes.
+    let formatHint: NSTextField = {
+        let label = NSTextField(labelWithString: "A run of # becomes the number; its length sets the leading zeros.")
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        label.textColor = .secondaryLabelColor
+        return label
+    }()
 
     private(set) var previewRows: [(old: String, new: String)] = []
     private(set) var problem: BatchRename.Problem?
@@ -198,7 +207,9 @@ final class BatchRenameSheetController: NSWindowController, NSTextFieldDelegate,
         addPanel.addRow(with: [NSTextField(labelWithString: "Where:"), addWherePopup])
         formatPanel.addRow(with: [NSTextField(labelWithString: "Name Format:"), nameFormatPopup])
         formatPanel.addRow(with: [NSTextField(labelWithString: "Where:"), formatWherePopup])
+        customFormatField.placeholderString = "Photo ###"
         formatPanel.addRow(with: [NSTextField(labelWithString: "Custom Format:"), customFormatField])
+        formatHintRow = formatPanel.addRow(with: [NSTextField(labelWithString: ""), formatHint])
         startNumberRow = formatPanel.addRow(with: [NSTextField(labelWithString: "Start numbers at:"), startNumberField])
         for panel in [replacePanel, addPanel, formatPanel] {
             panel.rowSpacing = 8
@@ -257,7 +268,7 @@ final class BatchRenameSheetController: NSWindowController, NSTextFieldDelegate,
         case 1:
             return .add(text: addTextField.stringValue, position: position(addWherePopup))
         case 2:
-            let kind = BatchRename.FormatKind.allCases.first { $0.title == nameFormatPopup.titleOfSelectedItem } ?? .nameAndIndex
+            let kind = BatchRename.FormatKind.allCases.first { $0.title == nameFormatPopup.titleOfSelectedItem } ?? .number
             return .format(kind: kind, custom: customFormatField.stringValue,
                            start: Int(startNumberField.stringValue.trimmingCharacters(in: .whitespaces)) ?? 1,
                            position: position(formatWherePopup))
@@ -282,11 +293,17 @@ final class BatchRenameSheetController: NSWindowController, NSTextFieldDelegate,
     /// Finder shows "Start numbers at:" only for the numbering formats.
     private func applyStartNumberVisibility() {
         guard let row = startNumberRow else { return }
-        if case .format(let kind, _, _, _) = mode { row.isHidden = kind == .nameAndDate }
-        else { row.isHidden = true }
+        if case .format(let kind, _, _, _) = mode {
+            row.isHidden = kind == .date
+            formatHintRow?.isHidden = kind == .date
+        } else {
+            row.isHidden = true
+            formatHintRow?.isHidden = true
+        }
     }
 
     var isStartNumberVisible: Bool { !(startNumberRow?.isHidden ?? true) }
+    var isFormatHintVisible: Bool { !(formatHintRow?.isHidden ?? true) }
 
     // MARK: - Live preview
 

@@ -17,17 +17,57 @@ enum BatchRename {
         var title: String { self == .afterName ? "after name" : "before name" }
     }
 
-    /// Finder's "Name Format:" popup.
+    /// The "Name Format:" popup. Finder offers Name and Index, Name and Counter
+    /// and Name and Date; the first two are both a number after the name,
+    /// differing only in zero padding, so `number` replaces them with KIO's
+    /// stronger placeholder — `#` puts the index anywhere and its length sets
+    /// the padding, which Finder cannot express. `date` is kept because a
+    /// placeholder cannot express a timestamp (D80).
     enum FormatKind: String, CaseIterable, Equatable {
-        case nameAndIndex, nameAndCounter, nameAndDate
-        /// Finder BulkRenameWindow.nib: "Name and Index" / "Name and Counter" / "Name and Date".
+        case number, date
         var title: String {
             switch self {
-            case .nameAndIndex: return "Name and Index"
-            case .nameAndCounter: return "Name and Counter"
-            case .nameAndDate: return "Name and Date"
+            case .number: return "Number"
+            case .date: return "Date"
             }
         }
+    }
+
+    /// KIO's placeholder character, from `batchrenamejob.cpp`.
+    static let placeholder: Character = "#"
+
+    /// Where the one valid run of `#` sits in a pattern, and how long it is.
+    /// KIO accepts exactly one run: none or several make the pattern invalid,
+    /// which is a different case from an empty pattern.
+    struct Placeholder: Equatable {
+        let start: String.Index
+        let length: Int
+    }
+
+    /// Finds the single run of `#`. Returns nil when there is no run or more
+    /// than one, which is what KIO calls an invalid placeholder.
+    static func placeholderRun(in pattern: String) -> Placeholder? {
+        var found: Placeholder?
+        var index = pattern.startIndex
+        while index < pattern.endIndex {
+            guard pattern[index] == placeholder else {
+                index = pattern.index(after: index)
+                continue
+            }
+            var end = index
+            while end < pattern.endIndex, pattern[end] == placeholder { end = pattern.index(after: end) }
+            if found != nil { return nil }        // a second run: invalid
+            found = Placeholder(start: index, length: pattern.distance(from: index, to: end))
+            index = end
+        }
+        return found
+    }
+
+    /// Substitutes `value` for the run of `#`, zero-padded to the run's length.
+    /// A number longer than the run is never truncated, matching `padded`.
+    static func substitute(_ pattern: String, run: Placeholder, value: Int) -> String {
+        let end = pattern.index(run.start, offsetBy: run.length)
+        return pattern.replacingCharacters(in: run.start..<end, with: padded(value, width: run.length))
     }
 
     /// Finder's mode popup (LocalizableMerged BR5 / BR3 / BR1), in that order.
@@ -105,7 +145,7 @@ enum BatchRename {
     /// except Replace Text, which — like Finder — rewrites the whole name.
     static func plan(_ entries: [Entry], mode: Mode) -> [String] {
         var names = entries.enumerated().map { newName(for: $0.element, offset: $0.offset, mode: mode) }
-        if case .format(.nameAndDate, _, _, _) = mode { disambiguate(&names, entries: entries) }
+        if case .format(.date, _, _, _) = mode { disambiguate(&names, entries: entries) }
         return names
     }
 
@@ -130,17 +170,30 @@ enum BatchRename {
             return joined(base: position == .afterName ? base + text : text + base, ext: ext)
         case .format(let kind, let custom, let start, let position):
             let (_, ext) = split(entry.name)
-            let token: String
             switch kind {
-            case .nameAndIndex: token = String(start + offset)
-            case .nameAndCounter: token = padded(start + offset, width: 5)
-            case .nameAndDate: token = dateStamp(entry.date)
+            case .date:
+                let token = dateStamp(entry.date)
+                let base = custom.isEmpty ? token
+                    : (position == .afterName ? custom + " " + token : token + " " + custom)
+                return joined(base: base, ext: ext)
+            case .number:
+                return joined(base: numbered(custom, value: start + offset, position: position), ext: ext)
             }
-            let base: String
-            if custom.isEmpty { base = token }
-            else { base = position == .afterName ? custom + " " + token : token + " " + custom }
-            return joined(base: base, ext: ext)
         }
+    }
+
+    /// The base name for the `number` kind, following KIO's `batchrenamejob`:
+    /// one run of `#` is replaced in place and its length sets the padding.
+    /// With no run — or several, which KIO also calls invalid — the number is
+    /// appended, because otherwise every item would get the same name and the
+    /// whole rename would collide. KIO makes that fallback conditional on the
+    /// items sharing an extension; we always append, since a plan that cannot
+    /// apply is worse than one that reads slightly differently, and the sheet
+    /// shows the result before anything is renamed.
+    static func numbered(_ pattern: String, value: Int, position: Position) -> String {
+        guard !pattern.isEmpty else { return String(value) }
+        if let run = placeholderRun(in: pattern) { return substitute(pattern, run: run, value: value) }
+        return position == .afterName ? pattern + " " + String(value) : String(value) + " " + pattern
     }
 
     /// Two items stamped in the same second would otherwise get the same name.

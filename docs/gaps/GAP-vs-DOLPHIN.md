@@ -33,7 +33,7 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 
 | Dolphin feature | Tursora | Notes |
 |---|---|---|
-| **Batch rename** (Return on a multi-selection → `KIO::RenameFileDialog`, the `name#` pattern) | ✅ Finder-style | A multi-selection goes through the File ▸ Rename N Items… sheet (Dolphin uses Return); the `name#` placeholder is not implemented, and Name and Index / Name and Counter take its place; the preview list matches Dolphin |
+| **Batch rename** (Return on a multi-selection → `KIO::RenameFileDialog`, the `name#` pattern) | ✅ Finder-style | A multi-selection goes through the File ▸ Rename N Items… sheet (Dolphin uses Return); the `#` placeholder is implemented with KIO's own semantics — one run, replaced in place, its length setting the leading zeros (D80) — and it replaced Name and Index / Name and Counter, which it subsumes; our preview lists every resulting name, where KIO shows one line |
 | **New ▸ template** (`Create New`: text file/HTML/…, from the Templates directory) | New folder only | |
 | **Invert selection** (`invert_selection`) | ❌ | A few lines of code |
 | **Operation progress and cancellation** (KJob progress, pause/cancel, several tasks at once) | Copy / Move / Duplicate have per-task control; for the verification see the [dedicated record](../research/file-operation-tasks.md) | A large file can be paused / resumed / cancelled part way through (checked between chunks); conflicts are handled separately and undo is safe. Metadata system calls, same-volume atomic moves and the ZIP tool stage make no claim of byte-by-byte pausing; not every KIO backend is implemented |

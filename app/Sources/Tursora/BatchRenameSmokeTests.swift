@@ -55,31 +55,59 @@ enum BatchRenameSmokeTests: SmokeSuite {
         check("Add Text with empty text leaves names alone",
               BatchRename.plan(names: names, mode: .add(text: "", position: .afterName)) == names)
 
-        check("Name and Index counts from the start number without padding",
-              BatchRename.plan(names: names, mode: .format(kind: .nameAndIndex, custom: "Custom", start: 1, position: .afterName)) == ["Custom 1.jpg", "Custom 2.jpg", "Custom 3.jpg"])
-        check("Name and Index before name and from 9",
-              BatchRename.plan(names: names, mode: .format(kind: .nameAndIndex, custom: "Custom", start: 9, position: .beforeName)) == ["9 Custom.jpg", "10 Custom.jpg", "11 Custom.jpg"])
-        check("Name and Index with an empty custom text is just the number",
-              BatchRename.plan(names: names, mode: .format(kind: .nameAndIndex, custom: "", start: 1, position: .afterName)) == ["1.jpg", "2.jpg", "3.jpg"])
-        check("Name and Counter pads to five digits",
-              BatchRename.plan(names: names, mode: .format(kind: .nameAndCounter, custom: "Custom", start: 1, position: .afterName)) == ["Custom 00001.jpg", "Custom 00002.jpg", "Custom 00003.jpg"])
-        check("Name and Counter never truncates a wide number",
+        // KIO's placeholder (batchrenamejob.cpp): one run of "#" is replaced in
+        // place and the run's length sets the zero padding. These pin the rules
+        // that are easy to get subtly wrong.
+        check("a run of # is replaced in place, padded to the run's length",
+              BatchRename.plan(names: names, mode: .format(kind: .number, custom: "Photo ###", start: 1, position: .afterName))
+                  == ["Photo 001.jpg", "Photo 002.jpg", "Photo 003.jpg"])
+        check("the run may sit anywhere, not only at the end",
+              BatchRename.plan(names: names, mode: .format(kind: .number, custom: "## - shot", start: 7, position: .afterName))
+                  == ["07 - shot.jpg", "08 - shot.jpg", "09 - shot.jpg"])
+        check("a single # is the index with no padding",
+              BatchRename.plan(names: names, mode: .format(kind: .number, custom: "img #", start: 9, position: .afterName))
+                  == ["img 9.jpg", "img 10.jpg", "img 11.jpg"])
+        check("a number wider than the run is never truncated",
+              BatchRename.plan(names: ["a.jpg"], mode: .format(kind: .number, custom: "v##", start: 1234, position: .afterName))
+                  == ["v1234.jpg"])
+        check("two separate runs are not a placeholder, so the number is appended",
+              BatchRename.plan(names: ["a.jpg"], mode: .format(kind: .number, custom: "# of #", start: 4, position: .afterName))
+                  == ["# of # 4.jpg"], "\(BatchRename.plan(names: ["a.jpg"], mode: .format(kind: .number, custom: "# of #", start: 4, position: .afterName)))")
+        check("placeholderRun finds one run and rejects none or several",
+              BatchRename.placeholderRun(in: "a###b")?.length == 3
+                  && BatchRename.placeholderRun(in: "none") == nil
+                  && BatchRename.placeholderRun(in: "#a#") == nil)
+        check("a pattern with no run still yields distinct names, so a batch can apply",
+              Set(BatchRename.plan(names: names, mode: .format(kind: .number, custom: "Custom", start: 1, position: .afterName))).count == names.count)
+        check("the extension is never part of the pattern",
+              BatchRename.plan(names: ["a.tar.gz"], mode: .format(kind: .number, custom: "x###", start: 5, position: .afterName))
+                  == ["x005.gz"], "\(BatchRename.plan(names: ["a.tar.gz"], mode: .format(kind: .number, custom: "x###", start: 5, position: .afterName)))")
+
+        check("a bare pattern counts from the start number without padding",
+              BatchRename.plan(names: names, mode: .format(kind: .number, custom: "Custom", start: 1, position: .afterName)) == ["Custom 1.jpg", "Custom 2.jpg", "Custom 3.jpg"])
+        check("a bare pattern before the name, counting from 9",
+              BatchRename.plan(names: names, mode: .format(kind: .number, custom: "Custom", start: 9, position: .beforeName)) == ["9 Custom.jpg", "10 Custom.jpg", "11 Custom.jpg"])
+        check("an empty pattern is just the number",
+              BatchRename.plan(names: names, mode: .format(kind: .number, custom: "", start: 1, position: .afterName)) == ["1.jpg", "2.jpg", "3.jpg"])
+        check("a five-# run pads to five digits, as Name and Counter did",
+              BatchRename.plan(names: names, mode: .format(kind: .number, custom: "Custom #####", start: 1, position: .afterName)) == ["Custom 00001.jpg", "Custom 00002.jpg", "Custom 00003.jpg"])
+        check("padding never truncates a wide number",
               BatchRename.padded(123_456, width: 5) == "123456" && BatchRename.padded(7, width: 5) == "00007")
 
         let text = BatchRename.dateStamp(stamp, timeZone: TimeZone(identifier: "UTC")!)
         check("date stamp matches Finder's form", text == "2026-09-10 at 00.26.40", text)
-        let dated = BatchRename.plan(names: ["a.jpg", "b.jpg"], mode: .format(kind: .nameAndDate, custom: "Custom", start: 1, position: .afterName),
+        let dated = BatchRename.plan(names: ["a.jpg", "b.jpg"], mode: .format(kind: .date, custom: "Custom", start: 1, position: .afterName),
                                      dates: [stamp, stamp.addingTimeInterval(3600)])
-        check("Name and Date uses the injected date and keeps the extension",
+        check("Date uses the injected date and keeps the extension",
               dated == ["Custom \(BatchRename.dateStamp(stamp)).jpg", "Custom \(BatchRename.dateStamp(stamp.addingTimeInterval(3600))).jpg"], "\(dated)")
-        let before = BatchRename.plan(names: ["a.jpg"], mode: .format(kind: .nameAndDate, custom: "Custom", start: 1, position: .beforeName), dates: [stamp])
-        check("Name and Date before name", before == ["\(BatchRename.dateStamp(stamp)) Custom.jpg"], "\(before)")
-        let shared = BatchRename.plan(names: ["a.jpg", "b.jpg"], mode: .format(kind: .nameAndDate, custom: "Custom", start: 1, position: .afterName),
+        let before = BatchRename.plan(names: ["a.jpg"], mode: .format(kind: .date, custom: "Custom", start: 1, position: .beforeName), dates: [stamp])
+        check("Date before the name", before == ["\(BatchRename.dateStamp(stamp)) Custom.jpg"], "\(before)")
+        let shared = BatchRename.plan(names: ["a.jpg", "b.jpg"], mode: .format(kind: .date, custom: "Custom", start: 1, position: .afterName),
                                       dates: [stamp, stamp])
-        check("Name and Date disambiguates a shared stamp within the batch",
+        check("Date disambiguates a shared stamp within the batch",
               shared[0] != shared[1] && shared[1] == "Custom \(BatchRename.dateStamp(stamp)) 2.jpg", "\(shared)")
         check("plan returns one name per input",
-              BatchRename.plan(names: names, mode: .format(kind: .nameAndIndex, custom: "x", start: 1, position: .afterName)).count == names.count)
+              BatchRename.plan(names: names, mode: .format(kind: .number, custom: "x", start: 1, position: .afterName)).count == names.count)
     }
 
     private static func pureLabels() {
@@ -88,8 +116,18 @@ enum BatchRenameSmokeTests: SmokeSuite {
         check("sheet title is Finder's label", BatchRename.sheetTitle == "Rename Finder Items:")
         check("mode popup lists Finder's three entries", BatchRename.Mode.titles == ["Replace Text", "Add Text", "Format"])
         check("Where popup lists after name first", BatchRename.Position.allCases.map(\.title) == ["after name", "before name"])
-        check("Name Format popup lists Index, Counter, Date",
-              BatchRename.FormatKind.allCases.map(\.title) == ["Name and Index", "Name and Counter", "Name and Date"])
+        // Finder offers Name and Index / Name and Counter / Name and Date. The
+        // first two are one rule with and without padding, and a run of "#"
+        // expresses both while also placing the number freely, so they collapse
+        // into Number; Date stays because a placeholder cannot carry a
+        // timestamp (D80).
+        check("Name Format popup lists Number and Date",
+              BatchRename.FormatKind.allCases.map(\.title) == ["Number", "Date"])
+        check("both retired Finder kinds are still expressible as patterns",
+              BatchRename.plan(names: ["a.jpg", "b.jpg"], mode: .format(kind: .number, custom: "n #", start: 1, position: .afterName))
+                  == ["n 1.jpg", "n 2.jpg"]
+              && BatchRename.plan(names: ["a.jpg", "b.jpg"], mode: .format(kind: .number, custom: "n #####", start: 1, position: .afterName))
+                  == ["n 00001.jpg", "n 00002.jpg"])
     }
 
     // MARK: - Pure validation
@@ -318,13 +356,23 @@ enum BatchRenameSmokeTests: SmokeSuite {
         check("\(mode): Add Text shows its panel and keeps extensions",
               sheet.previewRows.map(\.new) == ["IMG_001 copy.jpg", "IMG_002 copy.jpg", "IMG_003 copy.jpg"], "\(sheet.previewRows.map(\.new))")
         sheet.selectMode(2)
-        sheet.selectFormatKind(.nameAndDate)
-        check("\(mode): Name and Date hides Start numbers at", !sheet.isStartNumberVisible)
-        sheet.selectFormatKind(.nameAndCounter)
-        sheet.type("Photo", into: sheet.customFormatField)
+        sheet.selectFormatKind(.date)
+        check("\(mode): Date hides Start numbers at and the placeholder hint",
+              !sheet.isStartNumberVisible && !sheet.isFormatHintVisible)
+        sheet.selectFormatKind(.number)
+        sheet.type("Photo #####", into: sheet.customFormatField)
         sheet.type("7", into: sheet.startNumberField)
-        check("\(mode): Name and Counter previews padded numbers",
-              sheet.isStartNumberVisible && sheet.previewRows.map(\.new) == ["Photo 00007.jpg", "Photo 00008.jpg", "Photo 00009.jpg"],
+        check("\(mode): a # run in the sheet previews padded numbers",
+              sheet.isStartNumberVisible && sheet.isFormatHintVisible
+                  && sheet.previewRows.map(\.new) == ["Photo 00007.jpg", "Photo 00008.jpg", "Photo 00009.jpg"],
+              "\(sheet.previewRows.map(\.new))")
+        sheet.type("v## final", into: sheet.customFormatField)
+        check("\(mode): the sheet honours a run that is not at the end",
+              sheet.previewRows.map(\.new) == ["v07 final.jpg", "v08 final.jpg", "v09 final.jpg"],
+              "\(sheet.previewRows.map(\.new))")
+        sheet.type("Photo", into: sheet.customFormatField)
+        check("\(mode): a pattern with no # still numbers, so the batch can apply",
+              sheet.previewRows.map(\.new) == ["Photo 7.jpg", "Photo 8.jpg", "Photo 9.jpg"],
               "\(sheet.previewRows.map(\.new))")
 
         // Apply

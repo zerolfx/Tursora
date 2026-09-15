@@ -6,6 +6,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ### Changed
 
+- Batch rename can put the number anywhere in the name. `Name Format:` is now **Number** or **Date**, and under Number the custom text is a pattern: a run of `#` becomes the sequence number and the length of the run sets the leading zeros, so `Photo ###` gives `Photo 001`. The run can sit anywhere, not only after the name — `v## final` gives `v07 final` — and a number too wide for the run is never shortened. This replaces Name and Index and Name and Counter, which were the same rule with and without padding and are both still expressible (`name #` and `name #####`). Name and Date is unchanged. Every resulting name is still previewed before you rename.
 - A tab now stops growing at a browser-like width instead of stretching to the window edge, and the new-tab button sits just after the last tab rather than at the far right of an almost empty strip. The width cap gives way when a title genuinely needs more room and the strip can spare it.
 - A split tab's two folder names are separated by a hairline drawn down the height of the tab instead of a `|` character in the text. Each name now truncates on its own, so a short one is no longer shortened beside a long one.
 
