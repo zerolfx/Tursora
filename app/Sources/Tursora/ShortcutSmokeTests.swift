@@ -180,10 +180,10 @@ enum ShortcutSmokeTests: SmokeSuite {
         check("custom alias changes the selected real tab", ShortcutDispatcher.handle(event("j", [.command, .control], 38, controller.window), in: controller) && controller.tabs.currentIndex == 1)
         try! store.set(nil, for: "window.selectTab.1")
         check("cleared tab-number shortcut no longer selects a tab", !ShortcutDispatcher.handle(event("1", .command, 18, controller.window), in: controller) && controller.tabs.currentIndex == 1)
-        try! store.set(.init(keyEquivalent: "3", modifierFlags: [.command, .option]), for: "menu.viewAsIcons")
+        try! store.set(.init(keyEquivalent: "4", modifierFlags: [.command, .option]), for: "menu.viewAsIcons")
         let menu = NSApp.mainMenu!
         let icons = find("menu.viewAsIcons", menu)
-        check("real menu updates the assigned equivalent immediately", icons?.keyEquivalent == "3" && icons?.keyEquivalentModifierMask == [.command, .option])
+        check("real menu updates the assigned equivalent immediately", icons?.keyEquivalent == "4" && icons?.keyEquivalentModifierMask == [.command, .option])
         // Native menu actions use NSApp's responder chain, not the windowNumber
         // on a synthetic event. Reacquire it after asynchronous fixture loading.
         controller.browser.setViewMode(.details)
@@ -192,7 +192,7 @@ enum ShortcutSmokeTests: SmokeSuite {
         let iconTarget = icons.flatMap { item in item.action.flatMap { NSApp.target(forAction: $0, to: item.target, from: item) } }
         if (iconTarget as AnyObject?) !== controller.browser { printMenuDiagnosis(icons, controller: controller) }
         check("native menu resolves the owned active pane", (iconTarget as AnyObject?) === controller.browser)
-        let handledIcons = menu.performKeyEquivalent(with: event("3", [.command, .option], 20, controller.window))
+        let handledIcons = menu.performKeyEquivalent(with: event("4", [.command, .option], 21, controller.window))
         if !handledIcons || controller.browser.viewMode != .icons { printMenuDiagnosis(icons, controller: controller, handled: handledIcons) }
         check("native menu dispatch changes the active pane", handledIcons && controller.browser.viewMode == .icons)
         check("old menu equivalent stops dispatching", !menu.performKeyEquivalent(with: event("1", [.command, .option], 18, controller.window)))

@@ -50,12 +50,12 @@ Chosen by the owner after comparing against Iruka. In order:
 
 1. **Batch rename: the `#` placeholder.** KIO's Enumerate semantics — one run of `#` is replaced in place by the index and its length sets the zero padding, so `Photo ###.jpg` gives `Photo 001.jpg`. It subsumes Name and Index (`name #`) and Name and Counter (`name #####`) and adds free placement and padding, so Format collapses from three kinds to two: Number and Date. Date stays because `#` cannot express a timestamp and dropping it would regress a shipped 0.3.0 feature. The existing full-list live preview is kept — KIO shows only one read-only line, so this is a place Tursora is already ahead. Closes the deviation recorded in [GAP-vs-DOLPHIN](gaps/GAP-vs-DOLPHIN.md) line 36.
 2. ~~**A docked preview pane, with Markdown rendered.**~~ **Done, 2026-09-15** (D81–D83). Markdown rendering is a condition of the pane, not a follow-up: Quick Look shows Markdown as plain text. Syntax highlighting for code is explicitly excluded. The pane must dock beside the file view rather than float like the Inspector, survive navigation, and persist in `WorkspaceSession`; ⇧⌘P is taken by Show Previews and has to move first.
-3. **Column view.** A third `FileViewing` conformer, with the per-mode zoom ladder and a store migration it drags along. ⌘3 is taken by tab selection, so the binding is ⌥⌘3.
+3. ~~**Column view.**~~ **Done, 2026-09-15** (D84). A third `FileViewing` conformer, with the per-mode zoom ladder and a store migration it drags along. ⌘3 is taken by tab selection, so the binding is ⌥⌘3.
 4. **Content search that does not need an index.** Searching file contents where Spotlight has no index.
 
 ## Big items (L)
 
-Column view, Gallery view, fuller preferences (confirmation policy and so on), free icon placement, a Trash view (needs Full Disk Access), Quick Actions, Chinese localization, docking / floating panels anywhere, server history / discovery / reconnect, multiple terminal sessions and terminal session restore. The core persistence of per-directory view attributes is implemented; the full Show View Options dialog, persisting the column layout and applying recursively are still to do.
+~~Column view~~ (done 2026-09-15), Gallery view, fuller preferences (confirmation policy and so on), free icon placement, a Trash view (needs Full Disk Access), Quick Actions, Chinese localization, docking / floating panels anywhere, server history / discovery / reconnect, multiple terminal sessions and terminal session restore. The core persistence of per-directory view attributes is implemented; the full Show View Options dialog, persisting the column layout and applying recursively are still to do.
 
 ## Not doing / waiting for a public API
 
@@ -79,6 +79,8 @@ Also excluded, 2026-09-15, after comparing against Iruka: **Intel support** — 
 - ZIP browsing still stages the whole archive; the space and responsiveness for large archives need further assessment. Password-protected archives, other formats, reloading automatically after the original ZIP changes externally, and writing back into an archive are not implemented.
 
 ## Known small gaps
+
+- In the column view every directory-change broadcast reloads every open column, so a column's scroll position is lost when a file appears or vanishes anywhere in the chain; the selection and the open chain are restored, and each column is listed once per reload rather than on every delegate callback. Keeping per-column scroll needs a per-column diff against the listing snapshot, deferred (2026-09-15).
 
 - ⌘W does not close the Settings window; a window-level close command and a matching regression check still need to be added; found during this round's CUA pass on 2026-09-12.
 

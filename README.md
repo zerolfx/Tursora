@@ -122,7 +122,7 @@ The features below are in the latest release. See the [version history](CHANGELO
     <tr>
       <td>
         <strong>A view that fits your files</strong>
-        <p>Browse expandable lists or thumbnail grids; group, sort and zoom with the slider, a pinch or <code>⌘</code>-scroll. <code>⌥⌘1</code> and <code>⌥⌘2</code> switch views. Folders remember their view, sorting, zoom, groups, hidden files and previews across restarts.</p>
+        <p>Browse expandable lists or thumbnail grids; group, sort and zoom with the slider, a pinch or <code>⌘</code>-scroll. <code>⌥⌘1</code>, <code>⌥⌘2</code> and <code>⌥⌘3</code> switch between icons, list and columns. Folders remember their view, sorting, zoom, groups, hidden files and previews across restarts.</p>
         <p><strong>View → Folder View Settings</strong> chooses per-folder memory or one shared view, saves defaults and resets a folder. Memory uses Tursora's own path-based library, including for read-only folders. Existing panes pick up per-folder changes when revisited; renamed or moved folders use the new path's settings. ZIP views start from defaults and stay temporary. Search inherits the pane's view, keeps changes temporary, and restores the folder's saved view on closing.</p>
       </td>
       <td><a href="docs/images/features/folder-views.png"><img src="docs/images/features/folder-views.png" width="600" alt="Folder-specific icon grouping and list settings restored after restarting the app"></a></td>
@@ -218,7 +218,7 @@ These are current gaps, not promises of complete Finder parity:
 
 | Area | Not available in Tursora today |
 |---|---|
-| Views | Column view, Gallery view, a fixed preview sidebar, free icon placement |
+| Views | Gallery view, free icon placement |
 | Search | Finder Smart Folder interoperability, Tags / rating conditions, ZIP contents |
 | Organization | Batch rename, New Folder with Selection, Make Alias / Show Original, Show Package Contents |
 | Trash | Browsing Trash, Put Back, emptying Trash; moving files to Trash and undoing that move are supported |

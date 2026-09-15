@@ -386,7 +386,7 @@ enum DirectoryViewPropertiesSmokeTests: SmokeSuite {
     @MainActor
     private static func checkChrome(_ controller: MainWindowController, expected: DirectoryViewProperties, name: String) {
         let pane = controller.browser
-        let zoom = expected.viewMode == .icons ? expected.iconsZoomIndex : expected.detailsZoomIndex
+        let zoom = expected.zoomIndex(for: expected.viewMode)
         check("\(name): toolbar mode and zoom slider match the active pane",
               controller.selectedToolbarViewModeForTesting == expected.viewMode && pane.zoomIndex == zoom
               && pane.statusBar.zoomSlider.integerValue == zoom

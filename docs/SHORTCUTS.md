@@ -12,7 +12,7 @@ Conflicts identify the current owner and keep the previous value. Clear or chang
 
 Command or Control combinations and function keys can be recorded; the File View alternatives additionally accept Return, Tab, Space and Escape combinations. Plain Escape cancels recording, so use Reset to restore an Escape default. Known macOS-reserved shortcuts are rejected. The recorder uses the active keyboard layout for characters, displays named special keys, and checks equivalent combinations using the current keyboard layout without rewriting literal punctuation. For example, Plus and Shift–Equals conflict on a US layout, but remain distinct when another layout places Plus on an unshifted key.
 
-Command bindings use AppKit's normal menu validation and responder chain, including standard editing commands in text fields. Control-only and function-key bindings pass through to text fields and SwiftTerm while typing, except the configured **Show/Hide Terminal** command, which remains available from the shell. File View alternatives only act while the list or icon view has focus. Native text editing, filename/path completion, arrow selection, dialog confirmation/cancellation, shell/readline controls and mouse/trackpad gestures remain owned by those native views; this catalog customizes Tursora's application commands.
+Command bindings use AppKit's normal menu validation and responder chain, including standard editing commands in text fields. Control-only and function-key bindings pass through to text fields and SwiftTerm while typing, except the configured **Show/Hide Terminal** command, which remains available from the shell. File View alternatives only act while a file view — the list, the icon grid or a column — has focus. Native text editing, filename/path completion, arrow selection, dialog confirmation/cancellation, shell/readline controls and mouse/trackpad gestures remain owned by those native views; this catalog customizes Tursora's application commands.
 
 Return/Enter rename and Space Quick Look are separately listed alternatives to their menu commands. Control-Tab, Control-Shift-Tab, the nine tab positions and Command-Equals also have individually editable rows. Clearing a primary menu binding does not silently clear a separately listed alternative. **Use Groups** retains Control-Command-0; **Group By → None** has no factory binding, removing the former duplicate.
 
@@ -64,9 +64,10 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 ### View
 | Item | Shortcut | Icon | Does |
 |---|---|---|---|
+| as Columns | ⌥⌘3 | `rectangle.split.3x1` | Finder's column view; Finder binds ⌘3, which is tab 3 here. Selecting opens the next column and never navigates; opening a folder does |
 | as Icons / as List | ⌥⌘1 / ⌥⌘2 | `square.grid.2x2` / `list.bullet` | Swaps grid/outline, keeps selection and focus (Finder: ⌘1/⌘2; ours are taken by tabs) |
 | Zoom In / Zoom Out | ⌘+ / ⌘- (⌘= also) | `plus.magnifyingglass` / `minus.magnifyingglass` | Steps the per-mode ladder (icons 32…512, list 16…64) |
-| Actual Size | ⌘0 | — | 64 pt icons / 16 pt rows |
+| Actual Size | ⌘0 | — | 64 pt icons / 16 pt list icons / 22 pt column icons (a 24 pt row in both) |
 | Show Preview | ⇧⌘P | `sidebar.right` | The docked preview pane: follows the selection, renders Markdown, falls back to Quick Look; width and visibility restored with the session |
 | Show Previews | ⌃⌘P | — | Thumbnails from 32 pt up. Finder's ⇧⌘P is its preview pane, which Tursora's pane now takes, so this moved off it (D82) |
 | Filter | ⌘F | `magnifyingglass` | Focuses the toolbar name-filter field; checkmark while filtering |
@@ -121,9 +122,9 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | Space | Toggle Quick Look |
 | ⌘↓ / ⌘↑ | Open the selection / enclosing folder |
 | Arrows | Selection; inside the Quick Look panel ←→↑↓ are forwarded to the view so previews browse |
-| Type-select | List view only |
+| Type-select | List and column views |
 | ⌘⌫ / ⌥⌘⌫ | Trash / delete immediately |
-| Esc while renaming | Both views cancel the edit and restore the original filename, even after typing a different valid name |
+| Esc while renaming | Every file view cancels the edit and restore the original filename, even after typing a different valid name |
 
 ## Address bar and completion (`BreadcrumbBar`, `CompletionPopup`)
 

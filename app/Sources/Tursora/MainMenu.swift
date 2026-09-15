@@ -178,6 +178,7 @@ enum MainMenu {
         let (item, menu) = submenu("View")
         add(menu, "as Icons", #selector(BrowserViewController.viewAsIcons(_:)), "1", [.command, .option], symbol: "square.grid.2x2")
         add(menu, "as List", #selector(BrowserViewController.viewAsList(_:)), "2", [.command, .option], symbol: "list.bullet")
+        add(menu, "as Columns", #selector(BrowserViewController.viewAsColumns(_:)), "3", [.command, .option], symbol: "rectangle.split.3x1")
         menu.addItem(.separator())
         add(menu, "Zoom In", #selector(BrowserViewController.zoomIn(_:)), "+", symbol: "plus.magnifyingglass")
         add(menu, "Zoom Out", #selector(BrowserViewController.zoomOut(_:)), "-", symbol: "minus.magnifyingglass")

@@ -49,7 +49,9 @@ enum ShortcutDispatcher {
         guard let action = ShortcutCatalog.actions.first(where: {
             bindings[$0.id].map { matches($0, event: event) } ?? false
         }) else { return false }
-        let inFileView = responder === controller.browser.focusView
+        let focusView = controller.browser.focusView
+        let inFileView = responder === focusView
+            || ((responder as? NSView)?.isDescendant(of: focusView) ?? false)
         if protectInput(event, store: store) { return true }
         if action.context == .fileView && !inFileView { return false }
         switch action.id {

@@ -98,7 +98,7 @@ The decision order in `FileOperations.dropOperation` (only step 4 is new):
 
 The drag source masks are centralised in `DragAndDrop.sourceMask(readOnly:local:)`: a writable local source gets `[.copy, .move, .generic]` and an external one `[.copy, .move, .link, .generic]`; a read-only source (a ZIP entry) still gets only `.copy`, so on a read-only source ⌘ and ⌃ narrow to an empty mask and the drop is rejected — archive contents can be copied out but not moved, which is unchanged.
 
-`DragAndDrop.validationOperation(_:sourceMask:)`: AppKit narrows the mask of a ⌘ drag to `.generic`, and the validation method has to answer within that mask or the destination stops accepting; so when the rule decides `.move`, the answer given to AppKit is `.generic`. Execution is unaffected — `BrowserViewController.dropFiles` treats every operation that is not `.copy` as a move. `validateDrop` in both file views and in the folder tree now goes through this layer; `acceptDrop` still uses the shared rule directly, and what is passed to `onDropFiles` is still `.move`.
+`DragAndDrop.validationOperation(_:sourceMask:)`: AppKit narrows the mask of a ⌘ drag to `.generic`, and the validation method has to answer within that mask or the destination stops accepting; so when the rule decides `.move`, the answer given to AppKit is `.generic`. Execution is unaffected — `BrowserViewController.dropFiles` treats every operation that is not `.copy` as a move. `validateDrop` in all three file views and in the folder tree now goes through this layer; `acceptDrop` still uses the shared rule directly, and what is passed to `onDropFiles` is still `.move`.
 
 ### 2.2 Spring-loaded folders
 

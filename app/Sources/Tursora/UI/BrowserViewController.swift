@@ -25,6 +25,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// The details list (always present; the default view).
     let fileList: FileListViewController
     /// The icon grid, created on first use.
+    private(set) lazy var columnView: ColumnViewController = {
+        let c = ColumnViewController(model: model); wire(c); return c
+    }()
     private(set) lazy var iconGrid: IconGridViewController = {
         let g = IconGridViewController(model: model)
         wire(g)
@@ -147,7 +150,11 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         configureSearch()
         // Match the persisted mode before loadView mounts a child. Calling
         // setViewMode here would return early because viewMode already matches.
-        if viewMode == .icons { fileView = iconGrid }
+        switch viewMode {
+        case .icons: fileView = iconGrid
+        case .columns: fileView = columnView
+        case .details: break
+        }
         contextMenu.delegate = self
         statusBar.onZoomChanged = { [weak self] index in self?.setZoomIndex(index) }
         NotificationCenter.default.addObserver(self, selector: #selector(directoriesChanged(_:)),
@@ -193,6 +200,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         var out: [URL] = []
         if let currentURL { out.append(currentURL) }
         out += fileList.expandedFolderURLs
+        out += fileView.displayedDirectoryURLs
         return out
     }
 
@@ -393,13 +401,25 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func setViewMode(_ mode: ViewMode) {
         guard mode != viewMode else { return }
         let selected = fileView.selectedItems.map(\.url)
-        let hadFocus = view.window?.firstResponder === fileView.focusView
+        // NSBrowser hands first-responder to an inner column view, so identity
+        // with the focus view is too strict; a descendant counts, as it does
+        // in ShortcutDispatcher.
+        let responder = view.window?.firstResponder
+        let hadFocus = responder === fileView.focusView
+            || ((responder as? NSView)?.isDescendant(of: fileView.focusView) ?? false)
         fileView.viewController.view.removeFromSuperview()
         fileView.viewController.removeFromParent()
         viewMode = mode
         zoomIndex = rememberedViewProperties.zoomIndex(for: mode)
-        fileView = mode == .icons ? iconGrid : fileList
+        switch mode {
+        case .icons: fileView = iconGrid
+        case .details: fileView = fileList
+        case .columns: fileView = columnView
+        }
         fileView.isReadOnly = isReadOnlyLocation
+        // The list is the always-written source of cut markers; a lazily built
+        // view that was not showing when ⌘X or a paste happened catches up here.
+        fileView.cutURLs = fileList.cutURLs
         if isViewLoaded { mount(fileView) }
         fileView.setIconSize(ZoomLevel.sizes(for: mode)[zoomIndex], showPreviews: showsPreviews)
         fileView.reloadData()
@@ -454,6 +474,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     @objc func viewAsIcons(_ sender: Any?) { setViewMode(.icons) }
     @objc func viewAsList(_ sender: Any?) { setViewMode(.details) }
+    @objc func viewAsColumns(_ sender: Any?) { setViewMode(.columns) }
     @objc func zoomIn(_ sender: Any?) { zoom(by: 1) }
     @objc func zoomOut(_ sender: Any?) { zoom(by: -1) }
     @objc func zoomActualSize(_ sender: Any?) { setZoomIndex(ZoomLevel.defaultIndex(for: viewMode)) }
@@ -625,7 +646,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     override func cancelOperation(_ sender: Any?) {
         if isPreparingArchive { cancelArchiveOpening(sender) }
-        else { super.cancelOperation(sender) }
+        // NSResponder declares cancelOperation: without implementing it, so a
+        // direct super call is an unrecognized selector. Pass it on only to
+        // a responder that actually implements it.
+        else { nextResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: sender) }
     }
 
     @objc func retryArchiveOpening(_ sender: Any?) {
@@ -809,6 +833,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private func setCutMarkers(_ urls: Set<URL>) {
         fileList.cutURLs = urls
         if viewMode == .icons { iconGrid.cutURLs = urls }
+        if viewMode == .columns { columnView.cutURLs = urls }
     }
 
     @objc func paste(_ sender: Any?) {
@@ -1128,6 +1153,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             item.state = viewMode == .icons ? .on : .off; return true
         case #selector(viewAsList(_:)):
             item.state = viewMode == .details ? .on : .off; return true
+        case #selector(viewAsColumns(_:)):
+            item.state = viewMode == .columns ? .on : .off; return true
         case #selector(togglePreviews(_:)):
             item.state = showsPreviews ? .on : .off; return true
 
