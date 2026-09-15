@@ -87,6 +87,7 @@ enum SmokeTest: SmokeSuite {
             StatusBarSmokeTests.run,
             TerminalSessionSmokeTests.run,
             SearchEntrySmokeTests.run,
+            ContentSearchSmokeTests.run,
             SearchSmokeTests.run,
             IntegratedSearchSmokeTests.run,
             PanePathsSmokeTests.run,
