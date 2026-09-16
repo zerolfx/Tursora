@@ -2,7 +2,7 @@
 
 2026-09-17. What has actually been done for 0.4.2 and what is still outstanding.
 
-**Status: prepared, not yet published.**
+**Status: published and verified.** [Tursora 0.4.2](https://github.com/zerolfx/Tursora/releases/tag/v0.4.2) is the latest stable release, published 2026-09-17.
 
 ## Why this release exists
 
@@ -54,6 +54,26 @@ The new Settings ▸ General ▸ Opening folders row also reads correctly ("Fold
 | The new check | verified to fail against the shipped 0.4.1 code while the old probe-based check still passed |
 | Release tool tests | 90 tests, OK |
 | **Packaged application** | built, launched against a fixture, and **looked at**: folder rows and file rows both draw their icons in column view |
+
+## Verification of the published artifacts
+
+| Check | Result |
+|---|---|
+| Release run | [35127645725](https://github.com/zerolfx/Tursora/actions/runs/35127645725), success, dispatched on `main` |
+| Tag | `v0.4.2` resolves to `31e81b2ea0b3785ba63073cded6db7294ee28ba8` |
+| Release | not a draft, not a prerelease, the repository's latest, three assets |
+| Checksum | recomputed independently, matches the published `SHA256SUMS.txt`: `d788cc029b275ad78f6f802152a0a418ed2204d1b121a2ec5b2b268d2c34a6d6` |
+| Published DMG | 6,611,232 bytes |
+| Application inside | `CFBundleShortVersionString` 0.4.2, `CFBundleVersion` 1789578889, `lipo -archs` arm64, `codesign --verify --deep --strict` clean, `LSMinimumSystemVersion` 14.0 |
+| Update feed | immutable versioned URL, `length` matching the actual bytes, Ed25519 signature present |
+| Stable feed | `releases/latest/download/appcast.xml` serves byte-identical content to the release asset |
+| Homebrew cask | regenerated from the published bytes |
+
+## The visual check, and exactly which binary it covered
+
+The icons were confirmed on screen **before** this release was cut, in a locally packaged build of `72e26e1`. `git diff 72e26e1 31e81b2` touches only `VERSION`, `CHANGELOG.md` and this file — **no Swift source at all** — so the application code that was looked at is the code that shipped.
+
+What was *not* done: the downloaded 0.4.2 application was launched, but the screen locked before it could be captured, so the published binary itself was inspected rather than watched. Given the identical sources that is a weak gap, but it is a gap, and after 0.4.1 it is worth naming rather than rounding off.
 
 ## Not done
 
