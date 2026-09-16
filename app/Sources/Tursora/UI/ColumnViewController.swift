@@ -130,8 +130,10 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
             guard let self, let step = self.zoomGesture.step(magnification: amount) else { return }
             self.onZoomGesture?(step)
         }
-        // The docked pane's close button has no meaning inside a column.
+        // The docked pane's close button has no meaning inside a column, and
+        // NSBrowser sizes a preview column through the autoresizing mask.
         preview.showsCloseButton = false
+        preview.sizesItselfByAutoresizing = true
     }
 
     deinit { preview.shutdown(); if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) } }
@@ -357,11 +359,19 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
 
     func beginRename(item: FileItem) {
         guard allowsRenaming, let path = indexPath(for: item.url), let last = path.last else { return }
-        // The drawn title may hide the extension; the editor must not.
+        // The drawn title may hide the extension, and it carries the icon as a
+        // leading attachment; the editor must show neither. Seeding the cell
+        // first is not enough on its own — `editItem` redraws the row, and
+        // `willDisplayCell` puts the drawn title straight back — so the field
+        // editor is seeded again afterwards, which is the text the user edits.
         if let cell = browser.loadedCell(atRow: last, column: path.count - 1) as? NSCell {
             cell.stringValue = item.name
         }
         browser.editItem(at: path, with: nil, select: true)
+        if let editor = view.window?.firstResponder as? NSTextView, editor.string != item.name {
+            editor.string = item.name
+            editor.setSelectedRange(NSRange(location: 0, length: (item.name as NSString).length))
+        }
     }
 
     func itemAfterSelection() -> FileItem? {
@@ -493,24 +503,39 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         (item as? FileNode)?.item.name
     }
 
+    /// An item-based `NSBrowser` draws its rows with `NSTextFieldCell`, not
+    /// `NSBrowserCell` — `setCellClass` and `cellPrototype` are both ignored in
+    /// this mode, measured. A text cell has no `image`, so the icon is an
+    /// attachment at the head of the title, which is also how the row picks up
+    /// `displayName` (the show-extensions preference) and the dimming a cut
+    /// item needs. Casting to `NSBrowserCell` here silently disabled all three.
     func browser(_ sender: NSBrowser, willDisplayCell cell: Any, atRow row: Int, column: Int) {
-        guard let cell = cell as? NSBrowserCell,
+        guard let cell = cell as? NSCell,
               let node = sender.item(atRow: row, inColumn: column) as? FileNode else { return }
-        cell.isLeaf = !node.item.isNavigable
-        // An archive entry's URL is logical; nothing exists at that path, so
-        // its icon comes from its type rather than from the filesystem.
-        cell.image = node.item.isArchiveEntry
-            ? NSWorkspace.shared.icon(for: node.item.contentType ?? (node.item.isDirectory ? .folder : .data))
-            : NSWorkspace.shared.icon(forFile: node.item.contentURL.path)
-        cell.image?.size = NSSize(width: iconSize - 4, height: iconSize - 4)
-        let font = NSFont.systemFont(ofSize: max(11, min(13, iconSize * 0.55)))
         let cut = cutURLs.contains(node.url.standardizedFileURL)
-        // NSBrowserCell has no text colour of its own; a cut item is dimmed
-        // through the attributed title instead. `displayName` is where the
-        // show-extensions preference lives, as in the other two views.
-        cell.attributedStringValue = NSAttributedString(string: node.item.displayName, attributes: [
-            .font: font, .foregroundColor: cut ? NSColor.secondaryLabelColor : NSColor.labelColor,
-        ])
+        let title = NSMutableAttributedString(attachment: iconAttachment(for: node.item))
+        title.append(NSAttributedString(string: "  " + node.item.displayName, attributes: [
+            .font: NSFont.systemFont(ofSize: max(11, min(13, iconSize * 0.55))),
+            .foregroundColor: cut ? NSColor.secondaryLabelColor : NSColor.labelColor,
+        ]))
+        cell.attributedStringValue = title
+    }
+
+    /// The row's icon, drawn as the first character of the title.
+    private func iconAttachment(for item: FileItem) -> NSTextAttachment {
+        let attachment = NSTextAttachment()
+        // An archive entry's URL is logical: nothing exists at that path, so
+        // its icon comes from its type rather than from the filesystem.
+        attachment.image = item.isArchiveEntry
+            ? NSWorkspace.shared.icon(for: item.contentType ?? (item.isDirectory ? .folder : .data))
+            : NSWorkspace.shared.icon(forFile: item.contentURL.path)
+        // An attachment sits on the text baseline, so a square the height of a
+        // row would hang below it; the negative y drops it back to the row's
+        // vertical centre. Sizing is done here and never on the image itself,
+        // which NSWorkspace shares and caches.
+        let side = max(12, iconSize - 4)
+        attachment.bounds = NSRect(x: 0, y: (side - iconSize) / 2 - 3, width: side, height: side)
+        return attachment
     }
 
     /// The last column previews a selected file, reusing the docked pane's
@@ -621,5 +646,8 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     func selectedIndexPathsForTesting() -> [IndexPath] { browser.selectionIndexPaths }
     var isPreviewColumnShowingMarkdownForTesting: Bool { preview.isShowingMarkdown }
     var isPreviewColumnEmptyForTesting: Bool { preview.shownURL == nil }
+    var previewedURLForTesting: URL? { preview.shownURL }
+    var previewAutoresizesForTesting: Bool { _ = preview.view; return preview.autoresizesForTesting }
+    func simulateClickForTesting() { browserClicked(nil) }
     var isPreviewCloseButtonHiddenForTesting: Bool { _ = preview.view; return preview.isCloseButtonHiddenForTesting }
 }

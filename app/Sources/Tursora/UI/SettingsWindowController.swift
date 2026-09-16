@@ -12,6 +12,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
 
     let extensionsCheckbox = NSButton(checkboxWithTitle: "Show all filename extensions", target: nil, action: nil)
     let restoreWorkspaceCheckbox = NSButton(checkboxWithTitle: "Reopen windows and tabs on launch", target: nil, action: nil)
+    /// macOS has no "default file manager" setting; what it has is the handler
+    /// for `public.folder`. The button asks the system, which puts its own
+    /// confirmation in front of the user (D86).
+    let defaultFileManagerButton = NSButton(title: "Set Tursora as Default", target: nil, action: nil)
+    let defaultFileManagerStatus = NSTextField.detail("")
     let workspaceSaveMessage = NSTextField(wrappingLabelWithString: "")
     let retryWorkspaceSave = NSButton(title: "Retry Saving Workspace", target: nil, action: nil)
     let generalScrollView = NSScrollView()
@@ -147,6 +152,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         extensionsCheckbox.action = #selector(toggleExtensions(_:))
         restoreWorkspaceCheckbox.target = self
         restoreWorkspaceCheckbox.action = #selector(toggleWorkspaceRestoration(_:))
+        defaultFileManagerButton.bezelStyle = .rounded
+        defaultFileManagerButton.target = self
+        defaultFileManagerButton.action = #selector(makeDefaultFileManager(_:))
+        syncDefaultFileManager()
         workspaceSaveMessage.font = .systemFont(ofSize: 12)
         workspaceSaveMessage.textColor = .systemRed
         retryWorkspaceSave.bezelStyle = .rounded
@@ -161,6 +170,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
             NSTextField.heading("Startup"), restoreWorkspaceCheckbox,
             NSTextField.detail("Restore your windows, tabs and split panes. Turning this off clears the saved workspace."),
             workspaceSaveMessage, retryWorkspaceSave, separator(),
+            NSTextField.heading("Opening folders"), defaultFileManagerStatus, defaultFileManagerButton,
             NSTextField.heading("General"), extensionsCheckbox,
             NSTextField.detail("Applies to file labels. Files keep their original names."), separator(),
             NSTextField.heading("Folder View Settings"), folderViewPolicy,
@@ -190,6 +200,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
 
     private func refreshControls() {
         refreshUpdateControls()
+        syncDefaultFileManager()
         restoreWorkspaceCheckbox.state = preferences.restoreWorkspaceOnLaunch ? .on : .off
         workspaceSaveMessage.stringValue = workspaceStore.lastError ?? ""
         workspaceSaveMessage.isHidden = workspaceStore.lastError == nil
@@ -291,6 +302,38 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
         if let updaterObserver { updater.notificationCenter.removeObserver(updaterObserver) }
         if let workspaceObserver { NotificationCenter.default.removeObserver(workspaceObserver) }
+    }
+
+    /// Reads LaunchServices rather than remembering: the user can change the
+    /// handler in another application, and a remembered answer would go stale
+    /// without anything telling us.
+    func syncDefaultFileManager() {
+        let isCurrent = DefaultFileManager.isCurrent()
+        defaultFileManagerStatus.stringValue = DefaultFileManager.statusText(
+            isCurrent: isCurrent, currentName: DefaultFileManager.currentHandlerName())
+        defaultFileManagerButton.isEnabled = !isCurrent
+        defaultFileManagerButton.title = isCurrent ? "Tursora Is the Default" : "Set Tursora as Default"
+    }
+
+    @objc func makeDefaultFileManager(_ sender: Any?) {
+        defaultFileManagerButton.isEnabled = false
+        DefaultFileManager.makeCurrent { [weak self] result in
+            guard let self else { return }
+            if case .failure(let error) = result {
+                // A headless run must never raise a sheet (AGENTS rule 2).
+                if SmokeTest.isRequested {
+                    print("default file manager: \(error.localizedDescription)")
+                } else if let window = self.window {
+                    let alert = NSAlert()
+                    alert.messageText = "Tursora could not become the default."
+                    alert.informativeText = error.localizedDescription
+                    alert.beginSheetModal(for: window) { _ in }
+                }
+            }
+            // Either way the truth comes from LaunchServices, not from the
+            // result: the user may have declined the system's confirmation.
+            self.syncDefaultFileManager()
+        }
     }
 }
 

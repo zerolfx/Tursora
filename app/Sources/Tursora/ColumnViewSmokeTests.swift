@@ -208,9 +208,13 @@ enum ColumnViewSmokeTests: SmokeSuite {
         let topRow = pane.model.nodes.firstIndex { $0.item.name == "top.txt" } ?? -1
         let probe = NSBrowserCell(textCell: "")
         if topRow >= 0 { columns.browser(columns.browser, willDisplayCell: probe, atRow: topRow, column: 0) }
+        // The drawn title now begins with the icon attachment, so compare the
+        // text after it.
+        let drawnName = probe.attributedStringValue.string
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\u{FFFC} "))
         check("a column title hides the extension when the preference says so",
-              topRow >= 0 && probe.attributedStringValue.string == "top",
-              "row=\(topRow) drawn=\(probe.attributedStringValue.string)")
+              topRow >= 0 && drawnName == "top",
+              "row=\(topRow) drawn=\(probe.attributedStringValue.string.debugDescription)")
         AppPreferences.showFileExtensions = showedExtensions
         columns.reloadData()
 
@@ -280,6 +284,62 @@ enum ColumnViewSmokeTests: SmokeSuite {
               "selected=\(columns.selectedItems.map(\.url.lastPathComponent)) columns=\(columns.openColumnCountForTesting)")
         pane.navigate(to: root)
         await expectEventually("back at the fixture") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
+
+        // A PDF is the ordinary case for the preview column: not Markdown, so
+        // it goes through Quick Look. The owner reported it showing nothing.
+        let pdf = root.appendingPathComponent("doc.pdf")
+        let page = NSMutableData()
+        if let consumer = CGDataConsumer(data: page as CFMutableData) {
+            var box = CGRect(x: 0, y: 0, width: 200, height: 200)
+            if let ctx = CGContext(consumer: consumer, mediaBox: &box, nil) {
+                ctx.beginPDFPage(nil); ctx.setFillColor(NSColor.black.cgColor)
+                ctx.fill(CGRect(x: 20, y: 20, width: 100, height: 100)); ctx.endPDFPage(); ctx.closePDF()
+            }
+        }
+        try? page.write(to: pdf)
+        let g3 = pane.model.generation
+        controller.reload(nil)
+        await expectEventually("pdf listed") { pane.model.generation > g3 }
+        columns.reloadData()
+        columns.select(urls: [pdf])
+        check("selecting a PDF holds it in the preview column",
+              columns.previewedURLForTesting?.lastPathComponent == "doc.pdf",
+              "\(columns.previewedURLForTesting?.lastPathComponent ?? "nil")")
+        check("and the PDF goes through Quick Look, not the Markdown view",
+              columns.isPreviewColumnShowingMarkdownForTesting == false)
+        // NSBrowser sizes a preview column through the autoresizing mask, so a
+        // view laid out by constraints alone is handed a frame 0 pt high and
+        // shows nothing however right its content is. Measured, then pinned.
+        check("the preview column sizes itself the way NSBrowser expects",
+              columns.previewAutoresizesForTesting)
+        // The delegate is what NSBrowser actually calls; drive it the same way.
+        if let node = pane.model.node(for: pdf) {
+            _ = columns.browser(columns.browser, previewViewControllerForLeafItem: node)
+            check("the preview delegate holds the PDF after NSBrowser asks",
+                  columns.previewedURLForTesting?.lastPathComponent == "doc.pdf",
+                  "\(columns.previewedURLForTesting?.lastPathComponent ?? "nil")")
+        }
+        // A click is what the user does; its handler must not undo the preview.
+        columns.simulateClickForTesting()
+        check("a click on the selected PDF does not clear the preview",
+              columns.previewedURLForTesting?.lastPathComponent == "doc.pdf",
+              "\(columns.previewedURLForTesting?.lastPathComponent ?? "nil")")
+
+        // Rows must draw an icon; an item-based NSBrowser uses NSTextFieldCell,
+        // so a cast to NSBrowserCell silently disabled icons, displayName and
+        // the dimming of a cut item all at once.
+        let iconProbe = NSTextFieldCell(textCell: "")
+        let topRow2 = pane.model.nodes.firstIndex { $0.item.name == "top.txt" } ?? -1
+        if topRow2 >= 0 {
+            columns.browser(columns.browser, willDisplayCell: iconProbe, atRow: topRow2, column: 0)
+            var hasIcon = false
+            let title = iconProbe.attributedStringValue
+            title.enumerateAttribute(NSAttributedString.Key.attachment, in: NSRange(location: 0, length: title.length)) { value, _, _ in
+                if (value as? NSTextAttachment)?.image != nil { hasIcon = true }
+            }
+            check("a column row draws an icon", hasIcon, title.string.debugDescription)
+            check("and still carries the name", title.string.contains("top"), title.string.debugDescription)
+        }
 
         // Leaving columns must not drop keyboard focus on the floor.
         controller.window?.makeFirstResponder(columns.browser)

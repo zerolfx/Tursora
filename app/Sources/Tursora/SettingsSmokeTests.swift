@@ -140,7 +140,47 @@ enum SettingsSmokeTests: SmokeSuite {
         defaults.set(NSEvent.ModifierFlags.command.rawValue, forKey: "filterShortcutModifiers")
         check("settings: invalid persisted shortcut safely falls back", store.filterShortcut == .defaultFilter)
         controller.close()
+        defaultFileManager()
     }
 
     private final class Counter { var value = 0 }
+
+    /// The default-folder-handler setting. The parts that can be checked
+    /// without changing the user's system are the wording, the enabled state
+    /// and the identity rule; actually claiming the role opens a system
+    /// confirmation and is never driven from a test.
+    static func defaultFileManager() {
+        print("== default folder handler ==")
+        check("handler: the status names the application that opens folders",
+              DefaultFileManager.statusText(isCurrent: false, currentName: "Finder") == "Folders open in Finder.")
+        check("handler: it says so plainly once Tursora holds the role",
+              DefaultFileManager.statusText(isCurrent: true, currentName: "Tursora") == "Tursora opens folders.")
+        check("handler: an unknown handler still produces a sentence, not an empty line",
+              DefaultFileManager.statusText(isCurrent: false, currentName: nil) == "Folders open in another application."
+                  && DefaultFileManager.statusText(isCurrent: false, currentName: "") == "Folders open in another application.")
+        check("handler: folders are the type macOS opens with a file manager",
+              DefaultFileManager.folderType.identifier == "public.folder")
+        // Identity is compared by bundle identifier, not by path: the same
+        // application has a different URL from a build folder, a disk image and
+        // /Applications, and a path comparison would call it "not the default".
+        check("handler: the running application is not mistaken for the handler in a test build",
+              DefaultFileManager.isCurrent() == false || Bundle.main.bundleIdentifier == "com.tursora.Tursora")
+        check("handler: the system reports some handler for a folder today",
+              DefaultFileManager.currentHandlerURL() != nil)
+
+        let controller = SettingsWindowController()
+        _ = controller.window
+        controller.syncDefaultFileManager()
+        check("handler: the settings line is filled in, never blank",
+              !controller.defaultFileManagerStatus.stringValue.isEmpty,
+              controller.defaultFileManagerStatus.stringValue)
+        check("handler: the button says what it will do",
+              controller.defaultFileManagerButton.title == "Set Tursora as Default"
+                  || controller.defaultFileManagerButton.title == "Tursora Is the Default",
+              controller.defaultFileManagerButton.title)
+        check("handler: the button is disabled exactly when Tursora already holds the role",
+              controller.defaultFileManagerButton.isEnabled == !DefaultFileManager.isCurrent())
+        controller.close()
+    }
+
 }

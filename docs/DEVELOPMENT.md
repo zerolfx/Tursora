@@ -100,6 +100,8 @@ Each of these cost a debugging round; the fix is in the code with a comment.
 |---|---|---|
 | Read-after-write of a file flag returns the old value | `URL.resourceValues` is cached for the rest of the run-loop pass | Read through `FileManager.attributesOfItem` (`FileInfo`) |
 | FSEvents never matches the watched folder | Events carry real paths (`/private/var/…`) while the app holds `/var/…` | Resolve symlinks on both sides before comparing |
+| An item-based `NSBrowser` row shows only text — no icon, and `setCellClass` / `cellPrototype` change nothing | In item mode the browser draws with `NSTextFieldCell`, not `NSBrowserCell`; a `willDisplayCell` that casts to `NSBrowserCell` silently does nothing at all | Cast to `NSCell` and put the icon in the title as an `NSTextAttachment` |
+| A view placed in an `NSBrowser` preview column is invisible although its content is correct | `NSBrowser` sizes a preview column through the autoresizing mask; a view that relies on Auto Layout alone is handed a frame 0 pt high | Give the view a non-zero frame and `autoresizingMask = [.width, .height]` |
 | Second pane never appears / split treated as collapsed | `NSSplitView` treats a zero-size subview as collapsed | Give the pane a real initial frame; the delegate refuses collapse; relayout on close |
 | Crash on `reloadData` after a folder listing changed | Outline view queried stale rows | Refresh children before `reloadData`; track expansion via `itemDidExpand/Collapse` notifications |
 | Accessibility inspection gradually opens untouched tree branches | AppKit consults `shouldExpandItem` while querying available actions | Keep permission callbacks pure; load directories only after `outlineViewItemDidExpand` |

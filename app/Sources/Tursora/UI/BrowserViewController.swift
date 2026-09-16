@@ -1586,12 +1586,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             return
         }
         guard let entry = history.current else { return }
-        if let name = entry.selectedName {
-            fileView.select(name: name)
-        } else {
-            fileView.select(name: nil)
-            fileView.scrollOffset = entry.scrollOffset
-        }
+        fileView.select(name: entry.selectedName)
+        // The offset is restored whether or not something was selected. With a
+        // selection it used to be skipped, and `select(name:)` only scrolls the
+        // row barely into view — so going back to a folder you had scrolled
+        // through landed somewhere other than where you left, which is most
+        // visible after opening a folder and pressing Back, the one case where
+        // a selection is always remembered.
+        fileView.scrollOffset = entry.scrollOffset
     }
 }
 

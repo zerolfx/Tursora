@@ -999,7 +999,56 @@ enum SmokeTest: SmokeSuite {
                 let grid = b.iconGrid
                 grid.scrollOffset = -50
                 check("icon grid clamps too", grid.scrollView.contentView.bounds.origin.y >= 0)
-                listInsetRestoration(wc, tmp) { groupingFromFavorites(wc, tmp) { groups(wc, tmp) } }
+                scrollAfterOpeningFolder(wc, tmp) {
+                    listInsetRestoration(wc, tmp) { groupingFromFavorites(wc, tmp) { groups(wc, tmp) } }
+                }
+            }
+        }
+    }
+
+    /// Opening a folder and pressing Back is the one navigation that always
+    /// remembers a selection — the folder you opened. Restoring only the
+    /// selection scrolls its row barely into view, which is not where the user
+    /// was, so the recorded offset has to be restored as well.
+    private static func scrollAfterOpeningFolder(_ wc: MainWindowController, _ tmp: URL,
+                                                 completion: @escaping () -> Void) {
+        print("== scroll after opening a folder ==")
+        // Folders lead under the Name sort, so a lone folder among files would
+        // sit at row 0 and selecting it would scroll the list back to the top —
+        // recording an offset of 0 and testing nothing. The fixture is all
+        // folders, and the one that gets opened sits inside the viewport at the
+        // offset we scroll to, which is the situation the user described.
+        let fixture = tmp.appendingPathComponent("scroll-back")
+        let manager = FileManager.default
+        for index in 0..<60 {
+            try? manager.createDirectory(at: fixture.appendingPathComponent(String(format: "dir-%02d", index)),
+                                         withIntermediateDirectories: true)
+        }
+        let b = wc.browser
+        b.navigate(to: fixture)
+        after(0.5) {
+            wc.window?.contentView?.layoutSubtreeIfNeeded()
+            b.fileList.scrollOffset = 400
+            let before = b.fileList.scrollOffset
+            check("the fixture is long enough to scroll", before > 0, "\(before)")
+            guard let folder = b.model.nodes.first(where: { $0.item.name == "dir-20" })?.item else {
+                check("the fixture has a folder to open", false); completion(); return
+            }
+            b.fileView.select(urls: [folder.url])
+            b.navigate(to: folder.url)
+            after(0.5) {
+                check("opening the folder navigated", b.currentURL?.lastPathComponent == "dir-20",
+                      b.currentURL?.lastPathComponent ?? "nil")
+                b.goBack()
+                after(0.6) {
+                    let restored = b.fileList.scrollOffset
+                    check("Back restores where the user was, not just the selected row",
+                          abs(restored - before) < 4, "left at \(before), came back to \(restored)")
+                    check("and the folder that was opened is selected again",
+                          b.fileView.selectedItems.first?.name == "dir-20",
+                          b.fileView.selectedItems.first?.name ?? "nil")
+                    completion()
+                }
             }
         }
     }

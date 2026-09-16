@@ -4,6 +4,16 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Added
+
+- **Settings ▸ General ▸ Opening folders**: a button that makes Tursora the application macOS opens folders with, so a double-clicked folder, an "open the enclosing folder" action from another app and `open .` in a terminal all land in Tursora. The line above it says which application holds the role today, and the button is disabled once Tursora holds it. macOS puts up its own confirmation; nothing is written to LaunchServices behind your back.
+
+### Fixed
+
+- Column view rows show a file's icon again. They had been drawing the name alone, and a folder with an extension-hiding preference set showed the raw filename.
+- Column view previews every kind of file, not only the ones it rendered itself. A selected PDF, image, video or document showed an empty last column; Quick Look's view was being handed a frame with no height.
+- Going Back now returns you to where you were in the folder, not to the top of it. Opening a subfolder from halfway down a long list and coming back used to leave the scroll position wherever the restored selection happened to fall.
+
 ## [0.4.0] - 2026-09-16
 
 ### Added
