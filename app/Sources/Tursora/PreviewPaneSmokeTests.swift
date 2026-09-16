@@ -89,6 +89,20 @@ enum PreviewPaneSmokeTests: SmokeSuite {
         check("a non-Markdown file falls back to Quick Look",
               controller.previewPanel?.isShowingMarkdown == false)
 
+        // Hiding and reopening on an UNCHANGED selection. `show` skips a
+        // repeated URL, and hiding empties the Quick Look view, so a pane hidden
+        // while showing a file used to come back blank. Driven straight on the
+        // panel: going through the window controller would have the selection
+        // clear the pane on the way, which is what hid this from the suite.
+        if let panel = controller.previewPanel {
+            panel.show(plain)
+            panel.paneHidden()
+            panel.show(plain)
+            check("reopening on the same file shows it again, not a blank pane",
+                  panel.isQuickLookVisibleForTesting && !panel.isEmptyStateVisibleForTesting,
+                  "quickLook=\(panel.isQuickLookVisibleForTesting) empty=\(panel.isEmptyStateVisibleForTesting)")
+        }
+
         controller.previewPanel?.show(nil)
         check("no selection shows the empty state",
               controller.previewPanel?.isEmptyStateVisibleForTesting == true)

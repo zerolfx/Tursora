@@ -64,12 +64,23 @@ final class PreviewPanelController: NSViewController {
     var onClose: (() -> Void)?
     /// The docked pane can be closed; inside a column there is nothing to close.
     var showsCloseButton = true
+    /// `NSBrowser` sizes a preview column's view through the autoresizing mask,
+    /// not through constraints: a view that relies on Auto Layout alone is
+    /// handed a frame 0 pt high and shows nothing, however correct its content
+    /// is. Measured. The docked pane is laid out by its split view item and
+    /// must not take this path.
+    var sizesItselfByAutoresizing = false
     private var closeButton: NSButton?
     /// Reported rather than acted on; see `MarkdownTextView.clickedOnLink`.
     var onLinkClicked: ((URL?) -> Void)?
 
     override func loadView() {
         view = NSView()
+        if sizesItselfByAutoresizing {
+            view.frame = NSRect(x: 0, y: 0, width: 300, height: 300)
+            view.autoresizingMask = [.width, .height]
+            startFrameForTesting = view.frame
+        }
         titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
         titleLabel.textColor = .secondaryLabelColor
         titleLabel.lineBreakMode = .byTruncatingMiddle
@@ -190,7 +201,11 @@ final class PreviewPanelController: NSViewController {
     /// Called when the pane is hidden. The controller is kept — its scroll
     /// position and rendered document survive a reopen — but nothing should
     /// still be playing while the pane is off screen.
-    func paneHidden() { releaseQuickLook() }
+    /// `shownURL` is cleared as well as the Quick Look item: `show` treats a
+    /// repeated URL as a no-op, so a pane hidden on a file and reopened without
+    /// the selection changing would ask for the same URL, be skipped, and come
+    /// back empty — the Quick Look view having been emptied on the way out.
+    func paneHidden() { releaseQuickLook(); shownURL = nil; isShowingMarkdown = false }
 
     func shutdown() {
         quickLook?.close()
@@ -204,4 +219,8 @@ final class PreviewPanelController: NSViewController {
     var renderedTextForTesting: String { textView.string }
     var isQuickLookVisibleForTesting: Bool { quickLook.map { !$0.isHidden } ?? false }
     var isCloseButtonHiddenForTesting: Bool { closeButton?.isHidden ?? true }
+    var autoresizesForTesting: Bool { isViewLoaded && view.autoresizingMask.contains(.height) }
+    /// The frame the view was given at load; NSBrowser resizes from it, so a
+    /// zero-height start stays short even with the mask set.
+    private(set) var startFrameForTesting = NSRect.zero
 }

@@ -276,6 +276,12 @@ enum SmokeTest: SmokeSuite {
                     b.fileView.beginRename(item: item)
                     let editor = wc.window?.firstResponder as? NSTextView
                     check("\(mode.rawValue): rename retains the full extension", editor?.string == "sample.txt", editor?.string ?? "no editor")
+                    // Finder preselects the base name so typing keeps the
+                    // extension; selecting the whole string would turn a typed
+                    // word into a file with no extension at all.
+                    check("\(mode.rawValue): rename preselects the base name, not the extension",
+                          editor?.selectedRange() == NSRange(location: 0, length: 6),
+                          "\(editor?.selectedRange() ?? NSRange(location: -1, length: -1))")
                     editor?.string = "changed-name.txt"
                     if let editor, let delegate = editor.delegate as? NSTextField {
                         _ = delegate.delegate?.control?(delegate, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
@@ -999,7 +1005,79 @@ enum SmokeTest: SmokeSuite {
                 let grid = b.iconGrid
                 grid.scrollOffset = -50
                 check("icon grid clamps too", grid.scrollView.contentView.bounds.origin.y >= 0)
-                listInsetRestoration(wc, tmp) { groupingFromFavorites(wc, tmp) { groups(wc, tmp) } }
+                scrollAfterOpeningFolder(wc, tmp) {
+                    listInsetRestoration(wc, tmp) { groupingFromFavorites(wc, tmp) { groups(wc, tmp) } }
+                }
+            }
+        }
+    }
+
+    /// Opening a folder and pressing Back is the one navigation that always
+    /// remembers a selection — the folder you opened. Restoring only the
+    /// selection scrolls its row barely into view, which is not where the user
+    /// was, so the recorded offset has to be restored as well.
+    private static func scrollAfterOpeningFolder(_ wc: MainWindowController, _ tmp: URL,
+                                                 completion: @escaping () -> Void) {
+        print("== scroll after opening a folder ==")
+        // Folders lead under the Name sort, so a lone folder among files would
+        // sit at row 0 and selecting it would scroll the list back to the top —
+        // recording an offset of 0 and testing nothing. The fixture is all
+        // folders, and the one that gets opened sits inside the viewport at the
+        // offset we scroll to, which is the situation the user described.
+        let fixture = tmp.appendingPathComponent("scroll-back")
+        let manager = FileManager.default
+        for index in 0..<60 {
+            try? manager.createDirectory(at: fixture.appendingPathComponent(String(format: "dir-%02d", index)),
+                                         withIntermediateDirectories: true)
+        }
+        let b = wc.browser
+        b.navigate(to: fixture)
+        after(0.5) {
+            wc.window?.contentView?.layoutSubtreeIfNeeded()
+            b.fileList.scrollOffset = 400
+            let before = b.fileList.scrollOffset
+            check("the fixture is long enough to scroll", before > 0, "\(before)")
+            guard let folder = b.model.nodes.first(where: { $0.item.name == "dir-20" })?.item else {
+                check("the fixture has a folder to open", false); completion(); return
+            }
+            b.fileView.select(urls: [folder.url])
+            b.navigate(to: folder.url)
+            after(0.5) {
+                check("opening the folder navigated", b.currentURL?.lastPathComponent == "dir-20",
+                      b.currentURL?.lastPathComponent ?? "nil")
+                b.goBack()
+                after(0.6) {
+                    let restored = b.fileList.scrollOffset
+                    check("Back restores where the user was, not just the selected row",
+                          abs(restored - before) < 4, "left at \(before), came back to \(restored)")
+                    check("and the folder that was opened is selected again",
+                          b.fileView.selectedItems.first?.name == "dir-20",
+                          b.fileView.selectedItems.first?.name ?? "nil")
+                    // The recorded offset is taken against whatever listing was
+                    // on screen, and a directory change clears the filter. A
+                    // folder left filtered records ~0, which must not then be
+                    // replayed over a selection far down the unfiltered list.
+                    b.nameFilter = "dir-45"
+                    after(0.4) {
+                        guard let target = b.model.nodes.first(where: { $0.item.name == "dir-45" })?.item else {
+                            check("the filtered fixture still has its target", false); completion(); return
+                        }
+                        b.fileView.select(urls: [target.url])
+                        b.navigate(to: target.url)
+                        after(0.5) {
+                            b.goBack()
+                            after(0.6) {
+                                let rect = b.fileList.tableView.rect(ofRow: b.fileList.tableView.selectedRow)
+                                let visible = b.fileList.scrollView.contentView.bounds
+                                check("Back from a filtered folder still shows the row it selected",
+                                      b.fileList.tableView.selectedRow >= 0 && visible.intersects(rect),
+                                      "row=\(b.fileList.tableView.selectedRow) rect=\(rect) visible=\(visible)")
+                                b.nameFilter = ""
+                                after(0.3) { completion() }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
