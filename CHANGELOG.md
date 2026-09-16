@@ -4,6 +4,8 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-17
+
 ### Fixed
 
 - Column view rows show their icons. The 0.4.1 fix for this did not work in the shipped application: the row also set an accessibility value, and on a cell owned by the column browser that writes through and replaces the styled text the icon lives in, so every row lost its icon again. The name is still read correctly by VoiceOver.
@@ -147,7 +149,8 @@ First release of Tursora, a native macOS file manager built with Swift and AppKi
 
 Earlier implementation notes and historical verification counts are preserved in [Development history](docs/DEVELOPMENT_HISTORY.md). Use the [documentation index](docs/README.md) to find feature-specific verification and remaining limits.
 
-[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/zerolfx/Tursora/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/zerolfx/Tursora/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/zerolfx/Tursora/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/zerolfx/Tursora/compare/v0.2.1...v0.3.0
