@@ -4,6 +4,8 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-16
+
 ### Added
 
 - **Settings ▸ General ▸ Opening folders**: a button that makes Tursora the application macOS opens folders with, so `open .` in a terminal, a folder dropped on the Dock icon, and any application that asks the system to open a folder all land in Tursora. The line above it says which application holds the role today, and the button is disabled once Tursora holds it. macOS puts up its own confirmation; nothing is written to LaunchServices behind your back. Note that "Reveal in Finder" in other applications is a Finder-specific call and still opens Finder.
@@ -12,7 +14,10 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 - Column view rows show a file's icon again. They had been drawing the name alone, ignoring the "Show all filename extensions" setting, and not dimming a cut file. Typing a letter to jump to a row works again, and a row now reads its own name to VoiceOver.
 - Column view previews every kind of file, not only the ones it rendered itself. A selected PDF, image, video or document showed an empty last column; Quick Look's view was being handed a frame with no height.
-- Going Back now returns you to where you were in the folder, not to the top of it. Opening a subfolder from halfway down a long list and coming back used to leave the scroll position wherever the restored selection happened to fall.
+- Going Back now returns you to where you were in the folder, not to the top of it. Opening a subfolder from halfway down a long list and coming back used to leave the scroll position wherever the restored selection happened to fall. Coming back to a folder you had filtered still shows the item you opened, rather than jumping to the top.
+- Renaming in column view keeps the extension. `Return` on `photo.jpg` preselected the whole name, so typing a word replaced the extension too; it now preselects only `photo`, as the list and icon views already did.
+- Cutting a file in column view dims its icon as well as its name, matching the other two views.
+- Reopening the preview pane on the same file shows it again instead of a blank pane.
 
 ## [0.4.0] - 2026-09-16
 
@@ -138,7 +143,9 @@ First release of Tursora, a native macOS file manager built with Swift and AppKi
 
 Earlier implementation notes and historical verification counts are preserved in [Development history](docs/DEVELOPMENT_HISTORY.md). Use the [documentation index](docs/README.md) to find feature-specific verification and remaining limits.
 
-[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/zerolfx/Tursora/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/zerolfx/Tursora/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/zerolfx/Tursora/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/zerolfx/Tursora/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/zerolfx/Tursora/compare/v0.1.0...v0.2.0
