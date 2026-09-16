@@ -43,6 +43,23 @@ Making `willDisplayCell:` run for the first time changed three things that had b
 
 One claim in the first round of comments was itself wrong and has been corrected: `NSWorkspace.icon(forFile:)` returns a **fresh image on every call**, not a shared cached one — measured, `a === b` is false and resizing one does not change the next. The code no longer claims otherwise.
 
+### The 0.4.1 icon fix did not work, found by looking at the packaged app, 2026-09-17
+
+0.4.1 shipped with column rows still drawing no icons — the very defect it claimed to fix. Three consecutive green rounds of 4,369 checks, an adversarial review and mutation testing all passed over it. Opening the released build and looking at it took about a minute.
+
+The cause was the accessibility repair made during that same round. `setAccessibilityValue` on a cell owned by an `NSBrowser` **writes through to the cell's own value**, replacing the attributed string — and the icon is an attachment inside that string. Isolated on a real item-mode browser, same code, one variable:
+
+| what the delegate sets | attachment survives | AX label |
+|---|---|---|
+| neither | yes | nil |
+| `setAccessibilityLabel` only | yes | correct |
+| `setAccessibilityValue` | **no** | nil |
+| both | **no** | correct |
+
+The earlier measurement that led to setting both was not wrong — label-alone does leave U+FFFC in the AX value — but it only measured what setting the value *gained*, never what it *cost*. The value is now left alone and documented as a deliberate trade: a stray character in the AX value is worth far less than every icon on screen.
+
+Why every automated layer missed it: the check built its own `NSTextFieldCell`, called the delegate on it, and read it back. On a detached cell all the writes stick. On the cell the browser actually draws, the accessibility write clobbers the string. The check now reads `browser.loadedCell(atRow:inColumn:)` as well, and that check was verified to fail against the shipped code while the probe-based one still passed.
+
 ## Inferred, not evidence
 
 - **Selection does not navigate.** Finder makes the deepest selected folder the window's location. Tursora keeps the location on the first column's folder and moves it only when a folder is opened. This is a design choice (D84), driven by per-folder view properties being re-applied on navigation; it is not a claim about Finder.

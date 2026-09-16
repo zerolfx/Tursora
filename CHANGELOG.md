@@ -4,6 +4,10 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Fixed
+
+- Column view rows show their icons. The 0.4.1 fix for this did not work in the shipped application: the row also set an accessibility value, and on a cell owned by the column browser that writes through and replaces the styled text the icon lives in, so every row lost its icon again. The name is still read correctly by VoiceOver.
+
 ## [0.4.1] - 2026-09-16
 
 ### Added
