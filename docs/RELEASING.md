@@ -46,6 +46,12 @@ Finally it atomically creates a new `v<version>` tag at that exact commit and pu
 
 Tag creation and release creation are separate GitHub operations. If publishing fails after the tag is created, a normal rerun will reject the existing tag. Inspect the exact tag SHA and the successful run's verified assets before completing that same release; do not move/delete a published tag or rebuild different bytes under an existing version to bypass the check.
 
+## 0.4.2 preparation (2026-09-17)
+
+0.4.1 shipped one of its three advertised fixes broken: column rows still drew no icons. [0.4.2 is published](https://github.com/zerolfx/Tursora/releases/tag/v0.4.2) from `31e81b2ea0b3785ba63073cded6db7294ee28ba8`, build `1789578889`, by [Release 35127645725](https://github.com/zerolfx/Tursora/actions/runs/35127645725), and contains that one fix.
+
+The lesson is narrower and more useful than "run a visual check". The check that passed built its own `NSTextFieldCell`, called the delegate on it and read it back; on a detached cell every write sticks, while on the cell the control actually draws, `setAccessibilityValue` writes through and replaces the attributed string. **A check that constructs its own cell, view or window is testing the code, not the screen.** Read the control's own object back where you can, and look at the packaged application where you cannot. Details in [the 0.4.2 record](research/release-0.4.2.md).
+
 ## 0.4.1 preparation (2026-09-16)
 
 A bug-fix round for three defects reported against 0.4.0. [0.4.1 is published](https://github.com/zerolfx/Tursora/releases/tag/v0.4.1) from `4fad0becdd4a7d72ddebe29ae652bff4e023bed6`, build `1789569676`, by [Release 35111183239](https://github.com/zerolfx/Tursora/actions/runs/35111183239). Tag, assets, independently recomputed digest, DMG layout, bundle metadata and feed bytes were all verified; the exact scope and what is still unverified are in [the 0.4.1 record](research/release-0.4.1.md).
