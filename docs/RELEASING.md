@@ -46,6 +46,14 @@ Finally it atomically creates a new `v<version>` tag at that exact commit and pu
 
 Tag creation and release creation are separate GitHub operations. If publishing fails after the tag is created, a normal rerun will reject the existing tag. Inspect the exact tag SHA and the successful run's verified assets before completing that same release; do not move/delete a published tag or rebuild different bytes under an existing version to bypass the check.
 
+## 0.4.1 preparation (2026-09-16)
+
+A bug-fix round for three defects reported against 0.4.0. [0.4.1 is published](https://github.com/zerolfx/Tursora/releases/tag/v0.4.1) from `4fad0becdd4a7d72ddebe29ae652bff4e023bed6`, build `1789569676`, by [Release 35111183239](https://github.com/zerolfx/Tursora/actions/runs/35111183239). Tag, assets, independently recomputed digest, DMG layout, bundle metadata and feed bytes were all verified; the exact scope and what is still unverified are in [the 0.4.1 record](research/release-0.4.1.md).
+
+Two process failures from the 0.4.0 round were repaired here rather than repeated. The changelog's link section still pointed at `v0.3.0` with no 0.4.0 entry, which step 2 above calls for; and `Casks/tursora.rb` was still on **0.3.0**, so the published 0.4.0 release never reached the tap. Check both before calling a release finished: a green Release run does not update the cask or the changelog links.
+
+The packaged-app interaction check was skipped for a second consecutive round. All three defects this release fixes were plainly visible on screen and invisible to a suite of 4,369 checks. Until a round actually uses the packaged app, that class of defect can ship again.
+
 ## 0.2.1 preparation (2026-09-13)
 
 The maintainer authorized publication after terminal directory following and the documentation refresh. The final 102 Swift files passed three consecutive 3,435-check smoke runs with unchanged source hashes and empty stderr. The release app and local 0.2.1 DMG passed packaging checks. An isolated packaged app verified hidden task retention, deferred directory following, cancellation of quit while a hidden task ran, the compact terminal header, ZIP parent-directory following and narrow footer layout. Four real application screenshots were refreshed with the pointer outside the captured window. Exact verification is in [the 0.2.1 record](research/terminal-navigation-0.2.1.md).
