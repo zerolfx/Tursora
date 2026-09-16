@@ -2,7 +2,7 @@
 
 2026-09-16. What has actually been done for 0.4.0 and what is still outstanding.
 
-**Status: prepared, not yet published.** This record is written before the release workflow is dispatched; the published-artifact rows below are marked as such and must be filled in from the published bytes, never from the local build.
+**Status: published and verified.** [Tursora 0.4.0](https://github.com/zerolfx/Tursora/releases/tag/v0.4.0) is the latest stable release, published 2026-09-16. The packaged-app interaction check is still outstanding; see "Not done".
 
 ## Scope of the release
 
@@ -45,6 +45,18 @@ Each of the four features went through adversarial review before merging: roughl
 - A drop over the column view's preview column resolved to the previewed item's own path; a package is a directory on disk, so a file dropped over a selected `.app` would have been moved inside the bundle, breaking its signature.
 - Content scanning would have materialised cloud placeholders, downloading an evicted iCloud folder during a search.
 - Adding one field to `SearchRequest` would have silently emptied every saved search, because synthesized `Codable` throws for an absent key instead of using a property default and the store decodes the whole array with `try?`.
+
+## Verification of the published artifacts
+
+Performed against the bytes downloaded from the release, not against the local build.
+
+| Check | Result |
+|---|---|
+| Release | tag `v0.4.0`, not a draft, not a prerelease, three assets |
+| Checksum | `shasum -a 256` recomputed independently matches the published `SHA256SUMS.txt`: `4953d185967c83f7c54782eac3fbec8d9a6f10f3d1c454a84d4e026395f76858` |
+| Published DMG | 6,582,647 bytes. The local build was 6,669,336 — a different machine produces different compression and timestamps, which is why the cask and this check use the published bytes only |
+| Application inside | `CFBundleShortVersionString` 0.4.0, `CFBundleIdentifier` com.tursora.Tursora, `lipo -archs` arm64, `codesign --verify --deep --strict` clean, `LSMinimumSystemVersion` 14.0 |
+| Update feed | `appcast.xml` points at `releases/download/v0.4.0/Tursora-0.4.0-macOS-arm64.dmg` |
 
 ## Not done
 
