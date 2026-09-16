@@ -52,7 +52,7 @@ A bug-fix round for three defects reported against 0.4.0. [0.4.1 is published](h
 
 Two process failures from the 0.4.0 round were repaired here rather than repeated. The changelog's link section still pointed at `v0.3.0` with no 0.4.0 entry, which step 2 above calls for; and `Casks/tursora.rb` was still on **0.3.0**, so the published 0.4.0 release never reached the tap. Check both before calling a release finished: a green Release run does not update the cask or the changelog links.
 
-The packaged-app interaction check was skipped for a second consecutive round. All three defects this release fixes were plainly visible on screen and invisible to a suite of 4,369 checks. Until a round actually uses the packaged app, that class of defect can ship again.
+The packaged-app interaction check was skipped at preparation time and done the next day, after publication. It found that 0.4.1 had shipped one of its three fixes broken — column rows still drew no icons — because the accessibility repair made in the same round replaced the styled text the icon lived in. Three green rounds of 4,369 checks, an adversarial review and mutation testing all passed over it; opening the released app took about a minute. **Step 1's "verify the packaged app" is not optional and is not satisfied by inspecting the bundle's metadata.** Run the application, use the feature the release is about, and look at it.
 
 ## 0.2.1 preparation (2026-09-13)
 

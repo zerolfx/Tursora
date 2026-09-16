@@ -528,11 +528,20 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         cell.attributedStringValue = title
         // The attributed title is where an NSCell's accessibility text comes
         // from, and it now opens with the attachment's object-replacement
-        // character. Both are overridden with the name a screen reader should
-        // actually read; measured, setting the value alone leaves the label nil
-        // and setting the label alone leaves U+FFFC in the value.
+        // character, so a screen reader is given the plain name as the cell's
+        // **label**.
+        //
+        // The value is deliberately left alone. `setAccessibilityValue` on a
+        // cell owned by an NSBrowser writes through to the cell's own value and
+        // replaces the attributed string with a plain one — which silently
+        // deletes the icon. Measured on a real item-mode browser: with neither
+        // call, or with the label alone, the attachment survives; with the
+        // value set, `attributedStringValue` comes back as "dir-00" and no row
+        // draws an icon. That is exactly how the icon fix reached users broken
+        // in 0.4.1. The cost of leaving it is that the AX *value* still carries
+        // U+FFFC ahead of the name; the label is what assistive clients prefer,
+        // and a stray character there is worth far less than every icon.
         cell.setAccessibilityLabel(node.item.displayName)
-        cell.setAccessibilityValue(node.item.displayName)
     }
 
     /// Type-select — typing a letter to jump to a row — defaults to the cell's

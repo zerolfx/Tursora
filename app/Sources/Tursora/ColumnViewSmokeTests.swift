@@ -351,8 +351,29 @@ enum ColumnViewSmokeTests: SmokeSuite {
                   columns.browser(columns.browser, typeSelectStringForRow: topRow2, inColumn: 0) ?? "nil")
             // The attachment character must not be what a screen reader reads.
             check("and reads its name to assistive clients, not U+FFFC",
-                  iconProbe.accessibilityLabel() == "top.txt" && iconProbe.accessibilityValue() as? String == "top.txt",
-                  "label=\(iconProbe.accessibilityLabel() ?? "nil") value=\(String(describing: iconProbe.accessibilityValue()))")
+                  iconProbe.accessibilityLabel() == "top.txt",
+                  "label=\(iconProbe.accessibilityLabel() ?? "nil")")
+
+            // A cell the browser owns, not a bare probe. This distinction is the
+            // whole check: on a detached NSTextFieldCell the delegate's writes
+            // all stick, but on a browser-owned cell `setAccessibilityValue`
+            // writes through and replaces the attributed string, deleting the
+            // icon. A probe-only check passed three green rounds while every
+            // row on screen had lost its icon.
+            if let owned = columns.browser.loadedCell(atRow: topRow2, column: 0) as? NSCell {
+                let drawn = owned.attributedStringValue
+                var ownedIcon = false
+                drawn.enumerateAttribute(.attachment, in: NSRange(location: 0, length: drawn.length)) { value, _, _ in
+                    if (value as? NSTextAttachment)?.image != nil { ownedIcon = true }
+                }
+                check("the cell NSBrowser actually draws still carries the icon",
+                      ownedIcon, drawn.string.debugDescription)
+                check("and that cell still reads its name to assistive clients",
+                      owned.accessibilityLabel() == "top.txt",
+                      "label=\(owned.accessibilityLabel() ?? "nil")")
+            } else {
+                check("the browser hands back a loaded cell to inspect", false)
+            }
 
             // Dimming was the third thing the broken cast disabled, and nothing
             // read it back: cutURLs was always empty at probe time.
