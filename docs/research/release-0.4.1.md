@@ -2,7 +2,7 @@
 
 2026-09-16. What has actually been done for 0.4.1 and what is still outstanding.
 
-**Status: prepared, not yet published.**
+**Status: published and verified.** [Tursora 0.4.1](https://github.com/zerolfx/Tursora/releases/tag/v0.4.1) is the latest stable release, published 2026-09-16. The packaged-app interaction check is still outstanding; see "Not done".
 
 ## Scope of the release
 
@@ -39,6 +39,21 @@ The review also found that several of the new checks could not fail, and two def
 | Release tool tests | `python3 -m unittest discover -s app/tools -p 'test_*.py'` — 90 tests, OK |
 | Packaged bundle | `tools/make-app.sh` produced `Tursora.app` with `CFBundleShortVersionString` 0.4.1, `CFBundleIdentifier` com.tursora.Tursora, `LSMinimumSystemVersion` 14.0, ad-hoc signature replaced |
 
+## Verification of the published artifacts
+
+| Check | Result |
+|---|---|
+| Release run | [35111183239](https://github.com/zerolfx/Tursora/actions/runs/35111183239), success, dispatched on `main` |
+| Tag | `v0.4.1` resolves to `4fad0becdd4a7d72ddebe29ae652bff4e023bed6`, the reviewed commit |
+| Release | not a draft, not a prerelease, the repository's latest, three assets |
+| Checksum | `shasum -a 256` recomputed independently matches the published `SHA256SUMS.txt`: `6578f6f3eae180ced7107d6506e2fece2451fa084f6ed3ee76923f7b41e268fa` |
+| Published DMG | 6,610,635 bytes |
+| Application inside | `CFBundleShortVersionString` 0.4.1, `CFBundleVersion` 1789569676, `CFBundleIdentifier` com.tursora.Tursora, `lipo -archs` arm64, `codesign --verify --deep --strict` clean, `LSMinimumSystemVersion` 14.0 |
+| DMG layout | mounted read-only: `Tursora.app`, an `Applications` symlink to `/Applications`, the background image and the bundled `.dmgbuild-LICENSE.txt` |
+| Update feed | `appcast.xml` points at the immutable `releases/download/v0.4.1/Tursora-0.4.1-macOS-arm64.dmg`, `length` 6610635 matching the actual bytes, with an Ed25519 signature |
+| Stable feed | `releases/latest/download/appcast.xml` serves byte-identical content to the release asset |
+| Homebrew cask | regenerated from the published bytes, and its install/uninstall validated by the Homebrew workflow on a clean runner. It had still been on **0.3.0** — the 0.4.0 round never updated it — so this also repairs that |
+
 ## A check that looked flaky and was not
 
 `terminal: Control-C restores the shell foreground group` failed in roughly half the rounds, on a code path this release does not touch, and blocked the round each time because the suite exits on the first failure. It was nearly recorded as a flaky test to look at later. It is not flaky.
@@ -58,6 +73,6 @@ Three statements written during the fix were wrong and were corrected before mer
 ## Not done
 
 - **No packaged-app interaction check, again.** The owner declined screen access this round, so the packaged 0.4.1 bundle was built and its metadata inspected but never clicked through. This is the same gap recorded against 0.4.0, and it is what let all three reported bugs ship: every one of them was plainly visible on screen and invisible to a suite of 4,369 checks. Until a round actually looks at the packaged app, this class of defect can ship again.
-- **No isolated Homebrew install.** The cask will be generated from the published bytes and its syntax checked; `brew install` / `brew uninstall` into a throwaway prefix is not part of this round.
-- **No launch of the downloaded application.** The published bundle will be mounted and inspected, not opened.
+- **No *local* isolated Homebrew install.** The cask is generated from the published bytes and its install/uninstall was exercised by the Homebrew workflow into a temporary runner app directory ([checks on #24](https://github.com/zerolfx/Tursora/pull/24)), which is a real install of the published asset — but on a clean CI runner, not on a machine with an existing Tursora, an existing tap, or a non-admin account.
+- **No launch of the downloaded application.** The published bundle was mounted and inspected, not opened.
 - **The folder-handler role is never claimed by a check.** Doing so would need a human to dismiss a system confirmation and would change the machine running the tests. What is checked is the wording, the enabled state, and the bundle-identifier identity rule, the last driven with two stub bundles that differ only in path.
