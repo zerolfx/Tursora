@@ -45,8 +45,32 @@ enum TerminalSmokeTests: SmokeSuite {
                     return foreground > 0 && foreground != probe.process.shellPid
                 }) {
                     probe.send("\u{3}")
+                    // If this ever fails with the job still owning the terminal
+                    // and no output at all, check the detail before suspecting
+                    // the terminal: a test process started in the background
+                    // (`nohup … &`, or any parent that ignores SIGINT) passes
+                    // SIG_IGN down, and the shell gives every job it starts
+                    // SIG_IGN for the signals that were ignored when the shell
+                    // itself started. An inherited ignore survives exec and
+                    // cannot be reset from shell script, so the keystroke can
+                    // never interrupt anything. Measured. Run the suite in the
+                    // foreground, or reset SIGINT in the child as tools/smoke
+                    // runners must.
                     waitUntil("terminal: Control-C restores the shell foreground group", condition: {
                         tcgetpgrp(probe.process.childfd) == probe.process.shellPid
+                    }, detail: {
+                        let fg = tcgetpgrp(probe.process.childfd)
+                        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, fg]
+                        var info = kinfo_proc()
+                        var size = MemoryLayout<kinfo_proc>.size
+                        let readable = sysctl(&mib, 4, &info, &size, nil, 0) == 0 && size > 0
+                        let ignored = readable
+                            && info.kp_proc.p_sigignore & (sigset_t(1) << sigset_t(SIGINT - 1)) != 0
+                        return "fg=\(fg) shell=\(probe.process.shellPid) out=\(probe.output.debugDescription) "
+                            + (ignored
+                               ? "the job has SIGINT ignored — it was inherited, so no keystroke can interrupt it; "
+                                 + "start the suite in the foreground"
+                               : "the job accepts SIGINT")
                     }) {
                       probe.send("printf '\\n__PTY_INTERRUPT__\\n'\n")
                       wait(probe, for: "\r\n__PTY_INTERRUPT__\r\n") {

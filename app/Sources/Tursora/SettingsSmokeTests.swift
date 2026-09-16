@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 enum SettingsSmokeTests: SmokeSuite {
     static func run() {
@@ -160,26 +161,75 @@ enum SettingsSmokeTests: SmokeSuite {
                   && DefaultFileManager.statusText(isCurrent: false, currentName: "") == "Folders open in another application.")
         check("handler: folders are the type macOS opens with a file manager",
               DefaultFileManager.folderType.identifier == "public.folder")
-        // Identity is compared by bundle identifier, not by path: the same
-        // application has a different URL from a build folder, a disk image and
-        // /Applications, and a path comparison would call it "not the default".
-        check("handler: the running application is not mistaken for the handler in a test build",
-              DefaultFileManager.isCurrent() == false || Bundle.main.bundleIdentifier == "com.tursora.Tursora")
         check("handler: the system reports some handler for a folder today",
               DefaultFileManager.currentHandlerURL() != nil)
 
+        // Identity is compared by bundle identifier, not by path: the same
+        // application has a different URL from a build folder, a disk image and
+        // /Applications, and a path comparison would call it "not the default".
+        // Asserting that against the live system proves nothing — the handler
+        // is Finder and this binary has no bundle identifier either way — so
+        // the rule is driven with two stub bundles that differ only in path.
+        let stubs = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tursora-handler-\(getpid())")
+        defer { try? FileManager.default.removeItem(at: stubs) }
+        func stub(_ name: String, identifier: String) -> Bundle? {
+            let url = stubs.appendingPathComponent("\(name).app")
+            let contents = url.appendingPathComponent("Contents")
+            try? FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            let plist: [String: Any] = ["CFBundleIdentifier": identifier, "CFBundlePackageType": "APPL",
+                                        "CFBundleName": name, "CFBundleExecutable": name]
+            guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+            else { return nil }
+            try? data.write(to: contents.appendingPathComponent("Info.plist"))
+            return Bundle(url: url)
+        }
+        final class FixedWorkspace: NSWorkspace {
+            var handler: URL?
+            override func urlForApplication(toOpen contentType: UTType) -> URL? { handler }
+        }
+        let installed = stub("Installed", identifier: "com.tursora.Tursora")
+        let sameAppOtherPath = stub("BuildFolderCopy", identifier: "com.tursora.Tursora")
+        let otherApp = stub("SomethingElse", identifier: "com.example.Other")
+        let space = FixedWorkspace()
+        if let installed, let sameAppOtherPath, let otherApp {
+            space.handler = installed.bundleURL
+            check("handler: the same application at a different path is still recognised as the default",
+                  DefaultFileManager.isCurrent(workspace: space, bundle: sameAppOtherPath),
+                  "\(sameAppOtherPath.bundleURL.lastPathComponent) vs \(installed.bundleURL.lastPathComponent)")
+            space.handler = otherApp.bundleURL
+            check("handler: a different application holding the role is not mistaken for us",
+                  !DefaultFileManager.isCurrent(workspace: space, bundle: sameAppOtherPath))
+            space.handler = nil
+            check("handler: no handler at all is not us either",
+                  !DefaultFileManager.isCurrent(workspace: space, bundle: sameAppOtherPath))
+            space.handler = installed.bundleURL
+            check("handler: the name shown is the handler's, read from the filesystem",
+                  DefaultFileManager.currentHandlerName(workspace: space)?.hasPrefix("Installed") == true,
+                  DefaultFileManager.currentHandlerName(workspace: space) ?? "nil")
+        }
+
+        // The controller is not synced by the test: it must arrive already
+        // correct, or nothing here observes whether the controller syncs at all.
         let controller = SettingsWindowController()
         _ = controller.window
-        controller.syncDefaultFileManager()
-        check("handler: the settings line is filled in, never blank",
-              !controller.defaultFileManagerStatus.stringValue.isEmpty,
-              controller.defaultFileManagerStatus.stringValue)
-        check("handler: the button says what it will do",
-              controller.defaultFileManagerButton.title == "Set Tursora as Default"
-                  || controller.defaultFileManagerButton.title == "Tursora Is the Default",
-              controller.defaultFileManagerButton.title)
-        check("handler: the button is disabled exactly when Tursora already holds the role",
-              controller.defaultFileManagerButton.isEnabled == !DefaultFileManager.isCurrent())
+        let line = controller.defaultFileManagerStatus.stringValue
+        let title = controller.defaultFileManagerButton.title
+        check("handler: the settings line is one of the three sentences, never blank", [
+            "Tursora opens folders.", "Folders open in another application.",
+        ].contains(line) || (line.hasPrefix("Folders open in ") && line.hasSuffix(".")), line)
+        // Button and line are two separate outputs of the same state; checking
+        // them against each other catches a drift that re-deriving isCurrent()
+        // in the assertion cannot, because that only compares code with itself.
+        let claimsTheRole = line == "Tursora opens folders."
+        check("handler: the button agrees with the line it sits under",
+              title == (claimsTheRole ? "Tursora Is the Default" : "Set Tursora as Default")
+                  && controller.defaultFileManagerButton.isEnabled == !claimsTheRole,
+              "line=\(line) title=\(title) enabled=\(controller.defaultFileManagerButton.isEnabled)")
+        // A pending system confirmation must not be re-armed by a refresh.
+        controller.makeDefaultFileManager(nil)
+        check("handler: the button stays disabled while a request is outstanding",
+              !controller.defaultFileManagerButton.isEnabled || !controller.isClaimingFolderRole)
         controller.close()
     }
 

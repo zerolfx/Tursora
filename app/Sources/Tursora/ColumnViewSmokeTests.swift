@@ -312,6 +312,11 @@ enum ColumnViewSmokeTests: SmokeSuite {
         // shows nothing however right its content is. Measured, then pinned.
         check("the preview column sizes itself the way NSBrowser expects",
               columns.previewAutoresizesForTesting)
+        // The mask alone is not the fix: NSBrowser resizes from the frame it
+        // finds, so a zero-height starting frame stays short. Both halves pinned.
+        check("and starts from a real frame, not a zero-height one",
+              columns.previewStartFrameForTesting.height > 0 && columns.previewStartFrameForTesting.width > 0,
+              "\(columns.previewStartFrameForTesting)")
         // The delegate is what NSBrowser actually calls; drive it the same way.
         if let node = pane.model.node(for: pdf) {
             _ = columns.browser(columns.browser, previewViewControllerForLeafItem: node)
@@ -339,6 +344,63 @@ enum ColumnViewSmokeTests: SmokeSuite {
             }
             check("a column row draws an icon", hasIcon, title.string.debugDescription)
             check("and still carries the name", title.string.contains("top"), title.string.debugDescription)
+            // Type-select defaults to the cell's own string, which now opens
+            // with the attachment character — no typed letter could match it.
+            check("a column row answers type-select with the real name",
+                  columns.browser(columns.browser, typeSelectStringForRow: topRow2, inColumn: 0) == "top.txt",
+                  columns.browser(columns.browser, typeSelectStringForRow: topRow2, inColumn: 0) ?? "nil")
+            // The attachment character must not be what a screen reader reads.
+            check("and reads its name to assistive clients, not U+FFFC",
+                  iconProbe.accessibilityLabel() == "top.txt" && iconProbe.accessibilityValue() as? String == "top.txt",
+                  "label=\(iconProbe.accessibilityLabel() ?? "nil") value=\(String(describing: iconProbe.accessibilityValue()))")
+
+            // Dimming was the third thing the broken cast disabled, and nothing
+            // read it back: cutURLs was always empty at probe time.
+            func drawnRow() -> (colour: NSColor?, icon: NSImage?) {
+                let probe = NSTextFieldCell(textCell: "")
+                columns.browser(columns.browser, willDisplayCell: probe, atRow: topRow2, column: 0)
+                let drawn = probe.attributedStringValue
+                let nameStart = drawn.string.count > 1 ? 1 : 0
+                let colour = drawn.attribute(.foregroundColor, at: nameStart, effectiveRange: nil) as? NSColor
+                let icon = (drawn.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment)?.image
+                return (colour, icon)
+            }
+            let plain = drawnRow()
+            columns.cutURLs = [root.appendingPathComponent("top.txt").standardizedFileURL]
+            let cut = drawnRow()
+            columns.cutURLs = []
+            check("a cut column row is dimmed and an uncut one is not",
+                  plain.colour == .labelColor && cut.colour == .secondaryLabelColor,
+                  "plain=\(plain.colour?.description ?? "nil") cut=\(cut.colour?.description ?? "nil")")
+            // The icon fades with the text; the list view fades the whole row,
+            // so a full-strength icon beside dimmed text would be half-cut.
+            // Compared by drawn pixels, because the two images are distinct
+            // objects either way — NSWorkspace returns a fresh one per call.
+            // Drawn into a bitmap of a format we choose, so the bytes mean what
+            // we think they mean; the images' own representations differ.
+            func inkCoverage(_ image: NSImage?) -> Double? {
+                guard let image else { return nil }
+                let side = 32
+                guard let rep = NSBitmapImageRep(
+                    bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                    colorSpaceName: .deviceRGB, bytesPerRow: side * 4, bitsPerPixel: 32),
+                      let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = context
+                image.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+                NSGraphicsContext.restoreGraphicsState()
+                guard let bytes = rep.bitmapData else { return nil }
+                var total = 0
+                for pixel in 0..<(side * side) { total += Int(bytes[pixel * 4 + 3]) }
+                return Double(total) / Double(side * side * 255)
+            }
+            let plainInk = inkCoverage(plain.icon)
+            let cutInk = inkCoverage(cut.icon)
+            check("and its icon is faded too, not drawn at full strength",
+                  cut.icon != nil && plainInk != nil && cutInk != nil
+                      && cutInk! < plainInk! * 0.75 && cutInk! > 0,
+                  "plain=\(plainInk.map { String(format: "%.3f", $0) } ?? "nil") cut=\(cutInk.map { String(format: "%.3f", $0) } ?? "nil")")
         }
 
         // Leaving columns must not drop keyboard focus on the floor.

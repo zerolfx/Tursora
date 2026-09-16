@@ -79,6 +79,7 @@ final class PreviewPanelController: NSViewController {
         if sizesItselfByAutoresizing {
             view.frame = NSRect(x: 0, y: 0, width: 300, height: 300)
             view.autoresizingMask = [.width, .height]
+            startFrameForTesting = view.frame
         }
         titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
         titleLabel.textColor = .secondaryLabelColor
@@ -200,7 +201,11 @@ final class PreviewPanelController: NSViewController {
     /// Called when the pane is hidden. The controller is kept — its scroll
     /// position and rendered document survive a reopen — but nothing should
     /// still be playing while the pane is off screen.
-    func paneHidden() { releaseQuickLook() }
+    /// `shownURL` is cleared as well as the Quick Look item: `show` treats a
+    /// repeated URL as a no-op, so a pane hidden on a file and reopened without
+    /// the selection changing would ask for the same URL, be skipped, and come
+    /// back empty — the Quick Look view having been emptied on the way out.
+    func paneHidden() { releaseQuickLook(); shownURL = nil; isShowingMarkdown = false }
 
     func shutdown() {
         quickLook?.close()
@@ -215,4 +220,7 @@ final class PreviewPanelController: NSViewController {
     var isQuickLookVisibleForTesting: Bool { quickLook.map { !$0.isHidden } ?? false }
     var isCloseButtonHiddenForTesting: Bool { closeButton?.isHidden ?? true }
     var autoresizesForTesting: Bool { isViewLoaded && view.autoresizingMask.contains(.height) }
+    /// The frame the view was given at load; NSBrowser resizes from it, so a
+    /// zero-height start stays short even with the mask set.
+    private(set) var startFrameForTesting = NSRect.zero
 }

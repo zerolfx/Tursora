@@ -276,6 +276,12 @@ enum SmokeTest: SmokeSuite {
                     b.fileView.beginRename(item: item)
                     let editor = wc.window?.firstResponder as? NSTextView
                     check("\(mode.rawValue): rename retains the full extension", editor?.string == "sample.txt", editor?.string ?? "no editor")
+                    // Finder preselects the base name so typing keeps the
+                    // extension; selecting the whole string would turn a typed
+                    // word into a file with no extension at all.
+                    check("\(mode.rawValue): rename preselects the base name, not the extension",
+                          editor?.selectedRange() == NSRange(location: 0, length: 6),
+                          "\(editor?.selectedRange() ?? NSRange(location: -1, length: -1))")
                     editor?.string = "changed-name.txt"
                     if let editor, let delegate = editor.delegate as? NSTextField {
                         _ = delegate.delegate?.control?(delegate, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
@@ -1047,7 +1053,30 @@ enum SmokeTest: SmokeSuite {
                     check("and the folder that was opened is selected again",
                           b.fileView.selectedItems.first?.name == "dir-20",
                           b.fileView.selectedItems.first?.name ?? "nil")
-                    completion()
+                    // The recorded offset is taken against whatever listing was
+                    // on screen, and a directory change clears the filter. A
+                    // folder left filtered records ~0, which must not then be
+                    // replayed over a selection far down the unfiltered list.
+                    b.nameFilter = "dir-45"
+                    after(0.4) {
+                        guard let target = b.model.nodes.first(where: { $0.item.name == "dir-45" })?.item else {
+                            check("the filtered fixture still has its target", false); completion(); return
+                        }
+                        b.fileView.select(urls: [target.url])
+                        b.navigate(to: target.url)
+                        after(0.5) {
+                            b.goBack()
+                            after(0.6) {
+                                let rect = b.fileList.tableView.rect(ofRow: b.fileList.tableView.selectedRow)
+                                let visible = b.fileList.scrollView.contentView.bounds
+                                check("Back from a filtered folder still shows the row it selected",
+                                      b.fileList.tableView.selectedRow >= 0 && visible.intersects(rect),
+                                      "row=\(b.fileList.tableView.selectedRow) rect=\(rect) visible=\(visible)")
+                                b.nameFilter = ""
+                                after(0.3) { completion() }
+                            }
+                        }
+                    }
                 }
             }
         }

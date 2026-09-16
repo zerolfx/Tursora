@@ -1586,14 +1586,19 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             return
         }
         guard let entry = history.current else { return }
-        fileView.select(name: entry.selectedName)
-        // The offset is restored whether or not something was selected. With a
-        // selection it used to be skipped, and `select(name:)` only scrolls the
-        // row barely into view — so going back to a folder you had scrolled
-        // through landed somewhere other than where you left, which is most
-        // visible after opening a folder and pressing Back, the one case where
-        // a selection is always remembered.
+        // Offset first, then the selection. The offset is restored whether or
+        // not something was selected — with a selection it used to be skipped,
+        // and `select(name:)` only scrolls the row barely into view, so going
+        // back to a folder you had scrolled through landed somewhere other than
+        // where you left. But the offset must not win outright either: it is
+        // recorded against whatever listing was on screen, and a directory
+        // change clears the name filter, so a folder left filtered records an
+        // offset of ~0 that would replay over a selection thousands of rows
+        // down. Selecting last settles it, because both views scroll only when
+        // the row is not already visible: the row the user left in view keeps
+        // the restored offset, and a row outside it is scrolled to instead.
         fileView.scrollOffset = entry.scrollOffset
+        fileView.select(name: entry.selectedName)
     }
 }
 

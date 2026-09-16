@@ -17,6 +17,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     /// confirmation in front of the user (D86).
     let defaultFileManagerButton = NSButton(title: "Set Tursora as Default", target: nil, action: nil)
     let defaultFileManagerStatus = NSTextField.detail("")
+    /// True while macOS's own confirmation for the folder role is up.
+    private(set) var isClaimingFolderRole = false
     let workspaceSaveMessage = NSTextField(wrappingLabelWithString: "")
     let retryWorkspaceSave = NSButton(title: "Retry Saving Workspace", target: nil, action: nil)
     let generalScrollView = NSScrollView()
@@ -155,7 +157,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         defaultFileManagerButton.bezelStyle = .rounded
         defaultFileManagerButton.target = self
         defaultFileManagerButton.action = #selector(makeDefaultFileManager(_:))
-        syncDefaultFileManager()
         workspaceSaveMessage.font = .systemFont(ofSize: 12)
         workspaceSaveMessage.textColor = .systemRed
         retryWorkspaceSave.bezelStyle = .rounded
@@ -311,23 +312,38 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         let isCurrent = DefaultFileManager.isCurrent()
         defaultFileManagerStatus.stringValue = DefaultFileManager.statusText(
             isCurrent: isCurrent, currentName: DefaultFileManager.currentHandlerName())
-        defaultFileManagerButton.isEnabled = !isCurrent
+        // Never re-enable while the system's confirmation is still up: any
+        // unrelated refresh would otherwise arm a second concurrent request.
+        defaultFileManagerButton.isEnabled = !isCurrent && !isClaimingFolderRole
         defaultFileManagerButton.title = isCurrent ? "Tursora Is the Default" : "Set Tursora as Default"
     }
 
+    /// The role can be handed to another application while this window sits
+    /// open, so the line is read again whenever the window comes forward.
+    func windowDidBecomeKey(_ notification: Notification) { syncDefaultFileManager() }
+
     @objc func makeDefaultFileManager(_ sender: Any?) {
+        guard !isClaimingFolderRole else { return }
+        isClaimingFolderRole = true
         defaultFileManagerButton.isEnabled = false
         DefaultFileManager.makeCurrent { [weak self] result in
             guard let self else { return }
+            self.isClaimingFolderRole = false
             if case .failure(let error) = result {
-                // A headless run must never raise a sheet (AGENTS rule 2).
+                // A headless run must never raise a sheet (AGENTS rule 2), and
+                // a sheet on a window the user has closed is a sheet nobody
+                // sees — that case gets an ordinary alert instead.
                 if SmokeTest.isRequested {
                     print("default file manager: \(error.localizedDescription)")
-                } else if let window = self.window {
+                } else {
                     let alert = NSAlert()
                     alert.messageText = "Tursora could not become the default."
                     alert.informativeText = error.localizedDescription
-                    alert.beginSheetModal(for: window) { _ in }
+                    if let window = self.window, window.isVisible {
+                        alert.beginSheetModal(for: window) { _ in }
+                    } else {
+                        alert.runModal()
+                    }
                 }
             }
             // Either way the truth comes from LaunchServices, not from the
