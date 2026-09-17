@@ -4,6 +4,8 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-17
+
 ### Fixed
 
 - Column view no longer loses a filename when the column is too narrow for it. The name simply vanished, leaving the icon alone: a filename is one unbreakable word, the cell wrapped it onto a second line, and only the first line was drawn. Names now truncate in the middle, as they do in list view.
@@ -158,7 +160,8 @@ First release of Tursora, a native macOS file manager built with Swift and AppKi
 
 Earlier implementation notes and historical verification counts are preserved in [Development history](docs/DEVELOPMENT_HISTORY.md). Use the [documentation index](docs/README.md) to find feature-specific verification and remaining limits.
 
-[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/zerolfx/Tursora/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/zerolfx/Tursora/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/zerolfx/Tursora/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/zerolfx/Tursora/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/zerolfx/Tursora/compare/v0.3.0...v0.4.0
