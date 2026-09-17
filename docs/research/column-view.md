@@ -60,6 +60,25 @@ The earlier measurement that led to setting both was not wrong — label-alone d
 
 Why every automated layer missed it: the check built its own `NSTextFieldCell`, called the delegate on it, and read it back. On a detached cell all the writes stick. On the cell the browser actually draws, the accessibility write clobbers the string. The check now reads `browser.loadedCell(atRow:inColumn:)` as well, and that check was verified to fail against the shipped code while the probe-based one still passed.
 
+### A narrow column lost the name entirely, 2026-09-17
+
+Reported by the owner as more serious than the missing icons, and rightly: a file manager that stops showing filenames is not usable at that width.
+
+A filename is one unbreakable word. With no line-break mode set the cell wraps, so at a column narrower than the name the line breaks after the icon attachment and the cell draws only its first line — the icon, and nothing else. Three things were tried and measured at a 70 pt column before one worked:
+
+| what was set | name drawn |
+|---|---|
+| a paragraph style with `.byTruncatingMiddle` inside the attributed string | no |
+| `cell.lineBreakMode = .byTruncatingMiddle` | no |
+| `cell.wraps = false` | no |
+| **`cell.usesSingleLineMode = true`** | **yes** |
+
+`lineBreakMode` is kept alongside it because it chooses *where* the truncation falls — the middle, matching the list view and Finder — but a pixel count cannot tell middle from tail, so nothing asserts it and the comment says so.
+
+The first version of the check used the fixture's existing `top.txt`, which fits at 70 pt, and passed with the fix reverted. It was caught by mutation-testing the check rather than trusting it, and the fixture now carries a name no narrow column can fit.
+
+Confirmed in a packaged build before release: with the column dragged to its 100 pt minimum, folder and file rows keep both their icons and their names, long names included.
+
 ## Inferred, not evidence
 
 - **Selection does not navigate.** Finder makes the deepest selected folder the window's location. Tursora keeps the location on the first column's folder and moves it only when a folder is opened. This is a design choice (D84), driven by per-folder view properties being re-applied on navigation; it is not a claim about Finder.

@@ -525,6 +525,20 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
             .font: NSFont.systemFont(ofSize: max(11, min(13, iconSize * 0.55))),
             .foregroundColor: cut ? NSColor.secondaryLabelColor : NSColor.labelColor,
         ]))
+        // A column narrower than the name must truncate it, not drop it. The
+        // cell's default is to wrap, and a filename is one unbreakable word, so
+        // the line breaks after the icon and the cell then draws only that
+        // first line: icon, no name at all.
+        //
+        // `usesSingleLineMode` is the line that fixes it, and the only one the
+        // check covers. Measured at a 70 pt column: `lineBreakMode` alone and
+        // `wraps = false` both still lose the name, and a paragraph style
+        // inside the attributed string does nothing at all. `lineBreakMode`
+        // here only chooses *where* the truncation falls — the middle, as the
+        // list view and Finder do — which a pixel count cannot tell apart from
+        // tail truncation, so nothing asserts it.
+        cell.usesSingleLineMode = true
+        cell.lineBreakMode = .byTruncatingMiddle
         cell.attributedStringValue = title
         // The attributed title is where an NSCell's accessibility text comes
         // from, and it now opens with the attachment's object-replacement
@@ -693,6 +707,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     func selectedIndexPathsForTesting() -> [IndexPath] { browser.selectionIndexPaths }
     var isPreviewColumnShowingMarkdownForTesting: Bool { preview.isShowingMarkdown }
     var isPreviewColumnEmptyForTesting: Bool { preview.shownURL == nil }
+    func rowCountForTesting(_ column: Int) -> Int { rowCount(inColumn: column) }
     var previewedURLForTesting: URL? { preview.shownURL }
     var previewAutoresizesForTesting: Bool { _ = preview.view; return preview.autoresizesForTesting }
     var previewStartFrameForTesting: NSRect { _ = preview.view; return preview.startFrameForTesting }

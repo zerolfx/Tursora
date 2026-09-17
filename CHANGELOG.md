@@ -4,6 +4,15 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Fixed
+
+- Column view no longer loses a filename when the column is too narrow for it. The name simply vanished, leaving the icon alone: a filename is one unbreakable word, the cell wrapped it onto a second line, and only the first line was drawn. Names now truncate in the middle, as they do in list view.
+- **Set Tursora as Default** now says why it cannot work instead of failing with "The file couldn't be opened." macOS will not register an application running from a temporary or read-only location — which is what an app opened straight from a downloaded disk image is — so the setting explains that and asks you to move Tursora to your Applications folder, and the button is disabled until you do.
+
+### Changed
+
+- Buttons in Settings are button-sized again instead of stretching the full width of the pane.
+
 ## [0.4.2] - 2026-09-17
 
 ### Fixed

@@ -58,6 +58,10 @@ enum ColumnViewSmokeTests: SmokeSuite {
         try? fm.createDirectory(at: root.appendingPathComponent("Empty"), withIntermediateDirectories: true)
         try? "# Deep\n\nbody\n".write(to: root.appendingPathComponent("Docs/Notes/deep.md"), atomically: true, encoding: .utf8)
         try? "top".write(to: root.appendingPathComponent("top.txt"), atomically: true, encoding: .utf8)
+        // A name no narrow column can fit, for the truncation check below. One
+        // unbreakable word is the case that loses the name entirely.
+        let longName = "quarterly-report-2026-final-draft-revision.txt"
+        try? "long".write(to: root.appendingPathComponent(longName), atomically: true, encoding: .utf8)
         defer { try? fm.removeItem(at: root) }
 
         // EmptyProvider lists nothing by design; columns need real folders.
@@ -373,6 +377,52 @@ enum ColumnViewSmokeTests: SmokeSuite {
                       "label=\(owned.accessibilityLabel() ?? "nil")")
             } else {
                 check("the browser hands back a loaded cell to inspect", false)
+            }
+
+            // A column narrower than the name must truncate it, not drop it.
+            // The cell's default is to wrap and a filename is one unbreakable
+            // word, so the line breaks after the icon and a single-line cell
+            // draws only that first line — icon, no name. Drawn and counted,
+            // because nothing about the string itself reveals this: the
+            // attributed value is identical either way.
+            func nameInk(row: Int, atColumnWidth width: CGFloat) -> Int {
+                guard let cell = columns.browser.loadedCell(atRow: row, column: 0) as? NSCell
+                else { return -1 }
+                let h = 24, w = Int(width)
+                guard let rep = NSBitmapImageRep(
+                        bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                        colorSpaceName: .deviceRGB, bytesPerRow: w * 4, bitsPerPixel: 32),
+                      let context = NSGraphicsContext(bitmapImageRep: rep) else { return -1 }
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = context
+                // Magenta: a ground no label or icon colour collides with.
+                NSColor(srgbRed: 1, green: 0, blue: 1, alpha: 1).setFill()
+                NSRect(x: 0, y: 0, width: width, height: 24).fill()
+                cell.draw(withFrame: NSRect(x: 0, y: 0, width: width, height: 24),
+                          in: NSView(frame: NSRect(x: 0, y: 0, width: width, height: 24)))
+                NSGraphicsContext.restoreGraphicsState()
+                guard let bytes = rep.bitmapData else { return -1 }
+                var ink = 0
+                for y in 0..<h {
+                    for x in 22..<w where !(bytes[(y * w + x) * 4] > 240
+                                            && bytes[(y * w + x) * 4 + 1] < 15
+                                            && bytes[(y * w + x) * 4 + 2] > 240) { ink += 1 }
+                }
+                return ink
+            }
+            // Measured against the long name: `top.txt` fits at 70 pt, so a
+            // check using it passes whether or not the bug is present. That is
+            // how the first version of this check failed its own mutation test.
+            let longRow = pane.model.nodes.firstIndex { $0.item.name == longName } ?? -1
+            if longRow >= 0 {
+                let wide = nameInk(row: longRow, atColumnWidth: 320)
+                let narrow = nameInk(row: longRow, atColumnWidth: 90)
+                check("a column too narrow for the name still draws it, truncated",
+                      narrow > 30 && wide > 30 && narrow < wide,
+                      "ink at 320pt=\(wide), at 90pt=\(narrow)")
+            } else {
+                check("the fixture has a name too long for a narrow column", false)
             }
 
             // Dimming was the third thing the broken cast disabled, and nothing
