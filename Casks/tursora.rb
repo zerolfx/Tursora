@@ -1,6 +1,6 @@
 cask "tursora" do
-  version "0.4.2"
-  sha256 "d788cc029b275ad78f6f802152a0a418ed2204d1b121a2ec5b2b268d2c34a6d6"
+  version "0.4.3"
+  sha256 "8aaddc941524a18c86fa548fed5dbe577b61ed90c715cd25fbeedabae99b588d"
 
   url "https://github.com/zerolfx/Tursora/releases/download/v#{version}/Tursora-#{version}-macOS-arm64.dmg"
   name "Tursora"

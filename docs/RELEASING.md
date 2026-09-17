@@ -46,6 +46,14 @@ Finally it atomically creates a new `v<version>` tag at that exact commit and pu
 
 Tag creation and release creation are separate GitHub operations. If publishing fails after the tag is created, a normal rerun will reject the existing tag. Inspect the exact tag SHA and the successful run's verified assets before completing that same release; do not move/delete a published tag or rebuild different bytes under an existing version to bypass the check.
 
+## 0.4.3 preparation (2026-09-17)
+
+Three defects reported against 0.4.2, all introduced during the 0.4.1 column-view work: a narrow column lost the filename entirely, **Set Tursora as Default** failed with the system's "The file couldn't be opened.", and the settings push buttons stretched the full width of the pane. [0.4.3 is published](https://github.com/zerolfx/Tursora/releases/tag/v0.4.3) from `fc4766fc97614fa76686492cce99f2b04092d345`, build `1789645346`, by [Release 35217600481](https://github.com/zerolfx/Tursora/actions/runs/35217600481).
+
+Two things worth carrying forward. The default-handler failure is not a Tursora bug at all but a consequence of shipping ad-hoc signed and not notarized: macOS translocates a quarantined download, and LaunchServices will not register an application from a temporary path. Anything that asks the system to register this application will hit it until the app is notarized or the user moves it to Applications.
+
+And this is the first release in the 0.4.x line where the **published binary itself** was run and watched, rather than a local build of the same sources. It is worth the five minutes: the two releases before it both shipped a column-view defect that a person could see at a glance. See [the 0.4.3 record](research/release-0.4.3.md).
+
 ## 0.4.2 preparation (2026-09-17)
 
 0.4.1 shipped one of its three advertised fixes broken: column rows still drew no icons. [0.4.2 is published](https://github.com/zerolfx/Tursora/releases/tag/v0.4.2) from `31e81b2ea0b3785ba63073cded6db7294ee28ba8`, build `1789578889`, by [Release 35127645725](https://github.com/zerolfx/Tursora/actions/runs/35127645725), and contains that one fix.
