@@ -2,7 +2,7 @@
 
 2026-09-17. What has actually been done for 0.4.3 and what is still outstanding.
 
-**Status: prepared, not yet published.**
+**Status: published and verified.** [Tursora 0.4.3](https://github.com/zerolfx/Tursora/releases/tag/v0.4.3) is the latest stable release, published 2026-09-17.
 
 ## Why this release exists
 
@@ -44,6 +44,21 @@ The location is now diagnosed before the request: the settings line explains it 
 | Mutation testing | the narrow-column check verified to fail when `usesSingleLineMode` is reverted |
 | Release tool tests | 90 tests, OK |
 | **Packaged application** | built, launched on a fixture with long filenames, and **looked at**: with the column dragged to its 100 pt minimum, rows keep both icons and names; the settings button measures 161 pt rather than the full 592 pt pane |
+
+## Verification of the published artifacts
+
+| Check | Result |
+|---|---|
+| Release run | [35217600481](https://github.com/zerolfx/Tursora/actions/runs/35217600481), success, dispatched on `main` |
+| Tag | `v0.4.3` resolves to `fc4766fc97614fa76686492cce99f2b04092d345` |
+| Release | not a draft, not a prerelease, the repository's latest, three assets |
+| Checksum | recomputed independently, matches the published `SHA256SUMS.txt`: `8aaddc941524a18c86fa548fed5dbe577b61ed90c715cd25fbeedabae99b588d` |
+| Application inside | `CFBundleShortVersionString` 0.4.3, `CFBundleVersion` 1789645346, `lipo -archs` arm64, `codesign --verify --deep --strict` clean, `LSMinimumSystemVersion` 14.0 |
+| Stable feed | `releases/latest/download/appcast.xml` serves byte-identical content to the release asset |
+| Homebrew cask | regenerated from the published bytes |
+| **The published binary, run and looked at** | the app was copied out of the downloaded DMG and opened on a fixture of long filenames. With the column dragged to 101 pt — its minimum — every row still draws both its icon and its name, the long ones clipped but present |
+
+That last row is the one 0.4.1 and 0.4.2 could not claim. 0.4.1 shipped a fix that did not work and nobody looked; 0.4.2's check ran against a local build of identical sources because the screen locked. This time the artifact users download is the artifact that was watched.
 
 ## Not done
 
