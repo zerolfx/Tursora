@@ -215,17 +215,49 @@ enum SettingsSmokeTests: SmokeSuite {
         _ = controller.window
         let line = controller.defaultFileManagerStatus.stringValue
         let title = controller.defaultFileManagerButton.title
-        check("handler: the settings line is one of the three sentences, never blank", [
-            "Tursora opens folders.", "Folders open in another application.",
-        ].contains(line) || (line.hasPrefix("Folders open in ") && line.hasSuffix(".")), line)
+        // Either a status sentence, or — when the application is somewhere
+        // LaunchServices will not register — the reason, so the user is not
+        // left with the system's "The file couldn't be opened."
+        let statusSentence = ["Tursora opens folders.", "Folders open in another application."].contains(line)
+            || (line.hasPrefix("Folders open in ") && line.hasSuffix("."))
+        let problemShown = DefaultFileManager.locationProblem().map { line == $0.explanation } ?? false
+        check("handler: the settings line is a status sentence, or says why it cannot be set",
+              statusSentence || problemShown, line)
+        check("handler: a bare executable is reported as not an application",
+              DefaultFileManager.locationProblem(bundle: .main) == .notAnApplication,
+              "\(String(describing: DefaultFileManager.locationProblem(bundle: .main)))")
+        if let temporary = sameAppOtherPath {
+            // The stubs live under the temporary directory, which is also where
+            // App Translocation puts a quarantined copy of a downloaded app.
+            check("handler: an application in a temporary location is refused with a reason",
+                  DefaultFileManager.locationProblem(bundle: temporary) == .temporary,
+                  "\(String(describing: DefaultFileManager.locationProblem(bundle: temporary)))")
+            check("handler: that reason tells the user what to do about it",
+                  DefaultFileManager.LocationProblem.temporary.explanation.contains("Applications folder"))
+            let failed = Counter()
+            DefaultFileManager.makeCurrent(bundle: temporary) { result in
+                if case .failure = result { failed.value += 1 }
+            }
+            check("handler: such a request fails without ever reaching LaunchServices",
+                  failed.value == 1, "\(failed.value)")
+        }
         // Button and line are two separate outputs of the same state; checking
         // them against each other catches a drift that re-deriving isCurrent()
         // in the assertion cannot, because that only compares code with itself.
         let claimsTheRole = line == "Tursora opens folders."
         check("handler: the button agrees with the line it sits under",
               title == (claimsTheRole ? "Tursora Is the Default" : "Set Tursora as Default")
-                  && controller.defaultFileManagerButton.isEnabled == !claimsTheRole,
+                  && controller.defaultFileManagerButton.isEnabled == (!claimsTheRole && !problemShown),
               "line=\(line) title=\(title) enabled=\(controller.defaultFileManagerButton.isEnabled)")
+        // A push button stretched to the pane's width reads as a banner, with
+        // its title stranded in the middle of an empty bar.
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        let paneWidth = controller.defaultFileManagerStatus.frame.width
+        let buttonWidth = controller.defaultFileManagerButton.frame.width
+        check("handler: the button is button-sized, not a full-width banner",
+              paneWidth > 0 && buttonWidth > 0 && buttonWidth < paneWidth * 0.75,
+              "button=\(Int(buttonWidth)) pane=\(Int(paneWidth))")
+
         // A pending system confirmation must not be re-armed by a refresh.
         controller.makeDefaultFileManager(nil)
         check("handler: the button stays disabled while a request is outstanding",

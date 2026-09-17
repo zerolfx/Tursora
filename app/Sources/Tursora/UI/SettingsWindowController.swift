@@ -193,7 +193,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
             stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -20),
         ])
-        for row in rows {
+        // Labels, checkboxes and pop-ups fill the pane; a push button must not.
+        // Stretched to the full width it reads as a banner rather than a
+        // button, and its title floats in the middle of an empty bar.
+        let naturalWidth: [NSView] = [defaultFileManagerButton, retryWorkspaceSave, retryFolderViewSave]
+        for row in rows where !naturalWidth.contains(where: { $0 === row }) {
             row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         window?.initialFirstResponder = extensionsCheckbox
@@ -310,11 +314,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     /// without anything telling us.
     func syncDefaultFileManager() {
         let isCurrent = DefaultFileManager.isCurrent()
-        defaultFileManagerStatus.stringValue = DefaultFileManager.statusText(
-            isCurrent: isCurrent, currentName: DefaultFileManager.currentHandlerName())
+        // Say why the button cannot work before it is pressed. LaunchServices
+        // refuses an application in a temporary or read-only location, and its
+        // own error is "The file couldn't be opened." — which sent the owner
+        // looking for a bug in Tursora rather than moving the app.
+        let problem = isCurrent ? nil : DefaultFileManager.locationProblem()
+        defaultFileManagerStatus.stringValue = problem?.explanation
+            ?? DefaultFileManager.statusText(isCurrent: isCurrent,
+                                             currentName: DefaultFileManager.currentHandlerName())
         // Never re-enable while the system's confirmation is still up: any
         // unrelated refresh would otherwise arm a second concurrent request.
-        defaultFileManagerButton.isEnabled = !isCurrent && !isClaimingFolderRole
+        defaultFileManagerButton.isEnabled = !isCurrent && !isClaimingFolderRole && problem == nil
         defaultFileManagerButton.title = isCurrent ? "Tursora Is the Default" : "Set Tursora as Default"
     }
 
