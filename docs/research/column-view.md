@@ -77,6 +77,8 @@ A filename is one unbreakable word. With no line-break mode set the cell wraps, 
 
 The first version of the check used the fixture's existing `top.txt`, which fits at 70 pt, and passed with the fix reverted. It was caught by mutation-testing the check rather than trusting it, and the fixture now carries a name no narrow column can fit.
 
+Confirmed in a packaged build before release: with the column dragged to its 100 pt minimum, folder and file rows keep both their icons and their names, long names included.
+
 ## Inferred, not evidence
 
 - **Selection does not navigate.** Finder makes the deepest selected folder the window's location. Tursora keeps the location on the first column's folder and moves it only when a folder is opened. This is a design choice (D84), driven by per-folder view properties being re-applied on navigation; it is not a claim about Finder.
