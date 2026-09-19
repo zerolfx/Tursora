@@ -145,6 +145,35 @@ enum TerminalPreferencesSmokeTests: SmokeSuite {
         }
         dispatch(page.resetButton)
         check("Restore Defaults resets other settings pages and disables custom controls", store.configuration == .init() && second.shellMode.indexOfSelectedItem == 0 && !page.foregroundField.isEnabled && !page.shellPath.isEnabled)
+
+        // Switching the panel off in General leaves this page readable but inert.
+        page.themePicker.selectItem(at: 3)
+        dispatch(page.themePicker)
+        page.isAvailable = false
+        let gated: [NSControl] = [page.shellMode, page.shellPath, page.applyShellButton,
+                                  page.terminalFollowsBrowserBox, page.browserFollowsShellBox,
+                                  page.fontPicker, page.fontSize, page.sizeStepper, page.themePicker,
+                                  page.foregroundField, page.backgroundField, page.applyColorsButton,
+                                  page.resetButton]
+        check("turning the panel off makes every Terminal control inert and says why",
+              gated.allSatisfy { !$0.isEnabled } && !page.unavailableNote.isHidden,
+              gated.filter(\.isEnabled).map { String(describing: type(of: $0)) }.description)
+        let storedWhileOff = store.configuration
+        page.resetButton.performClick(nil)
+        check("a click on the inert page changes nothing", store.configuration == storedWhileOff && page.themePicker.indexOfSelectedItem == 3)
+        // Even an action forced past the disabled control cannot reopen the path.
+        page.shellMode.selectItem(at: 1)
+        dispatch(page.shellMode)
+        check("a forced action while off still cannot enable the shell path", !page.shellPath.isEnabled && !page.applyShellButton.isEnabled)
+        page.isAvailable = true
+        check("turning it back on restores each control's own rule and the pending draft",
+              page.shellMode.isEnabled && page.resetButton.isEnabled && page.fontPicker.isEnabled
+              && page.foregroundField.isEnabled && page.applyColorsButton.isEnabled
+              && page.shellPath.isEnabled && page.unavailableNote.isHidden)
+        check("the second page was never gated", second.shellMode.isEnabled && second.resetButton.isEnabled)
+        page.resetButton.performClick(nil)
+        check("Restore Defaults works again once the panel is back on",
+              store.configuration == .init() && page.themePicker.indexOfSelectedItem == 0 && !page.shellPath.isEnabled)
         window.close()
     }
 

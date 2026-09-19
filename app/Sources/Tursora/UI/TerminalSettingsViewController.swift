@@ -19,6 +19,13 @@ final class TerminalSettingsViewController: NSViewController {
     let preview = NSTextField(labelWithString: "Tursora ~/Projects % ls\nDocuments  Images  Notes.txt")
     let message = NSTextField(wrappingLabelWithString: "")
     let resetButton = NSButton(title: "Restore Terminal Defaults", target: nil, action: nil)
+    let unavailableNote = NSTextField.detail("Turn on Terminal panel in General to change these settings. A hidden session keeps running in the meantime.")
+    /// Mirrors Settings ▸ General ▸ Terminal panel. With the panel switched off
+    /// there is nothing on this page to configure, so it shows what is saved
+    /// and accepts no edits, rather than applying them somewhere unreachable.
+    var isAvailable = true {
+        didSet { if isViewLoaded, isAvailable != oldValue { applyAvailability() } }
+    }
     private var observer: NSObjectProtocol?
     private var availableFonts: [String] = [""]
     private var displayedConfiguration: TerminalPreferences.Configuration?
@@ -97,7 +104,7 @@ final class TerminalSettingsViewController: NSViewController {
         resetButton.bezelStyle = .rounded
         wire(resetButton, #selector(restoreDefaults(_:)))
 
-        let stack = NSStackView(views: [title, shellMode, shellRow, shellNote,
+        let stack = NSStackView(views: [title, unavailableNote, shellMode, shellRow, shellNote,
                                        terminalFollowsBrowserBox, browserFollowsShellBox, fontRow, themeRow,
                                        colorsRow, appearanceNote, preview, message, resetButton])
         stack.orientation = .vertical
@@ -111,7 +118,7 @@ final class TerminalSettingsViewController: NSViewController {
             stack.topAnchor.constraint(equalTo: root.topAnchor, constant: 20),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: root.bottomAnchor, constant: -20),
         ])
-        for item in [shellRow, shellNote, fontRow, appearanceNote, preview, message] {
+        for item in [unavailableNote, shellRow, shellNote, fontRow, appearanceNote, preview, message] {
             item.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         observer = preferences.notificationCenter.addObserver(forName: .tursoraTerminalPreferencesChanged, object: preferences, queue: nil) { [weak self] _ in
@@ -158,7 +165,6 @@ final class TerminalSettingsViewController: NSViewController {
             foregroundField.stringValue = value.foreground
             backgroundField.stringValue = value.background
         }
-        for control in [foregroundField, backgroundField, applyColorsButton] { control.isEnabled = value.theme == .custom }
         if force || previous?.terminalFollowsBrowser != value.terminalFollowsBrowser {
             terminalFollowsBrowserBox.state = value.terminalFollowsBrowser ? .on : .off
         }
@@ -166,13 +172,31 @@ final class TerminalSettingsViewController: NSViewController {
             browserFollowsShellBox.state = value.browserFollowsShell ? .on : .off
         }
         displayedConfiguration = value
+        applyAvailability()
         refreshPreview()
     }
 
-    private func setShellControlsEnabled(_ enabled: Bool) {
-        shellPath.isEnabled = enabled
-        applyShellButton.isEnabled = enabled
-        shellPath.toolTip = enabled ? "Absolute path to the shell executable; no command arguments."
+    /// The single place every control's enabled state is decided: its own rule
+    /// (a custom shell, a custom colour scheme) and then the panel switch above it.
+    private func applyAvailability() {
+        unavailableNote.isHidden = isAvailable
+        shellMode.isEnabled = isAvailable
+        setShellControlsEnabled(shellMode.indexOfSelectedItem == 1)
+        for control in [terminalFollowsBrowserBox, browserFollowsShellBox, fontPicker,
+                        fontSize, sizeStepper, themePicker, resetButton] {
+            control.isEnabled = isAvailable
+        }
+        for control in [foregroundField, backgroundField, applyColorsButton] {
+            control.isEnabled = isAvailable && preferences.configuration.theme == .custom
+        }
+    }
+
+    /// `custom` is the shell mode the page is showing, which is not yet the
+    /// saved one while an entered path waits for Apply Shell.
+    private func setShellControlsEnabled(_ custom: Bool) {
+        shellPath.isEnabled = isAvailable && custom
+        applyShellButton.isEnabled = isAvailable && custom
+        shellPath.toolTip = custom ? "Absolute path to the shell executable; no command arguments."
             : "Current system login shell: \(TerminalLaunchConfiguration.userShell)"
     }
 

@@ -178,7 +178,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
             NSTextField.detail("Remember view mode, sorting, icon sizes, groups, hidden files and previews. Use View → Folder View Settings to save a default or reset a folder. In Remember Each Folder mode, open panes keep their own view until you revisit the folder."),
             folderViewSaveMessage, retryFolderViewSave, separator(),
             NSTextField.heading("Terminal & ZIP"),
-            terminalCheckbox, NSTextField.detail("Use the toolbar Terminal button to show or hide your terminal. Hidden sessions keep running, including when this option is off. Re-enable it to return to the session. Customize its shell and appearance in Terminal, and its shortcut in Shortcuts."),
+            terminalCheckbox, NSTextField.detail("Adds the Terminal button to the toolbar and Show Terminal to the View menu; with this off both are gone and the Terminal settings accept no changes. Hidden sessions keep running, including when this option is off. Re-enable it to return to the session. Customize its shell and appearance in Terminal, and its shortcut in Shortcuts."),
             zipCheckbox, NSTextField.detail("Open ZIP files read-only in the current pane. Use Extract when you want to unpack the archive."),
         ]
         let stack = NSStackView(views: rows)
@@ -223,6 +223,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         folderViewPolicy.selectItem(at: viewPropertiesStore.policy == .perDirectory ? 0 : 1)
         extensionsCheckbox.state = preferences.showFileExtensions ? .on : .off
         terminalCheckbox.state = preferences.experimentalTerminalEnabled ? .on : .off
+        terminalSettingsController.isAvailable = preferences.experimentalTerminalEnabled
         zipCheckbox.state = preferences.experimentalZIPBrowsingEnabled ? .on : .off
         shortcutsController.refresh()
     }

@@ -16,6 +16,8 @@ Settings gains its own Terminal page, and the settings are stored in the app's U
 
 This round keeps the status semantics of the previous stage: Started in is the launch directory, and Shell folder is shown only when the current instance sends a valid local OSC 7; browsing only changes the target of the next Start / Restart and does not send `cd` automatically. A natural exit keeps the output; a settings change does not turn an ended state back into running.
 
+> 2026-09-19: while the Terminal panel is switched off in General, this Settings page accepts no edits — every control is disabled and a line names the option that hands it back — and the toolbar button is withdrawn rather than dimmed. See [the entry-point record](terminal-entry-point-visibility.md) and D87; the settings themselves are unchanged.
+
 ## Tursora's Current Implementation
 
 `TerminalPanelController` embeds SwiftTerm 1.15.0's `LocalProcessTerminalView`. The dependency is pinned to commit `dd2fb8ac5b861e7bf617c872895e338f38165648`:
