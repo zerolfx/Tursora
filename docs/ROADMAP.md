@@ -90,7 +90,8 @@ Also excluded, 2026-09-15, after comparing against Iruka: **Intel support** — 
 
 - With a very narrow split or the largest icon size, the smoke test emits a layout warning that the collection-view item width exceeds the available width; a dedicated visual check and a layout regression check still need to be added (2026-09-12).
 
-- The Return/Enter branch `case 36, 76 where plain` in the list and icon views produces a compiler warning: `plain` only constrains Enter; the Return path with modifier keys needs its own regression check (found during a build on 2026-09-12).
+- New Folder registers nothing with the window's undo manager, so ⌘Z after creating a folder undoes whatever came before it instead. Finder does register it (`NF1` / `NF2` = Redo / Undo New Folder in its strings). Trashing the folder is the obvious undo action, as `registerUndoTrash` already does for Extract. Found while implementing the inline rename (2026-09-22); recorded rather than built, per rule 9.
+- Whether Duplicate, Extract and Compress should also open the new item's name for editing is open. Finder's `selectNodesForTask:startEditing:` suggests the flag is general, but nothing in its symbol table says which tasks pass `YES`, so there is no evidence either way (2026-09-22).
 - A browser pane loses the selection after an **external** rename (the Info window can follow by inode, a pane cannot yet).
 - Folder size in the Info window does not update live as the contents change (to avoid an FSEvents storm).
 - The Size bucket boundaries and the Kind group order used by grouping are still inferred.

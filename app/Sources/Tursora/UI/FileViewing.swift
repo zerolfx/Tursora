@@ -40,7 +40,18 @@ protocol FileViewing: AnyObject {
     func select(names: [String])
     func select(urls: [URL])
     func openSelection()
+    /// Open the item's name for editing. The item may have appeared in a
+    /// listing that arrived in this run-loop pass, so an implementation forces
+    /// whatever layout it needs before it looks for the cell. It is a no-op
+    /// when no editor can be opened (no key window, item filtered out).
     func beginRename(item: FileItem)
+    /// True while an inline rename is open.
+    var isRenaming: Bool { get }
+    /// End an open inline rename, applying the typed name or discarding it.
+    /// Every `reloadData()` discards it: the view that owns the field editor
+    /// is dropped by the reload, and letting the edit end by itself would
+    /// commit whatever was half-typed.
+    func endRename(commit: Bool)
     /// The item after the last selected one (what to select after a delete).
     func itemAfterSelection() -> FileItem?
     func setIconSize(_ size: CGFloat, showPreviews: Bool)
@@ -55,6 +66,26 @@ protocol FileViewing: AnyObject {
 
 extension FileViewing {
     var displayedDirectoryURLs: [URL] { [] }
+}
+
+/// An inline rename caught by a listing reload. Every view drops the cell that
+/// owns the field editor when it reloads, so the edit cannot simply be left
+/// alone: ending it would run `controlTextDidEndEditing` and commit whatever
+/// was half-typed. The views capture it, end it without committing, and re-open
+/// it on the item's new row once the reload and the caller's selection restore
+/// have both finished (D88).
+struct InlineRenameState {
+    let url: URL
+    let text: String
+    let selection: NSRange
+}
+
+extension NSRange {
+    /// A captured selection may not fit the text it is restored into.
+    func clamped(toLength length: Int) -> NSRange {
+        let start = min(max(location, 0), length)
+        return NSRange(location: start, length: min(max(self.length, 0), length - start))
+    }
 }
 
 /// ⌘-scroll and pinch both zoom one step per accumulated threshold

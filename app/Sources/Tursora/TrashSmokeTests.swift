@@ -361,7 +361,8 @@ enum TrashSmokeTests: SmokeSuite {
               && validates(#selector(BrowserViewController.deletePermanently(_:)))
               && wc.validateMenuItem(NSMenuItem(title: "", action: #selector(MainWindowController.getInfo(_:)), keyEquivalent: "")))
         check("\(mode): the view refuses to start an inline rename", !browser.fileView.allowsRenaming)
-        browser.newFolder()
+        check("\(mode): New Folder is refused in the Trash", browser.newFolder() == nil)
+        check("\(mode): a refused New Folder arms no inline edit", !browser.hasPendingRename && !browser.fileView.isRenaming)
         browser.duplicate(nil)
         check("\(mode): the refused commands changed nothing on disk",
               Set(names(in: trash)) == ["a.txt", "b.txt", "c.txt", "stranger.txt"], "\(names(in: trash))")

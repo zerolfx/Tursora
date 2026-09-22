@@ -8,6 +8,11 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 - With **Terminal panel** turned off in Settings, the Terminal button is now gone from the toolbar instead of sitting there permanently greyed out. View → Show Terminal already hid itself on that setting; the toolbar now agrees with it. Turning the setting back on returns the button to its place, and a panel you had open is still there waiting.
 - Settings ▸ Terminal no longer accepts changes while the Terminal panel is turned off, since nothing there could apply. The page still shows your saved shell, font and colours, with a line naming the option that hands it back.
+- **New Folder** now opens the new folder's name for editing, as Finder does, so you can type the name straight away instead of renaming afterwards. It works in the list, icon and column views; press Escape to keep "untitled folder". If a filter is active that the new folder would not match, the filter is cleared so the folder you just made is actually on screen.
+
+### Fixed
+
+- An inline rename is no longer broken by a directory listing arriving underneath it. Previously an external change landing at the wrong moment could commit a half-typed name; the edit is now carried across the refresh with what you typed still in it.
 
 ## [0.4.3] - 2026-09-17
 

@@ -133,6 +133,7 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                     browser.deletePermanently(nil)
                     browser.paste(nil)
                     check("\(mode): write actions cannot modify archive contents", browser.newFolder() == nil && (try? String(contentsOf: note.contentURL)) == "original note" && (try? Data(contentsOf: archive)) == sourceBytes)
+                    check("\(mode): a refused New Folder arms no inline edit", !browser.hasPendingRename && !browser.fileView.isRenaming)
                     let menu = browser.buildContextMenu(for: [note])
                     check("\(mode): archive context menu offers reads without mutations", menu.items.contains { $0.title == "Copy" } && !menu.items.contains { ["Rename", "Duplicate", "Paste", "Move to Trash", "Cut", "Get Info"].contains($0.title) })
                     for action: MainMenu.FileAction in [.rename, .duplicate, .trash, .paste, .compress, .extract, .getInfo, .newFolder] {

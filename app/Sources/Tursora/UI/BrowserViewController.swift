@@ -260,6 +260,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             guard let self else { return }
             self.fileView.select(urls: urls)
             self.fileView.scrollOffset = offset
+            self.schedulePendingRename()
         }
     }
 
@@ -527,6 +528,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         lastError = nil
         errorLabel.isHidden = true
         pendingSelection = nil
+        cancelPendingRename()
     }
 
     // MARK: - Navigation
@@ -547,6 +549,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         navigationGeneration += 1
         let generation = navigationGeneration
         pendingSelection = nil
+        cancelPendingRename()
         isPreparingArchive = false
         syncReadOnly()
         onWorkspaceSessionChanged?()
@@ -760,7 +763,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     // MARK: - File operations
 
-    /// Creates "untitled folder" (or "untitled folder 2", …) and selects it.
+    /// Creates "untitled folder" (or "untitled folder 2", …), selects it and
+    /// opens its name for editing once the listing settles — Finder's
+    /// behaviour (`setPendingNodesToSelect:startEditing:runNewFolderAnimation:`,
+    /// see docs/research/finder-new-folder-rename.md).
     @discardableResult
     func newFolder() -> URL? {
         guard canModifyCurrentLocation, let currentURL else { return nil }
@@ -771,10 +777,70 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             report(error, context: "new folder")
             return nil
         }
+        // A filter the new folder does not match would hide the folder the user
+        // just asked for, leaving no feedback at all. Clearing it is the only
+        // outcome where the name they are about to type is visible.
+        if isFiltering { nameFilter = "" }
         pendingSelection = url.lastPathComponent
+        armPendingRename(url)
         model.reload { [weak self] in self?.restoreViewState() }
         DirectoryChanges.post([currentURL])
         return url
+    }
+
+    // MARK: - Edit a newly created item
+
+    /// The item whose name should open for editing once its listing settles,
+    /// as a full URL rather than a name — the pane may move meanwhile.
+    private var pendingRenameURL: URL?
+    private var pendingRenameWork: DispatchWorkItem?
+    private var pendingRenameAttempts = 0
+    /// Creating a folder provokes three listings inside ~0.5 s: the explicit
+    /// reload, the `DirectoryChanges` broadcast coming back to this pane, and
+    /// the pane's own FSEvents watcher. Each one aborts an open editor, so the
+    /// attempt is pushed back until they stop arriving — but only so far, or a
+    /// folder under continuous external change would never be editable.
+    private static let pendingRenameDelay: TimeInterval = 0.3
+    private static let pendingRenameAttemptLimit = 5
+
+    private func armPendingRename(_ url: URL) {
+        pendingRenameURL = url.standardizedFileURL
+        pendingRenameAttempts = 0
+        schedulePendingRename()
+    }
+
+    func cancelPendingRename() {
+        pendingRenameWork?.cancel()
+        pendingRenameWork = nil
+        pendingRenameURL = nil
+    }
+
+    /// Visible to the smoke suite, which has to know whether to keep waiting.
+    var hasPendingRename: Bool { pendingRenameURL != nil }
+
+    /// Push the attempt back past the listing that just arrived. A settling
+    /// reload costs no attempt — only a try that failed to open an editor does.
+    private func schedulePendingRename() {
+        guard pendingRenameURL != nil else { return }
+        pendingRenameWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.startPendingRename() }
+        pendingRenameWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pendingRenameDelay, execute: work)
+    }
+
+    private func startPendingRename() {
+        pendingRenameWork = nil
+        guard let url = pendingRenameURL else { return }
+        guard canModifyCurrentLocation, view.window != nil,
+              url.deletingLastPathComponent().standardizedFileURL == currentURL?.standardizedFileURL,
+              let node = model.node(for: url) else { cancelPendingRename(); return }
+        fileView.beginRename(item: node.item)
+        if fileView.isRenaming { cancelPendingRename(); return }
+        // Without a key window `editColumn` opens no editor at all. Try again
+        // rather than leave the folder silently un-editable — but not forever.
+        pendingRenameAttempts += 1
+        if pendingRenameAttempts >= Self.pendingRenameAttemptLimit { cancelPendingRename() }
+        else { schedulePendingRename() }
     }
 
     private var selectedURLs: [URL] { fileView.selectedItems.map(\.url) }
@@ -1530,6 +1596,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         if retargeted {
             history.recordViewState(selectedName: nil, scrollOffset: 0)
             pendingSelection = nil
+            cancelPendingRename()
         }
         if changingDirectory { pendingRenames = [:] }
         currentURL = url
@@ -1583,6 +1650,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         if let pendingSelection {
             self.pendingSelection = nil
             fileView.select(name: pendingSelection)
+            schedulePendingRename()
             return
         }
         guard let entry = history.current else { return }

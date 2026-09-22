@@ -36,7 +36,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 |---|---|---|---|---|
 | New Window | ⌘N | `plus.rectangle` | New window at home, cascaded | `AppDelegate.newWindow` |
 | New Tab | ⌘T | `macwindow.badge.plus` | Fresh single-pane tab at the active location; reruns its search when applicable | `MainWindowController.newTab` |
-| New Folder | ⇧⌘N | `folder.badge.plus` | "untitled folder" (then " 2", …), selected | `BrowserViewController.newFolder` |
+| New Folder | ⇧⌘N | `folder.badge.plus` | "untitled folder" (then " 2", …), selected, with its name opened for editing so you can type straight over it; Escape keeps the default name | `BrowserViewController.newFolder` |
 | Open | ⌘↓ | — | Opens the selection; disabled when empty | `MainWindowController.openSelection` |
 | Quick Look | ⌘Y | `eye` | Toggles `QLPreviewPanel` | `BrowserViewController.quickLook` |
 | Get Info | ⌘I | `info.circle` | One window per item (>10 → summary) | `InfoWindowController.show` |
