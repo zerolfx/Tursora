@@ -101,6 +101,7 @@ enum ArchiveSmokeTests: SmokeSuite {
 
                 listingParser()
                 progressAccounting()
+                try browsingGuardrails(in: root)
                 try await extractionProgress(archive: folderZIP, root: root)
 
                 try fm.removeItem(at: root)
@@ -110,6 +111,91 @@ enum ArchiveSmokeTests: SmokeSuite {
                 check("archive: unexpected operation error", false, error.localizedDescription)
             }
         }
+    }
+
+    /// Stage 0 of lazy browsing: the refusals that must happen before a single
+    /// byte is staged, and the listing seam's error reporting.
+    private static func browsingGuardrails(in root: URL) throws {
+        let fm = FileManager.default
+
+        // An encrypted ZIP is refused by its local-header flag, by name. This
+        // matters more than a nicer message: `tar -tvf` exits 0 on an encrypted
+        // archive with a complete, correct listing, and `tar -x` then exits 1
+        // while leaving a correctly-sized, entirely zero-filled file at the
+        // right path — which anything judging success by fileExists would serve.
+        let encrypted = root.appendingPathComponent("flagged.zip")
+        try zip([Entry("secret.txt", "not encrypted data", flags: 1)]).write(to: encrypted)
+        var encryptionRefusal: String?
+        do { try FileOperations.checkArchiveForBrowsing(encrypted) }
+        catch { encryptionRefusal = error.localizedDescription }
+        check("archive: a password-protected ZIP is refused by name before anything is staged",
+              encryptionRefusal?.contains("password-protected") == true, encryptionRefusal ?? "not refused")
+
+        let plain = root.appendingPathComponent("plain.zip")
+        try zip([Entry("open.txt", "readable")]).write(to: plain)
+        var plainError: String?
+        do { try FileOperations.checkArchiveForBrowsing(plain) } catch { plainError = "\(error)" }
+        check("archive: an ordinary ZIP passes the browsing pre-flight", plainError == nil, plainError ?? "")
+
+        let empty = root.appendingPathComponent("empty-central.zip")
+        try zip([]).write(to: empty)
+        var emptyError: String?
+        do { try FileOperations.checkArchiveForBrowsing(empty) } catch { emptyError = "\(error)" }
+        check("archive: an empty ZIP has no local header and is not mistaken for encrypted",
+              emptyError == nil, emptyError ?? "")
+
+        // A damaged archive must say what the tool said, not return an empty
+        // listing that reads as "this ZIP has no files in it".
+        let damaged = root.appendingPathComponent("damaged.zip")
+        try Data("PK\u{3}\u{4}corrupt payload".utf8).write(to: damaged)
+        var listingFailure: Error?
+        do { _ = try BSDTarArchiveListing().entries(of: damaged) } catch { listingFailure = error }
+        var reportedDamaged = false
+        if let failure = listingFailure, case ArchiveListingError.damaged = failure { reportedDamaged = true }
+        check("archive: a damaged archive throws rather than listing as empty", reportedDamaged,
+              listingFailure.map { "\($0)" } ?? "no error")
+        check("archive: the damaged-archive message carries the tool's own words",
+              (listingFailure?.localizedDescription.isEmpty == false), listingFailure?.localizedDescription ?? "")
+
+        // The chunked parser: a final line with no newline must not become a
+        // half-built entry, and the entry cap must throw rather than truncate.
+        let partial = root.appendingPathComponent("partial-listing.txt")
+        try Data("-rw-r--r--  0 501    0           4 Sep 22 19:42 a.bin\n-rw-r--r--  0 501".utf8).write(to: partial)
+        let parsed = try BSDTarArchiveListing.parse(partial)
+        check("archive: a truncated final listing line yields no half-parsed entry",
+              parsed.map(\.name) == ["a.bin"], "\(parsed.map(\.name))")
+
+        // Free space is a refusal, not a crash, and it never fires for zero.
+        let noRefusal = FileOperations.requiredSpaceRefusal(forExtracting: 0, into: root)
+        check("archive: an archive of no content is never refused for space", noRefusal == nil)
+        let refusal = FileOperations.requiredSpaceRefusal(forExtracting: Int64.max / 2, into: root)
+        check("archive: an archive larger than the volume is refused before staging",
+              refusal != nil && refusal?.localizedDescription.contains("temporary space") == true,
+              refusal?.localizedDescription ?? "not refused")
+
+        // The launch sweep must remove an orphan and spare a directory another
+        // process still holds: $TMPDIR is shared between Tursora processes.
+        let sweepRoot = root.appendingPathComponent("sweep", isDirectory: true)
+        try fm.createDirectory(at: sweepRoot, withIntermediateDirectories: true)
+        let orphan = sweepRoot.appendingPathComponent(ArchiveBrowsingSession.storagePrefix + "orphan")
+        let live = sweepRoot.appendingPathComponent(ArchiveBrowsingSession.storagePrefix + "live")
+        let stranger = sweepRoot.appendingPathComponent("someone-elses-directory")
+        for url in [orphan, live, stranger] { try fm.createDirectory(at: url, withIntermediateDirectories: true) }
+        // The orphan carries a marker nobody holds; the live one is locked.
+        let orphanMarker = orphan.appendingPathComponent(ArchiveBrowsingSession.lockName)
+        fm.createFile(atPath: orphanMarker.path, contents: nil)
+        let heldDescriptor = ArchiveBrowsingSession.takeStorageLock(in: live)
+        check("archive: a live session can take its storage lock", heldDescriptor >= 0)
+        FileOperations.sweepOrphanedStorage(in: sweepRoot)
+        check("archive: the launch sweep removes an unowned storage directory",
+              !fm.fileExists(atPath: orphan.path))
+        check("archive: the launch sweep spares storage another process still holds",
+              fm.fileExists(atPath: live.path))
+        check("archive: the launch sweep touches nothing outside its own prefix",
+              fm.fileExists(atPath: stranger.path))
+        ArchiveBrowsingSession.releaseStorageLock(heldDescriptor)
+        FileOperations.sweepOrphanedStorage(in: sweepRoot)
+        check("archive: once released, that storage is swept too", !fm.fileExists(atPath: live.path))
     }
 
     /// `tar -tvf`'s long listing, parsed without running a process. The shapes

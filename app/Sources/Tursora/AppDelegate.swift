@@ -62,6 +62,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         default: break
         }
         NSApp.mainMenu = MainMenu.build()
+        // A run that crashed or was force-quit leaves its ZIP staging behind.
+        // Every live session registers its directory and is closed at quit, so
+        // anything still there at launch belongs to nobody. Off the main thread:
+        // it touches the filesystem and nothing on screen waits for it.
+        DispatchQueue.global(qos: .utility).async { FileOperations.sweepOrphanedStorage() }
         preferencesObserver = NotificationCenter.default.addObserver(forName: .tursoraPreferencesChanged, object: nil, queue: .main) { _ in
             if let menu = NSApp.mainMenu { MainMenu.applyPreferences(to: menu) }
         }

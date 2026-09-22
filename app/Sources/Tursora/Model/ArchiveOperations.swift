@@ -70,6 +70,7 @@ struct ArchiveToolProgress {
 extension FileOperations {
     enum ArchiveError: LocalizedError {
         case noSelection, duplicateNames, destinationInsideSelection, unsupportedArchive, invalidArchive, emptyArchive
+        case encryptedArchive
         case cancelled
         case commandFailed(String)
 
@@ -81,6 +82,7 @@ extension FileOperations {
             case .unsupportedArchive: return "Only ZIP archives can be extracted here."
             case .invalidArchive: return "This file does not appear to be a valid ZIP archive."
             case .emptyArchive: return "The archive contains no files."
+            case .encryptedArchive: return "This ZIP is password-protected and cannot be opened here."
             case .cancelled: return "The extraction was cancelled."
             case .commandFailed(let message): return message
             }
@@ -208,13 +210,35 @@ extension FileOperations {
         }
     }
 
+    /// The first four bytes, plus the local header's general-purpose bit flag
+    /// when there is one. Encryption has to be refused here rather than
+    /// discovered during extraction, because the tool reports it in a way that
+    /// is actively dangerous to trust: `tar -tvf` on an encrypted archive exits
+    /// **0** with a complete, correct listing, and `tar -x` then exits 1 while
+    /// leaving a correctly-sized, entirely zero-filled file at the right path.
+    /// Anything that judged success by `fileExists` would serve those zeros to
+    /// Quick Look, drag-out and Copy. Measured; see
+    /// docs/research/lazy-zip-browsing.md.
+    /// The pre-flight the browsing path runs before it creates any storage:
+    /// a ZIP by extension, a real ZIP by signature, and not password-protected.
+    static func checkArchiveForBrowsing(_ archive: URL) throws {
+        guard canExtractArchive(archive) else { throw ArchiveError.unsupportedArchive }
+        try checkExtractionSignature(archive)
+    }
+
     private static func checkExtractionSignature(_ archive: URL) throws {
         let handle = try FileHandle(forReadingFrom: archive)
         defer { try? handle.close() }
-        let signature = try handle.read(upToCount: 4)
-        guard let signature, [Data([0x50, 0x4b, 0x03, 0x04]), Data([0x50, 0x4b, 0x05, 0x06])].contains(signature) else {
-            throw ArchiveError.invalidArchive
-        }
+        guard let header = try handle.read(upToCount: 8), header.count >= 4 else { throw ArchiveError.invalidArchive }
+        let signature = header.prefix(4)
+        let localFile = Data([0x50, 0x4b, 0x03, 0x04])
+        let emptyArchive = Data([0x50, 0x4b, 0x05, 0x06])
+        guard signature == localFile || signature == emptyArchive else { throw ArchiveError.invalidArchive }
+        // Only a local file header carries the flag; an empty archive has none.
+        guard signature == localFile, header.count >= 8 else { return }
+        let bytes = [UInt8](header)
+        let flags = UInt16(bytes[6]) | (UInt16(bytes[7]) << 8)
+        if flags & 0x0001 != 0 { throw ArchiveError.encryptedArchive }
     }
 
     /// Supplying a passphrase disables bsdtar's interactive callback entirely.

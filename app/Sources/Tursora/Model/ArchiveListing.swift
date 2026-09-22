@@ -13,6 +13,25 @@ struct ArchiveEntrySummary: Equatable {
     var countsTowardBytes: Bool { kind == .file }
 }
 
+/// Why a listing could not be produced. Extraction progress treats any failure
+/// as "no total" and carries on; browsing has to tell the user, so the reasons
+/// are distinct rather than an empty array.
+enum ArchiveListingError: LocalizedError {
+    /// The tool refused the archive. Carries its own message where it gave one.
+    case damaged(String?)
+    /// More entries than a listing is allowed to hold in memory at once.
+    case tooManyEntries(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .damaged(let detail):
+            return detail.flatMap { $0.isEmpty ? nil : $0 } ?? "This ZIP archive could not be read."
+        case .tooManyEntries(let limit):
+            return "This ZIP contains more than \(limit) items, which is too many to browse."
+        }
+    }
+}
+
 /// Reads an archive's table of contents without extracting it.
 ///
 /// Deliberately not a ZIP parser. Extraction progress is only meaningful if the
@@ -64,9 +83,13 @@ enum BSDTarListingParser {
 /// no inherited stdin, and a passphrase so an encrypted archive fails instead
 /// of opening /dev/tty. Output goes to a regular file, never a pipe.
 struct BSDTarArchiveListing: ArchiveListing {
-    /// A listing only has to bound memory, not the archive: a ZIP with a
-    /// million entries would otherwise be read into a single String.
-    static let maximumListingBytes = 8 * 1024 * 1024
+    /// A listing only has to bound memory, not the archive. Measured at 75.6
+    /// bytes per entry, so this is the honest limit rather than a byte count
+    /// the caller cannot reason about. Matches `FolderSizes`' own entry limit.
+    static let maximumEntries = 500_000
+    /// Read in chunks and parse complete lines, so a very large listing is
+    /// never one String and a half-written last line is never half-parsed.
+    static let readChunkBytes = 1 << 20
 
     func entries(of archive: URL) throws -> [ArchiveEntrySummary] {
         let workspace = FileManager.default.temporaryDirectory
@@ -78,6 +101,13 @@ struct BSDTarArchiveListing: ArchiveListing {
         FileManager.default.createFile(atPath: output.path, contents: nil)
         let handle = try FileHandle(forWritingTo: output)
         defer { try? handle.close() }
+        // The tool's own complaint is the only useful message for a damaged
+        // archive, so stderr goes to a regular file rather than to nowhere.
+        // A regular file cannot fill and deadlock waitUntilExit(); a pipe can.
+        let log = workspace.appendingPathComponent("tool-errors.txt")
+        FileManager.default.createFile(atPath: log.path, contents: nil)
+        let errors = try FileHandle(forWritingTo: log)
+        defer { try? errors.close() }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
@@ -86,18 +116,44 @@ struct BSDTarArchiveListing: ArchiveListing {
         process.standardInput = FileHandle.nullDevice
         // A regular file cannot fill a pipe and deadlock waitUntilExit().
         process.standardOutput = handle
-        process.standardError = FileHandle.nullDevice
+        process.standardError = errors
         process.environment = ["PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"]
         try process.run()
         process.waitUntilExit()
-        guard process.terminationReason == .exit && process.terminationStatus == 0 else { return [] }
+        guard process.terminationReason == .exit && process.terminationStatus == 0 else {
+            throw ArchiveListingError.damaged(Self.toolMessage(in: log))
+        }
+        return try Self.parse(output)
+    }
 
+    /// Parse complete lines out of the listing file a chunk at a time. Holding
+    /// only the unterminated tail means a truncated final line can never be
+    /// parsed into a half-built entry.
+    static func parse(_ output: URL) throws -> [ArchiveEntrySummary] {
         let reader = try FileHandle(forReadingFrom: output)
         defer { try? reader.close() }
-        let data = (try? reader.read(upToCount: Self.maximumListingBytes)) ?? Data()
-        // A truncated listing would under-report the total and leave the bar
-        // short of 100%; report nothing and let the caller go indeterminate.
-        if data.count >= Self.maximumListingBytes { return [] }
-        return BSDTarListingParser.entries(from: String(decoding: data, as: UTF8.self))
+        var entries: [ArchiveEntrySummary] = []
+        var pending = ""
+        func take(_ line: String) throws {
+            guard let entry = BSDTarListingParser.entry(from: line) else { return }
+            guard entries.count < maximumEntries else { throw ArchiveListingError.tooManyEntries(maximumEntries) }
+            entries.append(entry)
+        }
+        while let chunk = try reader.read(upToCount: readChunkBytes), !chunk.isEmpty {
+            pending += String(decoding: chunk, as: UTF8.self)
+            var lines = pending.components(separatedBy: "\n")
+            pending = lines.removeLast()
+            for line in lines { try take(line) }
+        }
+        if !pending.isEmpty { try take(pending) }
+        return entries
+    }
+
+    private static func toolMessage(in log: URL) -> String? {
+        guard let reader = try? FileHandle(forReadingFrom: log) else { return nil }
+        defer { try? reader.close() }
+        let data = (try? reader.read(upToCount: 4096)) ?? Data()
+        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
     }
 }

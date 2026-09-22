@@ -4,6 +4,15 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Changed
+
+- **A password-protected ZIP is now refused by name** when you try to browse or extract it, instead of failing part way through with a generic message.
+- A ZIP that is too large for the free space on your startup volume is refused before anything is written, and a damaged ZIP now reports what went wrong instead of appearing to be an empty archive.
+
+### Fixed
+
+- Temporary ZIP staging left behind by a crash is cleaned up at the next launch. It is removed only when no running copy of Tursora still holds it, so a second window or a second copy of the app is never disturbed.
+
 ### Added
 
 - **Extracting a ZIP** now appears in **File Operations** with a real progress bar and a **Cancel** button, instead of a small spinner you could not stop. Each selected archive gets its own row; cancelling one stops the rest, and closing the window cancels the extraction just as it does a copy.
