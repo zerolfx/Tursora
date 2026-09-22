@@ -32,10 +32,16 @@ enum ShortcutDispatcher {
         shortcut.isEquivalent(to: AppPreferences.Shortcut.from(event))
     }
 
+    /// The view's own `keyDown`, which is what an *inactive* pane's file view
+    /// reaches — `handle` declines there because that pane is not the window's
+    /// active one. Open is offered alongside rename so a rebound Return means
+    /// the same thing in both panes.
     static func handleFileView(_ event: NSEvent, store: ShortcutStore = AppPreferences.shared.shortcuts,
-                               onRename: (() -> Void)?, onQuickLook: (() -> Void)?) -> Bool {
+                               onRename: (() -> Void)?, onQuickLook: (() -> Void)?,
+                               onOpen: (() -> Void)? = nil) -> Bool {
         let bindings = store.bindings
         if let shortcut = bindings[ShortcutCatalog.renameID], matches(shortcut, event: event) { onRename?(); return true }
+        if let shortcut = bindings[ShortcutCatalog.openID], matches(shortcut, event: event) { onOpen?(); return true }
         if let shortcut = bindings[ShortcutCatalog.previewID], matches(shortcut, event: event) { onQuickLook?(); return true }
         return false
     }
@@ -55,10 +61,14 @@ enum ShortcutDispatcher {
         if protectInput(event, store: store) { return true }
         if action.context == .fileView && !inFileView { return false }
         switch action.id {
-        case ShortcutCatalog.renameID, ShortcutCatalog.previewID:
+        case ShortcutCatalog.renameID, ShortcutCatalog.previewID, ShortcutCatalog.openID:
+            // Nothing openable: fall through rather than swallow the key, so a
+            // pane with an empty selection behaves as it did before rebinding.
+            if action.id == ShortcutCatalog.openID, !controller.browser.canOpenSelection { return false }
             return handleFileView(event, store: store,
                 onRename: { controller.browser.renameSelectionInline(nil) },
-                onQuickLook: { controller.browser.quickLook(nil) })
+                onQuickLook: { controller.browser.quickLook(nil) },
+                onOpen: { controller.browser.openSelection() })
         case ShortcutCatalog.cancelArchiveID:
             guard controller.browser.isPreparingArchive else { return false }
             controller.browser.cancelArchiveOpening(nil)

@@ -30,7 +30,7 @@ final class TransferTasksWindowController: NSWindowController, NSWindowDelegate 
     private let rowsStack = NSStackView()
     private let summaryLabel = NSTextField(labelWithString: "No file operations")
     let clearFinishedButton = NSButton(title: "Clear Finished", target: nil, action: nil)
-    private let emptyLabel = NSTextField(wrappingLabelWithString: "Copies, moves, and duplicates appear here. Each operation has its own controls.")
+    private let emptyLabel = NSTextField(wrappingLabelWithString: "Copies, moves, duplicates and ZIP extractions appear here. Each operation has its own controls.")
     private let scrollView = NSScrollView()
 
     var hasActiveTasks: Bool { entries.contains { !$0.task.snapshot.isTerminal } }
@@ -354,7 +354,9 @@ final class TransferTaskRowView: AdaptiveLayerView {
         } else { rateLabel.stringValue = "" }
         pauseButton.title = snapshot.state == .paused ? "Resume" : "Pause"
         pauseButton.isEnabled = !snapshot.isCancellationRequested && (snapshot.state == .paused || (snapshot.canPause && !snapshot.isPauseRequested))
-        pauseButton.isHidden = snapshot.isTerminal
+        // A worker with no pause checkpoint must not offer a button that does
+        // nothing; Cancel stays available.
+        pauseButton.isHidden = snapshot.isTerminal || !snapshot.supportsPause
         cancelButton.isEnabled = !snapshot.isTerminal && !snapshot.isCancellationRequested
         cancelButton.isHidden = snapshot.isTerminal
         if snapshot.isTerminal { dismissConflict() }
@@ -430,7 +432,7 @@ final class TransferTaskRowView: AdaptiveLayerView {
     }
 
     private func buildContent() {
-        let noun = task.kind == .move ? "Move" : "Copy"
+        let noun = task.kind == .move ? "Move" : task.kind == .extract ? "Extract" : "Copy"
         titleLabel.stringValue = titleOverride ?? (task.sources.count == 1
             ? "\(noun) “\(task.sources[0].lastPathComponent)”"
             : "\(noun) \(task.sources.count) items")

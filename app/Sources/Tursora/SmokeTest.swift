@@ -73,6 +73,7 @@ enum SmokeTest: SmokeSuite {
             ArchiveWorkspaceSmokeTests.run,
             ArchivePreparationSmokeTests.run,
             ArchiveBrowserSmokeTests.run,
+            ExtractTaskSmokeTests.run,
             SplitToolbarSmokeTests.run,
             FolderTreeSmokeTests.run,
             TrashSmokeTests.run,
@@ -580,8 +581,217 @@ enum SmokeTest: SmokeSuite {
             check("second newFolder increments", second?.lastPathComponent == "untitled folder 2")
             after(0.4) {
                 check("new folder is selected", b.fileList.selectedItems.first?.name == "untitled folder 2")
-                fileOperations(wc, tmp)
+                newFolderRename(wc, tmp)
             }
+        }
+    }
+
+    // MARK: 4a. New Folder opens the name for editing (Finder)
+
+    /// Finder starts an inline edit on the folder it just created
+    /// (`setPendingNodesToSelect:startEditing:runNewFolderAnimation:renameOp:`,
+    /// docs/research/finder-new-folder-rename.md). The editor has to survive
+    /// the three listings the creation itself provokes.
+    private static func newFolderRename(_ wc: MainWindowController, _ tmp: URL) {
+        print("== new folder rename ==")
+        let b = wc.browser, fm = FileManager.default
+        // Its own directory: the caller's fixture, two "untitled folder"s
+        // included, is what `fileOperations` asserts against afterwards.
+        let cases = tmp.appendingPathComponent("new-folder-cases")
+        try? fm.createDirectory(at: cases, withIntermediateDirectories: true)
+        // `editColumn` opens no editor without a key window.
+        NSApp.activate(ignoringOtherApps: true)
+        wc.window?.makeKeyAndOrderFront(nil)
+
+        /// The caller's own New Folder calls armed an edit of their own.
+        func clearEditingState() {
+            b.cancelPendingRename()
+            b.fileView.endRename(commit: false)
+        }
+
+        func editorField() -> NSTextField? {
+            wc.window?.fieldEditor(false, for: nil)?.delegate as? NSTextField
+        }
+        func editorText() -> String? { (wc.window?.firstResponder as? NSTextView)?.string }
+
+        func run(_ modes: ArraySlice<ViewMode>) {
+            guard let mode = modes.first else { groupingCase([.details, .icons][...]); return }
+            b.setViewMode(mode)
+            wc.window?.contentView?.layoutSubtreeIfNeeded()
+            let name = "untitled folder"
+            clearEditingState()
+            try? fm.removeItem(at: cases.appendingPathComponent(name))
+            awaitQuietListing(b.model) {
+                clearEditingState()
+                guard let created = b.newFolder() else {
+                    check("\(mode.rawValue): newFolder returned a URL", false); return
+                }
+                check("\(mode.rawValue): New Folder arms a pending edit", b.hasPendingRename)
+                awaitCondition("\(mode.rawValue): New Folder opens the name for editing",
+                               condition: { b.fileView.isRenaming }) {
+                    check("\(mode.rawValue): the editor holds the new folder's name",
+                          editorText() == name, editorText() ?? "no editor")
+                    // "untitled folder" has no extension, so the whole name is
+                    // preselected — 15 characters, ready to type over.
+                    let selection = (wc.window?.firstResponder as? NSTextView)?.selectedRange()
+                    check("\(mode.rawValue): the whole default name is preselected",
+                          selection == NSRange(location: 0, length: 15),
+                          "\(selection ?? NSRange(location: -1, length: -1))")
+                    if mode == .details {
+                        check("the editing field belongs to the file view, not a stray text view",
+                              editorField() != nil)
+                    }
+                    // Escape keeps the default name and the folder itself.
+                    b.fileView.endRename(commit: false)
+                    check("\(mode.rawValue): abandoning the edit keeps the default name",
+                          fm.fileExists(atPath: created.path) && !b.fileView.isRenaming)
+                    renameCommit(mode, created) { run(modes.dropFirst()) }
+                }
+            }
+        }
+
+        /// Type over the default name and end the edit the way clicking away does.
+        func renameCommit(_ mode: ViewMode, _ created: URL, _ next: @escaping () -> Void) {
+            let typed = "renamed-\(mode.rawValue)"
+            b.fileView.beginRename(item: b.model.items.first { $0.url.standardizedFileURL == created.standardizedFileURL } ?? b.model.items[0])
+            guard b.fileView.isRenaming, let editor = wc.window?.firstResponder as? NSTextView else {
+                check("\(mode.rawValue): the new folder can be renamed again", false); return
+            }
+            editor.string = typed
+            if let field = editor.delegate as? NSTextField { field.stringValue = typed }
+            b.fileView.endRename(commit: true)
+            awaitCondition("\(mode.rawValue): the typed name is committed to disk",
+                           condition: { fm.fileExists(atPath: cases.appendingPathComponent(typed).path) }) {
+                check("\(mode.rawValue): the default name is gone", !fm.fileExists(atPath: created.path))
+                try? fm.removeItem(at: cases.appendingPathComponent(typed))
+                next()
+            }
+        }
+
+        /// `reloadData()` re-expands group rows, so a row index taken before
+        /// that pass points at the wrong item. The editor must still land on
+        /// the new folder itself.
+        func groupingCase(_ modes: ArraySlice<ViewMode>) {
+            guard let mode = modes.first else { splitPaneCase(); return }
+            b.setViewMode(mode)
+            b.setGroupKey(.kind)
+            clearEditingState()
+            try? fm.removeItem(at: cases.appendingPathComponent("untitled folder"))
+            awaitQuietListing(b.model) {
+                clearEditingState()
+                guard let created = b.newFolder() else {
+                    check("\(mode.rawValue): grouped newFolder returned a URL", false); return
+                }
+                awaitCondition("\(mode.rawValue): grouping still opens the editor",
+                               condition: { b.fileView.isRenaming }) {
+                    check("\(mode.rawValue): the grouped editor holds the new folder's name",
+                          editorText() == "untitled folder", editorText() ?? "no editor")
+                    check("\(mode.rawValue): the grouped pane selects the new folder",
+                          b.fileView.selectedItems.map { $0.url.standardizedFileURL } == [created.standardizedFileURL],
+                          "\(b.fileView.selectedItems.map(\.name))")
+                    b.fileView.endRename(commit: false)
+                    b.setGroupKey(.none)
+                    try? fm.removeItem(at: created)
+                    groupingCase(modes.dropFirst())
+                }
+            }
+        }
+
+        /// Two panes on the same folder: only the pane that asked for the
+        /// folder edits it, and the other pane's selection is left alone.
+        func splitPaneCase() {
+            let tabs = wc.tabs
+            clearEditingState()
+            try? fm.removeItem(at: cases.appendingPathComponent("untitled folder"))
+            // The earlier cases left this pane selecting a folder of the same
+            // name; `refreshPreservingSelection` restores a selection by URL,
+            // so it would re-select the new folder for reasons of its own.
+            b.fileView.select(urls: [])
+            tabs.toggleSplit()
+            let right = tabs.current
+            guard right !== b else { check("split: the second pane is a different pane", false); return }
+            right.setViewMode(.details)
+            awaitCondition("split: both panes list the fixture directory",
+                           condition: { right.currentURL?.standardizedFileURL == cases.standardizedFileURL
+                                        && b.currentURL?.standardizedFileURL == cases.standardizedFileURL
+                                        && b.fileView.selectedItems.isEmpty }) {
+                guard let created = right.newFolder() else {
+                    check("split: newFolder returned a URL", false); tabs.toggleSplit(); return
+                }
+                awaitCondition("split: the pane that asked for the folder opens the editor",
+                               condition: { right.fileView.isRenaming }) {
+                    check("split: the other pane does not open an editor", !b.fileView.isRenaming)
+                    check("split: the other pane did not select the new folder",
+                          !b.fileView.selectedItems.contains { $0.url.standardizedFileURL == created.standardizedFileURL },
+                          "\(b.fileView.selectedItems.map(\.name))")
+                    right.fileView.endRename(commit: false)
+                    try? fm.removeItem(at: created)
+                    tabs.toggleSplit()
+                    after(0.3) { filterCase() }
+                }
+            }
+        }
+
+        /// The folder the user just asked for must be visible, so an active
+        /// filter it does not match is cleared rather than hiding it.
+        func filterCase() {
+            b.setViewMode(.details)
+            clearEditingState()
+            b.nameFilter = "zzz-no-match"
+            check("the pane is filtering before New Folder", b.isFiltering)
+            guard let created = b.newFolder() else { check("filtered newFolder returned a URL", false); return }
+            check("New Folder clears a filter that would hide it", !b.isFiltering)
+            awaitCondition("a filtered pane still opens the editor",
+                           condition: { b.fileView.isRenaming }) {
+                b.fileView.endRename(commit: false)
+                try? fm.removeItem(at: created)
+                reloadAbortsRename()
+            }
+        }
+
+        /// The regression the feature depends on: a listing arriving under an
+        /// open editor must never let a half-typed name commit — and must not
+        /// throw the user's typing away either.
+        func reloadAbortsRename() {
+            b.setViewMode(.details)
+            clearEditingState()
+            guard let created = b.newFolder() else { check("reload-case newFolder returned a URL", false); return }
+            awaitCondition("reload case: the editor opens", condition: { b.fileView.isRenaming }) {
+                let half = "half-typed"
+                if let editor = wc.window?.firstResponder as? NSTextView {
+                    editor.string = half
+                    if let field = editor.delegate as? NSTextField { field.stringValue = half }
+                }
+                b.fileView.reloadData()
+                check("a listing refresh commits no half-typed name",
+                      !fm.fileExists(atPath: cases.appendingPathComponent(half).path)
+                      && fm.fileExists(atPath: created.path))
+                // The edit is re-opened on the next run-loop pass, once the
+                // pane has restored its own selection.
+                awaitCondition("a listing refresh re-opens the rename it interrupted",
+                               condition: { b.fileView.isRenaming }) {
+                    check("the re-opened editor still holds what was typed",
+                          (wc.window?.firstResponder as? NSTextView)?.string == half,
+                          (wc.window?.firstResponder as? NSTextView)?.string ?? "no editor")
+                    check("the folder on disk is still untouched",
+                          fm.fileExists(atPath: created.path)
+                          && !fm.fileExists(atPath: cases.appendingPathComponent(half).path))
+                    clearEditingState()
+                    b.navigate(to: tmp)
+                    awaitCondition("the pane returns to the fixture directory",
+                                   condition: { b.currentURL?.standardizedFileURL == tmp.standardizedFileURL }) {
+                        try? fm.removeItem(at: cases)
+                        b.reload()
+                        after(0.4) { fileOperations(wc, tmp) }
+                    }
+                }
+            }
+        }
+
+        b.navigate(to: cases)
+        awaitCondition("the pane opens the New Folder fixture directory",
+                       condition: { b.currentURL?.standardizedFileURL == cases.standardizedFileURL }) {
+            run(ViewMode.allCases[...])
         }
     }
 

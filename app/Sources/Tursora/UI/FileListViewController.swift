@@ -73,11 +73,45 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     private var shownGeneration = -1
     private var renameTarget: (field: NSTextField, item: FileItem)?
 
-    /// A result batch can reorder/reuse rows while an editor is open.
-    private func cancelResultRename() {
-        guard model.isSearchResults, let target = renameTarget else { return }
+    var isRenaming: Bool { renameTarget != nil }
+
+    /// Capture an open edit so a reload can re-open it, and end it without
+    /// committing. `NSTableView.reloadData` "drops all known views"
+    /// (NSTableView.h), which would otherwise end the editor by itself and let
+    /// `controlTextDidEndEditing` commit a half-typed name.
+    func captureRename() -> InlineRenameState? {
+        guard let target = renameTarget else { return nil }
+        let editor = target.field.currentEditor()
+        let state = InlineRenameState(url: target.item.url.standardizedFileURL,
+                                      text: editor?.string ?? target.field.stringValue,
+                                      selection: editor?.selectedRange ?? NSRange(location: 0, length: 0))
+        endRename(commit: false)
+        return state
+    }
+
+    /// Re-open a captured edit. Deferred by the caller to the next run-loop
+    /// pass, so the pane's own `select(urls:)` has already run — moving the
+    /// selection out from under an open editor would end and commit it.
+    func restoreRename(_ state: InlineRenameState) {
+        guard !isReadOnly, allowsRenaming, let node = model.node(for: state.url) else { return }
+        let row = tableView.row(forItem: node)
+        guard row >= 0 else { return }
+        beginRename(row: row)
+        guard let target = renameTarget, let editor = target.field.currentEditor() else { return }
+        editor.string = state.text
+        target.field.stringValue = state.text
+        editor.selectedRange = state.selection.clamped(toLength: (state.text as NSString).length)
+    }
+
+    /// Ends an open inline rename, applying the typed name or discarding it.
+    func endRename(commit: Bool) {
+        guard let target = renameTarget else { return }
+        // Committing goes through the window so `controlTextDidEndEditing`
+        // runs and applies the typed name; `renameTarget` must still be set.
+        if commit { target.field.window?.endEditing(for: target.field); return }
         renameTarget = nil
         _ = target.field.abortEditing()
+        target.field.stringValue = target.item.displayName
         target.field.isEditable = false
     }
 
@@ -187,6 +221,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             self.beginRename(row: row)
         }
         tableView.onSpace = { [weak self] in self?.onQuickLook?() }
+        tableView.onOpenRequest = { [weak self] in self?.openSelection() }
         tableView.onRenameRequest = { [weak self] row in self?.beginRename(row: row) }
         tableView.onBecomeFirstResponder = { [weak self] in self?.onFocus?() }
         tableView.onZoom = { [weak self] step in self?.onZoomGesture?(step) }
@@ -217,7 +252,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     /// a fresh listing (not just a re-sort) their contents are re-listed too.
     func reloadData() {
         thumbnailGeneration = UUID()
-        cancelResultRename()
+        let interrupted = captureRename()
         tableView.tableColumn(withIdentifier: Column.location.id)?.isHidden = !model.isSearchResults
         let locationIndex = tableView.column(withIdentifier: Column.location.id)
         let desiredIndex = model.isSearchResults ? 1 : tableView.tableColumns.count - 1
@@ -235,6 +270,9 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         if model.isGrouped { for g in model.groups { tableView.expandItem(g) } }   // groups are always open
         for n in nodes where tableView.row(forItem: n) >= 0 { tableView.expandItem(n) }
         expandedURLs = Set(nodes.map { $0.url.standardizedFileURL })
+        if let interrupted {
+            DispatchQueue.main.async { [weak self] in self?.restoreRename(interrupted) }
+        }
     }
 
     func node(atRow row: Int) -> FileNode? { tableView.item(atRow: row) as? FileNode }
@@ -365,13 +403,23 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         guard !isReadOnly, allowsRenaming, let item = item(atRow: row), item.canAccess, !item.isArchiveEntry else { return }
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
+        // A row that arrived in this run-loop pass has no cell until the
+        // outline view lays out, and `makeIfNecessary` cannot conjure one.
+        tableView.layoutSubtreeIfNeeded()
         guard let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView,
               let field = cell.textField else { return }
         renameTarget = (field, item)
         field.stringValue = item.name
         field.isEditable = true
         tableView.editColumn(0, row: row, with: nil, select: true)
-        guard let editor = field.currentEditor() else { field.isEditable = false; return }
+        // `editColumn` opens no editor without a key window. Leaving
+        // `renameTarget` set would make `isRenaming` lie and arm the field.
+        guard let editor = field.currentEditor() else {
+            renameTarget = nil
+            field.isEditable = false
+            field.stringValue = item.displayName
+            return
+        }
         let base = item.isNavigable ? item.name : (item.name as NSString).deletingPathExtension
         if !base.isEmpty, base.count < item.name.count || item.isNavigable {
             editor.selectedRange = NSRange(location: 0, length: (base as NSString).length)
@@ -619,6 +667,8 @@ final class FileOutlineView: NSOutlineView {
     var onMiddleClickRow: ((Int) -> Void)?
     var onReturn: (() -> Void)?
     var onSpace: (() -> Void)?
+    /// Return rebound to Open (`ShortcutCatalog.openID`), which ships unbound.
+    var onOpenRequest: (() -> Void)?
     var onRenameRequest: ((Int) -> Void)?
     var onBecomeFirstResponder: (() -> Void)?
     var onZoom: ((Int) -> Void)?
@@ -654,7 +704,8 @@ final class FileOutlineView: NSOutlineView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace) { return }
+        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace,
+                                            onOpen: onOpenRequest) { return }
         super.keyDown(with: event)
     }
 

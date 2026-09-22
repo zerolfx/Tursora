@@ -11,6 +11,10 @@ final class TransferTask {
     struct Snapshot {
         let id: UUID
         let state: State
+        /// False for a worker with no pause checkpoint of its own — extraction
+        /// drives an external tool, and a paused one would hold its whole
+        /// staging tree open inside the user's folder (D90).
+        let supportsPause: Bool
         let currentItem: URL?
         let totalBytes: Int64?
         let completedBytes: Int64
@@ -23,7 +27,7 @@ final class TransferTask {
         let isCancellationRequested: Bool
         let isPauseRequested: Bool
         var isTerminal: Bool { state.isTerminal }
-        var canPause: Bool { [.preparing, .running, .waitingForConflict].contains(state) }
+        var canPause: Bool { supportsPause && [.preparing, .running, .waitingForConflict].contains(state) }
     }
     let id = UUID()
     let sources: [URL]
@@ -37,7 +41,7 @@ final class TransferTask {
     private var item: URL?
     private var total: Int64?
     private var bytes: Int64 = 0
-    private var detail = "Calculating transfer size…"
+    private var detail = "Preparing…"
     private var successes = 0
     private var skipped = 0
     private var errors: [FileOperations.Failure] = []
@@ -55,7 +59,7 @@ final class TransferTask {
         let elapsed = activeDuration + (activeSince.map { ProcessInfo.processInfo.systemUptime - $0 } ?? 0)
         let speed = state == .running && elapsed > 0.1 && bytes > 0 ? Double(bytes) / elapsed : nil
         let eta = total.flatMap { total in speed.map { max(0, Double(total - bytes)) / $0 } }
-        return Snapshot(id: id, state: state, currentItem: item, totalBytes: total,
+        return Snapshot(id: id, state: state, supportsPause: kind != .extract, currentItem: item, totalBytes: total,
                         completedBytes: bytes, bytesPerSecond: speed, estimatedTimeRemaining: eta,
                         phaseDetail: detail, successfulItems: successes, skippedItems: skipped, failures: errors,
                         isCancellationRequested: cancelRequested, isPauseRequested: pauseRequested)
@@ -100,6 +104,15 @@ final class TransferTask {
         // Source contents can grow after scanning; never claim an impossible total.
         if let total, bytes > total { self.total = nil }
     }
+    /// An absolute figure, for a worker that measures progress rather than
+    /// accumulating it. Clamped and monotonic: `addBytes` would drop the total
+    /// permanently on a single overshoot, which a size sampled from a file
+    /// still being written can easily produce.
+    func setCompleted(_ value: Int64) {
+        condition.lock(); defer { condition.unlock() }
+        let ceiling = total ?? value
+        bytes = max(bytes, min(max(value, 0), ceiling))
+    }
     func skip(bytes value: Int64) {
         condition.lock(); defer { condition.unlock() }
         skipped += 1
@@ -111,7 +124,9 @@ final class TransferTask {
         errors = result.failures
         let partial = (successes > 0 && (result.cancelled || !errors.isEmpty)) || (skipped > 0 && !result.cancelled && errors.isEmpty)
         let terminal: State = partial ? .partial : result.cancelled ? .cancelled : !errors.isEmpty ? .failed : .completed
-        detail = terminal == .completed ? "Transfer complete" : terminal == .partial ? "Some items were completed" : terminal == .cancelled ? "Transfer cancelled" : "Transfer failed"
+        let noun = kind == .extract ? "Extraction" : "Transfer"
+        detail = terminal == .completed ? "\(noun) complete" : terminal == .partial ? "Some items were completed"
+            : terminal == .cancelled ? "\(noun) cancelled" : "\(noun) failed"
         if successes == 0 && skipped > 0 && errors.isEmpty && !result.cancelled { detail = "All items were skipped" }
         transition(terminal)
         condition.broadcast()

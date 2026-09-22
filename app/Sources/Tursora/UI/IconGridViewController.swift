@@ -83,6 +83,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
             self.beginRename(item: item)
         }
         collectionView.onSpace = { [weak self] in self?.onQuickLook?() }
+        collectionView.onOpenRequest = { [weak self] in self?.openSelection() }
         collectionView.onZoom = { [weak self] step in self?.onZoomGesture?(step) }
         collectionView.onBecomeFirstResponder = { [weak self] in
             self?.onFocus?()
@@ -141,11 +142,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     func reloadData() {
         thumbnailGeneration = UUID()
         let selected = selectedItems.map(\.url)
-        if model.isSearchResults, let target = renameTarget {
-            renameTarget = nil
-            _ = target.field.abortEditing()
-            target.field.isEditable = false
-        }
+        let interrupted = captureRename()
         shownItems = [:]
         for (section, group) in model.groups.enumerated() {
             for (index, node) in group.nodes.enumerated() { shownItems[IndexPath(item: index, section: section)] = node.item }
@@ -166,6 +163,9 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         } else { applyItemSize(); layout.invalidateLayout() }
         collectionView.needsLayout = true
         if !selected.isEmpty { select(urls: selected) }
+        if let interrupted {
+            DispatchQueue.main.async { [weak self] in self?.restoreRename(interrupted) }
+        }
     }
 
     var selectedItems: [FileItem] {
@@ -214,10 +214,55 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
 
     func openSelection() { selectedItems.forEach { onOpen?($0) } }
 
+    var isRenaming: Bool { renameTarget != nil }
+
+    /// Capture an open edit so a reload can re-open it, and end it without
+    /// committing. `NSCollectionView.reloadData` discards the item that owns
+    /// the field editor, which would otherwise end the edit by itself and let
+    /// `controlTextDidEndEditing` commit a half-typed name.
+    func captureRename() -> InlineRenameState? {
+        guard let target = renameTarget else { return nil }
+        let editor = target.field.currentEditor()
+        let state = InlineRenameState(url: target.item.url.standardizedFileURL,
+                                      text: editor?.string ?? target.field.stringValue,
+                                      selection: editor?.selectedRange ?? NSRange(location: 0, length: 0))
+        endRename(commit: false)
+        return state
+    }
+
+    /// Re-open a captured edit, deferred by the caller to the next run-loop
+    /// pass so the pane's own `select(urls:)` has already run.
+    func restoreRename(_ state: InlineRenameState) {
+        guard !isReadOnly, allowsRenaming,
+              let item = model.items.first(where: { $0.url.standardizedFileURL == state.url }) else { return }
+        beginRename(item: item)
+        guard let target = renameTarget, let editor = target.field.currentEditor() else { return }
+        editor.string = state.text
+        target.field.stringValue = state.text
+        editor.selectedRange = state.selection.clamped(toLength: (state.text as NSString).length)
+    }
+
+    /// Ends an open inline rename, applying the typed name or discarding it.
+    func endRename(commit: Bool) {
+        guard let target = renameTarget else { return }
+        // Committing goes through the window so `controlTextDidEndEditing`
+        // runs and applies the typed name; `renameTarget` must still be set.
+        if commit { target.field.window?.endEditing(for: target.field); return }
+        renameTarget = nil
+        _ = target.field.abortEditing()
+        target.field.stringValue = target.item.displayName
+        target.field.isEditable = false
+    }
+
     func beginRename(item: FileItem) {
         guard !isReadOnly, allowsRenaming, item.canAccess, !item.isArchiveEntry, let ip = indexPath(for: item.url) else { return }
         collectionView.selectionIndexPaths = [ip]
         collectionView.scrollToItems(at: [ip], scrollPosition: .nearestHorizontalEdge)
+        // `item(at:)` "returns nil if the CollectionView isn't currently
+        // maintaining an NSCollectionViewItem instance for the given
+        // indexPath" (NSCollectionView.h) — true for an item that has just
+        // been inserted, or one outside the visible rect, until layout runs.
+        collectionView.layoutSubtreeIfNeeded()
         guard let cell = collectionView.item(at: ip) as? FileCollectionItem else { return }
         renameTarget = (cell.label, item)
         cell.label.stringValue = item.name
@@ -409,6 +454,8 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
 final class FileCollectionView: NSCollectionView {
     var onReturn: (() -> Void)?
     var onSpace: (() -> Void)?
+    /// Return rebound to Open (`ShortcutCatalog.openID`), which ships unbound.
+    var onOpenRequest: (() -> Void)?
     var onZoom: ((Int) -> Void)?
     var onBecomeFirstResponder: (() -> Void)?
     var onResignFirstResponder: (() -> Void)?
@@ -439,7 +486,8 @@ final class FileCollectionView: NSCollectionView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace) { return }
+        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace,
+                                            onOpen: onOpenRequest) { return }
         super.keyDown(with: event)
     }
 

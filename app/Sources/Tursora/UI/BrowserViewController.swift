@@ -260,6 +260,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             guard let self else { return }
             self.fileView.select(urls: urls)
             self.fileView.scrollOffset = offset
+            self.schedulePendingRename()
         }
     }
 
@@ -527,6 +528,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         lastError = nil
         errorLabel.isHidden = true
         pendingSelection = nil
+        cancelPendingRename()
     }
 
     // MARK: - Navigation
@@ -547,6 +549,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         navigationGeneration += 1
         let generation = navigationGeneration
         pendingSelection = nil
+        cancelPendingRename()
         isPreparingArchive = false
         syncReadOnly()
         onWorkspaceSessionChanged?()
@@ -760,7 +763,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     // MARK: - File operations
 
-    /// Creates "untitled folder" (or "untitled folder 2", …) and selects it.
+    /// Creates "untitled folder" (or "untitled folder 2", …), selects it and
+    /// opens its name for editing once the listing settles — Finder's
+    /// behaviour (`setPendingNodesToSelect:startEditing:runNewFolderAnimation:`,
+    /// see docs/research/finder-new-folder-rename.md).
     @discardableResult
     func newFolder() -> URL? {
         guard canModifyCurrentLocation, let currentURL else { return nil }
@@ -771,10 +777,70 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             report(error, context: "new folder")
             return nil
         }
+        // A filter the new folder does not match would hide the folder the user
+        // just asked for, leaving no feedback at all. Clearing it is the only
+        // outcome where the name they are about to type is visible.
+        if isFiltering { nameFilter = "" }
         pendingSelection = url.lastPathComponent
+        armPendingRename(url)
         model.reload { [weak self] in self?.restoreViewState() }
         DirectoryChanges.post([currentURL])
         return url
+    }
+
+    // MARK: - Edit a newly created item
+
+    /// The item whose name should open for editing once its listing settles,
+    /// as a full URL rather than a name — the pane may move meanwhile.
+    private var pendingRenameURL: URL?
+    private var pendingRenameWork: DispatchWorkItem?
+    private var pendingRenameAttempts = 0
+    /// Creating a folder provokes three listings inside ~0.5 s: the explicit
+    /// reload, the `DirectoryChanges` broadcast coming back to this pane, and
+    /// the pane's own FSEvents watcher. Each one aborts an open editor, so the
+    /// attempt is pushed back until they stop arriving — but only so far, or a
+    /// folder under continuous external change would never be editable.
+    private static let pendingRenameDelay: TimeInterval = 0.3
+    private static let pendingRenameAttemptLimit = 5
+
+    private func armPendingRename(_ url: URL) {
+        pendingRenameURL = url.standardizedFileURL
+        pendingRenameAttempts = 0
+        schedulePendingRename()
+    }
+
+    func cancelPendingRename() {
+        pendingRenameWork?.cancel()
+        pendingRenameWork = nil
+        pendingRenameURL = nil
+    }
+
+    /// Visible to the smoke suite, which has to know whether to keep waiting.
+    var hasPendingRename: Bool { pendingRenameURL != nil }
+
+    /// Push the attempt back past the listing that just arrived. A settling
+    /// reload costs no attempt — only a try that failed to open an editor does.
+    private func schedulePendingRename() {
+        guard pendingRenameURL != nil else { return }
+        pendingRenameWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.startPendingRename() }
+        pendingRenameWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pendingRenameDelay, execute: work)
+    }
+
+    private func startPendingRename() {
+        pendingRenameWork = nil
+        guard let url = pendingRenameURL else { return }
+        guard canModifyCurrentLocation, view.window != nil,
+              url.deletingLastPathComponent().standardizedFileURL == currentURL?.standardizedFileURL,
+              let node = model.node(for: url) else { cancelPendingRename(); return }
+        fileView.beginRename(item: node.item)
+        if fileView.isRenaming { cancelPendingRename(); return }
+        // Without a key window `editColumn` opens no editor at all. Try again
+        // rather than leave the folder silently un-editable — but not forever.
+        pendingRenameAttempts += 1
+        if pendingRenameAttempts >= Self.pendingRenameAttemptLimit { cancelPendingRename() }
+        else { schedulePendingRename() }
     }
 
     private var selectedURLs: [URL] { fileView.selectedItems.map(\.url) }
@@ -790,6 +856,17 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         return options
     }()
     private(set) var lastTransferTask: TransferTask?
+    /// The last extraction started by this pane, for the smoke suite.
+    private(set) var lastExtractionTask: TransferTask?
+    /// Injectable so a test can drive progress without a huge fixture.
+    var archiveListing: ArchiveListing = BSDTarArchiveListing()
+    var archiveProgressPollInterval: TimeInterval = {
+        if let raw = ProcessInfo.processInfo.environment["TURSORA_ARCHIVE_TEST_POLL_MS"],
+           let milliseconds = Double(raw), milliseconds.isFinite, milliseconds > 0 {
+            return min(milliseconds, 1000) / 1000
+        }
+        return 0.05
+    }()
     /// Allows isolated controller tests to inspect the same recovery error shown
     /// by the application without opening a modal error sheet.
     var transferReplayErrorReporter: ((Error) -> Void)?
@@ -937,32 +1014,73 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
     }
 
+    /// Each archive gets its own File Operations row with real progress and a
+    /// Cancel, and the batch keeps one "Extract" undo group and one directory
+    /// broadcast (D90). Archives are still extracted one at a time: several
+    /// bsdtar processes writing into the same folder would contend for it and
+    /// make each one's progress meaningless.
     func extract(_ archives: [URL], completion: (() -> Void)? = nil) {
         guard canModifyCurrentLocation, !archives.isEmpty else { completion?(); return }
         let startingURL = currentURL
+        let window = view.window
+        // Captured up front, as `transfer` does: a batch that is still running
+        // when its tab closes must still register what it already created.
+        let capturedUndo = window?.undoManager
         statusBar.beginBusy()
         var created: [URL] = []
         var failures: [FileOperations.Failure] = []
-        func next(_ index: Int) {
-            guard index < archives.count else {
-                self.statusBar.endBusy()
-                self.registerUndoTrash(created, actionName: "Extract")
-                if self.currentURL == startingURL {
-                    self.model.reload { [weak self] in self?.fileView.select(urls: created) }
-                }
-                else { self.reload() }
-                DirectoryChanges.post(DirectoryChanges.affected(sources: created))
-                FileOperations.report(failures, in: self.view.window)
-                completion?()
-                return
+        let tasks = TransferTasksWindowController.shared
+
+        func finish() {
+            self.statusBar.endBusy()
+            if let capturedUndo, !created.isEmpty {
+                self.registerUndoTrash(created, actionName: "Extract", undo: capturedUndo)
             }
+            if self.currentURL == startingURL {
+                self.model.reload { [weak self] in self?.fileView.select(urls: created) }
+            }
+            else { self.reload() }
+            DirectoryChanges.post(DirectoryChanges.affected(sources: created))
+            FileOperations.report(failures, in: window)
+            completion?()
+        }
+
+        func next(_ index: Int) {
+            guard index < archives.count else { finish(); return }
             let archive = archives[index]
-            FileOperations.extract(archive: archive, to: archive.deletingLastPathComponent()) { result in
+            let destination = archive.deletingLastPathComponent()
+            let task = TransferTask(sources: [archive], destination: destination, kind: .extract)
+            lastExtractionTask = task
+            tasks.track(task, ownerWindow: window, destinationDescription: destination.lastPathComponent)
+            task.setPhase(.running, item: archive, detail: "Reading \(archive.lastPathComponent)…")
+            FileOperations.extract(
+                archive: archive, to: destination, listing: archiveListing,
+                onProgress: { bytes, total, entry in
+                    DispatchQueue.main.async {
+                        if task.snapshot.totalBytes != total { task.setTotal(total) }
+                        task.setCompleted(bytes)
+                        task.setPhase(.running, item: archive, detail: entry.map { "Extracting \($0)" } ?? "Extracting…")
+                    }
+                },
+                isCancelled: { task.isCancellationRequested },
+                pollInterval: self.archiveProgressPollInterval
+            ) { result in
+                var outcome = FileOperations.TransferResult()
                 switch result {
-                case .success(let url): created.append(url)
-                case .failure(let error): failures.append(.init(url: archive, error: error))
+                case .success(let url):
+                    created.append(url)
+                    outcome.created = [url]
+                case .failure(let error):
+                    if case FileOperations.ArchiveError.cancelled = error { outcome.cancelled = true }
+                    else {
+                        failures.append(.init(url: archive, error: error))
+                        outcome.failures = [.init(url: archive, error: error)]
+                    }
                 }
-                next(index + 1)
+                task.finished(outcome)
+                // Cancelling one archive cancels the batch: the alternative is
+                // the next ZIP starting the instant the user pressed Cancel.
+                if outcome.cancelled { finish() } else { next(index + 1) }
             }
         }
         next(0)
@@ -1104,9 +1222,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
     }
 
-    private func registerUndoTrash(_ urls: [URL], actionName: String) {
+    private func registerUndoTrash(_ urls: [URL], actionName: String, undo: UndoManager? = nil) {
         guard !urls.isEmpty else { return }
-        registerUndo(actionName: actionName) { me, _ in
+        registerUndo(on: undo, actionName: actionName) { me, _ in
             do {
                 let pairs = try FileOperations.trash(urls)
                 TrashOrigins.shared.record(pairs)
@@ -1530,6 +1648,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         if retargeted {
             history.recordViewState(selectedName: nil, scrollOffset: 0)
             pendingSelection = nil
+            cancelPendingRename()
         }
         if changingDirectory { pendingRenames = [:] }
         currentURL = url
@@ -1583,6 +1702,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         if let pendingSelection {
             self.pendingSelection = nil
             fileView.select(name: pendingSelection)
+            schedulePendingRename()
             return
         }
         guard let entry = history.current else { return }

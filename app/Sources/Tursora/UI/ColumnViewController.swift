@@ -7,7 +7,8 @@ import AppKit
 /// chain follows the selection; a selected file shows a preview in the last
 /// column, reusing the docked pane's renderer. **Selecting never navigates
 /// the pane.** The pane's `currentURL` stays the column root; only opening a
-/// folder (double-click, ⌘↓ — Return renames, as everywhere else) moves it. That is a deliberate difference
+/// folder (double-click, ⌘↓ — Return renames by default, as everywhere else,
+/// and opens when rebound to `ShortcutCatalog.openID`) moves it. That is a deliberate difference
 /// from Finder, where the deepest selected folder becomes the location: per-
 /// folder view properties are re-applied on every navigation, and a child
 /// folder remembered as icons would tear the columns down mid-chain (D84).
@@ -20,6 +21,8 @@ import AppKit
 final class ColumnBrowser: NSBrowser {
     var onCommandScroll: ((CGFloat) -> Void)?
     var onMagnify: ((CGFloat) -> Void)?
+    /// Escape aborted an inline rename; the controller clears its flag.
+    var onRenameAborted: (() -> Void)?
     override func scrollWheel(with event: NSEvent) {
         if event.modifierFlags.contains(.command) { onCommandScroll?(event.scrollingDeltaY) }
         else { super.scrollWheel(with: event) }
@@ -37,6 +40,7 @@ final class ColumnBrowser: NSBrowser {
         // field editor — that control's abortEditing ends it uncommitted.
         let owner = (window?.fieldEditor(false, for: nil)?.delegate as? NSControl)
         if owner?.abortEditing() == true || abortEditing() {
+            onRenameAborted?()
             window?.makeFirstResponder(self)
         } else {
             // See BrowserViewController.cancelOperation: NSResponder has no
@@ -63,6 +67,10 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         browser.setDraggingSourceOperationMask(DragAndDrop.sourceMask(readOnly: copyOnly, local: false), forLocal: false)
     }
     var allowsRenaming = true
+    /// The item whose name is open for editing. `NSBrowser` offers no editing
+    /// state of its own, and `window.firstResponder is NSTextView` is true for
+    /// the breadcrumb, filter, search and tab-rename fields as well.
+    private var renamingURL: URL?
 
     var viewController: NSViewController { self }
     var focusView: NSView { browser }
@@ -122,6 +130,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         // a view — including its icon size — before it mounts it, so the
         // delegate must be in place from construction, not from loadView.
         browser.delegate = self
+        browser.onRenameAborted = { [weak self] in self?.endRename(commit: false) }
         browser.onCommandScroll = { [weak self] delta in
             guard let self, let step = self.zoomGesture.step(scrollingDeltaY: delta) else { return }
             self.onZoomGesture?(step)
@@ -216,6 +225,12 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
 
     func reloadData() {
         guard isViewLoaded else { return }        // loadView loads column zero itself
+        let interrupted = captureRename()
+        defer {
+            if let interrupted {
+                DispatchQueue.main.async { [weak self] in self?.restoreRename(interrupted) }
+            }
+        }
         // Read the selection against the snapshot the browser was built from,
         // BEFORE anything is re-listed; that is the only moment the index paths
         // still mean what NSBrowser thinks they mean.
@@ -357,8 +372,43 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         for item in selectedItems { onOpen?(item) }
     }
 
+    var isRenaming: Bool { renamingURL != nil }
+
+    /// Capture an open edit so a reload can re-open it, and end it without
+    /// committing. Re-listing a column discards the row that owns the field
+    /// editor, which would otherwise send a half-typed name to
+    /// `browser(_:setObjectValue:forItem:)`.
+    func captureRename() -> InlineRenameState? {
+        guard let url = renamingURL else { return nil }
+        let editor = view.window?.fieldEditor(false, for: nil)
+        let state = InlineRenameState(url: url, text: editor?.string ?? url.lastPathComponent,
+                                      selection: editor?.selectedRange ?? NSRange(location: 0, length: 0))
+        endRename(commit: false)
+        return state
+    }
+
+    /// Re-open a captured edit, deferred by the caller to the next run-loop pass.
+    func restoreRename(_ state: InlineRenameState) {
+        guard !isReadOnly, allowsRenaming,
+              let item = model.items.first(where: { $0.url.standardizedFileURL == state.url }) else { return }
+        beginRename(item: item)
+        guard isRenaming, let editor = view.window?.firstResponder as? NSTextView else { return }
+        editor.string = state.text
+        editor.setSelectedRange(state.selection.clamped(toLength: (state.text as NSString).length))
+    }
+
+    /// Ends an open inline rename, applying the typed name or discarding it.
+    func endRename(commit: Bool) {
+        guard renamingURL != nil else { return }
+        renamingURL = nil
+        guard let editor = view.window?.fieldEditor(false, for: nil),
+              let owner = editor.delegate as? NSControl else { return }
+        if commit { owner.window?.endEditing(for: owner) } else { _ = owner.abortEditing() }
+    }
+
     func beginRename(item: FileItem) {
-        guard allowsRenaming, let path = indexPath(for: item.url), let last = path.last else { return }
+        guard allowsRenaming, !isReadOnly, item.canAccess, !item.isArchiveEntry,
+              let path = indexPath(for: item.url), let last = path.last else { return }
         // The drawn title may hide the extension, and it carries the icon as a
         // leading attachment; the editor must show neither. Seeding the cell
         // first is not enough on its own — `editItem` redraws the row, and
@@ -369,6 +419,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         }
         browser.editItem(at: path, with: nil, select: true)
         if let editor = view.window?.firstResponder as? NSTextView {
+            renamingURL = item.url.standardizedFileURL
             if editor.string != item.name { editor.string = item.name }
             // Finder, and both other views, preselect the base name so typing
             // replaces it and keeps the extension. Selecting the whole string
@@ -614,6 +665,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     }
 
     func browser(_ browser: NSBrowser, setObjectValue object: Any?, forItem item: Any?) {
+        renamingURL = nil
         guard let node = item as? FileNode, let name = object as? String,
               !name.isEmpty, name != node.item.name else { return }
         onRenameCommitted?(node.item, name)

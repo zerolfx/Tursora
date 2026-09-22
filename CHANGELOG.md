@@ -4,10 +4,20 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Added
+
+- **Extracting a ZIP** now appears in **File Operations** with a real progress bar and a **Cancel** button, instead of a small spinner you could not stop. Each selected archive gets its own row; cancelling one stops the rest, and closing the window cancels the extraction just as it does a copy.
+- **Settings ▸ Shortcuts** gains a File View command, **Open Selection (Alternative)**, which ships with no key. Give it Return and Return opens the selection — entering a folder, launching a file — instead of renaming it, the way Windows Explorer and Dolphin behave. Clear Rename's Return first, since a key has one owner; Rename stays available from File ▸ Rename, the context menu and the slow double-click.
+
 ### Changed
 
 - With **Terminal panel** turned off in Settings, the Terminal button is now gone from the toolbar instead of sitting there permanently greyed out. View → Show Terminal already hid itself on that setting; the toolbar now agrees with it. Turning the setting back on returns the button to its place, and a panel you had open is still there waiting.
 - Settings ▸ Terminal no longer accepts changes while the Terminal panel is turned off, since nothing there could apply. The page still shows your saved shell, font and colours, with a line naming the option that hands it back.
+- **New Folder** now opens the new folder's name for editing, as Finder does, so you can type the name straight away instead of renaming afterwards. It works in the list, icon and column views; press Escape to keep "untitled folder". If a filter is active that the new folder would not match, the filter is cleared so the folder you just made is actually on screen.
+
+### Fixed
+
+- An inline rename is no longer broken by a directory listing arriving underneath it. Previously an external change landing at the wrong moment could commit a half-typed name; the edit is now carried across the refresh with what you typed still in it.
 
 ## [0.4.3] - 2026-09-17
 

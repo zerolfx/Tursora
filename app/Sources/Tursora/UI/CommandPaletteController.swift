@@ -60,6 +60,7 @@ enum CommandPaletteRunner {
         switch id {
         case ShortcutCatalog.renameID:
             return browser.canModifySelectedItems && browser.fileView.selectedItems.count == 1
+        case ShortcutCatalog.openID: return browser.canOpenSelection
         case ShortcutCatalog.previewID: return browser.canPreviewSelection
         case ShortcutCatalog.cancelArchiveID: return browser.isPreparingArchive
         case ShortcutCatalog.nextTabID, ShortcutCatalog.previousTabID: return controller.tabs.count > 1
@@ -83,6 +84,7 @@ enum CommandPaletteRunner {
         guard contextualEnabled(id, in: controller) else { return false }
         switch id {
         case ShortcutCatalog.renameID: controller.browser.renameSelection(nil)
+        case ShortcutCatalog.openID: controller.browser.openSelection()
         case ShortcutCatalog.previewID: controller.browser.quickLook(nil)
         case ShortcutCatalog.cancelArchiveID: controller.browser.cancelArchiveOpening(nil)
         case ShortcutCatalog.nextTabID: controller.tabs.selectNext()

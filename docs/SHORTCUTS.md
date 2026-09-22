@@ -14,7 +14,7 @@ Command or Control combinations and function keys can be recorded; the File View
 
 Command bindings use AppKit's normal menu validation and responder chain, including standard editing commands in text fields. Control-only and function-key bindings pass through to text fields and SwiftTerm while typing, except the configured **Show/Hide Terminal** command, which remains available from the shell. File View alternatives only act while a file view — the list, the icon grid or a column — has focus. Native text editing, filename/path completion, arrow selection, dialog confirmation/cancellation, shell/readline controls and mouse/trackpad gestures remain owned by those native views; this catalog customizes Tursora's application commands.
 
-Return/Enter rename and Space Quick Look are separately listed alternatives to their menu commands. Control-Tab, Control-Shift-Tab, the nine tab positions and Command-Equals also have individually editable rows. Clearing a primary menu binding does not silently clear a separately listed alternative. **Use Groups** retains Control-Command-0; **Group By → None** has no factory binding, removing the former duplicate.
+Return/Enter rename and Space Quick Look are separately listed alternatives to their menu commands. **Open Selection (Alternative)** is a third File View row and ships with no binding: give it Return and Return opens the selection — entering a folder, launching a file with its default application — instead of renaming. A key has one owner, so clear Rename's Return first; Rename then stays reachable from File ▸ Rename, the context menu and the slow double-click on an already-selected name. Rebound, Return does exactly what ⌘↓ does, which includes opening every item of a large selection at once. Control-Tab, Control-Shift-Tab, the nine tab positions and Command-Equals also have individually editable rows. Clearing a primary menu binding does not silently clear a separately listed alternative. **Use Groups** retains Control-Command-0; **Group By → None** has no factory binding, removing the former duplicate.
 
 ## Dock menu
 
@@ -36,7 +36,7 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 |---|---|---|---|---|
 | New Window | ⌘N | `plus.rectangle` | New window at home, cascaded | `AppDelegate.newWindow` |
 | New Tab | ⌘T | `macwindow.badge.plus` | Fresh single-pane tab at the active location; reruns its search when applicable | `MainWindowController.newTab` |
-| New Folder | ⇧⌘N | `folder.badge.plus` | "untitled folder" (then " 2", …), selected | `BrowserViewController.newFolder` |
+| New Folder | ⇧⌘N | `folder.badge.plus` | "untitled folder" (then " 2", …), selected, with its name opened for editing so you can type straight over it; Escape keeps the default name | `BrowserViewController.newFolder` |
 | Open | ⌘↓ | — | Opens the selection; disabled when empty | `MainWindowController.openSelection` |
 | Quick Look | ⌘Y | `eye` | Toggles `QLPreviewPanel` | `BrowserViewController.quickLook` |
 | Get Info | ⌘I | `info.circle` | One window per item (>10 → summary) | `InfoWindowController.show` |

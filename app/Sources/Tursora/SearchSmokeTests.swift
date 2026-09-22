@@ -197,6 +197,7 @@ enum SearchSmokeTests: SmokeSuite {
                 check("\(mode): search results expose Reveal in Enclosing Folder", menu.items.contains { $0.title == "Reveal in Enclosing Folder" })
                 check("\(mode): search results omit destination-dependent Compress", !menu.items.contains { $0.title.hasPrefix("Compress") })
                 check("\(mode): result mutations are separate from destination-only commands", browser.canModifySelectedItems && !browser.canModifyCurrentLocation && browser.newFolder() == nil)
+                check("\(mode): a refused New Folder arms no inline edit", !browser.hasPendingRename && !browser.fileView.isRenaming)
 
                 let alternate: ViewMode = mode == .details ? .icons : .details
                 browser.setViewMode(alternate)

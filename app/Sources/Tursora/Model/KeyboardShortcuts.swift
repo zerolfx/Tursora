@@ -20,6 +20,7 @@ struct ShortcutAction {
 enum ShortcutCatalog {
     static let filterID = "menu.focusFilter"
     static let renameID = "file.rename"
+    static let openID = "file.open"
     static let previewID = "file.quickLook"
     static let cancelArchiveID = "file.cancelArchiveOpening"
     static let nextTabID = "window.nextTabAlternative"
@@ -35,6 +36,12 @@ enum ShortcutCatalog {
                 context: context))
         }
         add(renameID, "Rename (Return / Enter)", "\r", [], context: .fileView)
+        // Ships unbound. Finder's Return renames and ⌘↓ opens (D3); Windows
+        // Explorer and Dolphin open on Return, and this row is how a user who
+        // wants that swaps them. Kept after renameID so Rename still wins a
+        // hand-edited override map that put Return on both.
+        items.append(ShortcutAction(id: openID, title: "Open Selection (Alternative)", category: "File View",
+            selector: nil, representedObject: nil, defaultShortcut: nil, context: .fileView))
         add(previewID, "Quick Look (Space)", " ", [], context: .fileView)
         add(cancelArchiveID, "Cancel Opening Archive", "\u{1b}", [], context: .fileView)
         add(nextTabID, "Next Tab (Alternative)", "\t", .control)
