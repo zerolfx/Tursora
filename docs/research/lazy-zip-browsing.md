@@ -151,9 +151,44 @@ same rewrites so a listed row resolves to the path extraction will actually writ
 addressed at all — a `..` component, or a name the listing had to escape — is listed and inert.
 
 One behaviour change falls out of that and is worth stating plainly: an archive containing a `..` entry
-**used to refuse to open at all**, because the whole-archive extraction exited non-zero. Now every other
-entry browses normally and that one row is visible and inert, exactly as an escaping symbolic link
-already was.
+**used to refuse to open at all**, because the whole-archive extraction exited non-zero. Now it opens and
+every other entry browses normally. The refused entry itself is not shown: a directory's listing reads
+the disk, and bsdtar never writes that entry there. (An earlier draft of this record said the row was
+"visible and inert"; that was never true of this stage, and no check asserted it.)
+
+## Dates and counts (Stage 3)
+
+Stage 1 shipped two regressions, caught before merge. The directory skeleton is made with `mkdir`, so a
+folder inside an archive showed when the archive was opened rather than its recorded date:
+
+| | folder `Old` | folder `Old/Sub` | file `Old/g.txt` |
+|---|---|---|---|
+| full extraction (before) | 2020-01-01 | 2020-01-01 | 2020-01-01 |
+| lazy mount, Stage 1 | **when opened** | **when opened** | 2020-01-01 |
+
+And an unentered folder read "0 items", because `FolderSizes` counts from disk and the folder was only
+its skeleton.
+
+Dates now come from the central directory. The field that matters is not the one usually documented:
+
+```
+$ python3 -c "…print extra-field ids for each central-directory record…" old.zip
+  Old/          dos=(2020, 1, 1, 12, 0, 0)  extra=['0x5855']
+  Old/Sub/      dos=(2020, 1, 1, 12, 0, 0)  extra=['0x5855']
+  Old/Sub/f.txt dos=(2020, 1, 1, 12, 0, 0)  extra=['0x5855']
+```
+
+`ditto` — and so Finder's Compress — writes `0x5855` (Info-ZIP Unix: atime, then mtime), not the
+`0x5455` extended timestamp that Info-ZIP's `zip` writes. A reader that knew only `0x5455` would fall
+back to two-second DOS time for every Finder-made archive. The reader follows libarchive's precedence
+exactly (DOS first, then `0x5455` / `0x5855` / `0x000d` overriding, NTFS not read), and the suite checks
+the result against the extractor rather than trusting the reasoning: for a Finder-made archive with
+entries dated 2010 and 2020, every entry's central-directory date equals the date a full extraction
+writes to disk.
+
+Counts now come from the tree, filtered as the listing is. Both regression checks were run against the
+unfixed code first and failed there — the folder date read as the open time, the count as "0 items" —
+so they are known to guard what they claim to.
 
 ## Status
 
@@ -164,9 +199,8 @@ that listing one directory leaves a deeper one alone, in `ArchiveWorkspaceSmokeT
 path in all three views — with a split pane and a second tab open and with a filter and grouping
 active, plus the bundle and `..` cases — in `LazyArchiveSmokeTests`.
 
-Still missing, and recorded in the roadmap rather than built: a single directory holding tens of
-thousands of files still pays for all of them on entry, and rows outside an entered directory have no
-modification date, because `tar -tvf`'s date column cannot supply one.
+Still missing: a single directory holding tens of thousands of files, or one very large member, still
+pays for the whole directory on entry. That is Stage 2, true per-entry deferral.
 
 No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
 opening a large archive actually feels.

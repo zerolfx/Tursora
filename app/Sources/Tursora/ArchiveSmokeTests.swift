@@ -103,6 +103,8 @@ enum ArchiveSmokeTests: SmokeSuite {
                 progressAccounting()
                 try browsingGuardrails(in: root)
                 archiveTree()
+                centralDirectoryDecoding()
+                try await centralDirectoryAgreesWithExtraction(in: root)
                 try await extractionProgress(archive: folderZIP, root: root)
 
                 try fm.removeItem(at: root)
@@ -165,8 +167,8 @@ enum ArchiveSmokeTests: SmokeSuite {
               rewritten.node(at: "win.txt") != nil, "\((rewritten.children(of: "") ?? []).map(\.path))")
         check("archive tree: a leading ./ is dropped", rewritten.node(at: "dotslash.txt") != nil)
 
-        // Rows that can be listed but never extracted stay visible and inert,
-        // exactly like an escaping symbolic link does today.
+        // Entries bsdtar will refuse are marked so they are never asked for:
+        // a request would only produce an error for the whole batch.
         let hostile = ArchiveTree(entries: [entry("up/../escape.txt", 3), entry("tab" + "\\" + "there.txt", 3), entry("safe.txt", 3)])
         check("archive tree: a .. entry is listed and marked unextractable",
               hostile.node(at: "up/escape.txt")?.isExtractable == false
@@ -220,6 +222,84 @@ enum ArchiveSmokeTests: SmokeSuite {
         check("archive tree: symbolic links are named for materialization at mount",
               links.symbolicLinkMembers == ["alias"], "\(links.symbolicLinkMembers)")
         check("archive tree: an empty archive yields an empty tree", ArchiveTree(entries: []).isEmpty)
+    }
+
+    /// Stage 3: the central-directory reader's pieces, without any archive.
+    private static func centralDirectoryDecoding() {
+        let utc = TimeZone(identifier: "UTC")!
+        // 2020-01-01 12:00:06 → DOS date (40<<9)|(1<<5)|1, time (12<<11)|(0<<5)|3.
+        let dos = ZIPCentralDirectory.dosDate(UInt16((40 << 9) | (1 << 5) | 1),
+                                              time: UInt16((12 << 11) | 3), timeZone: utc)
+        let expected = DateComponents(calendar: Calendar(identifier: .gregorian), timeZone: utc,
+                                      year: 2020, month: 1, day: 1, hour: 12, minute: 0, second: 6).date
+        check("archive dates: a DOS date and time decode, with two-second resolution", dos == expected,
+              "\(String(describing: dos))")
+        check("archive dates: an impossible DOS date is rejected rather than rolled over",
+              ZIPCentralDirectory.dosDate(0, time: 0, timeZone: utc) == nil)
+
+        func le32(_ v: UInt32) -> [UInt8] { [UInt8(v & 0xff), UInt8(v >> 8 & 0xff), UInt8(v >> 16 & 0xff), UInt8(v >> 24)] }
+        // 0x5855 — what ditto, and so Finder's Compress, writes: atime, then mtime.
+        let ux: [UInt8] = [0x55, 0x58, 8, 0] + le32(111) + le32(1_577_880_000)
+        check("archive dates: the Info-ZIP Unix field supplies the mtime, not the atime",
+              ZIPCentralDirectory.unixModificationTime(ux, from: 0, length: ux.count) == 1_577_880_000)
+        // 0x5455 — a flags byte, then mtime when bit 0 is set.
+        let ut: [UInt8] = [0x55, 0x54, 5, 0, 0x01] + le32(1_600_000_000)
+        check("archive dates: the extended-timestamp field supplies the mtime",
+              ZIPCentralDirectory.unixModificationTime(ut, from: 0, length: ut.count) == 1_600_000_000)
+        let utNoMtime: [UInt8] = [0x55, 0x54, 5, 0, 0x02] + le32(1_600_000_000)
+        check("archive dates: an extended timestamp without its mtime bit is ignored",
+              ZIPCentralDirectory.unixModificationTime(utNoMtime, from: 0, length: utNoMtime.count) == nil)
+        // libarchive processes fields in order, a later one overriding.
+        check("archive dates: a later Unix field overrides an earlier one, as libarchive does",
+              ZIPCentralDirectory.unixModificationTime(ux + ut, from: 0, length: ux.count + ut.count) == 1_600_000_000)
+        // NTFS 0x000a is not read, because libarchive does not read it either.
+        let ntfs: [UInt8] = [0x0a, 0x00, 4, 0, 1, 2, 3, 4]
+        check("archive dates: the NTFS field is not read, matching the extractor",
+              ZIPCentralDirectory.unixModificationTime(ntfs, from: 0, length: ntfs.count) == nil)
+        let truncated: [UInt8] = [0x55, 0x58, 8, 0, 1, 2]
+        check("archive dates: a truncated extra field is ignored rather than overread",
+              ZIPCentralDirectory.unixModificationTime(truncated, from: 0, length: truncated.count) == nil)
+        check("archive dates: an empty central directory yields no dates",
+              ZIPCentralDirectory.parse(Data()).isEmpty)
+    }
+
+    /// The property the whole of Stage 3 rests on: the date shown for an entry
+    /// before it is materialized is the date extraction then writes to disk. If
+    /// these disagreed, a row's date would change the moment it was opened.
+    private static func centralDirectoryAgreesWithExtraction(in root: URL) async throws {
+        let fm = FileManager.default
+        let source = root.appendingPathComponent("Dated", isDirectory: true)
+        let nested = source.appendingPathComponent("Nested", isDirectory: true)
+        try fm.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data("a".utf8).write(to: source.appendingPathComponent("a.txt"))
+        try Data("b".utf8).write(to: nested.appendingPathComponent("b.txt"))
+        let old = Date(timeIntervalSince1970: 1_577_880_000)     // 2020-01-01T12:00:00Z
+        let older = Date(timeIntervalSince1970: 1_262_347_200)   // 2010-01-01T12:00:00Z
+        for (url, date) in [(source.appendingPathComponent("a.txt"), old), (nested.appendingPathComponent("b.txt"), older),
+                            (nested, older), (source, old)] {
+            try fm.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
+        }
+        let archive = try await SmokeFixtures.compress([source], to: root)
+        let dates = ZIPCentralDirectory.modificationDates(of: archive)
+        check("archive dates: every entry of a Finder-made archive has a date",
+              ["Dated", "Dated/a.txt", "Dated/Nested", "Dated/Nested/b.txt"].allSatisfy { dates[$0] != nil },
+              "\(dates.keys.sorted())")
+        check("archive dates: a recorded directory carries its own date, not its contents'",
+              dates["Dated"] == old && dates["Dated/Nested"] == older,
+              "Dated=\(String(describing: dates["Dated"])) Nested=\(String(describing: dates["Dated/Nested"]))")
+
+        // Extract the whole archive the way the old path did and compare.
+        let out = root.appendingPathComponent("dated-out", isDirectory: true)
+        try fm.createDirectory(at: out, withIntermediateDirectories: false)
+        let extracted = try await extract(archive, to: out).get()
+        var disagreements: [String] = []
+        for (relative, expected) in dates {
+            let onDisk = extracted.deletingLastPathComponent().appendingPathComponent(relative)
+            guard let written = try? fm.attributesOfItem(atPath: onDisk.path)[.modificationDate] as? Date else { continue }
+            if abs(written.timeIntervalSince(expected)) >= 1 { disagreements.append("\(relative): cd=\(expected) disk=\(written)") }
+        }
+        check("archive dates: the central directory's dates are exactly what extraction writes",
+              disagreements.isEmpty, disagreements.joined(separator: "; "))
     }
 
     /// Stage 0 of lazy browsing: the refusals that must happen before a single

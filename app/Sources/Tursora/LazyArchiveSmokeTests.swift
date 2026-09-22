@@ -45,6 +45,12 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                 try Data("deep".utf8).write(to: inner.appendingPathComponent("deep.txt"))
                 try Data("plist".utf8).write(to: payload.appendingPathComponent("Demo.app/Contents/Info.plist"))
                 try Data("binary".utf8).write(to: bundle.appendingPathComponent("Demo"))
+                // Dated after the files are written: adding an entry to a
+                // directory bumps its own date.
+                let recorded = Date(timeIntervalSince1970: 1_577_880_000)   // 2020-01-01T12:00:00Z
+                for url in [inner.appendingPathComponent("deep.txt"), payload.appendingPathComponent("top.txt"), inner, payload] {
+                    try fm.setAttributes([.modificationDate: recorded], ofItemAtPath: url.path)
+                }
                 let source = try await SmokeFixtures.compress([payload], to: root)
                 try fm.removeItem(at: payload)
 
@@ -89,6 +95,13 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                     check("\(mode.rawValue): the session is lazily mounted", session.isLazilyMounted)
                     check("\(mode.rawValue): the archive root lists its contents",
                           pane.model.items.map(\.name) == ["Payload"], "\(pane.model.items.map(\.name))")
+                    // The regression Stage 3 fixes: a directory's date was the
+                    // moment its skeleton was created, i.e. when the archive was
+                    // opened, instead of the date the archive records for it.
+                    let payloadDate = pane.model.items.first?.modificationDate
+                    check("\(mode.rawValue): a folder inside a ZIP shows the archive's date for it, not when it was opened",
+                          payloadDate.map { abs($0.timeIntervalSince(recorded)) < 1 } == true,
+                          "\(String(describing: payloadDate))")
 
                     pane.navigate(to: logicalPayload)
                     await expectEventually("\(mode.rawValue): entering a directory inside the ZIP") {
@@ -106,6 +119,20 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                           && fm.fileExists(atPath: physicalBundle.appendingPathComponent("Contents/MacOS/Demo").path))
                     check("\(mode.rawValue): a bundle reads as one item, not a folder to walk into",
                           pane.model.items.first { $0.name == "Demo.app" }?.isNavigable == false)
+
+                    // The other regression: an unentered folder is only its
+                    // skeleton on disk, so counting it from disk said 0 items.
+                    if let innerItem = pane.model.items.first(where: { $0.name == "Inner" }) {
+                        await expectEventually("\(mode.rawValue): an unentered folder in a ZIP counts its real contents",
+                                               detail: { pane.model.folderSizes.displaySize(for: innerItem) }) {
+                            pane.model.folderSizes.displaySize(for: innerItem) == "1 item"
+                        }
+                        check("\(mode.rawValue): an unentered folder keeps the archive's date too",
+                              abs((innerItem.modificationDate ?? .distantPast).timeIntervalSince(recorded)) < 1,
+                              "\(String(describing: innerItem.modificationDate))")
+                    } else {
+                        check("\(mode.rawValue): the Inner folder is listed", false)
+                    }
 
                     // A file's bytes are there because its directory was listed.
                     let top = pane.model.items.first { $0.name == "top.txt" }

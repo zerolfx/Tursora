@@ -36,6 +36,11 @@ struct ArchiveTree {
         /// Direct children, for seeding the item count of a directory whose
         /// contents are not on disk yet.
         let childCount: Int
+        /// From the central directory, joined by path (Stage 3). Nil for a
+        /// directory the archive never recorded — it was synthesized from its
+        /// children's paths and has no date of its own to show — and for any
+        /// entry the join missed.
+        let modificationDate: Date?
 
         var isDirectory: Bool { kind == .directory }
     }
@@ -43,7 +48,7 @@ struct ArchiveTree {
     private var nodes: [String: Node] = [:]
     private var childPaths: [String: [String]] = [:]
 
-    init(entries: [ArchiveEntrySummary]) {
+    init(entries: [ArchiveEntrySummary], modificationDates: [String: Date] = [:]) {
         // Two passes: place every real entry first, so a file always beats a
         // directory implied by some other entry's path, then index children.
         var order: [String] = []
@@ -60,7 +65,8 @@ struct ArchiveTree {
                             uncompressedSize: entry.uncompressedSize,
                             isPackage: entry.kind == .directory && Self.isPackage(path),
                             isExtractable: extractable,
-                            childCount: 0)
+                            childCount: 0,
+                            modificationDate: modificationDates[path])
             // Last wins: two entries of one name in a ZIP are legal, and
             // extraction yields the later one's content (measured).
             if nodes[path] == nil { order.append(path) }
@@ -233,13 +239,15 @@ struct ArchiveTree {
             order.append(path)
             nodes[path] = Node(name: component, path: path, member: escapeMember(path),
                                kind: .directory, uncompressedSize: 0,
-                               isPackage: isPackage(path), isExtractable: true, childCount: 0)
+                               isPackage: isPackage(path), isExtractable: true, childCount: 0,
+                               modificationDate: nil)
         }
     }
 
     private static func marked(_ node: Node, package: Bool? = nil, childCount: Int? = nil) -> Node {
         Node(name: node.name, path: node.path, member: node.member, kind: node.kind,
              uncompressedSize: node.uncompressedSize, isPackage: package ?? node.isPackage,
-             isExtractable: node.isExtractable, childCount: childCount ?? node.childCount)
+             isExtractable: node.isExtractable, childCount: childCount ?? node.childCount,
+             modificationDate: node.modificationDate)
     }
 }

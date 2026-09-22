@@ -10,6 +10,9 @@ struct FileItem {
     let canAccess: Bool
     private let archiveSession: ArchiveBrowsingSession?
     var isArchiveEntry: Bool { archiveSession != nil }
+    /// A lazily mounted archive directory's item count, from its tree. Nil for
+    /// anything else, which is counted from disk as before.
+    var archiveChildCount: Int? { isNavigable ? archiveSession?.listedChildCount(of: contentURL) : nil }
     let name: String
     let isDirectory: Bool
     /// .app / .rtfd and friends: directories on disk, but the user thinks of
@@ -66,7 +69,10 @@ struct FileItem {
         isHidden = values?.isHidden ?? entry.name.hasPrefix(".")
         isSymlink = entry.isSymbolicLink
         size = entry.size
-        modificationDate = values?.contentModificationDate
+        // The archive's own date when it recorded one. On disk, a directory's
+        // date is only when its skeleton was created, which is when the user
+        // opened the archive — not a date the archive holds (D93).
+        modificationDate = entry.modificationDate ?? values?.contentModificationDate
         creationDate = values?.creationDate
         accessDate = values?.contentAccessDate
         addedDate = values?.addedToDirectoryDate

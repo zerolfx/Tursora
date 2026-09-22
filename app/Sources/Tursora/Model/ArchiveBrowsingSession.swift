@@ -38,6 +38,10 @@ final class ArchiveBrowsingSession {
         let isSymbolicLink: Bool
         let canAccess: Bool
         let size: Int64
+        /// The archive's own date for this entry, from the tree. Preferred over
+        /// the file on disk, whose date for a directory is merely when the
+        /// skeleton was created (D93).
+        var modificationDate: Date? = nil
         var isNavigable: Bool { isDirectory && !isPackage && canAccess }
     }
 
@@ -86,6 +90,16 @@ final class ArchiveBrowsingSession {
     var isLazilyMounted: Bool { tree != nil }
     /// Visible to the smoke suite, which asserts what is and is not on disk.
     var archiveTree: ArchiveTree? { tree }
+
+    /// What `entries(in:)` lists for a directory, counted from the tree rather
+    /// than the disk: an unentered directory holds only its skeleton, so a
+    /// count read from disk would say "0 items" for a folder full of files.
+    /// Matches the listing exactly — extractable children, not dotfiles, which
+    /// is also what Finder's "N items" counts.
+    func listedChildCount(of url: URL) -> Int? {
+        guard let tree, let children = tree.children(of: archivePath(of: url)) else { return nil }
+        return children.filter { $0.isExtractable && !$0.name.hasPrefix(".") }.count
+    }
 
     /// The archive-relative path of a URL inside this session's root.
     func archivePath(of url: URL) -> String {
@@ -258,7 +272,8 @@ final class ArchiveBrowsingSession {
             let values = contained ? try? target.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .fileSizeKey]) : nil
             return Entry(url: url, name: url.lastPathComponent, isDirectory: values?.isDirectory == true,
                          isPackage: values?.isPackage == true, isSymbolicLink: link,
-                         canAccess: contained && values != nil, size: Int64(values?.fileSize ?? 0))
+                         canAccess: contained && values != nil, size: Int64(values?.fileSize ?? 0),
+                         modificationDate: tree?.node(at: archivePath(of: url))?.modificationDate)
         }.sorted {
             if $0.isNavigable != $1.isNavigable { return $0.isNavigable }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
@@ -343,7 +358,10 @@ extension FileOperations {
                 // one that is password-protected, and one that will not fit.
                 try FileOperations.checkArchiveForBrowsing(archive)
                 let entries = try listing.entries(of: archive)
-                let tree = ArchiveTree(entries: entries)
+                // Dates come from the central directory, joined by path; the
+                // listing stays the tool's own (D93).
+                let tree = ArchiveTree(entries: entries,
+                                       modificationDates: ZIPCentralDirectory.modificationDates(of: archive))
                 // Mounting writes only the skeleton and the symbolic links, so
                 // the whole archive's size is not what has to fit; each
                 // directory's batch is checked against free space as it runs.
