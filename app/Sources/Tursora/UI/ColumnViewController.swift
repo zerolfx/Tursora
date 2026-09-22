@@ -7,7 +7,8 @@ import AppKit
 /// chain follows the selection; a selected file shows a preview in the last
 /// column, reusing the docked pane's renderer. **Selecting never navigates
 /// the pane.** The pane's `currentURL` stays the column root; only opening a
-/// folder (double-click, ⌘↓ — Return renames, as everywhere else) moves it. That is a deliberate difference
+/// folder (double-click, ⌘↓ — Return renames by default, as everywhere else,
+/// and opens when rebound to `ShortcutCatalog.openID`) moves it. That is a deliberate difference
 /// from Finder, where the deepest selected folder becomes the location: per-
 /// folder view properties are re-applied on every navigation, and a child
 /// folder remembered as icons would tear the columns down mid-chain (D84).

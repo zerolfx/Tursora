@@ -83,6 +83,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
             self.beginRename(item: item)
         }
         collectionView.onSpace = { [weak self] in self?.onQuickLook?() }
+        collectionView.onOpenRequest = { [weak self] in self?.openSelection() }
         collectionView.onZoom = { [weak self] step in self?.onZoomGesture?(step) }
         collectionView.onBecomeFirstResponder = { [weak self] in
             self?.onFocus?()
@@ -453,6 +454,8 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
 final class FileCollectionView: NSCollectionView {
     var onReturn: (() -> Void)?
     var onSpace: (() -> Void)?
+    /// Return rebound to Open (`ShortcutCatalog.openID`), which ships unbound.
+    var onOpenRequest: (() -> Void)?
     var onZoom: ((Int) -> Void)?
     var onBecomeFirstResponder: (() -> Void)?
     var onResignFirstResponder: (() -> Void)?
@@ -483,7 +486,8 @@ final class FileCollectionView: NSCollectionView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace) { return }
+        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace,
+                                            onOpen: onOpenRequest) { return }
         super.keyDown(with: event)
     }
 

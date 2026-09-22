@@ -8,6 +8,7 @@ enum ShortcutSmokeTests: SmokeSuite {
         Task { @MainActor in
             modelAndSettings()
             await routing()
+            await openOnReturn()
             completion()
         }
     }
@@ -23,12 +24,43 @@ enum ShortcutSmokeTests: SmokeSuite {
         let actions = ShortcutCatalog.actions
         check("every catalog command has a unique persistent ID", Set(actions.map(\.id)).count == actions.count)
         check("catalog includes all menu commands, unbound actions and key-only aliases",
-              actions.count == MainMenu.shortcutDefinitions().count + 15
+              actions.count == MainMenu.shortcutDefinitions().count + 16
               && actions.contains { $0.id == "menu.compressSelection" && $0.defaultShortcut == nil }
+              && actions.contains { $0.id == ShortcutCatalog.openID && $0.defaultShortcut == nil && $0.context == .fileView }
               && actions.contains { $0.id == "menu.toggleFoldersPanel" }
               && actions.contains { $0.id == "window.selectTab.9" })
         check("defaults have no competing commands", store.bindings.values.allSatisfy { value in store.bindings.values.filter { $0.isEquivalent(to: value) }.count == 1 })
         check("reading defaults does not create a saved map", defaults.object(forKey: ShortcutStore.defaultsKey) == nil)
+        // The exact rule that made "bind Return to Open" impossible: a bare
+        // Return is legal for a File View command and refused for a menu one,
+        // because a menu key equivalent is matched app-wide by
+        // NSMenu.performKeyEquivalent, outside the dispatcher's focus gate.
+        let returnKey = AppPreferences.Shortcut(keyEquivalent: "\r", modifierFlags: [])
+        check("bare Return is syntactically legal for a File View command, and not for a menu command",
+              returnKey.syntaxError(context: .fileView) == nil
+              && returnKey.syntaxError(context: .application)?.contains("File View commands") == true,
+              returnKey.syntaxError(context: .application) ?? "no error")
+        check("bare Return is refused for the menu Open command — that is the rule that blocked this",
+              store.validationError(returnKey, for: "menu.openSelection")?.contains("File View commands") == true,
+              store.validationError(returnKey, for: "menu.openSelection") ?? "no error")
+        check("Return cannot move to Open while Rename still owns it",
+              store.validationError(returnKey, for: ShortcutCatalog.openID)?.contains("Rename") == true
+              && store.shortcut(for: ShortcutCatalog.renameID) == returnKey
+              && store.shortcut(for: ShortcutCatalog.openID) == nil,
+              store.validationError(returnKey, for: ShortcutCatalog.openID) ?? "no error")
+        try! store.set(nil, for: ShortcutCatalog.renameID)
+        check("with Rename cleared, Return becomes legal for Open",
+              store.validationError(returnKey, for: ShortcutCatalog.openID) == nil,
+              store.validationError(returnKey, for: ShortcutCatalog.openID) ?? "")
+        try! store.set(returnKey, for: ShortcutCatalog.openID)
+        check("clearing Rename frees Return for Open",
+              store.shortcut(for: ShortcutCatalog.openID) == returnKey && store.shortcut(for: ShortcutCatalog.renameID) == nil)
+        check("Return cannot then go back to Rename while Open holds it",
+              store.validationError(returnKey, for: ShortcutCatalog.renameID)?.contains("Open Selection") == true,
+              store.validationError(returnKey, for: ShortcutCatalog.renameID) ?? "no error")
+        store.resetAll()
+        check("Reset All restores Finder's default: Return renames, Open is unbound",
+              store.shortcut(for: ShortcutCatalog.renameID) == returnKey && store.shortcut(for: ShortcutCatalog.openID) == nil)
         let f8 = AppPreferences.Shortcut(keyEquivalent: "\u{f70b}", modifierFlags: [])
         check("function keys and Command arrows have readable labels", f8.displayString == "F8" && AppPreferences.Shortcut(keyEquivalent: "\u{f700}", modifierFlags: .command).displayString == "⌘↑")
         check("F6 hardware key records even with empty event characters", AppPreferences.Shortcut.from(event("", .function, 97)).displayString == "F6")
@@ -283,6 +315,160 @@ enum ShortcutSmokeTests: SmokeSuite {
         check("Command shortcut dispatch from text fields still reaches the app", menu.performKeyEquivalent(with: event("j", [.command, .option], 38, controller.window)) && controller.window?.firstResponder !== text)
         text.removeFromSuperview()
         store.resetAll()
+    }
+
+
+    /// Return rebound from Rename to Open. `routing()` cannot host these: its
+    /// fixture is `EmptyProvider`, whose every directory lists nothing, so
+    /// `canOpenSelection` is false there and nothing can be opened at all.
+    @MainActor
+    private static func openOnReturn() async {
+        let fm = FileManager.default
+        guard let root = try? SmokeFixtures.temporaryDirectory("shortcut-open") else {
+            check("open-on-Return fixture created", false); return
+        }
+        defer { try? fm.removeItem(at: root) }
+        let folder = root.appendingPathComponent("target", isDirectory: true)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? "x".write(to: root.appendingPathComponent("file.txt"), atomically: true, encoding: .utf8)
+
+        let defaults = UserDefaults.standard
+        let saved = defaults.object(forKey: ShortcutStore.defaultsKey)
+        let oldKey = NSApp.keyWindow
+        let store = AppPreferences.shared.shortcuts
+        defer {
+            store.resetAll()
+            if let saved { defaults.set(saved, forKey: ShortcutStore.defaultsKey) }
+            else { defaults.removeObject(forKey: ShortcutStore.defaultsKey) }
+            if let menu = NSApp.mainMenu { MainMenu.applyPreferences(to: menu) }
+            if oldKey?.isVisible == true { oldKey?.makeKeyAndOrderFront(nil) }
+        }
+        store.resetAll()
+
+        let viewFile = fm.temporaryDirectory.appendingPathComponent("tursora-shortcut-open-\(UUID().uuidString).json")
+        defer { try? fm.removeItem(at: viewFile) }
+        let controller = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(), initialURL: root,
+                                              viewPropertiesStore: DirectoryViewPropertiesStore(fileURL: viewFile))
+        defer { controller.close() }
+        controller.window?.makeKeyAndOrderFront(nil)
+        await loaded(controller.browser)
+        let browser = controller.browser
+        // Never hand a fixture file to NSWorkspace on a headless run.
+        var launched: [URL] = []
+        browser.fileOpener = { launched.append($0); return true }
+        browser.archiveFileOpener = { launched.append($0); return true }
+
+        let returnKey = AppPreferences.Shortcut(keyEquivalent: "\r", modifierFlags: [])
+        func returnEvent(_ code: UInt16 = 36) -> NSEvent { event("\r", [], code, controller.window) }
+
+        for mode in ViewMode.allCases {
+            browser.setViewMode(mode)
+            controller.window?.contentView?.layoutSubtreeIfNeeded()
+            controller.window?.makeFirstResponder(browser.focusView)
+            browser.fileView.select(urls: [folder])
+            await expectEventually("\(mode.rawValue): the fixture folder is selected") {
+                browser.fileView.selectedItems.first?.url.standardizedFileURL == folder.standardizedFileURL
+            }
+
+            // Default: Return renames, and the pane does not move.
+            store.resetAll()
+            check("\(mode.rawValue): by default Return starts a rename and does not navigate",
+                  ShortcutDispatcher.handle(returnEvent(), in: controller)
+                  && browser.currentURL?.standardizedFileURL == root.standardizedFileURL)
+            browser.fileView.endRename(commit: false)
+            controller.window?.makeFirstResponder(browser.focusView)
+
+            // Rebound: clear Rename, give Return to Open.
+            try! store.set(nil, for: ShortcutCatalog.renameID)
+            try! store.set(returnKey, for: ShortcutCatalog.openID)
+            browser.fileView.select(urls: [folder])
+            check("\(mode.rawValue): rebound Return is handled", ShortcutDispatcher.handle(returnEvent(), in: controller))
+            await expectEventually("\(mode.rawValue): rebound Return enters the folder") {
+                browser.currentURL?.standardizedFileURL == folder.standardizedFileURL
+            }
+            check("\(mode.rawValue): rebound Return started no rename", !browser.fileView.isRenaming)
+
+            browser.navigate(to: root)
+            await loaded(browser)
+            browser.fileView.select(urls: [folder])
+            check("\(mode.rawValue): keypad Enter opens as well as Return",
+                  ShortcutDispatcher.handle(returnEvent(76), in: controller))
+            await expectEventually("\(mode.rawValue): keypad Enter entered the folder") {
+                browser.currentURL?.standardizedFileURL == folder.standardizedFileURL
+            }
+            browser.navigate(to: root)
+            await loaded(browser)
+            store.resetAll()
+        }
+
+        // Back in list mode for the remaining, mode-independent rules.
+        browser.setViewMode(.details)
+        controller.window?.makeFirstResponder(browser.focusView)
+        try! store.set(nil, for: ShortcutCatalog.renameID)
+        try! store.set(returnKey, for: ShortcutCatalog.openID)
+
+        launched = []
+        browser.fileView.select(urls: [root.appendingPathComponent("file.txt")])
+        _ = ShortcutDispatcher.handle(returnEvent(), in: controller)
+        check("a rebound Return opens a file with its default application, exactly once",
+              launched.map(\.lastPathComponent) == ["file.txt"], "\(launched)")
+
+        // A multi-item selection opens every item, exactly as ⌘↓ and a
+        // double-click already do. One keypress, N launches: a recorded
+        // contract, not an accident.
+        launched = []
+        browser.fileView.select(urls: [])
+        browser.fileView.select(urls: [root.appendingPathComponent("file.txt"), folder])
+        _ = ShortcutDispatcher.handle(returnEvent(), in: controller)
+        check("a rebound Return on several items opens all of them, as ⌘↓ does",
+              launched.map(\.lastPathComponent) == ["file.txt"], "\(launched)")
+        await expectEventually("the folder in that multi-selection was entered too") {
+            browser.currentURL?.standardizedFileURL == folder.standardizedFileURL
+        }
+        browser.navigate(to: root)
+        await loaded(browser)
+
+        browser.fileView.select(urls: [])
+        check("with nothing selected a rebound Return falls through to the responder",
+              !ShortcutDispatcher.handle(returnEvent(), in: controller))
+
+        // Text input keeps Return while Open holds it.
+        let sink = KeySink(frame: NSRect(x: 0, y: 0, width: 200, height: 30))
+        controller.window?.contentView?.addSubview(sink)
+        controller.window?.makeFirstResponder(sink)
+        check("a text field keeps Return while Open is bound to it",
+              ShortcutDispatcher.handle(returnEvent(), in: controller)
+              && sink.received == 1 && controller.window?.firstResponder === sink)
+        sink.removeFromSuperview()
+        controller.window?.makeFirstResponder(browser.focusView)
+
+        // Rename stays reachable from the menu once Return has moved away.
+        browser.fileView.select(urls: [folder])
+        check("Rename is still reachable from the menu with Return unbound",
+              controller.validateMenuItem(NSMenuItem(title: "", action: #selector(BrowserViewController.renameSelection(_:)), keyEquivalent: "")))
+
+        // The command palette lists and runs the new row.
+        check("the palette enables Open Selection with something selected",
+              CommandPaletteRunner.contextualEnabled(ShortcutCatalog.openID, in: controller))
+        browser.fileView.select(urls: [])
+        check("the palette disables Open Selection with nothing selected",
+              !CommandPaletteRunner.contextualEnabled(ShortcutCatalog.openID, in: controller))
+        browser.fileView.select(urls: [folder])
+        check("the palette runs Open Selection", CommandPaletteRunner.performContextual(ShortcutCatalog.openID, in: controller))
+        await expectEventually("the palette's Open Selection entered the folder") {
+            browser.currentURL?.standardizedFileURL == folder.standardizedFileURL
+        }
+
+        // Catalogue order is the tie-break if an override map holds both.
+        store.resetAll()
+        browser.navigate(to: root)
+        await loaded(browser)
+        browser.fileView.select(urls: [folder])
+        check("with defaults restored Rename wins Return again",
+              ShortcutDispatcher.handle(returnEvent(), in: controller)
+              && browser.currentURL?.standardizedFileURL == root.standardizedFileURL)
+        browser.fileView.endRename(commit: false)
+        controller.window?.makeFirstResponder(browser.focusView)
     }
 
     @MainActor

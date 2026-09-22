@@ -4,6 +4,10 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Added
+
+- **Settings ▸ Shortcuts** gains a File View command, **Open Selection (Alternative)**, which ships with no key. Give it Return and Return opens the selection — entering a folder, launching a file — instead of renaming it, the way Windows Explorer and Dolphin behave. Clear Rename's Return first, since a key has one owner; Rename stays available from File ▸ Rename, the context menu and the slow double-click.
+
 ### Changed
 
 - With **Terminal panel** turned off in Settings, the Terminal button is now gone from the toolbar instead of sitting there permanently greyed out. View → Show Terminal already hid itself on that setting; the toolbar now agrees with it. Turning the setting back on returns the button to its place, and a panel you had open is still there waiting.

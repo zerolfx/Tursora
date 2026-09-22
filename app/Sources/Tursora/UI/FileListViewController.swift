@@ -221,6 +221,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             self.beginRename(row: row)
         }
         tableView.onSpace = { [weak self] in self?.onQuickLook?() }
+        tableView.onOpenRequest = { [weak self] in self?.openSelection() }
         tableView.onRenameRequest = { [weak self] row in self?.beginRename(row: row) }
         tableView.onBecomeFirstResponder = { [weak self] in self?.onFocus?() }
         tableView.onZoom = { [weak self] step in self?.onZoomGesture?(step) }
@@ -666,6 +667,8 @@ final class FileOutlineView: NSOutlineView {
     var onMiddleClickRow: ((Int) -> Void)?
     var onReturn: (() -> Void)?
     var onSpace: (() -> Void)?
+    /// Return rebound to Open (`ShortcutCatalog.openID`), which ships unbound.
+    var onOpenRequest: (() -> Void)?
     var onRenameRequest: ((Int) -> Void)?
     var onBecomeFirstResponder: (() -> Void)?
     var onZoom: ((Int) -> Void)?
@@ -701,7 +704,8 @@ final class FileOutlineView: NSOutlineView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace) { return }
+        if ShortcutDispatcher.handleFileView(event, onRename: onReturn, onQuickLook: onSpace,
+                                            onOpen: onOpenRequest) { return }
         super.keyDown(with: event)
     }
 
