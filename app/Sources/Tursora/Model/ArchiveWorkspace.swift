@@ -269,8 +269,17 @@ final class ArchiveWorkspace {
         guard !ended else { throw ArchiveBrowsingSession.SessionError.closed }
         if let record = record(for: location) {
             let safe = try record.session.validatedURL(record.physical)
-            guard FileManager.default.fileExists(atPath: safe.path) else {
-                throw ArchiveBrowsingSession.SessionError.unavailableItem
+            if !FileManager.default.fileExists(atPath: safe.path) {
+                // A lazily mounted session has only the skeleton and the
+                // symbolic links until a directory is listed, so something
+                // addressing a file straight by URL — a restored session, a
+                // typed path, a nested archive — has to bring it in first.
+                // Tried only on a miss: a directory is always in the skeleton,
+                // so listing one never drags in its siblings.
+                try record.session.materializeDirectory(containing: safe.deletingLastPathComponent())
+                guard FileManager.default.fileExists(atPath: safe.path) else {
+                    throw ArchiveBrowsingSession.SessionError.unavailableItem
+                }
             }
             return safe
         }
@@ -353,6 +362,8 @@ final class ArchiveFileProvider: FileProvider {
     func listDirectory(_ url: URL) throws -> [FileItem] {
         guard let session = workspace.session(for: url) else { return try base.listDirectory(url) }
         let physical = try workspace.readableURL(for: url)
+        // `entries(in:)` materializes the directory itself. It runs on the
+        // listing queue, never the main thread (DirectoryModel.load).
         return try session.entries(in: physical).map { entry in
             FileItem(archiveEntry: entry, logicalURL: workspace.logicalURL(for: entry.url), session: session)
         }

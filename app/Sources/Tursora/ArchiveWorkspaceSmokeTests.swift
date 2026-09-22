@@ -50,6 +50,41 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                 async let second = prepare(archive, workspace: workspace)
                 let (session, reused) = try await (first, second)
                 check("concurrent preparation coalesces into one retained snapshot", session === reused)
+
+                // The assertion the whole feature rests on: mounting reads the
+                // table of contents and writes the shape, not the bytes. Stated
+                // as "no regular file anywhere under the root", which is stabler
+                // than a wall clock and fails loudly if staging ever returns.
+                check("a mounted archive is lazily backed", session.isLazilyMounted)
+                var staged: [String] = []
+                if let walker = fm.enumerator(at: session.rootURL, includingPropertiesForKeys: nil) {
+                    for case let url as URL in walker {
+                        let attributes = try fm.attributesOfItem(atPath: url.path)
+                        if attributes[.type] as? FileAttributeType == .typeRegular {
+                            staged.append(session.archivePath(of: url))
+                        }
+                    }
+                }
+                check("mounting a ZIP writes no file contents at all", staged.isEmpty, "\(staged)")
+                check("mounting a ZIP does write the directory skeleton",
+                      fm.fileExists(atPath: session.rootURL.appendingPathComponent(folder.lastPathComponent).path))
+                check("mounting a ZIP writes the symbolic links, so containment can be judged",
+                      (try? fm.destinationOfSymbolicLink(atPath: session.rootURL
+                        .appendingPathComponent(folder.lastPathComponent)
+                        .appendingPathComponent("escape").path)) != nil)
+
+                // Listing one directory brings its own files and nothing else.
+                _ = try provider.listDirectory(logicalFolder)
+                let deepPath = session.rootURL.appendingPathComponent(folder.lastPathComponent)
+                    .appendingPathComponent(nested.lastPathComponent)
+                    .appendingPathComponent(note.lastPathComponent)
+                check("listing a directory leaves a deeper directory's files alone",
+                      !fm.fileExists(atPath: deepPath.path))
+                _ = try provider.listDirectory(logicalNested)
+                check("listing a directory brings in that directory's own files",
+                      fm.fileExists(atPath: deepPath.path)
+                      && (try? String(contentsOf: deepPath, encoding: .utf8)) == "snapshot contents")
+
                 check("ZIP session preserves original logical archive identity", session.archiveURL == archive)
                 check("root maps between original ZIP and private directory", try workspace.readableURL(for: archive) == session.rootURL && workspace.logicalURL(for: session.rootURL) == archive)
                 let physicalNote = try workspace.readableURL(for: logicalNote)

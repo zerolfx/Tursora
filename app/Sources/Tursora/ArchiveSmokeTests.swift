@@ -102,6 +102,7 @@ enum ArchiveSmokeTests: SmokeSuite {
                 listingParser()
                 progressAccounting()
                 try browsingGuardrails(in: root)
+                archiveTree()
                 try await extractionProgress(archive: folderZIP, root: root)
 
                 try fm.removeItem(at: root)
@@ -111,6 +112,114 @@ enum ArchiveSmokeTests: SmokeSuite {
                 check("archive: unexpected operation error", false, error.localizedDescription)
             }
         }
+    }
+
+    /// The browsable shape built from a table of contents alone. Pure: every
+    /// rule here is a measured property of what bsdtar will do on extraction,
+    /// and a tree that disagrees with the extractor produces rows that can
+    /// never be opened.
+    private static func archiveTree() {
+        func entry(_ name: String, _ size: Int64 = 0,
+                   _ kind: ArchiveEntrySummary.Kind = .file) -> ArchiveEntrySummary {
+            ArchiveEntrySummary(name: name, uncompressedSize: size, kind: kind)
+        }
+
+        // A Python-written ZIP stores no directory records at all (measured),
+        // so the hierarchy has to be synthesized or nothing is navigable.
+        let bare = ArchiveTree(entries: [entry("a/b/c/deep.txt", 4), entry("a/other.txt", 5), entry("top.txt", 3)])
+        check("archive tree: intermediate directories absent from the archive are synthesized",
+              bare.node(at: "a")?.isDirectory == true && bare.node(at: "a/b")?.isDirectory == true
+              && bare.node(at: "a/b/c")?.isDirectory == true)
+        check("archive tree: the root lists the archive's top level",
+              Set((bare.children(of: "") ?? []).map(\.name)) == ["a", "top.txt"],
+              "\((bare.children(of: "") ?? []).map(\.name))")
+        check("archive tree: a file has no children, a directory does",
+              bare.children(of: "top.txt") == nil && bare.children(of: "a")?.count == 2)
+        check("archive tree: a directory reports its direct child count for an unstaged listing",
+              bare.node(at: "a")?.childCount == 2 && bare.node(at: "a/b")?.childCount == 1)
+
+        // An explicit directory record and an implied one must not both appear.
+        let explicitDir = ArchiveTree(entries: [entry("a/", 0, .directory), entry("a/inside.txt", 2)])
+        check("archive tree: an explicit directory record does not duplicate the implied one",
+              explicitDir.children(of: "")?.count == 1 && explicitDir.node(at: "a")?.isDirectory == true)
+
+        // Two entries of one name are legal; extraction yields the later one.
+        let duplicates = ArchiveTree(entries: [entry("dup.txt", 5), entry("dup.txt", 6)])
+        check("archive tree: a duplicated name collapses to the entry extraction would win with",
+              duplicates.children(of: "")?.count == 1 && duplicates.node(at: "dup.txt")?.uncompressedSize == 6)
+
+        // A file entry and a directory implied by another entry's path.
+        let clash = ArchiveTree(entries: [entry("clash", 11), entry("clash/inside.txt", 6)])
+        check("archive tree: a real file beats a directory implied by another entry",
+              clash.node(at: "clash")?.kind == .file, "\(String(describing: clash.node(at: "clash")?.kind))")
+
+        // bsdtar's own path rewrites, reproduced so a row resolves where the
+        // extraction will really write.
+        let rewritten = ArchiveTree(entries: [entry("/etc/evil.txt", 3), entry("C:/win.txt", 5), entry("./dotslash.txt", 3)])
+        check("archive tree: a leading slash is stripped, as the tool strips it",
+              rewritten.node(at: "etc/evil.txt") != nil && rewritten.node(at: "/etc/evil.txt") != nil,
+              "\(rewritten.node(at: "etc/evil.txt")?.path ?? "missing")")
+        check("archive tree: the member keeps the archive's own spelling while the path is the rewritten one",
+              rewritten.node(at: "etc/evil.txt")?.member == "/etc/evil.txt")
+        check("archive tree: a drive-letter prefix is stripped, as the tool strips it",
+              rewritten.node(at: "win.txt") != nil, "\((rewritten.children(of: "") ?? []).map(\.path))")
+        check("archive tree: a leading ./ is dropped", rewritten.node(at: "dotslash.txt") != nil)
+
+        // Rows that can be listed but never extracted stay visible and inert,
+        // exactly like an escaping symbolic link does today.
+        let hostile = ArchiveTree(entries: [entry("up/../escape.txt", 3), entry("tab" + "\\" + "there.txt", 3), entry("safe.txt", 3)])
+        check("archive tree: a .. entry is listed and marked unextractable",
+              hostile.node(at: "up/escape.txt")?.isExtractable == false
+              || hostile.inertPaths.contains { $0.hasSuffix("escape.txt") },
+              "\(hostile.inertPaths)")
+        check("archive tree: a name the listing had to escape is unextractable",
+              hostile.inertPaths.contains { $0.contains("here.txt") }, "\(hostile.inertPaths)")
+        check("archive tree: an ordinary sibling of a hostile entry is unaffected",
+              hostile.node(at: "safe.txt")?.isExtractable == true)
+
+        // Escaping is mandatory: unescaped star*.txt takes three files.
+        check("archive tree: glob metacharacters in a member are escaped",
+              ArchiveTree.escapeMember("star*.txt") == "star\\*.txt"
+              && ArchiveTree.escapeMember("brack[1].txt") == "brack\\[1\\].txt"
+              && ArchiveTree.escapeMember("q?.txt") == "q\\?.txt",
+              ArchiveTree.escapeMember("brack[1].txt"))
+        check("archive tree: characters a glob does not use are left alone",
+              ArchiveTree.escapeMember("a~{b}.txt") == "a~{b}.txt")
+
+        // UTType(filenameExtension:) alone calls .app an application-FILE,
+        // which is not a package; conforming the lookup to .directory is what
+        // matches the real isPackageKey.
+        check("archive tree: a bundle extension is recognised as a package",
+              ArchiveTree.isPackage("My.app") && ArchiveTree.isPackage("doc.rtfd") && ArchiveTree.isPackage("p.pages"))
+        check("archive tree: a framework and a plain folder are not packages",
+              !ArchiveTree.isPackage("f.framework") && !ArchiveTree.isPackage("plaindir"))
+
+        // A package has to be pulled whole or the app it represents is broken.
+        let bundle = ArchiveTree(entries: [entry("Demo.app/Contents/Info.plist", 5),
+                                           entry("Demo.app/Contents/MacOS/Demo", 3),
+                                           entry("note.txt", 4)])
+        check("archive tree: a bundle is one package node, not a directory to walk into",
+              bundle.node(at: "Demo.app")?.isPackage == true)
+        let plan = bundle.materializationPlan(for: "")
+        check("archive tree: the root's plan takes its files with -n and its packages whole",
+              plan.leaves == ["note.txt"] && plan.packages == ["Demo.app"],
+              "leaves=\(plan.leaves) packages=\(plan.packages)")
+        check("archive tree: a package is not in the directory skeleton — it arrives whole",
+              !bundle.directoryPaths.contains("Demo.app"), "\(bundle.directoryPaths)")
+        check("archive tree: the skeleton lists parents before children",
+              bare.directoryPaths == ["a", "a/b", "a/b/c"], "\(bare.directoryPaths)")
+
+        // Sub-directories need nothing: the skeleton already holds them.
+        let nested = ArchiveTree(entries: [entry("dir/inner/x.txt", 1), entry("dir/y.txt", 2)])
+        let dirPlan = nested.materializationPlan(for: "dir")
+        check("archive tree: a directory's plan takes its own files and not its subtree",
+              dirPlan.leaves == ["dir/y.txt"] && dirPlan.packages.isEmpty,
+              "leaves=\(dirPlan.leaves)")
+
+        let links = ArchiveTree(entries: [entry("alias", 0, .symbolicLink), entry("real.txt", 4)])
+        check("archive tree: symbolic links are named for materialization at mount",
+              links.symbolicLinkMembers == ["alias"], "\(links.symbolicLinkMembers)")
+        check("archive tree: an empty archive yields an empty tree", ArchiveTree(entries: []).isEmpty)
     }
 
     /// Stage 0 of lazy browsing: the refusals that must happen before a single

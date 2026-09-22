@@ -6,6 +6,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ### Changed
 
+- **Opening a ZIP no longer extracts it.** The archive is read and its structure shown straight away; a folder's files are brought in when you open that folder. A large archive that used to take seconds to open now lists almost immediately, and browsing one folder no longer writes the whole archive to disk. Applications and multi-file documents inside an archive are still brought in whole, so they open correctly.
 - **A password-protected ZIP is now refused by name** when you try to browse or extract it, instead of failing part way through with a generic message.
 - A ZIP that is too large for the free space on your startup volume is refused before anything is written, and a damaged ZIP now reports what went wrong instead of appearing to be an empty archive.
 

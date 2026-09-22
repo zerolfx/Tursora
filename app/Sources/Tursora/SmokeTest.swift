@@ -74,6 +74,7 @@ enum SmokeTest: SmokeSuite {
             ArchivePreparationSmokeTests.run,
             ArchiveBrowserSmokeTests.run,
             ExtractTaskSmokeTests.run,
+            LazyArchiveSmokeTests.run,
             SplitToolbarSmokeTests.run,
             FolderTreeSmokeTests.run,
             TrashSmokeTests.run,

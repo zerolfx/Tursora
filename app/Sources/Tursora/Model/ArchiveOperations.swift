@@ -246,12 +246,55 @@ extension FileOperations {
     /// without opening /dev/tty, which redirecting stdin alone cannot prevent.
     /// `-v` is added only when something is reading the stream: the ZIP
     /// browsing path keeps a clean error log.
-    private static func extractionArguments(archive: URL, output: URL, verbose: Bool) -> [String] {
-        (verbose ? ["-x", "-v"] : ["-x"]) + [
+    private static func extractionArguments(archive: URL, output: URL, verbose: Bool,
+                                            memberList: URL? = nil, noRecursion: Bool = false) -> [String] {
+        var arguments = ["-x"]
+        if verbose { arguments.append("-v") }
+        // `-n` stops a leaf's name prefix-matching a deeper entry: a member
+        // `clash` otherwise also tries `clash/inside.txt` and reports an error
+        // (measured). It must NOT be used for a directory or a package — a ZIP
+        // need store no directory record, and with `-n` such a member is
+        // "Not found in archive". `-q`/`--fast-read` must never be used at all:
+        // it stops at the first match and silently truncates a subtree.
+        if noRecursion { arguments.append("-n") }
+        arguments += [
             "-f", archive.path, "-C", output.path,
             "--no-same-owner", "--no-same-permissions", "--mac-metadata", "--no-acls", "--no-fflags",
             "--passphrase", UUID().uuidString,
         ]
+        // A member list goes through a file, never argv: ARG_MAX is 1 MiB and a
+        // directory can hold more names than that.
+        if let memberList { arguments += ["-T", memberList.path] }
+        return arguments
+    }
+
+    /// Extract exactly the named members of an archive into `output`.
+    ///
+    /// Two measured properties shape this and must not be softened.
+    /// **Exit status is archive-wide**: a batch of two members where one is
+    /// missing exits 1 *and* writes the other, so a non-zero status does not
+    /// mean nothing happened. And **existence is never evidence of success**:
+    /// a member of an encrypted archive exits 1 while leaving a correctly-sized,
+    /// entirely zero-filled file at the right path. Callers get the tool's own
+    /// stderr so they can tell which members failed and remove their debris.
+    /// `scratch` holds the member list and the tool's error log. It must sit
+    /// **beside** the extraction root, never inside it: anything written under
+    /// the root, even briefly and even hidden, is part of what the user is
+    /// browsing.
+    static func materializeArchiveMembers(archive: URL, into output: URL, scratch: URL,
+                                          members: [String], noRecursion: Bool,
+                                          cancellation: ArchivePreparationCancellation? = nil) throws {
+        guard !members.isEmpty else { return }
+        let workspace = scratch.appendingPathComponent(".tursora-materialize-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let list = workspace.appendingPathComponent("members.lst")
+        try Data((members.joined(separator: "\n") + "\n").utf8).write(to: list)
+        try runArchiveTool("/usr/bin/tar",
+                           arguments: extractionArguments(archive: archive, output: output, verbose: false,
+                                                          memberList: list, noRecursion: noRecursion),
+                           workspace: workspace, cancellation: cancellation)
     }
 
     private static func archiveOperation(completion: @escaping (Result<URL, Error>) -> Void,
@@ -264,7 +307,7 @@ extension FileOperations {
 
     /// An extracted application must retain the downloaded archive's quarantine.
     /// Never follow extracted symlinks while setting metadata on the new tree.
-    private static func propagateArchiveQuarantine(from archive: URL, to root: URL,
+    static func propagateArchiveQuarantine(from archive: URL, to root: URL,
                                                     cancellation: ArchivePreparationCancellation? = nil) throws {
         try cancellation?.checkCancellation()
         let attribute = "com.apple.quarantine"

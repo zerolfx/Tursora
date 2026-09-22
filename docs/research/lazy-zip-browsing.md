@@ -30,6 +30,21 @@ staging the whole archive once. So materializing **per directory** — one invoc
 direct children — keeps both the time win and the disk win, while true per-entry materialization keeps
 only the disk win and starts losing time as soon as the user opens things.
 
+### End to end, on a 10,000-entry archive
+
+Re-measured after the change landed, on a 100-directory × 100-file archive (1.2 MB compressed,
+39 MB expanded), under the app's own flags:
+
+| operation | time | written |
+|---|---|---|
+| list the whole archive (`tar -tvf`) | **0.091 s** | nothing |
+| materialize one directory (100 files) | **0.165 s** | 400 KB |
+| extract the whole archive — what opening used to cost | **2.251 s** | 39 MB |
+
+Opening therefore costs the listing plus the directory skeleton — about 0.1 s against 2.25 s — and
+browsing one folder writes 400 KB instead of 39 MB. The gap widens with archive size, because the full
+extraction is linear in total content while the listing is linear only in entry count.
+
 ## Encryption: the listing lies, and the failure leaves debris
 
 ```
@@ -109,10 +124,49 @@ A third claim, that `--mac-metadata` costs resource forks, is also false — mea
 extraction **with** the flag restores `com.apple.ResourceFork` and `com.apple.metadata:*`, and without it
 neither survives. The flag stays.
 
+## What shipped
+
+**Mount, not expand.** Opening an archive reads its table of contents, creates a directory skeleton and
+writes its symbolic links. No file's bytes are read. A directory's own files arrive in one batch when
+that directory is listed, and an application bundle or multi-file document is brought in whole.
+
+The batch lives in `entries(in:)` rather than in its caller. That is deliberate: `entries(in:)` reads
+the disk, and the disk is only correct after materialization, so leaving the two apart means every
+caller has to remember. The first caller that forgot was found immediately by an existing check — the
+session-level entry test, which drives `entries(in:)` directly rather than through the provider.
+
+**Symbolic links at mount, not lazily.** `entries(in:)` derives `canAccess` from `validatedURL` on the
+real link, so an escaping link that is not yet on disk is indistinguishable from a safe one. Writing
+them at mount keeps the existing inertness guarantees exactly as they were.
+
+**`-n` for a leaf, never for a directory.** A member that names a leaf otherwise prefix-matches deeper
+entries: member `clash` also tries `clash/inside.txt` and reports an error. But with `-n`, a directory
+the ZIP never stored explicitly is "Not found in archive" — which is most directories. So the two kinds
+go in two invocations, and `-q` is never used at all: it stops at the first match per pattern and
+silently truncates a subtree.
+
+**Path rewrites are reproduced, not assumed.** Measured against bsdtar: `/etc/evil.txt` extracts to
+`etc/evil.txt`, `C:/win.txt` to `win.txt`, `./dotslash.txt` to `dotslash.txt`. The tree performs the
+same rewrites so a listed row resolves to the path extraction will actually write. A row that cannot be
+addressed at all — a `..` component, or a name the listing had to escape — is listed and inert.
+
+One behaviour change falls out of that and is worth stating plainly: an archive containing a `..` entry
+**used to refuse to open at all**, because the whole-archive extraction exited non-zero. Now every other
+entry browses normally and that one row is visible and inert, exactly as an escaping symbolic link
+already was.
+
 ## Status
 
 Stage 0 (the pre-flight refusals above, the throwing listing seam, the free-space guard and the
-lock-based launch sweep) is implemented and covered in `ArchiveSmokeTests`. The lazy mount itself is the
-next stage; until it lands, browsing still stages the whole archive.
+lock-based launch sweep) and the lazy mount are both implemented. Coverage: pure tree rules in
+`ArchiveSmokeTests`; the invariant that mounting writes no regular file anywhere under the root, and
+that listing one directory leaves a deeper one alone, in `ArchiveWorkspaceSmokeTests`; and the pane
+path in all three views — with a split pane and a second tab open and with a filter and grouping
+active, plus the bundle and `..` cases — in `LazyArchiveSmokeTests`.
 
-No computer-use pass on the packaged app has been made for any of this.
+Still missing, and recorded in the roadmap rather than built: a single directory holding tens of
+thousands of files still pays for all of them on entry, and rows outside an entered directory have no
+modification date, because `tar -tvf`'s date column cannot supply one.
+
+No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
+opening a large archive actually feels.

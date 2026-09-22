@@ -116,6 +116,62 @@ enum SmokeFixtures {
         return url
     }
 
+    /// A ZIP holding one ordinary entry and one that resolves outside the
+    /// archive root. bsdtar refuses the second; the first must still browse.
+    static func zipWithParentTraversal() -> Data {
+        zip([("safe.txt", "safe"), ("up/../escape.txt", "escaped")])
+    }
+
+    /// A minimal ZIP writer, for fixtures a real archiver will not produce.
+    static func zip(_ entries: [(name: String, contents: String)]) -> Data {
+        var data = Data(), central = Data()
+        func append<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+            var value = value.littleEndian
+            withUnsafeBytes(of: &value) { data.append(contentsOf: $0) }
+        }
+        for entry in entries {
+            let name = Data(entry.name.utf8), payload = Data(entry.contents.utf8)
+            let offset = UInt32(data.count)
+            var crc: UInt32 = 0xffffffff
+            for byte in payload {
+                crc ^= UInt32(byte)
+                for _ in 0..<8 { crc = (crc >> 1) ^ (crc & 1 == 0 ? 0 : 0xedb88320) }
+            }
+            crc ^= 0xffffffff
+            for (signature, isCentral) in [(UInt32(0x04034b50), false), (UInt32(0x02014b50), true)] {
+                var block = Data()
+                append(signature, to: &block)
+                if isCentral { append(UInt16(20), to: &block) }
+                append(UInt16(20), to: &block)          // version needed
+                append(UInt16(0), to: &block)           // flags
+                append(UInt16(0), to: &block)           // stored
+                append(UInt32(0), to: &block)           // time/date
+                append(crc, to: &block)
+                append(UInt32(payload.count), to: &block)
+                append(UInt32(payload.count), to: &block)
+                append(UInt16(name.count), to: &block)
+                append(UInt16(0), to: &block)           // extra
+                if isCentral {
+                    append(UInt16(0), to: &block)       // comment
+                    append(UInt16(0), to: &block)       // disk
+                    append(UInt16(0), to: &block)       // internal attrs
+                    append(UInt32(0o100644 << 16), to: &block)
+                    append(offset, to: &block)
+                }
+                block.append(name)
+                if isCentral { central.append(block) } else { data.append(block); data.append(payload) }
+            }
+        }
+        let centralOffset = UInt32(data.count)
+        data.append(central)
+        append(UInt32(0x06054b50), to: &data)
+        append(UInt16(0), to: &data); append(UInt16(0), to: &data)
+        append(UInt16(entries.count), to: &data); append(UInt16(entries.count), to: &data)
+        append(UInt32(central.count), to: &data); append(centralOffset, to: &data)
+        append(UInt16(0), to: &data)
+        return data
+    }
+
     /// `FileOperations.compress` as an async call for fixture construction.
     static func compress(_ urls: [URL], to directory: URL) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
