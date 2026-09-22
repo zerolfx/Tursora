@@ -27,6 +27,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var previewWidth: CGFloat?
     private var previewObserver: NSObjectProtocol?
     private var isCheckingTerminalClose = false
+    private var isUpdatingTerminalToolbarPresence = false
     private var preferencesObserver: NSObjectProtocol?
     private var shortcutsObserver: NSObjectProtocol?
     private var displayedExtensions = AppPreferences.showFileExtensions
@@ -534,19 +535,46 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     var terminalToolbarButtonForTesting: NSButton? { terminalButton }
 
     private func syncTerminalToolbar() {
-        let enabled = AppPreferences.experimentalTerminalEnabled
+        syncTerminalToolbarPresence()
+        syncTerminalToolbarItem()
+    }
+
+    /// The button is present only while Settings keeps the entry point on. A
+    /// permanently dimmed button explains nothing about why it cannot be used,
+    /// so the toolbar drops it exactly as the View menu hides its command.
+    private func syncTerminalToolbarPresence() {
+        guard let toolbar = window?.toolbar, !isUpdatingTerminalToolbarPresence else { return }
+        isUpdatingTerminalToolbarPresence = true
+        defer { isUpdatingTerminalToolbarPresence = false }
+        let placed = toolbar.items.firstIndex { $0.itemIdentifier == ToolbarID.terminal }
+        switch (AppPreferences.experimentalTerminalEnabled, placed) {
+        case (true, nil):
+            // Back into its own place: after Split View, ahead of the view modes.
+            let split = toolbar.items.firstIndex { $0.itemIdentifier == ToolbarID.split }
+            toolbar.insertItem(withItemIdentifier: ToolbarID.terminal,
+                               at: split.map { $0 + 1 } ?? toolbar.items.count)
+        case (false, .some(let index)):
+            toolbar.removeItem(at: index)
+        default: break
+        }
+        // Toolbars sharing an identifier share their item configuration, so a
+        // second window's insertion or removal reaches this one without passing
+        // through the code above. The cached references are therefore read back
+        // from the toolbar rather than assumed from what this call just did.
+        terminalToolbarItem = toolbar.items.first { $0.itemIdentifier == ToolbarID.terminal }
+        terminalButton = terminalToolbarItem?.view as? NSButton
+    }
+
+    private func syncTerminalToolbarItem() {
         let title = isTerminalVisible ? "Hide Terminal" : "Show Terminal"
         let state: NSControl.StateValue = isTerminalVisible ? .on : .off
         terminalButton?.state = state
-        terminalButton?.isEnabled = enabled
-        terminalButton?.toolTip = enabled ? shortcutTooltip(title, action: "menu.toggleTerminal") : "Enable Terminal in Settings to open a shell here."
+        terminalButton?.toolTip = shortcutTooltip(title, action: "menu.toggleTerminal")
         terminalButton?.setAccessibilityLabel(title)
         terminalToolbarItem?.label = title
         terminalToolbarItem?.toolTip = terminalButton?.toolTip
-        terminalToolbarItem?.isEnabled = enabled
         terminalToolbarItem?.menuFormRepresentation?.title = title
         terminalToolbarItem?.menuFormRepresentation?.state = state
-        terminalToolbarItem?.menuFormRepresentation?.isEnabled = enabled
     }
 
     private var splitActionTitle: String {
@@ -744,7 +772,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case ToolbarID.forward: return browser.canGoForward
         case ToolbarID.up:      return browser.canGoUp
         case ToolbarID.share:   return !sharingItems.isEmpty
-        case ToolbarID.terminal: return AppPreferences.experimentalTerminalEnabled
         default: return true
         }
     }
@@ -828,11 +855,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: - NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.sidebar, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.split, ToolbarID.terminal, ToolbarID.viewMode, ToolbarID.group, ToolbarID.share, ToolbarID.more, ToolbarID.search]
+        toolbarAllowedItemIdentifiers(toolbar).filter {
+            $0 != ToolbarID.terminal || AppPreferences.experimentalTerminalEnabled
+        }
     }
 
+    /// Always names the terminal, whatever Settings says: `insertItem` may only
+    /// place an identifier its delegate allows, and that is how the button
+    /// comes back when the entry point is switched on again.
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        [ToolbarID.sidebar, ToolbarID.back, ToolbarID.forward, ToolbarID.up, .flexibleSpace, ToolbarID.split, ToolbarID.terminal, ToolbarID.viewMode, ToolbarID.group, ToolbarID.share, ToolbarID.more, ToolbarID.search]
     }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
@@ -859,7 +891,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let (item, button) = toggleItem(id, "Terminal", "terminal", #selector(toggleTerminal(_:)), overflowTitle: "Show Terminal")
             terminalButton = button
             terminalToolbarItem = item
-            syncTerminalToolbar()
+            syncTerminalToolbarItem()
             return item
         case ToolbarID.share:
             let item = NSSharingServicePickerToolbarItem(itemIdentifier: id)

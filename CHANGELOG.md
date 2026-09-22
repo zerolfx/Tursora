@@ -4,6 +4,11 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Changed
+
+- With **Terminal panel** turned off in Settings, the Terminal button is now gone from the toolbar instead of sitting there permanently greyed out. View → Show Terminal already hid itself on that setting; the toolbar now agrees with it. Turning the setting back on returns the button to its place, and a panel you had open is still there waiting.
+- Settings ▸ Terminal no longer accepts changes while the Terminal panel is turned off, since nothing there could apply. The page still shows your saved shell, font and colours, with a line naming the option that hands it back.
+
 ## [0.4.3] - 2026-09-17
 
 ### Fixed

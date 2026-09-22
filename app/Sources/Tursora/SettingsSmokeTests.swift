@@ -109,7 +109,14 @@ enum SettingsSmokeTests: SmokeSuite {
               && controller.shortcutMessage.stringValue.isEmpty)
         store.experimentalTerminalEnabled = false
         check("settings UI: external preference changes refresh controls", controller.terminalCheckbox.state == .off)
+        let terminalPage = controller.terminalSettingsController
+        check("settings UI: switching the panel off makes the Terminal page inert",
+              !terminalPage.isAvailable && !terminalPage.shellMode.isEnabled && !terminalPage.fontPicker.isEnabled
+              && !terminalPage.resetButton.isEnabled && !terminalPage.unavailableNote.isHidden)
         store.experimentalTerminalEnabled = true
+        check("settings UI: switching the panel on hands the Terminal page back",
+              terminalPage.isAvailable && terminalPage.shellMode.isEnabled && terminalPage.fontPicker.isEnabled
+              && terminalPage.resetButton.isEnabled && terminalPage.unavailableNote.isHidden)
         controller.shortcutRecorder.startRecording(nil)
         let recordedEvent = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .control,
                                             timestamp: 0, windowNumber: 0, context: nil,
