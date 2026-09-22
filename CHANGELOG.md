@@ -6,6 +6,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ### Added
 
+- **Extracting a ZIP** now appears in **File Operations** with a real progress bar and a **Cancel** button, instead of a small spinner you could not stop. Each selected archive gets its own row; cancelling one stops the rest, and closing the window cancels the extraction just as it does a copy.
 - **Settings ▸ Shortcuts** gains a File View command, **Open Selection (Alternative)**, which ships with no key. Give it Return and Return opens the selection — entering a folder, launching a file — instead of renaming it, the way Windows Explorer and Dolphin behave. Clear Rename's Return first, since a key has one owner; Rename stays available from File ▸ Rename, the context menu and the slow double-click.
 
 ### Changed

@@ -53,9 +53,24 @@ final class ArchivePreparationCancellation: @unchecked Sendable {
     }
 }
 
+/// Determinate progress for an extraction in flight. The tool's own verbose
+/// stream drives it, so there is no second source of truth to disagree with
+/// what is actually being written (D90).
+struct ArchiveToolProgress {
+    let listing: [ArchiveEntrySummary]
+    /// Where the tool writes; the entry being extracted is measured under it.
+    let outputRoot: URL
+    var pollInterval: TimeInterval = 0.05
+    /// Called on the worker thread, not the main queue.
+    let onProgress: (_ completedBytes: Int64, _ totalBytes: Int64?, _ entry: ArchiveEntrySummary?) -> Void
+    /// False asks the tool to stop.
+    let isCancelled: () -> Bool
+}
+
 extension FileOperations {
     enum ArchiveError: LocalizedError {
         case noSelection, duplicateNames, destinationInsideSelection, unsupportedArchive, invalidArchive, emptyArchive
+        case cancelled
         case commandFailed(String)
 
         var errorDescription: String? {
@@ -66,6 +81,7 @@ extension FileOperations {
             case .unsupportedArchive: return "Only ZIP archives can be extracted here."
             case .invalidArchive: return "This file does not appear to be a valid ZIP archive."
             case .emptyArchive: return "The archive contains no files."
+            case .cancelled: return "The extraction was cancelled."
             case .commandFailed(let message): return message
             }
         }
@@ -115,6 +131,46 @@ extension FileOperations {
         extract(archive: archive, to: directory, preserveRoot: false, completion: completion)
     }
 
+    /// Extract with determinate progress and cancellation, for the explicit
+    /// Extract command. The three-argument `extract` above is unchanged and
+    /// still used where no progress is wanted.
+    static func extract(archive: URL, to directory: URL,
+                        listing: ArchiveListing,
+                        onProgress: @escaping (_ completedBytes: Int64, _ totalBytes: Int64?, _ entry: String?) -> Void,
+                        isCancelled: @escaping () -> Bool,
+                        pollInterval: TimeInterval = 0.05,
+                        completion: @escaping (Result<URL, Error>) -> Void) {
+        archiveOperation(completion: completion) {
+            guard canExtractArchive(archive) else { throw ArchiveError.unsupportedArchive }
+            try checkExtractionSignature(archive)
+            if isCancelled() { throw ArchiveError.cancelled }
+            // The listing is the tool's own, so it agrees by construction with
+            // what the tool will write. A failure here is not fatal: extraction
+            // still runs, it just cannot report a percentage.
+            let entries = (try? listing.entries(of: archive)) ?? []
+            return try withArchiveWorkspace(in: directory) { workspace in
+                let output = workspace.appendingPathComponent("contents", isDirectory: true)
+                try FileManager.default.createDirectory(at: output, withIntermediateDirectories: false)
+                let progress = ArchiveToolProgress(
+                    listing: entries, outputRoot: output, pollInterval: pollInterval,
+                    onProgress: { bytes, total, entry in onProgress(bytes, entries.isEmpty ? nil : total, entry?.name) },
+                    isCancelled: isCancelled)
+                try runArchiveTool("/usr/bin/tar", arguments: extractionArguments(archive: archive, output: output, verbose: true),
+                                   workspace: workspace, progress: progress)
+                if isCancelled() { throw ArchiveError.cancelled }
+                try propagateArchiveQuarantine(from: archive, to: output)
+                let items = try FileManager.default.contentsOfDirectory(at: output, includingPropertiesForKeys: nil)
+                guard !items.isEmpty else { throw ArchiveError.emptyArchive }
+                if isCancelled() { throw ArchiveError.cancelled }
+                if items.count == 1, let item = items.first {
+                    return try publishArchiveItem(item, named: item.lastPathComponent, in: directory)
+                }
+                let name = archive.deletingPathExtension().lastPathComponent
+                return try publishArchiveItem(output, named: name.isEmpty ? "Archive" : name, in: directory)
+            }
+        }
+    }
+
     /// The read-only browser needs the exact archive hierarchy, including a
     /// single top-level folder, instead of the normal extraction presentation.
     static func extractArchiveContents(archive: URL, to directory: URL,
@@ -129,23 +185,12 @@ extension FileOperations {
         archiveOperation(completion: completion) {
             try cancellation?.checkpoint(.beforeExtraction)
             guard canExtractArchive(archive) else { throw ArchiveError.unsupportedArchive }
-            let handle = try FileHandle(forReadingFrom: archive)
-            defer { try? handle.close() }
-            let signature = try handle.read(upToCount: 4)
-            guard let signature, [Data([0x50, 0x4b, 0x03, 0x04]), Data([0x50, 0x4b, 0x05, 0x06])].contains(signature) else {
-                throw ArchiveError.invalidArchive
-            }
+            try checkExtractionSignature(archive)
             return try withArchiveWorkspace(in: directory) { workspace in
                 let output = workspace.appendingPathComponent("contents", isDirectory: true)
                 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: false)
-                // Supplying a passphrase disables bsdtar's interactive callback entirely.
-                // Encryption is unsupported; a random value makes encrypted archives fail
-                // without opening /dev/tty, which redirecting stdin alone cannot prevent.
-                try runArchiveTool("/usr/bin/tar", arguments: [
-                    "-x", "-f", archive.path, "-C", output.path,
-                    "--no-same-owner", "--no-same-permissions", "--mac-metadata", "--no-acls", "--no-fflags",
-                    "--passphrase", UUID().uuidString
-                ], workspace: workspace, cancellation: cancellation)
+                try runArchiveTool("/usr/bin/tar", arguments: extractionArguments(archive: archive, output: output, verbose: false),
+                                   workspace: workspace, cancellation: cancellation)
                 try cancellation?.checkCancellation()
                 try propagateArchiveQuarantine(from: archive, to: output, cancellation: cancellation)
                 let items = try FileManager.default.contentsOfDirectory(at: output, includingPropertiesForKeys: nil)
@@ -161,6 +206,28 @@ extension FileOperations {
                 return try publishArchiveItem(output, named: name.isEmpty ? "Archive" : name, in: directory)
             }
         }
+    }
+
+    private static func checkExtractionSignature(_ archive: URL) throws {
+        let handle = try FileHandle(forReadingFrom: archive)
+        defer { try? handle.close() }
+        let signature = try handle.read(upToCount: 4)
+        guard let signature, [Data([0x50, 0x4b, 0x03, 0x04]), Data([0x50, 0x4b, 0x05, 0x06])].contains(signature) else {
+            throw ArchiveError.invalidArchive
+        }
+    }
+
+    /// Supplying a passphrase disables bsdtar's interactive callback entirely.
+    /// Encryption is unsupported; a random value makes encrypted archives fail
+    /// without opening /dev/tty, which redirecting stdin alone cannot prevent.
+    /// `-v` is added only when something is reading the stream: the ZIP
+    /// browsing path keeps a clean error log.
+    private static func extractionArguments(archive: URL, output: URL, verbose: Bool) -> [String] {
+        (verbose ? ["-x", "-v"] : ["-x"]) + [
+            "-f", archive.path, "-C", output.path,
+            "--no-same-owner", "--no-same-permissions", "--mac-metadata", "--no-acls", "--no-fflags",
+            "--passphrase", UUID().uuidString,
+        ]
     }
 
     private static func archiveOperation(completion: @escaping (Result<URL, Error>) -> Void,
@@ -211,7 +278,8 @@ extension FileOperations {
     }
 
     private static func runArchiveTool(_ executable: String, arguments: [String], workspace: URL,
-                                        cancellation: ArchivePreparationCancellation? = nil) throws {
+                                        cancellation: ArchivePreparationCancellation? = nil,
+                                        progress: ArchiveToolProgress? = nil) throws {
         let log = workspace.appendingPathComponent("tool-errors.txt")
         FileManager.default.createFile(atPath: log.path, contents: nil)
         let errors = try FileHandle(forWritingTo: log)
@@ -228,15 +296,76 @@ extension FileOperations {
         if let cancellation { try cancellation.runProcess(process) }
         else { try process.run() }
         defer { cancellation?.finishProcess(process) }
+        var cancelledByReporter = false
+        if let progress {
+            // The tool's `-v` output goes to stderr, which is already a regular
+            // file here — deliberately, so a full pipe can never deadlock
+            // waitUntilExit(). Polling that file adds no pipe and keeps that
+            // property. The loop always falls through to waitUntilExit() below,
+            // so the child is reaped whichever way it ends.
+            cancelledByReporter = followProgress(progress, log: log, process: process)
+        }
         process.waitUntilExit()
+        if cancelledByReporter { throw ArchiveError.cancelled }
         try cancellation?.checkCancellation()
         guard process.terminationReason == .exit && process.terminationStatus == 0 else {
             let reader = try FileHandle(forReadingFrom: log)
             defer { try? reader.close() }
-            let detail = String(data: (try? reader.read(upToCount: 4096)) ?? Data(), encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let raw = String(data: (try? reader.read(upToCount: 64 * 1024)) ?? Data(), encoding: .utf8) ?? ""
+            // With `-v` the log also carries one line per extracted entry. Only
+            // whole known names are dropped: a traversal refusal is reported as
+            // "x ../../outside.txt: Path contains '..'", which also starts "x ".
+            let detail = progress.map { ArchiveExtractionProgress.errorDetail(from: raw, knownEntries: Set($0.listing.map(\.name))) }
+                ?? raw.trimmingCharacters(in: .whitespacesAndNewlines)
             throw ArchiveError.commandFailed(detail.flatMap { $0.isEmpty ? nil : $0 } ?? "The archive could not be processed.")
         }
+    }
+
+    /// Returns true when the reporter asked to stop. Reads only the new tail of
+    /// the log each pass, so a long extraction does not re-scan its own output.
+    private static func followProgress(_ progress: ArchiveToolProgress, log: URL, process: Process) -> Bool {
+        var tracker = ArchiveExtractionProgress(entries: progress.listing)
+        var offset: UInt64 = 0
+        var partial = ""
+        progress.onProgress(0, tracker.totalBytes, nil)
+
+        func drain() {
+            guard let reader = try? FileHandle(forReadingFrom: log) else { return }
+            defer { try? reader.close() }
+            try? reader.seek(toOffset: offset)
+            guard let data = try? reader.readToEnd(), !data.isEmpty else { return }
+            offset += UInt64(data.count)
+            partial += String(decoding: data, as: UTF8.self)
+            // Keep the last fragment: the tool may be mid-line.
+            var lines = partial.components(separatedBy: "\n")
+            partial = lines.removeLast()
+            for line in lines { tracker.consume(verboseLine: line) }
+        }
+
+        func report() {
+            // Read-after-write of a file being appended to goes through
+            // FileManager; URL.resourceValues caches for the run-loop pass and
+            // the reported size would stop moving (AGENTS.md rule 5).
+            var current: Int64 = 0
+            if let url = tracker.currentEntryURL(in: progress.outputRoot),
+               let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber {
+                current = size.int64Value
+            }
+            progress.onProgress(tracker.completedBytes(currentFileSize: current), tracker.totalBytes, tracker.currentEntry)
+        }
+
+        while process.isRunning {
+            if progress.isCancelled() {
+                if process.isRunning { process.terminate() }
+                return true
+            }
+            drain()
+            report()
+            Thread.sleep(forTimeInterval: max(0.01, progress.pollInterval))
+        }
+        drain()
+        report()
+        return false
     }
 
     /// RENAME_EXCL closes the check-then-rename race, including dangling symlinks.

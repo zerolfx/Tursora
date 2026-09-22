@@ -7,7 +7,10 @@ import Darwin
 /// thread so it can show a sheet.
 enum FileOperations {
 
-    enum Kind { case copy, move }
+    /// `extract` never runs through `TransferEngine` — it drives an external
+    /// tool — but it is a first-class task kind so it appears in File
+    /// Operations with the others, and so the wording in a row is its own.
+    enum Kind { case copy, move, extract }
     enum ConflictResolution { case replace, keepBoth, skip, merge, cancel }
 
     /// What the UI learned when it asked: the choice, and whether it should

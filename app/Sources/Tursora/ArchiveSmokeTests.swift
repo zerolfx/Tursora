@@ -98,6 +98,11 @@ enum ArchiveSmokeTests: SmokeSuite {
                 let a = try await one.get(), b = try await two.get()
                 check("archive: concurrent compression publishes two distinct results", a != b && Set([a.lastPathComponent, b.lastPathComponent]) == Set(["second file.txt.zip", "second file.txt 2.zip"]))
                 check("archive: successful operations clean their workspaces", !(try fm.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".tursora-archive-") } && (try? fm.contentsOfDirectory(atPath: badDestination.path).contains { $0.hasPrefix(".tursora-archive-") }) == false)
+
+                listingParser()
+                progressAccounting()
+                try await extractionProgress(archive: folderZIP, root: root)
+
                 try fm.removeItem(at: root)
                 DispatchQueue.main.async { completion() }
             } catch {
@@ -105,6 +110,129 @@ enum ArchiveSmokeTests: SmokeSuite {
                 check("archive: unexpected operation error", false, error.localizedDescription)
             }
         }
+    }
+
+    /// `tar -tvf`'s long listing, parsed without running a process. The shapes
+    /// that matter are a symbolic link's ` -> target` suffix, a name with
+    /// spaces, and a name that legitimately contains an arrow.
+    private static func listingParser() {
+        let file = BSDTarListingParser.entry(from: "-rw-r--r--  0 501    0      307200 Sep 22 19:42 big.bin")
+        check("archive: a file line yields its name, size and kind",
+              file == ArchiveEntrySummary(name: "big.bin", uncompressedSize: 307_200, kind: .file), "\(String(describing: file))")
+        let spaced = BSDTarListingParser.entry(from: "-rw-r--r--  0 501    0           1 Sep 22 19:42 sub/with space.txt")
+        check("archive: a name containing spaces survives the split",
+              spaced?.name == "sub/with space.txt", spaced?.name ?? "nil")
+        let unicode = BSDTarListingParser.entry(from: "-rw-r--r--  0 501    0           5 Sep 22 19:42 sub/中文文件.txt")
+        check("archive: a non-ASCII name is not mangled", unicode?.name == "sub/中文文件.txt", unicode?.name ?? "nil")
+        let link = BSDTarListingParser.entry(from: "lrwxr-xr-x  0 0      0           0 Sep 22 19:42 link.bin -> a.bin")
+        check("archive: a symlink line drops the arrow and is not counted in bytes",
+              link == ArchiveEntrySummary(name: "link.bin", uncompressedSize: 0, kind: .symbolicLink) && link?.countsTowardBytes == false,
+              "\(String(describing: link))")
+        // Keyed on the mode character, never on a " -> " substring: dropping the
+        // suffix here would stop the name ever matching the extraction stream.
+        let arrowNamed = BSDTarListingParser.entry(from: "-rw-r--r--  0 501    0           3 Sep 22 19:42 a -> b.txt")
+        check("archive: a regular file named with an arrow keeps its whole name",
+              arrowNamed?.name == "a -> b.txt" && arrowNamed?.kind == .file, arrowNamed?.name ?? "nil")
+        let directory = BSDTarListingParser.entry(from: "drwxr-xr-x  0 501    0           0 Sep 22 19:42 sub/")
+        check("archive: a directory line is not counted in bytes",
+              directory?.kind == .directory && directory?.countsTowardBytes == false)
+        check("archive: a line that is not a listing entry is ignored",
+              BSDTarListingParser.entry(from: "tar: Error exit delayed from previous errors.") == nil
+              && BSDTarListingParser.entry(from: "") == nil)
+    }
+
+    /// Progress accounting, with no I/O at all.
+    private static func progressAccounting() {
+        let entries = [
+            ArchiveEntrySummary(name: "a.bin", uncompressedSize: 100, kind: .file),
+            ArchiveEntrySummary(name: "link", uncompressedSize: 0, kind: .symbolicLink),
+            ArchiveEntrySummary(name: "dir/", uncompressedSize: 0, kind: .directory),
+            ArchiveEntrySummary(name: "dir/b.bin", uncompressedSize: 400, kind: .file),
+        ]
+        var progress = ArchiveExtractionProgress(entries: entries)
+        check("archive: the total counts files only, not links or directories", progress.totalBytes == 500, "\(String(describing: progress.totalBytes))")
+        check("archive: nothing announced means nothing completed", progress.completedBytes() == 0)
+        progress.consume(verboseLine: "x a.bin")
+        // An entry is announced when it is OPENED, so it is in progress, not done.
+        check("archive: the announced entry counts as in progress, not finished",
+              progress.completedBytes() == 0 && progress.completedBytes(currentFileSize: 40) == 40)
+        check("archive: a file measured larger than listed never passes its own size",
+              progress.completedBytes(currentFileSize: 10_000) == 100)
+        progress.consume(verboseLine: "x link")
+        progress.consume(verboseLine: "x dir/")
+        check("archive: the previous entry settles in full once the next is announced",
+              progress.completedBytes() == 100, "\(progress.completedBytes())")
+        progress.consume(verboseLine: "x dir/b.bin")
+        check("archive: progress never exceeds the total",
+              progress.completedBytes(currentFileSize: 999_999) == 500)
+
+        var unknown = ArchiveExtractionProgress(entries: entries)
+        unknown.consume(verboseLine: "x surprise.bin")
+        check("archive: an entry the listing never mentioned makes the total unknown", unknown.totalBytes == nil)
+
+        let empty = ArchiveExtractionProgress(entries: [])
+        check("archive: an unusable listing gives no total, rather than a total of zero", empty.totalBytes == nil)
+
+        // The trap: a traversal refusal is also reported on a line starting "x ".
+        let log = """
+        x safe.txt
+        x ../../outside.txt: Path contains '..': Unknown error: -1
+        tar: Error exit delayed from previous errors.
+        """
+        let detail = ArchiveExtractionProgress.errorDetail(from: log, knownEntries: ["safe.txt"])
+        check("archive: filtering progress lines keeps the traversal error",
+              detail == "x ../../outside.txt: Path contains '..': Unknown error: -1\ntar: Error exit delayed from previous errors.",
+              detail ?? "nil")
+        check("archive: a log of nothing but progress lines yields no error detail",
+              ArchiveExtractionProgress.errorDetail(from: "x safe.txt\n", knownEntries: ["safe.txt"]) == nil)
+    }
+
+    /// End to end against a real archive — the one with a symlink in it, which
+    /// is what breaks a parser that splits the name off by field count alone.
+    private static func extractionProgress(archive: URL, root: URL) async throws {
+        let listing = BSDTarArchiveListing()
+        let entries = try listing.entries(of: archive)
+        check("archive: the real listing reports the archive's entries", !entries.isEmpty, "\(entries.count)")
+        check("archive: the real listing marks the symbolic link as one",
+              entries.contains { $0.name.hasSuffix("shortcut") && $0.kind == .symbolicLink },
+              "\(entries.map { "\($0.name)[\($0.kind)]" })")
+
+        let destination = root.appendingPathComponent("progress-out", isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+        var samples: [(Int64, Int64?)] = []
+        var lastEntry: String?
+        let result: Result<URL, Error> = await withCheckedContinuation { continuation in
+            FileOperations.extract(archive: archive, to: destination, listing: listing,
+                onProgress: { bytes, total, entry in
+                    samples.append((bytes, total))
+                    if let entry { lastEntry = entry }
+                },
+                isCancelled: { false }, pollInterval: 0.01) { continuation.resume(returning: $0) }
+        }
+        guard case .success(let output) = result else {
+            check("archive: extraction with progress succeeds", false, "\(result)"); return
+        }
+        check("archive: extraction with progress succeeds", FileManager.default.fileExists(atPath: output.path))
+        check("archive: the total stays determinate through an archive containing a symlink",
+              samples.allSatisfy { $0.1 != nil }, "\(samples.map { $0.1 })")
+        // Swift.zip: this suite has a `zip(_:)` fixture builder of its own.
+        check("archive: progress never goes backwards", Swift.zip(samples, samples.dropFirst()).allSatisfy { $0.0.0 <= $0.1.0 },
+              "\(samples.map(\.0))")
+        check("archive: progress never exceeds the total", samples.allSatisfy { sample in sample.1.map { sample.0 <= $0 } ?? true })
+        check("archive: the reporter names the entry being written", lastEntry != nil, lastEntry ?? "nil")
+
+        // Cancelled before it starts: nothing published, no staging left behind.
+        let cancelDestination = root.appendingPathComponent("cancel-out", isDirectory: true)
+        try FileManager.default.createDirectory(at: cancelDestination, withIntermediateDirectories: false)
+        let cancelled: Result<URL, Error> = await withCheckedContinuation { continuation in
+            FileOperations.extract(archive: archive, to: cancelDestination, listing: listing,
+                onProgress: { _, _, _ in }, isCancelled: { true }, pollInterval: 0.01) { continuation.resume(returning: $0) }
+        }
+        var wasCancelled = false
+        if case .failure(let error) = cancelled, case FileOperations.ArchiveError.cancelled = error { wasCancelled = true }
+        check("archive: a cancelled extraction reports cancellation, not a tool failure", wasCancelled, "\(cancelled)")
+        check("archive: a cancelled extraction publishes nothing and leaves no staging directory",
+              (try? FileManager.default.contentsOfDirectory(atPath: cancelDestination.path))?.isEmpty == true)
     }
 
     private static func contents(_ url: URL) -> String? { try? String(contentsOf: url, encoding: .utf8) }

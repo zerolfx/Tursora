@@ -856,6 +856,17 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         return options
     }()
     private(set) var lastTransferTask: TransferTask?
+    /// The last extraction started by this pane, for the smoke suite.
+    private(set) var lastExtractionTask: TransferTask?
+    /// Injectable so a test can drive progress without a huge fixture.
+    var archiveListing: ArchiveListing = BSDTarArchiveListing()
+    var archiveProgressPollInterval: TimeInterval = {
+        if let raw = ProcessInfo.processInfo.environment["TURSORA_ARCHIVE_TEST_POLL_MS"],
+           let milliseconds = Double(raw), milliseconds.isFinite, milliseconds > 0 {
+            return min(milliseconds, 1000) / 1000
+        }
+        return 0.05
+    }()
     /// Allows isolated controller tests to inspect the same recovery error shown
     /// by the application without opening a modal error sheet.
     var transferReplayErrorReporter: ((Error) -> Void)?
@@ -1003,32 +1014,73 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
     }
 
+    /// Each archive gets its own File Operations row with real progress and a
+    /// Cancel, and the batch keeps one "Extract" undo group and one directory
+    /// broadcast (D90). Archives are still extracted one at a time: several
+    /// bsdtar processes writing into the same folder would contend for it and
+    /// make each one's progress meaningless.
     func extract(_ archives: [URL], completion: (() -> Void)? = nil) {
         guard canModifyCurrentLocation, !archives.isEmpty else { completion?(); return }
         let startingURL = currentURL
+        let window = view.window
+        // Captured up front, as `transfer` does: a batch that is still running
+        // when its tab closes must still register what it already created.
+        let capturedUndo = window?.undoManager
         statusBar.beginBusy()
         var created: [URL] = []
         var failures: [FileOperations.Failure] = []
-        func next(_ index: Int) {
-            guard index < archives.count else {
-                self.statusBar.endBusy()
-                self.registerUndoTrash(created, actionName: "Extract")
-                if self.currentURL == startingURL {
-                    self.model.reload { [weak self] in self?.fileView.select(urls: created) }
-                }
-                else { self.reload() }
-                DirectoryChanges.post(DirectoryChanges.affected(sources: created))
-                FileOperations.report(failures, in: self.view.window)
-                completion?()
-                return
+        let tasks = TransferTasksWindowController.shared
+
+        func finish() {
+            self.statusBar.endBusy()
+            if let capturedUndo, !created.isEmpty {
+                self.registerUndoTrash(created, actionName: "Extract", undo: capturedUndo)
             }
+            if self.currentURL == startingURL {
+                self.model.reload { [weak self] in self?.fileView.select(urls: created) }
+            }
+            else { self.reload() }
+            DirectoryChanges.post(DirectoryChanges.affected(sources: created))
+            FileOperations.report(failures, in: window)
+            completion?()
+        }
+
+        func next(_ index: Int) {
+            guard index < archives.count else { finish(); return }
             let archive = archives[index]
-            FileOperations.extract(archive: archive, to: archive.deletingLastPathComponent()) { result in
+            let destination = archive.deletingLastPathComponent()
+            let task = TransferTask(sources: [archive], destination: destination, kind: .extract)
+            lastExtractionTask = task
+            tasks.track(task, ownerWindow: window, destinationDescription: destination.lastPathComponent)
+            task.setPhase(.running, item: archive, detail: "Reading \(archive.lastPathComponent)…")
+            FileOperations.extract(
+                archive: archive, to: destination, listing: archiveListing,
+                onProgress: { bytes, total, entry in
+                    DispatchQueue.main.async {
+                        if task.snapshot.totalBytes != total { task.setTotal(total) }
+                        task.setCompleted(bytes)
+                        task.setPhase(.running, item: archive, detail: entry.map { "Extracting \($0)" } ?? "Extracting…")
+                    }
+                },
+                isCancelled: { task.isCancellationRequested },
+                pollInterval: self.archiveProgressPollInterval
+            ) { result in
+                var outcome = FileOperations.TransferResult()
                 switch result {
-                case .success(let url): created.append(url)
-                case .failure(let error): failures.append(.init(url: archive, error: error))
+                case .success(let url):
+                    created.append(url)
+                    outcome.created = [url]
+                case .failure(let error):
+                    if case FileOperations.ArchiveError.cancelled = error { outcome.cancelled = true }
+                    else {
+                        failures.append(.init(url: archive, error: error))
+                        outcome.failures = [.init(url: archive, error: error)]
+                    }
                 }
-                next(index + 1)
+                task.finished(outcome)
+                // Cancelling one archive cancels the batch: the alternative is
+                // the next ZIP starting the instant the user pressed Cancel.
+                if outcome.cancelled { finish() } else { next(index + 1) }
             }
         }
         next(0)
@@ -1170,9 +1222,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
     }
 
-    private func registerUndoTrash(_ urls: [URL], actionName: String) {
+    private func registerUndoTrash(_ urls: [URL], actionName: String, undo: UndoManager? = nil) {
         guard !urls.isEmpty else { return }
-        registerUndo(actionName: actionName) { me, _ in
+        registerUndo(on: undo, actionName: actionName) { me, _ in
             do {
                 let pairs = try FileOperations.trash(urls)
                 TrashOrigins.shared.record(pairs)
