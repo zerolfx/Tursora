@@ -112,6 +112,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// Requests for archive bytes this pane started. Closing the pane cancels
     /// them; navigating does not, so an Open already asked for still happens.
     private var archiveRequests: [UUID: ArchivePreparationCancellation] = [:]
+    /// Quick Look's request for bytes, and what it covers.
+    private var quickLookRequest: (locations: Set<URL>, token: ArchivePreparationCancellation)?
+    /// How many times Quick Look's bytes arrived and the panel was refreshed.
+    private(set) var quickLookRefreshesForTesting = 0
     /// Opens asked for in this main-queue pass, sent as one request.
     private var pendingArchiveOpens: [URL] = []
     private var archiveOpensInFlight = Set<URL>()
@@ -299,7 +303,12 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         v.onSelectionChanged = { [weak self] in
             self?.updateStatus()
             if let self { NotificationCenter.default.post(name: .tursoraSelectionChanged, object: self) }
-            if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible { panel.reloadData() }
+            if let self, QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
+                // The new item on show, and the one after it, are asked for
+                // now, so arrowing through a ZIP rarely waits (D99).
+                self.requestQuickLookBytes(for: self.quickLookItemOnShow(in: panel))
+                panel.reloadData()
+            }
         }
         v.onFocus = { [weak self] in self?.onFocus?() }
         v.onQuickLook = { [weak self] in self?.toggleQuickLook() }
@@ -501,25 +510,72 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         guard canPreviewSelection else { return }
         guard let panel = QLPreviewPanel.shared() else { return }
         if panel.isVisible { panel.orderOut(nil); return }
-        // Quick Look is handed bytes that are on disk, so a file not yet
-        // extracted is brought first and the panel opens once it is here.
-        let waiting = fileView.selectedItems.filter { $0.canAccess && $0.previewContentURL == nil }
-        guard !waiting.isEmpty else { panel.makeKeyAndOrderFront(nil); return }
-        requestArchiveBytes(waiting.map(\.url), title: Self.readingTitle(waiting.map(\.name), from: archiveSourceURL)) { [weak self] _ in
-            guard let self, !self.previewSelectionURLs.isEmpty else { return }
-            QLPreviewPanel.shared()?.makeKeyAndOrderFront(nil)
-        }
+        // The panel opens at once; an entry not yet extracted shows as a
+        // placeholder until its bytes arrive (D99).
+        requestQuickLookBytes(for: Array(quickLookItems.prefix(1)))
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    /// The one item the panel shows, of a selection it steps through one at a
+    /// time; the others are asked for as the panel reaches them.
+    private func quickLookItemOnShow(in panel: QLPreviewPanel) -> [FileItem] {
+        let items = quickLookItems
+        let index = panel.currentPreviewItemIndex
+        return items.indices.contains(index) ? [items[index]] : Array(items.prefix(1))
     }
 
     override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
     override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) { panel.dataSource = self; panel.delegate = self }
-    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) { panel.dataSource = nil; panel.delegate = nil }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil; panel.delegate = nil
+        quickLookRequest?.token.cancel()
+        quickLookRequest = nil
+    }
 
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { previewSelectionURLs.count }
+    /// What Quick Look shows: the selection's readable items.
+    private var quickLookItems: [FileItem] { fileView.selectedItems.filter(\.canAccess) }
 
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { quickLookItems.count }
+
+    /// Computed on demand, and never waits: bytes that are here are the file
+    /// itself, and an entry not yet extracted is a placeholder whose bytes are
+    /// asked for now.
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        let urls = previewSelectionURLs
-        return urls.indices.contains(index) ? urls[index] as NSURL : nil
+        let items = quickLookItems
+        guard items.indices.contains(index) else { return nil }
+        let item = items[index]
+        if let url = item.previewContentURL { return url as NSURL }
+        requestQuickLookBytes(for: [item])
+        return ArchivePendingPreviewItem(logicalURL: item.url, title: item.name)
+    }
+
+    /// Quick Look's own extraction: the items asked for, plus the item after
+    /// the selection when it is small enough to fetch unasked, in one request.
+    /// A request that already covers them is left alone; anything else
+    /// replaces it. On arrival the panel reloads its list and redraws the item
+    /// on show — `reloadData` alone is not documented to redraw it.
+    private func requestQuickLookBytes(for items: [FileItem]) {
+        var wanted = items.filter { $0.isArchiveEntry && $0.canAccess && $0.previewContentURL == nil }
+        if let next = fileView.itemAfterSelection(), next.isArchiveEntry, next.canAccess, !next.isNavigable,
+           next.size <= ArchivePreviewLimit.automaticBytes, next.previewContentURL == nil,
+           !wanted.contains(where: { $0.url == next.url }) {
+            wanted.append(next)
+        }
+        let locations = Set(wanted.map(\.url))
+        guard !locations.isEmpty else { return }
+        if let current = quickLookRequest, current.locations.isSuperset(of: locations) { return }
+        quickLookRequest?.token.cancel()
+        let token = ArchiveWorkspace.shared.materialize(wanted.map(\.url)) { [weak self] result in
+            guard let self, self.quickLookRequest?.locations == locations else { return }
+            self.quickLookRequest = nil
+            guard case .success = result else { return }
+            self.quickLookRefreshesForTesting += 1
+            if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
+                panel.reloadData()
+                panel.refreshCurrentPreviewItem()
+            }
+        }
+        quickLookRequest = (locations, token)
     }
 
     /// Arrow keys in the panel move the selection, so ↑/↓ browse previews.
@@ -530,7 +586,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: QLPreviewItem!) -> NSRect {
-        guard let url = item.previewItemURL else { return .zero }
+        guard let url = (item as? ArchivePendingPreviewItem)?.logicalURL ?? item.previewItemURL else { return .zero }
         return fileView.frameOnScreen(for: ArchiveWorkspace.shared.logicalURL(for: url))
     }
 
@@ -705,6 +761,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func cancelArchiveRequests() {
         let requests = archiveRequests.values
         archiveRequests.removeAll()
+        quickLookRequest?.token.cancel()
+        quickLookRequest = nil
         pendingArchiveOpens.removeAll()
         archiveOpensInFlight.removeAll()
         requests.forEach { $0.cancel() }

@@ -169,7 +169,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     /// Off screen, nothing should keep playing in the preview column.
     override func viewDidDisappear() {
         super.viewDidDisappear()
-        preview.show(nil)
+        preview.show(item: nil)
     }
 
     /// Back on screen — a tab switch, say — the selected file is previewed
@@ -178,7 +178,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         super.viewDidAppear()
         let items = selectedItems
         if items.count == 1, !items[0].isNavigable {
-            preview.show(items[0].isArchiveEntry ? items[0].publishedContentURL : items[0].url, force: true)
+            preview.show(item: items[0], force: true)
         }
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -259,7 +259,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
             }
             // The selected file may have changed on disk; `show` short-circuits
             // on an unchanged URL, so forget it and let the re-drill re-read.
-            if changed { preview.show(nil) }
+            if changed { preview.show(item: nil) }
         }
         shownGeneration = model.generation
         shownRootURL = model.url
@@ -365,7 +365,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         // NSBrowser shows a preview column for exactly one selected leaf; the
         // controller behind it must let go in every other case.
         let items = selectedItems
-        if !(items.count == 1 && !items[0].isNavigable) { preview.show(nil) }
+        if !(items.count == 1 && !items[0].isNavigable) { preview.show(item: nil) }
     }
 
     func openSelection() {
@@ -653,8 +653,8 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     func browser(_ browser: NSBrowser, previewViewControllerForLeafItem item: Any) -> NSViewController? {
         guard let node = item as? FileNode else { return nil }
         _ = preview.view
-        // An archive entry previews through its path-validated temporary copy.
-        preview.show(node.item.isArchiveEntry ? node.item.publishedContentURL : node.url)
+        // An archive entry not yet extracted is extracted for it first (D99).
+        preview.show(item: node.item)
         return preview
     }
 
@@ -759,6 +759,9 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     var isPreviewColumnEmptyForTesting: Bool { preview.shownURL == nil }
     func rowCountForTesting(_ column: Int) -> Int { rowCount(inColumn: column) }
     var previewedURLForTesting: URL? { preview.shownURL }
+    var previewStateForTesting: PreviewPanelController.State { preview.state }
+    var isPreviewShowAnywayVisibleForTesting: Bool { preview.isShowAnywayVisibleForTesting }
+    func pressPreviewShowAnywayForTesting() { preview.pressShowAnywayForTesting() }
     var previewAutoresizesForTesting: Bool { _ = preview.view; return preview.autoresizesForTesting }
     var previewStartFrameForTesting: NSRect { _ = preview.view; return preview.startFrameForTesting }
     func simulateClickForTesting() { browserClicked(nil) }

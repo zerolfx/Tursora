@@ -377,6 +377,18 @@ every byte these checks see was brought by the action under test:
 - A CRC-damaged member that fails on Open turns unavailable in the pane without being opened, and
   Reload (⌘R) forgets the failure so it can be tried again.
 
+Quick Look and the preview column (D99), with the automatic limit lowered to 1 KiB so a 2 KiB member
+stands in for one over 64 MiB:
+
+- Quick Look's data source, called directly, hands a placeholder with no URL for a file not yet
+  extracted, then the file itself once it arrives, with exactly one refresh; the next item arrives in
+  the same run of the tool, and a neighbour over the limit is never asked for.
+- The preview column goes from preparing to showing; a result held at the tool (a runner gate) and
+  released after the selection has moved on is dropped; a member over the limit shows "too large",
+  extracts nothing, and Show Preview then extracts and shows it.
+
+What the Quick Look panel itself draws for the placeholder has not been looked at on screen.
+
 What is not covered: the File Operations row for a request estimated above a second or 128 MiB is
 decided by the measured cost model but not exercised, since the suite's fixtures stay under 50 MB; and
 no computer-use pass has been made.
@@ -392,10 +404,10 @@ active, plus the bundle and `..` cases — in `LazyArchiveSmokeTests`.
 
 Stage 2 is in progress: the staging and publication core, the private clone with drain-on-close, and
 rows built from the table of contents are implemented and covered as described in their sections.
-Open, Open With, Quick Look, Copy and copying out bring what they need first (above). Still missing:
-listing still extracts a folder's own files, so a single directory holding tens of thousands of files,
-or one very large member, still pays for the whole directory on entry; and drag, Share, the preview
-column and thumbnails still need an entry's bytes on disk already.
+Open, Open With, Quick Look, the preview column, Copy and copying out bring what they need first
+(above). Still missing: listing still extracts a folder's own files, so a single directory holding tens
+of thousands of files, or one very large member, still pays for the whole directory on entry; and drag,
+Share and thumbnails still need an entry's bytes on disk already.
 
 No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
 opening a large archive actually feels.

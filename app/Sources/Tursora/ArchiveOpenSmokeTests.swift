@@ -243,6 +243,7 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                 }
 
                 try await reloadChecks(root: root, window: wc, openedArchives: &openedArchives)
+                try await previewChecks(root: root, window: wc, openedArchives: &openedArchives)
             } catch {
                 check("unexpected error", false, "\(error)")
             }
@@ -283,6 +284,104 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
         }
         pane.navigate(to: root)
         await waitUntil("leaving the damaged archive") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
+    }
+
+    /// Quick Look and the preview column on entries not yet extracted (D99).
+    /// The automatic limit is lowered to 1 KiB for the run, so a 2 KiB member
+    /// stands in for one over 64 MiB.
+    @MainActor private static func previewChecks(root: URL, window wc: MainWindowController,
+                                                 openedArchives: inout [URL]) async throws {
+        let workspace = ArchiveWorkspace.shared
+        let runner = SystemArchiveToolRunner.shared
+        let previousLimit = ArchivePreviewLimit.automaticBytes
+        ArchivePreviewLimit.automaticBytes = 1024
+        defer { ArchivePreviewLimit.automaticBytes = previousLimit; runner.beforeRunForTesting = nil }
+        let archive = root.appendingPathComponent("Look.zip")
+        try SmokeFixtures.zip([("Box/a1.txt", "a1"), ("Box/a2-big.bin", String(repeating: "z", count: 2048)),
+                               ("Box/b1.txt", "b1"), ("Box/b2.txt", "b2"), ("Box/c1.txt", "c1"),
+                               ("Box/c2.txt", "c2")]).write(to: archive)
+        openedArchives.append(archive)
+        let folder = archive.appendingPathComponent("Box")
+        func url(_ name: String) -> URL { folder.appendingPathComponent(name) }
+        func text(_ url: URL?) -> String? { url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } }
+        let pane = wc.browser
+        pane.setViewMode(.details)
+        pane.setGroupKey(.none)
+        pane.navigate(to: folder)
+        await waitUntil("preview: the archive lists") { pane.model.items.map(\.url.standardizedFileURL).contains(url("c2.txt").standardizedFileURL) }
+        guard let session = workspace.session(for: archive) else { check("preview: a session exists", false); return }
+
+        // Quick Look's data source, called directly: a placeholder first, the
+        // file once it is here, one refresh, and the next item in the same run.
+        pane.fileView.select(urls: [url("b1.txt")])
+        let refreshes = pane.quickLookRefreshesForTesting
+        let runs = runner.invocations
+        let first = pane.previewPanel(nil, previewItemAt: 0)
+        check("Quick Look is handed a placeholder for a file not yet extracted",
+              pane.numberOfPreviewItems(in: nil) == 1 && first is ArchivePendingPreviewItem
+              && first?.previewItemURL == nil && first?.previewItemTitle == "b1.txt")
+        await expectEventually("the placeholder's bytes arrive and Quick Look is refreshed") {
+            pane.quickLookRefreshesForTesting == refreshes + 1
+        }
+        await drainMainQueue()
+        check("Quick Look then shows the file itself, refreshed once",
+              text(pane.previewPanel(nil, previewItemAt: 0)?.previewItemURL) == "b1"
+              && pane.quickLookRefreshesForTesting == refreshes + 1)
+        check("the next item arrives in the same run when it is small enough",
+              session.isPublished("Box/b2.txt") && runner.invocations == runs + 1,
+              "runs=\(runner.invocations - runs)")
+        pane.fileView.select(urls: [url("a1.txt")])
+        _ = pane.previewPanel(nil, previewItemAt: 0)
+        await expectEventually("Quick Look brings the item on show") { session.isPublished("Box/a1.txt") }
+        check("a neighbour over the automatic limit is never asked for", !session.isPublished("Box/a2-big.bin"))
+
+        // The preview column: preparing, then showing.
+        pane.setViewMode(.columns)
+        await waitUntil("preview: the column view lists") { pane.viewMode == .columns && !pane.model.items.isEmpty }
+        let columns = pane.columnView
+        columns.select(urls: [url("c1.txt")])
+        if let node = pane.model.node(for: url("c1.txt")) { _ = columns.browser(columns.browser, previewViewControllerForLeafItem: node) }
+        check("the preview column prepares a file not yet extracted", columns.previewStateForTesting == .preparing,
+              "\(columns.previewStateForTesting)")
+        await expectEventually("then shows it", detail: { "\(columns.previewStateForTesting)" }) {
+            if case .showing(let shown) = columns.previewStateForTesting { return text(shown) == "c1" }
+            return false
+        }
+
+        // A result that arrives after the selection has moved is dropped.
+        let gate = WorkerGate()
+        runner.beforeRunForTesting = { gate.arriveAndWait() }
+        columns.select(urls: [url("c2.txt")])
+        if let node = pane.model.node(for: url("c2.txt")) { _ = columns.browser(columns.browser, previewViewControllerForLeafItem: node) }
+        await waitUntil("preview: the next file's extraction is held") { gate.arrived }
+        columns.select(urls: [url("b1.txt")])
+        if let node = pane.model.node(for: url("b1.txt")) { _ = columns.browser(columns.browser, previewViewControllerForLeafItem: node) }
+        runner.beforeRunForTesting = nil
+        gate.release()
+        await drainMainQueue()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        await drainMainQueue()
+        var shownAfterMove: String?
+        if case .showing(let shown) = columns.previewStateForTesting { shownAfterMove = text(shown) }
+        check("a late result for a file no longer selected is dropped", shownAfterMove == "b1",
+              "\(columns.previewStateForTesting)")
+
+        // Too large to extract unasked; Show Preview asks.
+        let runsBeforeLarge = runner.invocations
+        columns.select(urls: [url("a2-big.bin")])
+        if let node = pane.model.node(for: url("a2-big.bin")) { _ = columns.browser(columns.browser, previewViewControllerForLeafItem: node) }
+        check("a member over the automatic limit is not extracted, and offers Show Preview",
+              columns.previewStateForTesting == .tooLarge && columns.isPreviewShowAnywayVisibleForTesting
+              && runner.invocations == runsBeforeLarge && !session.isPublished("Box/a2-big.bin"),
+              "\(columns.previewStateForTesting) runs=\(runner.invocations - runsBeforeLarge)")
+        columns.pressPreviewShowAnywayForTesting()
+        await expectEventually("Show Preview extracts it and shows it", detail: { "\(columns.previewStateForTesting)" }) {
+            if case .showing = columns.previewStateForTesting { return session.isPublished("Box/a2-big.bin") }
+            return false
+        }
+        pane.setViewMode(.details)
+        pane.navigate(to: root)
+        await waitUntil("preview: leaving the archive") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
     }
 
     /// Every file under a folder, by relative path, with its bytes; folders

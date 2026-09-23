@@ -46,6 +46,15 @@ struct ArchiveMaterializationEstimate {
     var warrantsProgressRow: Bool { seconds > 1 || bytes > 128 << 20 }
 }
 
+/// The most a preview extracts without being asked: the preview column's
+/// automatic preview, and Quick Look's next item (stage2 plan §2). An explicit
+/// request — Open, Copy, Quick Look of the item on show — is limited only by
+/// free space. A variable only so the suite can lower it rather than write a
+/// 64 MiB fixture.
+enum ArchivePreviewLimit {
+    static var automaticBytes: Int64 = 64 << 20
+}
+
 /// What a request for an archive's bytes brought.
 struct ArchiveMaterializationResult {
     /// Each requested location now readable, as the physical URL to read it

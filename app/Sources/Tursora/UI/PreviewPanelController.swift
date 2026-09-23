@@ -55,6 +55,28 @@ final class PreviewPanelController: NSViewController {
     let textView = MarkdownTextView()
     private var quickLook: QLPreviewView?
     private let emptyLabel = NSTextField(labelWithString: "No selection")
+    /// Asks for a preview the pane would not start on its own (D99).
+    private let showAnywayButton = NSButton(title: "Show Preview", target: nil, action: nil)
+
+    /// What the pane is doing for a ZIP entry, whose bytes may still have to
+    /// be extracted before there is anything to show.
+    enum State: Equatable {
+        case empty
+        case preparing
+        case showing(URL)
+        /// Larger than a preview extracts unasked; waits for Show Preview.
+        case tooLarge
+        case unavailable
+    }
+    private(set) var state: State = .empty
+    /// The item the pane stands for, and the extraction on its behalf. The
+    /// request is keyed by the entry's logical URL, so a result that arrives
+    /// after the selection has moved on is dropped.
+    private var currentItem: FileItem?
+    private var pendingIdentity: URL?
+    private var pendingRequest: ArchivePreparationCancellation?
+    /// The oversized entry the user asked to see anyway.
+    private var oversizeAllowed: URL?
 
     /// The item on show, so a repeated selection of the same file does not
     /// re-read and re-render it on every arrow key.
@@ -86,6 +108,11 @@ final class PreviewPanelController: NSViewController {
         titleLabel.lineBreakMode = .byTruncatingMiddle
         emptyLabel.textColor = .tertiaryLabelColor
         emptyLabel.alignment = .center
+        showAnywayButton.target = self
+        showAnywayButton.action = #selector(showAnyway(_:))
+        showAnywayButton.bezelStyle = .rounded
+        showAnywayButton.isHidden = true
+        showAnywayButton.translatesAutoresizingMaskIntoConstraints = false
 
         let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Hide Preview")!,
                              target: self, action: #selector(closePanel(_:)))
@@ -111,7 +138,10 @@ final class PreviewPanelController: NSViewController {
         view.addSubview(header)
         view.addSubview(scrollView)
         view.addSubview(emptyLabel)
+        view.addSubview(showAnywayButton)
         NSLayoutConstraint.activate([
+            showAnywayButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            showAnywayButton.topAnchor.constraint(equalTo: emptyLabel.bottomAnchor, constant: 8),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
             header.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
@@ -141,16 +171,20 @@ final class PreviewPanelController: NSViewController {
     /// no-op so that holding an arrow key does not re-read the file each time;
     /// `force` is for a file that changed underneath us.
     func show(_ url: URL?, force: Bool = false) {
-        guard force || url != shownURL else { return }
+        guard force || url != shownURL || state == .preparing || state == .tooLarge || state == .unavailable else { return }
         shownURL = url
+        showAnywayButton.isHidden = true
         guard let url else {
+            state = .empty
             titleLabel.stringValue = "Preview"
+            emptyLabel.stringValue = "No selection"
             scrollView.isHidden = true
             releaseQuickLook()
             emptyLabel.isHidden = false
             isShowingMarkdown = false
             return
         }
+        state = .showing(url)
         titleLabel.stringValue = url.lastPathComponent
         emptyLabel.isHidden = true
 
@@ -169,6 +203,65 @@ final class PreviewPanelController: NSViewController {
             preview.isHidden = false
             preview.previewItem = url as NSURL
         }
+    }
+
+    /// Shows an item, which for a ZIP entry may first have to be extracted:
+    /// the pane says it is preparing, asks for the bytes without waiting, and
+    /// shows them when they arrive — unless the selection has moved on. An
+    /// entry larger than `ArchivePreviewLimit.automaticBytes` is not extracted
+    /// unasked; the pane offers Show Preview instead (D99).
+    func show(item: FileItem?, force: Bool = false) {
+        currentItem = item
+        guard let item else { cancelPending(); show(nil, force: force); return }
+        guard item.isArchiveEntry else { cancelPending(); show(item.url, force: force); return }
+        guard item.canAccess else { cancelPending(); showStatus(.unavailable, "Not available", title: item.name); return }
+        if let url = item.previewContentURL { cancelPending(); show(url, force: force); return }
+        if pendingIdentity == item.url { return }
+        cancelPending()
+        if item.size > ArchivePreviewLimit.automaticBytes, oversizeAllowed != item.url {
+            showStatus(.tooLarge, "Too large to preview automatically", title: item.name)
+            showAnywayButton.isHidden = false
+            return
+        }
+        showStatus(.preparing, "Preparing preview…", title: item.name)
+        let identity = item.url
+        pendingIdentity = identity
+        pendingRequest = ArchiveWorkspace.shared.materialize([identity]) { [weak self] result in
+            guard let self, self.pendingIdentity == identity else { return }
+            self.pendingIdentity = nil
+            self.pendingRequest = nil
+            switch result {
+            case .success(let brought):
+                if let url = brought.urls.first { self.show(url, force: true) }
+                else { self.showStatus(.unavailable, "Not available", title: item.name) }
+            case .failure(ArchiveBrowsingSession.SessionError.cancelled): return
+            case .failure: self.showStatus(.unavailable, "Not available", title: item.name)
+            }
+        }
+    }
+
+    @objc private func showAnyway(_ sender: Any?) {
+        guard let item = currentItem else { return }
+        oversizeAllowed = item.url
+        show(item: item)
+    }
+
+    private func showStatus(_ next: State, _ message: String, title: String) {
+        state = next
+        shownURL = nil
+        isShowingMarkdown = false
+        titleLabel.stringValue = title
+        scrollView.isHidden = true
+        releaseQuickLook()
+        emptyLabel.stringValue = message
+        emptyLabel.isHidden = false
+        showAnywayButton.isHidden = true
+    }
+
+    private func cancelPending() {
+        pendingRequest?.cancel()
+        pendingRequest = nil
+        pendingIdentity = nil
     }
 
     /// Hiding a `QLPreviewView` does not stop it: a previewed video or sound
@@ -205,9 +298,10 @@ final class PreviewPanelController: NSViewController {
     /// repeated URL as a no-op, so a pane hidden on a file and reopened without
     /// the selection changing would ask for the same URL, be skipped, and come
     /// back empty — the Quick Look view having been emptied on the way out.
-    func paneHidden() { releaseQuickLook(); shownURL = nil; isShowingMarkdown = false }
+    func paneHidden() { cancelPending(); releaseQuickLook(); shownURL = nil; isShowingMarkdown = false }
 
     func shutdown() {
+        cancelPending()
         quickLook?.close()
         quickLook?.removeFromSuperview()
         quickLook = nil
@@ -219,6 +313,8 @@ final class PreviewPanelController: NSViewController {
     var renderedTextForTesting: String { textView.string }
     var isQuickLookVisibleForTesting: Bool { quickLook.map { !$0.isHidden } ?? false }
     var isCloseButtonHiddenForTesting: Bool { closeButton?.isHidden ?? true }
+    var isShowAnywayVisibleForTesting: Bool { !showAnywayButton.isHidden }
+    func pressShowAnywayForTesting() { showAnyway(nil) }
     var autoresizesForTesting: Bool { isViewLoaded && view.autoresizingMask.contains(.height) }
     /// The frame the view was given at load; NSBrowser resizes from it, so a
     /// zero-height start stays short even with the mask set.
