@@ -160,6 +160,57 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                 do { _ = try await prepare(corrupt, workspace: workspace) }
                 catch { corruptFailed = true }
                 check("corrupt archive preparation never registers a partial snapshot", corruptFailed && workspace.session(for: corrupt) == nil && (try? Data(contentsOf: corrupt)) == Data("not a ZIP".utf8))
+                // Stage 1's worst bug. The pre-flight reads only the first
+                // local header, so an archive that starts plain and holds an
+                // encrypted member later got past it, and entering that folder
+                // left the encrypted member as a zero-filled file that listed as
+                // readable — served to Quick Look, Open and Copy as the real thing.
+                let mixed = try SmokeFixtures.mixedEncryptionZip(in: fixture)
+                let mixedSession = try await prepare(mixed, workspace: workspace)
+                let mixedRows = try provider.listDirectory(mixed.appendingPathComponent("d"))
+                let encryptedPath = mixedSession.rootURL.appendingPathComponent("d/b.txt")
+                check("an encrypted member inside an ordinary ZIP never lands on disk as zeros",
+                      !fm.fileExists(atPath: encryptedPath.path),
+                      (try? Data(contentsOf: encryptedPath)).map { "found \($0.count) bytes: \($0.map { String(format: "%02x", $0) }.joined())" } ?? "")
+                check("an encrypted member is never offered as a readable row",
+                      !mixedRows.contains { $0.name == "b.txt" && $0.readableContentURL != nil },
+                      "\(mixedRows.map { "\($0.name) readable=\($0.readableContentURL != nil)" })")
+                check("the plain members beside it still open with their real bytes",
+                      mixedRows.first { $0.name == "a.txt" }?.readableContentURL
+                        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "plain one"
+                      && mixedRows.first { $0.name == "c.txt" }?.readableContentURL
+                        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "plain three")
+                // A package is extracted whole — less any member of it that
+                // is encrypted, which would otherwise arrive as zeros inside it.
+                let appZIP = try SmokeFixtures.infoZip([("Demo.app/Contents/Info.plist", "plist", nil),
+                                                        ("Demo.app/Contents/bin", "CODE", "pw")], in: fixture)
+                let appSession = try await prepare(appZIP, workspace: workspace)
+                let appPackage = appSession.rootURL.appendingPathComponent("Demo.app")
+                check("a package is not on disk, not even as an empty shell, before it is asked for",
+                      !fm.fileExists(atPath: appPackage.path))
+                _ = try provider.listDirectory(appZIP)
+                check("a package arrives whole when its folder is listed",
+                      (try? String(contentsOf: appPackage.appendingPathComponent("Contents/Info.plist"), encoding: .utf8)) == "plist")
+                check("an encrypted member inside a package is left out rather than written as zeros",
+                      !fm.fileExists(atPath: appPackage.appendingPathComponent("Contents/bin").path))
+
+                // A refused batch must not be remembered as done: the next
+                // listing tries again rather than trusting an unfilled folder.
+                let retryZIP = try SmokeFixtures.infoZip([("r/one.txt", "first", nil)], in: fixture)
+                let retrySession = try await prepare(retryZIP, workspace: workspace)
+                retrySession.spaceCheck = { needed, _ in .insufficientSpace(needed: needed, available: 0) }
+                var refused: Error?
+                do { _ = try provider.listDirectory(retryZIP.appendingPathComponent("r")) } catch { refused = error }
+                check("a folder whose batch does not fit fails to list, rather than listing as empty",
+                      refused?.localizedDescription.contains("temporary space") == true,
+                      refused?.localizedDescription ?? "listed without error")
+                retrySession.spaceCheck = { _, _ in nil }
+                let retried = try provider.listDirectory(retryZIP.appendingPathComponent("r"))
+                check("once there is room, the same folder is extracted on the next listing",
+                      retried.first { $0.name == "one.txt" }?.readableContentURL
+                        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "first",
+                      "\(retried.map(\.name))")
+
                 try await systemAliasRecoveryChecks(archiveData: archiveData, folder: folder.lastPathComponent,
                                                     nested: nested.lastPathComponent, note: note.lastPathComponent)
                 workspace.shutdownAll()

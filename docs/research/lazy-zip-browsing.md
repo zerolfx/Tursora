@@ -190,6 +190,38 @@ Counts now come from the tree, filtered as the listing is. Both regression check
 unfixed code first and failed there — the folder date read as the open time, the count as "0 items" —
 so they are known to guard what they claim to.
 
+## Mixed encryption, and the package shell
+
+The Stage 2 design pass found that D91's pre-flight — which reads only the **first** local header — let
+through an archive that starts plain and holds an encrypted member later. Built with Info-ZIP's own
+`zip`, one member at a time:
+
+```
+d/a.txt    flag=0x0000
+d/b.txt    flag=0x0009
+d/c.txt    flag=0x0000
+first local header flags: 0x0000        ← the pre-flight passes
+
+$ tar -x -n -f mixed.zip -C out … -T {d/a.txt, d/b.txt, d/c.txt}
+d/b.txt: Incorrect passphrase: Unknown error: -1
+tar: Error exit delayed from previous errors.
+
+out/d/a.txt: 706c61696e206f6e65          "plain one"
+out/d/b.txt: 000000000000                six zero bytes, listed as readable
+out/d/c.txt: 706c61696e207468726565      "plain three"
+```
+
+The batch's non-zero exit was swallowed, and the listing read the disk. The fix reads bit 0 of every
+central-directory record, not just the first local header, and never asks for an encrypted member
+(D94). The check was run against the unfixed code first and failed there with the six zero bytes.
+
+A package containing an encrypted member is extracted whole with that member passed as `--exclude`,
+which works on either side of `-T` and leaves nothing behind (measured).
+
+Separately, package status is decided per path by extension, so the skeleton used to create
+`Demo.app/Contents` — and with it the package's empty shell — before the package was extracted. A
+node now knows it is inside a package and is left out of both the skeleton and the mount-time links.
+
 ## Status
 
 Stage 0 (the pre-flight refusals above, the throwing listing seam, the free-space guard and the

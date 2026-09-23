@@ -26,10 +26,26 @@ enum ZIPCentralDirectory {
     /// The end record is 22 bytes plus a comment of at most 65,535.
     private static let endRecordSearchBytes = 22 + 65_535
 
-    /// Dates keyed by the same normalized path `ArchiveTree` uses. Never throws:
-    /// an unreadable or malformed archive yields whatever was parsed before the
-    /// problem, or nothing.
+    /// What the central directory says about one entry.
+    struct Record: Equatable {
+        var modificationDate: Date?
+        /// General-purpose bit 0. The pre-flight reads only the *first* local
+        /// header, so an archive that starts plain can still hold encrypted
+        /// members; this is where they are found. bsdtar cannot extract one
+        /// with the random passphrase it is given, and fails by leaving a
+        /// correctly-sized, zero-filled file at the member's path (D94).
+        var isEncrypted = false
+    }
+
+    /// Dates keyed by the same normalized path `ArchiveTree` uses.
     static func modificationDates(of archive: URL, timeZone: TimeZone = .current) -> [String: Date] {
+        records(of: archive, timeZone: timeZone).compactMapValues(\.modificationDate)
+    }
+
+    /// Every record, keyed by the same normalized path `ArchiveTree` uses. Never
+    /// throws: an unreadable or malformed archive yields whatever was parsed
+    /// before the problem, or nothing.
+    static func records(of archive: URL, timeZone: TimeZone = .current) -> [String: Record] {
         guard let handle = try? FileHandle(forReadingFrom: archive) else { return [:] }
         defer { try? handle.close() }
         guard let size = try? handle.seekToEnd(), size >= 22 else { return [:] }
@@ -39,15 +55,21 @@ enum ZIPCentralDirectory {
         try? handle.seek(toOffset: location.offset)
         guard let directory = try? handle.read(upToCount: Int(location.size)),
               directory.count == Int(location.size) else { return [:] }
-        return parse(directory, timeZone: timeZone)
+        return parseRecords(directory, timeZone: timeZone)
+    }
+
+    /// Pure: dates from central directory records already in memory.
+    static func parse(_ data: Data, timeZone: TimeZone = .current) -> [String: Date] {
+        parseRecords(data, timeZone: timeZone).compactMapValues(\.modificationDate)
     }
 
     /// Pure: parse central directory records already in memory.
-    static func parse(_ data: Data, timeZone: TimeZone = .current) -> [String: Date] {
+    static func parseRecords(_ data: Data, timeZone: TimeZone = .current) -> [String: Record] {
         let bytes = [UInt8](data)
-        var dates: [String: Date] = [:]
+        var records: [String: Record] = [:]
         var position = 0
         while position + 46 <= bytes.count, u32(bytes, position) == 0x02014b50 {
+            let flags = u16(bytes, position + 8)
             let dosTimeField = u16(bytes, position + 12)
             let dosDateField = u16(bytes, position + 14)
             let nameLength = Int(u16(bytes, position + 28))
@@ -71,9 +93,9 @@ enum ZIPCentralDirectory {
                 date = Date(timeIntervalSince1970: TimeInterval(unix))
             }
             // Last wins, matching both the tree and what extraction yields.
-            if let date { dates[key] = date }
+            records[key] = Record(modificationDate: date, isEncrypted: flags & 0x0001 != 0)
         }
-        return dates
+        return records
     }
 
     // MARK: - Locating the directory

@@ -218,6 +218,37 @@ enum ArchiveSmokeTests: SmokeSuite {
               dirPlan.leaves == ["dir/y.txt"] && dirPlan.packages.isEmpty,
               "leaves=\(dirPlan.leaves)")
 
+        // D94: the central directory's encryption flag makes a member inert,
+        // so it is never put in a batch that would leave zeros behind.
+        let encrypted = ArchiveTree(entries: [entry("d/a.txt", 9), entry("d/b.txt", 6), entry("d/c.txt", 11)],
+                                    records: ["d/b.txt": ZIPCentralDirectory.Record(modificationDate: nil, isEncrypted: true)])
+        check("archive tree: an encrypted member is inert, for that reason",
+              encrypted.node(at: "d/b.txt")?.inertReason == .encrypted
+              && encrypted.node(at: "d/a.txt")?.inertReason == nil)
+        check("archive tree: an encrypted member is left out of its folder's batch",
+              encrypted.materializationPlan(for: "d").leaves == ["d/a.txt", "d/c.txt"],
+              "\(encrypted.materializationPlan(for: "d").leaves)")
+
+        // A package's descendants are never created on their own: not in the
+        // skeleton, and not as a mount-time link, or the package would exist as
+        // an empty shell before it was ever extracted.
+        let shell = ArchiveTree(entries: [entry("Demo.app/Contents/Info.plist", 5),
+                                          entry("Demo.app/Contents/Frameworks/K.framework/Versions/A/K", 3),
+                                          entry("Demo.app/Contents/Frameworks/K.framework/K", 0, .symbolicLink),
+                                          entry("plain/x.txt", 1)])
+        check("archive tree: nothing inside a package is in the directory skeleton",
+              !shell.directoryPaths.contains { $0.hasPrefix("Demo.app") }, "\(shell.directoryPaths)")
+        check("archive tree: a link inside a package is not a mount-time link",
+              shell.symbolicLinkMembers.isEmpty, "\(shell.symbolicLinkMembers)")
+        check("archive tree: a package's descendants know they are inside it",
+              shell.node(at: "Demo.app/Contents")?.insidePackage == true
+              && shell.node(at: "plain")?.insidePackage == false)
+        let packageWithSecret = ArchiveTree(entries: [entry("Demo.app/Contents/Info.plist", 5),
+                                                      entry("Demo.app/Contents/bin", 4)],
+                                            records: ["Demo.app/Contents/bin": ZIPCentralDirectory.Record(isEncrypted: true)])
+        check("archive tree: a package names its encrypted members so they can be excluded",
+              packageWithSecret.inertMembers(inside: "Demo.app") == ["Demo.app/Contents/bin"])
+
         let links = ArchiveTree(entries: [entry("alias", 0, .symbolicLink), entry("real.txt", 4)])
         check("archive tree: symbolic links are named for materialization at mount",
               links.symbolicLinkMembers == ["alias"], "\(links.symbolicLinkMembers)")
@@ -261,6 +292,21 @@ enum ArchiveSmokeTests: SmokeSuite {
               ZIPCentralDirectory.unixModificationTime(truncated, from: 0, length: truncated.count) == nil)
         check("archive dates: an empty central directory yields no dates",
               ZIPCentralDirectory.parse(Data()).isEmpty)
+
+        // D94: general-purpose bit 0 at record +8. A record's flags are not
+        // the first local header's, which is all the pre-flight reads.
+        func record(_ name: String, flags: UInt16) -> [UInt8] {
+            var bytes: [UInt8] = [0x50, 0x4b, 0x01, 0x02, 20, 3, 20, 0,
+                                  UInt8(flags & 0xff), UInt8(flags >> 8), 0, 0,
+                                  0, 0x60, 0x21, 0x50]                     // time, date
+            bytes += [UInt8](repeating: 0, count: 12)                       // crc, sizes
+            bytes += [UInt8(name.utf8.count), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            return bytes + Array(name.utf8)
+        }
+        let flagged = ZIPCentralDirectory.parseRecords(Data(record("plain.txt", flags: 0) + record("locked.txt", flags: 0x0009)))
+        check("archive dates: a record with the encryption bit set reads as encrypted",
+              flagged["locked.txt"]?.isEncrypted == true && flagged["plain.txt"]?.isEncrypted == false,
+              "\(flagged.mapValues(\.isEncrypted))")
     }
 
     /// The property the whole of Stage 3 rests on: the date shown for an entry

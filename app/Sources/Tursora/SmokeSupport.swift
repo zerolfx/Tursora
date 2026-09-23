@@ -116,6 +116,47 @@ enum SmokeFixtures {
         return url
     }
 
+    /// A ZIP whose first entry is plain, whose second is password-protected
+    /// with ZipCrypto, and whose third is plain again. The pre-flight reads
+    /// only the first local header, so this is the shape that got past it: its
+    /// directory batch used to leave the encrypted member as a correctly-sized,
+    /// zero-filled file that listed as readable. Built with Info-ZIP's own
+    /// `/usr/bin/zip`, because it is real encryption rather than a flag.
+    static func mixedEncryptionZip(in directory: URL) throws -> URL {
+        try infoZip([("d/a.txt", "plain one", nil), ("d/b.txt", "SECRET", "pw"), ("d/c.txt", "plain three", nil)],
+                    in: directory)
+    }
+
+    /// Build a ZIP one member at a time with Info-ZIP's `/usr/bin/zip`, in the
+    /// order given, encrypting a member with ZipCrypto when it has a password.
+    /// Real encryption, not a flag set on plaintext.
+    static func infoZip(_ members: [(path: String, contents: String, password: String?)],
+                        in directory: URL) throws -> URL {
+        let fm = FileManager.default
+        let staging = directory.appendingPathComponent("zip-source-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: staging) }
+        for member in members {
+            let file = staging.appendingPathComponent(member.path)
+            try fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(member.contents.utf8).write(to: file)
+        }
+        let archive = directory.appendingPathComponent("infozip-\(UUID().uuidString).zip")
+        for member in members {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+            process.currentDirectoryURL = staging
+            process.arguments = ["-q"] + (member.password.map { ["-P", $0] } ?? []) + [archive.path, member.path]
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { throw SmokeFailure("zip failed on \(member.path)") }
+        }
+        return archive
+    }
+
     /// A ZIP holding one ordinary entry and one that resolves outside the
     /// archive root. bsdtar refuses the second; the first must still browse.
     static func zipWithParentTraversal() -> Data {

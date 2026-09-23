@@ -80,6 +80,7 @@ Also excluded, 2026-09-15, after comparing against Iruka: **Intel support** — 
 
 ## Known small gaps
 
+- The folder-tree check "hidden model stops refresh and navigation enumeration" (`FolderTreeSmokeTests.swift:71-75`) is timing-dependent: it failed two runs in a row on 2026-09-23 and passed the next three, with no change to the folder-tree code. `setActive(false)` cancels future work but cannot recall a provider call already dispatched, and the `showsHiddenFolders = true` reset just before it also re-reveals the followed deep path; the preceding wait only checks the root, so a late reload of that chain can move the request counter after it is captured. The check should wait for the model to be quiescent — no node loading and the reveal finished — before capturing the count. Recorded rather than fixed while working on archives (rule 9).
 - In the column view every directory-change broadcast reloads every open column, so a column's scroll position is lost when a file appears or vanishes anywhere in the chain; the selection and the open chain are restored, and each column is listed once per reload rather than on every delegate callback. Keeping per-column scroll needs a per-column diff against the listing snapshot, deferred (2026-09-15).
 
 - ⌘W does not close the Settings window; a window-level close command and a matching regression check still need to be added; found during this round's CUA pass on 2026-09-12.

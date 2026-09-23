@@ -247,7 +247,8 @@ extension FileOperations {
     /// `-v` is added only when something is reading the stream: the ZIP
     /// browsing path keeps a clean error log.
     private static func extractionArguments(archive: URL, output: URL, verbose: Bool,
-                                            memberList: URL? = nil, noRecursion: Bool = false) -> [String] {
+                                            memberList: URL? = nil, noRecursion: Bool = false,
+                                            excludes: [String] = []) -> [String] {
         var arguments = ["-x"]
         if verbose { arguments.append("-v") }
         // `-n` stops a leaf's name prefix-matching a deeper entry: a member
@@ -262,6 +263,9 @@ extension FileOperations {
             "--no-same-owner", "--no-same-permissions", "--mac-metadata", "--no-acls", "--no-fflags",
             "--passphrase", UUID().uuidString,
         ]
+        // Excludes before the member list, as options: bsdtar stops reading
+        // options at the first positional pattern.
+        for exclude in excludes { arguments += ["--exclude", exclude] }
         // A member list goes through a file, never argv: ARG_MAX is 1 MiB and a
         // directory can hold more names than that.
         if let memberList { arguments += ["-T", memberList.path] }
@@ -282,7 +286,7 @@ extension FileOperations {
     /// the root, even briefly and even hidden, is part of what the user is
     /// browsing.
     static func materializeArchiveMembers(archive: URL, into output: URL, scratch: URL,
-                                          members: [String], noRecursion: Bool,
+                                          members: [String], noRecursion: Bool, excluding excludes: [String] = [],
                                           cancellation: ArchivePreparationCancellation? = nil) throws {
         guard !members.isEmpty else { return }
         let workspace = scratch.appendingPathComponent(".tursora-materialize-" + UUID().uuidString, isDirectory: true)
@@ -293,7 +297,8 @@ extension FileOperations {
         try Data((members.joined(separator: "\n") + "\n").utf8).write(to: list)
         try runArchiveTool("/usr/bin/tar",
                            arguments: extractionArguments(archive: archive, output: output, verbose: false,
-                                                          memberList: list, noRecursion: noRecursion),
+                                                          memberList: list, noRecursion: noRecursion,
+                                                          excludes: excludes),
                            workspace: workspace, cancellation: cancellation)
     }
 

@@ -84,10 +84,24 @@ final class ArchiveBrowsingSession {
     private var materialized: Set<String> = []
     /// One batch per directory even when two panes ask at once: libarchive
     /// writes in place, so two writers on one path is a torn read.
-    private var materializing: [String: NSCondition] = [:]
+    private var materializing: [String: MaterializationAttempt] = [:]
     private let materializeLock = NSLock()
 
+    /// One run for one directory, and what became of it. A pane that arrives
+    /// while another pane's run is in flight waits on this and receives the
+    /// same outcome — including its error, rather than finding the directory
+    /// marked done and listing whatever happened to be on disk.
+    private final class MaterializationAttempt {
+        let condition = NSCondition()
+        var finished = false
+        var error: Error?
+    }
+
     var isLazilyMounted: Bool { tree != nil }
+    /// Decides whether a batch of this many bytes fits. Injectable so the suite
+    /// can refuse one batch and then allow the retry, which a real disk cannot
+    /// be made to do on demand.
+    var spaceCheck: (Int64, URL) -> SessionError? = { FileOperations.requiredSpaceRefusal(forExtracting: $0, into: $1) }
     /// Visible to the smoke suite, which asserts what is and is not on disk.
     var archiveTree: ArchiveTree? { tree }
 
@@ -119,25 +133,43 @@ final class ArchiveBrowsingSession {
         materializeLock.lock()
         if materialized.contains(path) { materializeLock.unlock(); return }
         if let inFlight = materializing[path] {
-            // Another caller owns this directory; wait for its batch.
+            // Another caller owns this directory; wait for its outcome.
             materializeLock.unlock()
-            inFlight.lock()
-            while !isMaterialized(path) { inFlight.wait() }
-            inFlight.unlock()
+            inFlight.condition.lock()
+            while !inFlight.finished { inFlight.condition.wait() }
+            let error = inFlight.error
+            inFlight.condition.unlock()
+            if let error { throw error }
             return
         }
-        let condition = NSCondition()
-        materializing[path] = condition
+        let attempt = MaterializationAttempt()
+        materializing[path] = attempt
         materializeLock.unlock()
 
+        var outcome: Error?
         defer {
+            // Done only on success. A refused or failed run is not recorded, so
+            // the next listing tries again rather than trusting a directory that
+            // was never filled (D94).
             materializeLock.lock()
-            materialized.insert(path)
+            if outcome == nil { materialized.insert(path) }
             materializing[path] = nil
             materializeLock.unlock()
-            condition.lock(); condition.broadcast(); condition.unlock()
+            attempt.condition.lock()
+            attempt.finished = true
+            attempt.error = outcome
+            attempt.condition.broadcast()
+            attempt.condition.unlock()
         }
+        do {
+            try runMaterialization(path, tree: tree)
+        } catch {
+            outcome = error
+            throw error
+        }
+    }
 
+    private func runMaterialization(_ path: String, tree: ArchiveTree) throws {
         guard !isClosed else { throw SessionError.closed }
         let plan = tree.materializationPlan(for: path)
         guard !plan.leaves.isEmpty || !plan.packages.isEmpty else { return }
@@ -145,28 +177,28 @@ final class ArchiveBrowsingSession {
         let batchBytes = (tree.children(of: path) ?? [])
             .filter { $0.isExtractable && ($0.kind == .file || $0.isPackage) }
             .reduce(Int64(0)) { $0 + $1.uncompressedSize }
-        if let refusal = FileOperations.requiredSpaceRefusal(forExtracting: batchBytes, into: storageURL) {
+        if let refusal = spaceCheck(batchBytes, storageURL) {
             throw refusal
         }
         let destination = path.isEmpty ? rootURL : rootURL.appendingPathComponent(path)
         // Two invocations at most: `-n` is right for a leaf and wrong for a
-        // package, and it is a switch rather than a per-member option.
+        // package, and it is a switch rather than a per-member option. A
+        // package is extracted whole, less any member of it that is inert.
         try materialize(plan.leaves, noRecursion: true)
-        try materialize(plan.packages, noRecursion: false)
+        let packageExcludes = plan.packages.flatMap { member in
+            (tree.children(of: path) ?? []).filter { $0.member == member }
+                .flatMap { tree.inertMembers(inside: $0.path) }
+        }
+        try materialize(plan.packages, noRecursion: false, excluding: packageExcludes)
         try? FileOperations.propagateArchiveQuarantine(from: archiveURL, to: destination)
     }
 
-    private func isMaterialized(_ path: String) -> Bool {
-        materializeLock.lock(); defer { materializeLock.unlock() }
-        return materialized.contains(path)
-    }
-
-    private func materialize(_ members: [String], noRecursion: Bool) throws {
+    private func materialize(_ members: [String], noRecursion: Bool, excluding excludes: [String] = []) throws {
         guard !members.isEmpty else { return }
         do {
             try FileOperations.materializeArchiveMembers(archive: archiveURL, into: rootURL,
                                                          scratch: storageURL, members: members,
-                                                         noRecursion: noRecursion)
+                                                         noRecursion: noRecursion, excluding: excludes)
         } catch {
             // Exit status is archive-wide: some members may have been written
             // while others failed. The listing that follows reads the disk, so
@@ -360,8 +392,9 @@ extension FileOperations {
                 let entries = try listing.entries(of: archive)
                 // Dates come from the central directory, joined by path; the
                 // listing stays the tool's own (D93).
-                let tree = ArchiveTree(entries: entries,
-                                       modificationDates: ZIPCentralDirectory.modificationDates(of: archive))
+                // Dates and per-member encryption come from the central
+                // directory, joined by path; the listing stays the tool's own.
+                let tree = ArchiveTree(entries: entries, records: ZIPCentralDirectory.records(of: archive))
                 // Mounting writes only the skeleton and the symbolic links, so
                 // the whole archive's size is not what has to fit; each
                 // directory's batch is checked against free space as it runs.
