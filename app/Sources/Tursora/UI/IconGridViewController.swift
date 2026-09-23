@@ -46,10 +46,13 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
 
     private(set) var iconSize: CGFloat = 64
     private(set) var showPreviews = true
-    var thumbnailLoader: ThumbnailProvider.Loader = { item, size, scale, completion in
-        ThumbnailProvider.shared.thumbnail(for: item, size: size, scale: scale, completion: completion)
+    var thumbnailLoader: ThumbnailProvider.Loader = { item, size, scale, token, completion in
+        ThumbnailProvider.shared.thumbnail(for: item, size: size, scale: scale, token: token, completion: completion)
     }
     private var thumbnailGeneration = UUID()
+    /// Withdraws a cell's thumbnail request: a cell reused or scrolled away no
+    /// longer wants one, and a ZIP entry's is then never extracted (D100).
+    var thumbnailCanceller: (ThumbnailToken) -> Void = { ThumbnailProvider.shared.cancel($0) }
     private static let itemID = NSUserInterfaceItemIdentifier("file")
     private static let headerID = NSUserInterfaceItemIdentifier("groupHeader")
 
@@ -336,6 +339,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         guard let node = node(at: indexPath) else { return cell }
         let item = node.item
         cell.representedObject = node
+        if let previous = cell.thumbnailToken { thumbnailCanceller(previous); cell.thumbnailToken = nil }
         cell.configure(item: item, iconSize: iconSize, faded: cutURLs.contains(item.url), showsLocation: model.isSearchResults)
         cell.onDoubleClick = { [weak self] in self?.onOpen?(item) }
         cell.onMiddleClick = { [weak self] in self?.onOpenInNewTab?(item) }
@@ -343,7 +347,9 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
             let scale = collectionView.window?.backingScaleFactor ?? 2
             let generation = thumbnailGeneration
             let requestID = cell.thumbnailRequestID
-            if let cached = thumbnailLoader(item, iconSize, scale, { [weak self, weak cell] image in
+            let token = ThumbnailToken()
+            cell.thumbnailToken = token
+            if let cached = thumbnailLoader(item, iconSize, scale, token, { [weak self, weak cell] image in
                 guard let self, self.showPreviews, self.thumbnailGeneration == generation,
                       (self.collectionView.window?.backingScaleFactor ?? 2) == scale,
                       let image, let cell, (cell.representedObject as? FileNode) === node else { return }
@@ -356,6 +362,14 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     }
 
     // MARK: - Delegate
+
+    /// A cell scrolled away withdraws its thumbnail request.
+    func collectionView(_ collectionView: NSCollectionView, didEndDisplaying item: NSCollectionViewItem,
+                        forRepresentedObjectAt indexPath: IndexPath) {
+        guard let cell = item as? FileCollectionItem, let token = cell.thumbnailToken else { return }
+        thumbnailCanceller(token)
+        cell.thumbnailToken = nil
+    }
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { onSelectionChanged?() }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { onSelectionChanged?() }
@@ -527,6 +541,8 @@ final class FileCollectionItem: NSCollectionViewItem {
     var onMiddleClick: (() -> Void)?
     private var iconSize: CGFloat = 64
     private(set) var thumbnailRequestID = UUID()
+    /// The request this cell's thumbnail was asked for with, to withdraw it.
+    var thumbnailToken: ThumbnailToken?
     private var faded = false
 
     private final class ItemView: NSView {

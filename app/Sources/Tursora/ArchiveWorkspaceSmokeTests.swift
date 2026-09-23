@@ -144,7 +144,14 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                 check("snapshot edits never change source ZIP or originals", try Data(contentsOf: archive) == archiveData && String(contentsOf: note) == "snapshot contents")
                 try fm.removeItem(at: physicalNote)
                 try fm.createSymbolicLink(atPath: physicalNote.path, withDestinationPath: outside.path)
-                check("cached entries revalidate targets before icon and preview reads", noteItem.publishedContentURL == nil && !ThumbnailProvider.canPreview(noteItem) && noteItem.icon(size: 16).size.width == 16)
+                check("cached entries revalidate targets before icon and preview reads", noteItem.publishedContentURL == nil && noteItem.icon(size: 16).size.width == 16)
+                // Enabling a preview is pure (D100); the containment check is
+                // where the bytes would be read, and it delivers nothing.
+                var escapedThumbnail: NSImage?? = .none
+                let immediate = ThumbnailProvider.shared.thumbnail(for: noteItem, size: 77, scale: 1) { escapedThumbnail = .some($0) }
+                await waitUntil("a thumbnail through a replaced link is answered") { escapedThumbnail != nil }
+                check("a thumbnail through a link replaced since extraction delivers nothing",
+                      immediate == nil && escapedThumbnail == .some(nil))
                 check("replaced snapshot links cannot read outside contents", try (try? workspace.physicalURL(for: logicalNote)) == nil && String(contentsOf: outside) == "outside original")
                 check("alias ownership survives an externally replaced escaping member", workspace.session(for: aliasNote) === session && workspace.logicalURL(for: aliasNote) == logicalNote && (try? workspace.physicalURL(for: aliasNote)) == nil)
                 let multipleZIP = try await SmokeFixtures.compress([folder, outside], to: fixture)

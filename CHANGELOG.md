@@ -23,6 +23,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 ### Added
 
 - **Extracting a ZIP** now appears in **File Operations** with a real progress bar and a **Cancel** button, instead of a small spinner you could not stop. Each selected archive gets its own row; cancelling one stops the rest, and closing the window cancels the extraction just as it does a copy.
+- Thumbnails inside a ZIP no longer need the folder to be extracted: the files on screen are read out of the archive together for their previews and then removed, and scrolling away from a page stops its thumbnails being fetched.
 - Inside a ZIP, Quick Look opens straight away and shows the file as soon as it is extracted, and the column view's preview column says it is preparing instead of staying blank. A file over 64 MB is previewed only when you click **Show Preview**.
 - Inside a ZIP, **Open**, **Open With**, **Quick Look** and **Copy** work on any item, including one reached through a link into a folder you have not opened. Several files opened together are extracted in one go. **Reload** (⌘R) tries again a file that could not be extracted.
 - **Settings ▸ Shortcuts** gains a File View command, **Open Selection (Alternative)**, which ships with no key. Give it Return and Return opens the selection — entering a folder, launching a file — instead of renaming it, the way Windows Explorer and Dolphin behave. Clear Rename's Return first, since a key has one owner; Rename stays available from File ▸ Rename, the context menu and the slow double-click.

@@ -55,10 +55,13 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
 
     private(set) var iconSize: CGFloat = 16
     private(set) var showPreviews = true
-    var thumbnailLoader: ThumbnailProvider.Loader = { item, size, scale, completion in
-        ThumbnailProvider.shared.thumbnail(for: item, size: size, scale: scale, completion: completion)
+    var thumbnailLoader: ThumbnailProvider.Loader = { item, size, scale, token, completion in
+        ThumbnailProvider.shared.thumbnail(for: item, size: size, scale: scale, token: token, completion: completion)
     }
     private var thumbnailGeneration = UUID()
+    /// Withdraws a cell's thumbnail request: a row reused or gone no longer
+    /// wants one, and a ZIP entry's is then never extracted (D100).
+    var thumbnailCanceller: (ThumbnailToken) -> Void = { ThumbnailProvider.shared.cancel($0) }
 
     /// Items marked by ⌘X are drawn faded until pasted or the pasteboard changes.
     var cutURLs: Set<URL> = [] {
@@ -574,6 +577,25 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
 
     private static let groupCellID = NSUserInterfaceItemIdentifier("group")
 
+    /// A row scrolled away withdraws its thumbnail request.
+    func outlineView(_ outlineView: NSOutlineView, didRemove rowView: NSTableRowView, forRow row: Int) {
+        cancelThumbnails(in: rowView)
+    }
+
+    private func cancelThumbnails(in rowView: NSTableRowView) {
+        for column in 0..<rowView.numberOfColumns {
+            if let token = (rowView.view(atColumn: column) as? NSTableCellView)?.objectValue as? ThumbnailToken {
+                thumbnailCanceller(token)
+            }
+        }
+    }
+
+    /// Off screen, nothing on screen wants a thumbnail.
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        tableView.enumerateAvailableRowViews { rowView, _ in cancelThumbnails(in: rowView) }
+    }
+
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         if let group = item as? GroupNode {
             let cell = (outlineView.makeView(withIdentifier: Self.groupCellID, owner: self) as? NSTableCellView)
@@ -599,15 +621,16 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         switch column {
         case .name:
             cell.imageView?.image = item.icon(size: iconSize)
-            let requestID = UUID()
-            cell.objectValue = requestID
+            if let previous = cell.objectValue as? ThumbnailToken { thumbnailCanceller(previous) }
+            let token = ThumbnailToken()
+            cell.objectValue = token
             if item.canAccess, showPreviews, iconSize >= ZoomLevel.previewThreshold, ThumbnailProvider.canPreview(item) {
                 let scale = outlineView.window?.backingScaleFactor ?? 2
                 let generation = thumbnailGeneration
-                if let cached = thumbnailLoader(item, iconSize, scale, { [weak self, weak cell] image in
+                if let cached = thumbnailLoader(item, iconSize, scale, token, { [weak self, weak cell] image in
                     guard let self, self.showPreviews, self.thumbnailGeneration == generation,
                           (self.tableView.window?.backingScaleFactor ?? 2) == scale,
-                          let image, let cell, (cell.objectValue as? UUID) == requestID else { return }
+                          let image, let cell, (cell.objectValue as? ThumbnailToken) === token else { return }
                     cell.imageView?.image = image
                 }) {
                     cell.imageView?.image = cached

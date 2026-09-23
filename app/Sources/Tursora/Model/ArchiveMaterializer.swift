@@ -384,6 +384,59 @@ final class ArchiveMaterializer {
         }
     }
 
+    // MARK: - Transient extraction
+
+    struct TransientExtraction {
+        /// Holds the extracted members under their paths. The caller removes it.
+        let directory: URL
+        let extracted: Set<String>
+        /// A member bsdtar named in an error, with its reason.
+        let failed: [String: String]
+    }
+
+    /// Extracts files into a fresh directory beside the root, to be read once
+    /// — for a thumbnail — and removed, never published: thumbnails for a
+    /// folder of photos must not leave the folder's bytes behind (D100). Only
+    /// what the log confirms counts as extracted. Registered like any batch,
+    /// so closing the session stops it and waits for it.
+    func extractTransient(_ members: [ArchiveMemberSpelling]) throws -> TransientExtraction {
+        let cancellation = ArchivePreparationCancellation()
+        let token = UUID()
+        condition.lock()
+        guard !closed else { condition.unlock(); throw ArchiveBrowsingSession.SessionError.closed }
+        activeRuns[token] = cancellation
+        drain.enter()
+        condition.unlock()
+        defer {
+            condition.lock()
+            activeRuns[token] = nil
+            condition.unlock()
+            drain.leave()
+        }
+        try checkSource()
+        let bytes = members.reduce(Int64(0)) { $0 + (tree.node(at: $1.path)?.uncompressedSize ?? 0) }
+        if let refusal = spaceCheck(bytes, storageURL) { throw refusal }
+        let directory = storageURL.appendingPathComponent(".tursora-thumbs-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        do {
+            let list = storageURL.appendingPathComponent(".tursora-thumbs-members-\(token.uuidString)")
+            defer { try? FileManager.default.removeItem(at: list) }
+            try Data((members.map(\.escaped).joined(separator: "\n") + "\n").utf8).write(to: list)
+            let result = try runner.run(ArchiveTool.extractionArguments(source: source, output: directory, noRecursion: true,
+                                                                          memberList: list),
+                                        scratch: storageURL, cancellation: cancellation)
+            try cancellation.checkCancellation()
+            let verdict = ArchiveToolVerdict.attribute(log: result.log, members: members)
+            if let failure = verdict.sourceFailure { throw MaterializeError.sourceUnreadable(failure) }
+            return TransientExtraction(directory: directory, extracted: verdict.extracted.subtracting(verdict.failed.keys),
+                                       failed: verdict.failed)
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
+    }
+
     // MARK: - Lifecycle
 
     /// Stop accepting batches and ask every running child to stop. Returns

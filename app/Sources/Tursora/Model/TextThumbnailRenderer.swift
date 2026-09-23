@@ -24,10 +24,15 @@ enum TextThumbnailRenderer {
 
     static func supports(_ item: FileItem) -> Bool {
         guard ThumbnailProvider.canPreview(item) else { return false }
-        let type = item.contentType ?? UTType(filenameExtension: item.url.pathExtension)
+        return isTextType(item.contentType ?? UTType(filenameExtension: item.url.pathExtension),
+                          pathExtension: item.url.pathExtension)
+    }
+
+    /// Whether this renderer draws a file of this type, from the type alone.
+    static func isTextType(_ type: UTType?, pathExtension: String) -> Bool {
         if let type, type.conforms(to: .plainText) || type.conforms(to: .sourceCode)
             || type.conforms(to: .json) || type.conforms(to: .xml) { return true }
-        return ["md", "markdown", "yaml", "yml", "toml", "ini", "log"].contains(item.url.pathExtension.lowercased())
+        return ["md", "markdown", "yaml", "yml", "toml", "ini", "log"].contains(pathExtension.lowercased())
     }
 
     /// `limit` caps the characters returned. The default is the icon

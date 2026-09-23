@@ -116,6 +116,20 @@ struct FileItem {
         return try? archiveSession.validatedURL(contentURL)
     }
 
+    /// Where an archive entry's bytes live in its session: the session and the
+    /// entry's tree path. Nil for anything else.
+    var archiveLocation: (session: ArchiveBrowsingSession, path: String)? {
+        guard let archiveSession, let archivePath else { return nil }
+        return (archiveSession, archivePath)
+    }
+
+    /// For an archive entry, whether its bytes are extracted — from its state
+    /// alone, before the containment check `publishedContentURL` adds.
+    var isExtractedArchiveEntry: Bool {
+        guard let archiveLocation else { return false }
+        return archiveLocation.session.isPublished(archiveLocation.path)
+    }
+
     /// What Quick Look shows: the bytes once they are here, and a folder as
     /// the folder it is. A folder is only shown, never copied, so it need not
     /// be complete; its skeleton is on disk from the moment the archive opens.

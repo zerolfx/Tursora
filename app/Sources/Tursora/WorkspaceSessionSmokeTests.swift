@@ -255,6 +255,12 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
         check("ZIP capture retains a read-only ordinary navigation entry", captured.tabs[0].panes[0].search == nil && original.browser.isBrowsingArchive && !original.browser.canModifyCurrentLocation)
         original.close()
         firstSession.close()
+        // Closing removes storage at once when nothing is extracting, and once
+        // a running extraction has stopped otherwise (D96); a listing of the
+        // same folder can still be in flight here.
+        await waitUntil("the first private extraction is removed", detail: { firstSession.storageURL.path }) {
+            !manager.fileExists(atPath: firstSession.storageURL.path)
+        }
         check("ZIP fixture removes its first private extraction before restoration", !manager.fileExists(atPath: firstSession.storageURL.path) && ArchiveWorkspace.shared.session(for: logical) == nil)
 
         let restored = makeWindow(at: folders[4], store: views)

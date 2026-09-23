@@ -389,6 +389,25 @@ stands in for one over 64 MiB:
 
 What the Quick Look panel itself draws for the placeholder has not been looked at on screen.
 
+Thumbnails (D100), with the automatic limit lowered to 1 KiB:
+
+- 40 thumbnail requests withdrawn in the pass they were made cause no run of the tool.
+- A member over the limit gets no request.
+- Of two requests for one thumbnail, withdrawing one still delivers to the other, and the withdrawn
+  one hears nothing.
+- A request withdrawn after its run started (held with the runner gate) is made anyway, is there at
+  once when asked again, and is not recorded as having no thumbnail.
+- Through the real views, with a reload while the run is held: the icon view at 64 pt with 40
+  visible cells, and the list view at 32 pt with 20 visible rows, each cost one run of the tool and
+  every visible cell gets its thumbnail.
+- No `.tursora-thumbs-*` directory remains, and nothing is published.
+
+A correction to earlier coverage claims: an archive page has no view settings of its own and opens with
+the default ones, so `LazyArchiveSmokeTests` and the Open/Copy loop above, which set the view mode
+before entering the archive, had been running in the list view three times. Both now make the mode
+the default from an ordinary folder first and check that the archive opens in it; they pass in all
+three views.
+
 What is not covered: the File Operations row for a request estimated above a second or 128 MiB is
 decided by the measured cost model but not exercised, since the suite's fixtures stay under 50 MB; and
 no computer-use pass has been made.
@@ -404,10 +423,10 @@ active, plus the bundle and `..` cases — in `LazyArchiveSmokeTests`.
 
 Stage 2 is in progress: the staging and publication core, the private clone with drain-on-close, and
 rows built from the table of contents are implemented and covered as described in their sections.
-Open, Open With, Quick Look, the preview column, Copy and copying out bring what they need first
-(above). Still missing: listing still extracts a folder's own files, so a single directory holding tens
-of thousands of files, or one very large member, still pays for the whole directory on entry; and drag,
-Share and thumbnails still need an entry's bytes on disk already.
+Open, Open With, Quick Look, the preview column, Copy, copying out and thumbnails bring what they need
+first (above). Still missing: listing still extracts a folder's own files, so a single directory
+holding tens of thousands of files, or one very large member, still pays for the whole directory on
+entry; and drag and Share still need an entry's bytes on disk already.
 
 No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
 opening a large archive actually feels.

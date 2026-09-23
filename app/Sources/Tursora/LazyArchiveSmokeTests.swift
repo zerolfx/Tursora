@@ -81,7 +81,10 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                     let logicalPayload = archive.appendingPathComponent("Payload")
                     let logicalInner = logicalPayload.appendingPathComponent("Inner")
                     let pane = wc.tabs.current
+                    // An archive page opens with the default view settings, so
+                    // the mode is made the default from the ordinary folder.
                     pane.setViewMode(mode)
+                    pane.useCurrentViewAsDefault()
                     pane.navigate(to: archive)
                     // currentURL changes before the listing does, so the wait
                     // has to be on the rows or it passes on the old directory's.
@@ -93,6 +96,7 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                         check("\(mode.rawValue): a session exists", false); return
                     }
                     check("\(mode.rawValue): the session is lazily mounted", session.isLazilyMounted)
+                    check("\(mode.rawValue): the archive opens in the \(mode.rawValue) view", pane.viewMode == mode, "\(pane.viewMode)")
                     check("\(mode.rawValue): the archive root lists its contents",
                           pane.model.items.map(\.name) == ["Payload"], "\(pane.model.items.map(\.name))")
                     // The regression Stage 3 fixes: a directory's date was the

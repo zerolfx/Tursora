@@ -80,7 +80,14 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                         other.model.url?.standardizedFileURL == destination.standardizedFileURL
                     }
                     let pane = wc.browser
+                    // An archive page has no view settings of its own and
+                    // opens with the default ones, so the mode is made the
+                    // default while the pane is still on an ordinary folder.
                     pane.setViewMode(mode)
+                    // Thumbnails are checked on their own below; here they
+                    // would add runs of the archive tool to every count.
+                    pane.setShowsPreviews(false)
+                    pane.useCurrentViewAsDefault()
                     let logicalBox = archive.appendingPathComponent("Box")
                     pane.navigate(to: logicalBox)
                     await waitUntil("\(name): the archive folder lists", detail: {
@@ -89,6 +96,7 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                         Set(pane.model.items.map(\.name)).isSuperset(of: ["a.txt", "Sub", "Tool.app", "Doc.rtfd"])
                     }
                     guard let session = workspace.session(for: archive) else { check("\(name): a session exists", false); return }
+                    check("\(name): the archive opens in the \(name) view", pane.viewMode == mode, "\(pane.viewMode)")
                     pane.setGroupKey(.kind)
                     check("\(name): listing extracted nothing", session.materializer.publishedPaths.isEmpty,
                           "\(session.materializer.publishedPaths.sorted())")
@@ -163,17 +171,21 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                     }
 
                     // Copy claims the pasteboard at once and writes it when ready.
-                    pane.fileView.select(urls: [logicalBox.appendingPathComponent("Tool.app")])
+                    // Two items, so the column view shows no preview column —
+                    // which would extract a single selected file by itself.
+                    pane.fileView.select(urls: ["Tool.app", "Sub"].map { logicalBox.appendingPathComponent($0) })
                     let before = pb.changeCount
                     pane.copy(nil)
-                    check("\(name): Copy of an entry not yet extracted clears the pasteboard at once",
+                    check("\(name): Copy of entries not yet extracted clears the pasteboard at once",
                           pb.changeCount != before && pb.fileURLs.isEmpty)
-                    await expectEventually("\(name): the copied package is on the pasteboard once extracted") {
-                        pb.fileURLs.count == 1
+                    await expectEventually("\(name): the copied package and folder are on the pasteboard once extracted") {
+                        pb.fileURLs.count == 2
                     }
-                    let copiedApp = pb.fileURLs.first
-                    check("\(name): the pasteboard holds the whole package",
-                          copiedApp.flatMap { try? String(contentsOf: $0.appendingPathComponent("Contents/MacOS/Tool"), encoding: .utf8) } == "code")
+                    let copiedApp = pb.fileURLs.first { $0.lastPathComponent == "Tool.app" }
+                    let copiedFolder = pb.fileURLs.first { $0.lastPathComponent == "Sub" }
+                    check("\(name): the pasteboard holds the whole package and the whole folder",
+                          copiedApp.flatMap { try? String(contentsOf: $0.appendingPathComponent("Contents/MacOS/Tool"), encoding: .utf8) } == "code"
+                          && copiedFolder.flatMap { try? String(contentsOf: $0.appendingPathComponent("Never/deep.txt"), encoding: .utf8) } == "deep")
                     pane.fileView.select(urls: [logicalBox.appendingPathComponent("Doc.rtfd")])
                     pane.copy(nil)
                     pb.clearContents()
@@ -242,8 +254,12 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                     await waitUntil("\(name): leaving the archive") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
                 }
 
+                // The checks below run from the list view.
+                wc.browser.setViewMode(.details)
+                wc.browser.useCurrentViewAsDefault()
                 try await reloadChecks(root: root, window: wc, openedArchives: &openedArchives)
                 try await previewChecks(root: root, window: wc, openedArchives: &openedArchives)
+                try await thumbnailChecks(root: root, window: wc, openedArchives: &openedArchives)
             } catch {
                 check("unexpected error", false, "\(error)")
             }
@@ -382,6 +398,169 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
         pane.setViewMode(.details)
         pane.navigate(to: root)
         await waitUntil("preview: leaving the archive") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
+    }
+
+    /// Thumbnails for entries not yet extracted (D100): gathered per run-loop
+    /// pass into one transient extraction, withdrawn by token, and never
+    /// leaving the archive's bytes behind.
+    @MainActor private static func thumbnailChecks(root: URL, window wc: MainWindowController,
+                                                   openedArchives: inout [URL]) async throws {
+        let workspace = ArchiveWorkspace.shared
+        let runner = SystemArchiveToolRunner.shared
+        let thumbnails = ThumbnailProvider.shared
+        let previousLimit = ArchivePreviewLimit.automaticBytes
+        ArchivePreviewLimit.automaticBytes = 1024
+        defer { ArchivePreviewLimit.automaticBytes = previousLimit; runner.beforeRunForTesting = nil }
+        var entries: [(name: String, contents: String)] = []
+        for folder in ["I", "L", "C"] {
+            for index in 0..<40 { entries.append(("\(folder)/\(folder.lowercased())\(String(format: "%02d", index)).txt", "\(folder) \(index)")) }
+        }
+        entries += [("P/p.txt", "shared"), ("G/g.txt", "gated"), ("B/big.txt", String(repeating: "b", count: 2048))]
+        let archive = root.appendingPathComponent("Thumbs.zip")
+        try SmokeFixtures.zip(entries).write(to: archive)
+        openedArchives.append(archive)
+        let pane = wc.browser
+        pane.setViewMode(.details)
+        pane.navigate(to: archive)
+        await waitUntil("thumbnails: the archive opens") { pane.model.items.map(\.name).contains("P") }
+        guard let session = workspace.session(for: archive) else { check("thumbnails: a session exists", false); return }
+        let provider = ArchiveFileProvider(base: LocalFileProvider(), workspace: workspace)
+        func items(_ folder: String) throws -> [FileItem] { try provider.listDirectory(archive.appendingPathComponent(folder)) }
+        func transientLeft() -> [String] {
+            ((try? FileManager.default.contentsOfDirectory(atPath: session.storageURL.path)) ?? []).filter { $0.hasPrefix(".tursora-thumbs-") }
+        }
+        func settle() async {
+            await drainMainQueue()
+            await waitUntil("thumbnails: the queue settles") { ArchiveThumbnailQueue.shared.isIdleForTesting }
+        }
+
+        // Withdrawn in the pass they were asked in: never extracted.
+        let cancelled = try items("C")
+        let runsBeforeCancel = runner.invocations
+        let tokens = cancelled.map { item -> ThumbnailToken in
+            let token = ThumbnailToken()
+            thumbnails.thumbnail(for: item, size: 64, scale: 2, token: token) { _ in }
+            return token
+        }
+        tokens.forEach(thumbnails.cancel)
+        await settle()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        check("thumbnail requests withdrawn in the same pass are never extracted",
+              tokens.count == 40 && runner.invocations == runsBeforeCancel && transientLeft().isEmpty,
+              "runs=\(runner.invocations - runsBeforeCancel)")
+
+        // Over the automatic limit: not asked for at all.
+        let big = try items("B")[0]
+        check("a member over the automatic limit gets no thumbnail request",
+              !ThumbnailProvider.canPreview(big) && thumbnails.thumbnail(for: big, size: 64, scale: 2) { _ in } == nil)
+
+        // Two panes on one key: withdrawing one still delivers to the other.
+        let shared = try items("P")[0]
+        let first = ThumbnailToken(), second = ThumbnailToken()
+        var firstDelivered = false
+        var secondImage: NSImage?
+        thumbnails.thumbnail(for: shared, size: 64, scale: 2, token: first) { _ in firstDelivered = true }
+        thumbnails.thumbnail(for: shared, size: 64, scale: 2, token: second) { secondImage = $0 }
+        thumbnails.cancel(first)
+        await expectEventually("withdrawing one of two requests for a thumbnail still delivers to the other") { secondImage != nil }
+        check("and the withdrawn one hears nothing", !firstDelivered)
+
+        // Withdrawn after its run started: made anyway, cached, not poisoned.
+        let gated = try items("G")[0]
+        let gate = WorkerGate()
+        runner.beforeRunForTesting = { gate.arriveAndWait() }
+        let early = ThumbnailToken()
+        thumbnails.thumbnail(for: gated, size: 64, scale: 2, token: early) { _ in }
+        await waitUntil("thumbnails: the gated run starts") { gate.arrived }
+        thumbnails.cancel(early)
+        runner.beforeRunForTesting = nil
+        gate.release()
+        await waitUntil("thumbnails: the gated thumbnail is made anyway") { thumbnails.isCachedForTesting(gated, size: 64, scale: 2) }
+        check("a request withdrawn after its run started is made anyway, and asked again is there at once",
+              thumbnails.thumbnail(for: gated, size: 64, scale: 2) { _ in } != nil
+              && !thumbnails.isUnsupportedForTesting(gated, size: 64, scale: 2))
+
+        // Through the real views: every visible cell in one run, and a reload
+        // while that run is held keeps what it asked for. A large window, so
+        // a page of cells is on screen, as in use.
+        wc.window?.setContentSize(NSSize(width: 1500, height: 1000))
+        for (mode, folder) in [(ViewMode.icons, "I"), (ViewMode.details, "L")] {
+            // Archive pages open with the default view settings; set them
+            // there from an ordinary folder.
+            // The ordinary folder's own rows, not the previous archive
+            // folder's still on screen: switching the view over those would
+            // ask for their thumbnails too.
+            pane.navigate(to: root)
+            await waitUntil("thumbnails: back on an ordinary folder") {
+                pane.model.url?.standardizedFileURL == root.standardizedFileURL
+                    && pane.model.items.contains { $0.name == "Thumbs.zip" }
+            }
+            pane.setViewMode(mode)
+            if mode == .details, let index = ZoomLevel.sizes(for: .details).firstIndex(of: 32) { pane.setZoomIndex(index) }
+            pane.setShowsPreviews(true)
+            pane.useCurrentViewAsDefault()
+            await settle()
+            let gate = WorkerGate()
+            runner.beforeRunForTesting = { gate.arriveAndWait() }
+            let runsBefore = runner.invocations
+            let queueRunsBefore = ArchiveThumbnailQueue.shared.runsForTesting.count
+            pane.navigate(to: archive.appendingPathComponent(folder))
+            await waitUntil("thumbnails: \(mode.rawValue) lists its folder") { pane.model.items.count == 40 }
+            check("thumbnails: the archive folder opens in the \(mode.rawValue) view with previews",
+                  pane.viewMode == mode && pane.showsPreviews && ZoomLevel.sizes(for: mode)[pane.zoomIndex] >= ZoomLevel.previewThreshold,
+                  "\(pane.viewMode) previews=\(pane.showsPreviews) zoom=\(pane.zoomIndex)")
+            await waitUntil("thumbnails: \(mode.rawValue) asks for its visible cells") { gate.arrived }
+            pane.fileView.reloadData()
+            runner.beforeRunForTesting = nil
+            gate.release()
+            let scale = pane.view.window?.backingScaleFactor ?? 2
+            let size = ZoomLevel.sizes(for: mode)[pane.zoomIndex]
+            // Read afresh on each poll: straight after a reload the grid has
+            // not laid its cells out yet.
+            func visibleItems() -> [FileItem] {
+                if mode == .icons {
+                    return pane.iconGrid.collectionView.indexPathsForVisibleItems().compactMap {
+                        pane.model.groups.indices.contains($0.section) && pane.model.groups[$0.section].nodes.indices.contains($0.item)
+                            ? pane.model.groups[$0.section].nodes[$0.item].item : nil
+                    }
+                }
+                let table = pane.fileList.tableView
+                let rows = table.rows(in: table.visibleRect)
+                return (rows.location..<(rows.location + rows.length)).compactMap { (table.item(atRow: $0) as? FileNode)?.item }
+            }
+            await expectEventually("\(mode.rawValue) at \(Int(size)) pt: every visible cell gets its thumbnail",
+                                   detail: { "\(visibleItems().filter { thumbnails.isCachedForTesting($0, size: size, scale: scale) }.count) of \(visibleItems().count)" }) {
+                let visible = visibleItems()
+                return !visible.isEmpty && visible.allSatisfy { thumbnails.isCachedForTesting($0, size: size, scale: scale) }
+            }
+            let visible = visibleItems()
+            check("\(mode.rawValue): \(visible.count) visible cells cost one run of the archive tool, a reload during it included",
+                  runner.invocations == runsBefore + 1,
+                  "runs=\(runner.invocations - runsBefore) " + describeRuns(since: queueRunsBefore))
+        }
+        await settle()
+        check("thumbnails leave no transient directory and extract nothing for good",
+              transientLeft().isEmpty && session.materializer.publishedPaths.isEmpty,
+              "\(transientLeft()) \(session.materializer.publishedPaths.sorted().prefix(5))")
+        pane.navigate(to: root)
+        await waitUntil("thumbnails: leaving the archive") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
+        pane.setViewMode(.details)
+        pane.setZoomIndex(ZoomLevel.defaultIndex(for: .details))
+        pane.useCurrentViewAsDefault()
+    }
+
+    /// Each thumbnail run since a point, as its members' names and the size
+    /// they were asked at, for a failure's detail.
+    private static func describeRuns(since start: Int) -> String {
+        let runs = Array(ArchiveThumbnailQueue.shared.runsForTesting.dropFirst(start))
+        return runs.map { (run: [String]) -> String in
+            let names: [String] = run.map { key in
+                let path = key.split(separator: "|").first.map(String.init) ?? key
+                return (path as NSString).lastPathComponent
+            }
+            let size: String = run.first.map { key in key.split(separator: "|").dropFirst().first.map(String.init) ?? "" } ?? ""
+            return names.joined(separator: ",") + " @" + size
+        }.joined(separator: " ; ")
     }
 
     /// Every file under a folder, by relative path, with its bytes; folders
