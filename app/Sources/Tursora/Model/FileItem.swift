@@ -7,9 +7,18 @@ struct FileItem {
     let url: URL
     /// Physical snapshot used only for reads; navigation always keeps `url`.
     let contentURL: URL
+    /// Whether the item can be read at all. For an archive entry this is a
+    /// property of the entry, not of the disk: false only for a link that
+    /// leads nowhere readable and for an entry whose extraction failed.
     let canAccess: Bool
     private let archiveSession: ArchiveBrowsingSession?
+    /// The tree path whose bytes an archive entry reads (a link's target for a
+    /// link); nil for anything else.
+    private let archivePath: String?
     var isArchiveEntry: Bool { archiveSession != nil }
+    /// A lazily mounted archive directory's item count, from its tree. Nil for
+    /// anything else, which is counted from disk as before.
+    var archiveChildCount: Int? { isNavigable ? archiveSession?.listedChildCount(of: contentURL) : nil }
     let name: String
     let isDirectory: Bool
     /// .app / .rtfd and friends: directories on disk, but the user thinks of
@@ -39,6 +48,7 @@ struct FileItem {
         self.contentURL = url
         self.canAccess = true
         self.archiveSession = nil
+        self.archivePath = nil
         self.name = v.name ?? url.lastPathComponent
         self.isDirectory = v.isDirectory ?? false
         self.isPackage = v.isPackage ?? false
@@ -53,25 +63,34 @@ struct FileItem {
         self.localizedType = v.localizedTypeDescription
     }
 
+    /// Every field from the table of contents: an entry's bytes may not be
+    /// extracted yet, and a row must not change when they arrive (D97).
     init(archiveEntry entry: ArchiveBrowsingSession.Entry, logicalURL: URL, session: ArchiveBrowsingSession) {
         url = logicalURL
         contentURL = entry.url
         archiveSession = session
-        let safeURL = entry.canAccess ? (try? session.validatedURL(entry.url)) : nil
-        let values = safeURL.flatMap { try? $0.resourceValues(forKeys: Set(Self.resourceKeys)) }
-        canAccess = entry.canAccess && values != nil
+        archivePath = entry.contentPath
+        canAccess = entry.canAccess
         name = entry.name
         isDirectory = entry.isDirectory
         isPackage = entry.isPackage
-        isHidden = values?.isHidden ?? entry.name.hasPrefix(".")
+        // bsdtar restores no hidden flag here (`--no-fflags`), so a dot name is
+        // the whole rule, as it is for the extracted file.
+        isHidden = entry.name.hasPrefix(".")
         isSymlink = entry.isSymbolicLink
         size = entry.size
-        modificationDate = values?.contentModificationDate
-        creationDate = values?.creationDate
-        accessDate = values?.contentAccessDate
-        addedDate = values?.addedToDirectoryDate
-        contentType = values?.contentType
-        localizedType = values?.localizedTypeDescription
+        // The archive's own date. On disk, a directory's date is only when its
+        // skeleton was created, which is when the user opened the archive.
+        modificationDate = entry.modificationDate
+        // bsdtar sets the modification date, and on APFS setting it earlier
+        // than a file's birth moves the birth back with it, so an extracted
+        // copy's creation date is the archive's date too (measured).
+        creationDate = entry.modificationDate
+        // Neither has happened to an entry that is only in the archive.
+        accessDate = nil
+        addedDate = nil
+        contentType = entry.contentType
+        localizedType = entry.kind
     }
 
     /// True when a double-click should navigate into it rather than open it.
@@ -84,25 +103,59 @@ struct FileItem {
         return base.isEmpty ? name : base
     }
 
-    /// Rechecks containment at the point of use, including after external edits
-    /// replace a formerly safe snapshot entry with an escaping symlink.
-    var readableContentURL: URL? {
+    /// Where this item's bytes can be read right now, or nil. For an archive
+    /// entry that is only once they are published — judged from the entry's
+    /// state, never from the disk — and after containment is checked again at
+    /// the point of use, in case a link was replaced since listing. A folder
+    /// counts once its whole subtree is here, so it is never handed to a copy
+    /// half-filled.
+    var publishedContentURL: URL? {
         guard canAccess else { return nil }
         guard let archiveSession else { return contentURL }
-        guard let safe = try? archiveSession.validatedURL(contentURL),
-              FileManager.default.fileExists(atPath: safe.path) else { return nil }
-        return safe
+        guard let archivePath, archiveSession.isPublished(archivePath) else { return nil }
+        return try? archiveSession.validatedURL(contentURL)
     }
 
+    /// Where an archive entry's bytes live in its session: the session and the
+    /// entry's tree path. Nil for anything else.
+    var archiveLocation: (session: ArchiveBrowsingSession, path: String)? {
+        guard let archiveSession, let archivePath else { return nil }
+        return (archiveSession, archivePath)
+    }
+
+    /// For an archive entry, whether its bytes are extracted — from its state
+    /// alone, before the containment check `publishedContentURL` adds.
+    var isExtractedArchiveEntry: Bool {
+        guard let archiveLocation else { return false }
+        return archiveLocation.session.isPublished(archiveLocation.path)
+    }
+
+    /// What Quick Look shows: the bytes once they are here, and a folder as
+    /// the folder it is. A folder is only shown, never copied, so it need not
+    /// be complete; its skeleton is on disk from the moment the archive opens.
+    var previewContentURL: URL? {
+        guard isNavigable, let archiveSession else { return publishedContentURL }
+        return try? archiveSession.validatedURL(contentURL)
+    }
+
+    /// The icon as NSWorkspace hands it back, at its own size.
+    var iconImage: NSImage {
+        guard isArchiveEntry else { return NSWorkspace.shared.icon(forFile: contentURL.path) }
+        guard canAccess else { return NSWorkspace.shared.icon(for: .item) }
+        // A published file or package shows its own icon — an app its real
+        // one. Anything else shows its type's, which is what it will look
+        // like; a folder is always a folder, so it is never asked to prove its
+        // whole subtree is here just to be drawn.
+        if !isNavigable, let published = publishedContentURL {
+            return NSWorkspace.shared.icon(forFile: published.path)
+        }
+        return NSWorkspace.shared.icon(for: isNavigable ? .folder : (contentType ?? .data))
+    }
 
     /// The Finder icon at a given point size. Copied, because NSWorkspace may
     /// hand back a shared instance and we mutate the size.
     func icon(size: CGFloat) -> NSImage {
-        // A symlink may have been replaced since listing; validate again before
-        // NSWorkspace has any opportunity to inspect a snapshot target.
-        let source = readableContentURL.map { NSWorkspace.shared.icon(forFile: $0.path) }
-            ?? NSWorkspace.shared.icon(for: .item)
-        let img = (source.copy() as? NSImage) ?? NSImage()
+        let img = (iconImage.copy() as? NSImage) ?? NSImage()
         img.size = NSSize(width: size, height: size)
         return img
     }

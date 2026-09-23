@@ -126,7 +126,7 @@ enum TextThumbnailSmokeTests: SmokeSuite {
         let large = NSImage(size: NSSize(width: 192, height: 256))
         var gridPending: [(NSImage?) -> Void] = []
         let grid = IconGridViewController(model: model)
-        grid.thumbnailLoader = { _, _, _, callback in gridPending.append(callback); return nil }
+        grid.thumbnailLoader = { _, _, _, _, callback in gridPending.append(callback); return nil }
         _ = grid.view
         grid.reloadData()
         let path = IndexPath(item: 0, section: 0)
@@ -157,7 +157,7 @@ enum TextThumbnailSmokeTests: SmokeSuite {
 
         var listPending: [(NSImage?) -> Void] = []
         let list = FileListViewController(model: model)
-        list.thumbnailLoader = { _, _, _, callback in listPending.append(callback); return nil }
+        list.thumbnailLoader = { _, _, _, _, callback in listPending.append(callback); return nil }
         _ = list.view
         list.setIconSize(32, showPreviews: true)
         let nameColumn = list.tableView.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier("name"))!
@@ -201,7 +201,7 @@ enum TextThumbnailSmokeTests: SmokeSuite {
         let newImage = NSImage(size: NSSize(width: 96, height: 128))
         var gridRequests: [(scale: CGFloat, reply: (NSImage?) -> Void)] = []
         let grid = IconGridViewController(model: model)
-        grid.thumbnailLoader = { _, _, scale, reply in gridRequests.append((scale, reply)); return nil }
+        grid.thumbnailLoader = { _, _, scale, _, reply in gridRequests.append((scale, reply)); return nil }
         window.contentView = grid.view
         grid.reloadData()
         let path = IndexPath(item: 0, section: 0)
@@ -238,7 +238,7 @@ enum TextThumbnailSmokeTests: SmokeSuite {
 
         var listRequests: [(scale: CGFloat, reply: (NSImage?) -> Void)] = []
         let list = FileListViewController(model: model)
-        list.thumbnailLoader = { _, _, scale, reply in listRequests.append((scale, reply)); return nil }
+        list.thumbnailLoader = { _, _, scale, _, reply in listRequests.append((scale, reply)); return nil }
         window.contentView = list.view
         list.setIconSize(64, showPreviews: true)
         let nameColumn = list.tableView.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier("name"))!

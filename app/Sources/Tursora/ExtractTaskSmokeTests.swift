@@ -20,8 +20,12 @@ enum ExtractTaskSmokeTests: SmokeSuite {
                 check("fixture created", false); completion(); return
             }
             var window: MainWindowController?
+            let viewStore = DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("views.json"))
             defer {
                 window?.close()
+                // Write now what closing scheduled, or it lands after the
+                // fixture is removed and leaves the folder behind.
+                try? viewStore.flush()
                 try? fm.removeItem(at: root)
                 completion()
             }
@@ -38,7 +42,6 @@ enum ExtractTaskSmokeTests: SmokeSuite {
                 let archive = try await SmokeFixtures.compress([source], to: root)
                 try fm.removeItem(at: source)
 
-                let viewStore = DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("views.json"))
                 let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(),
                                               initialURL: root, viewPropertiesStore: viewStore)
                 window = wc

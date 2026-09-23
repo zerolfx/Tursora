@@ -62,7 +62,7 @@ final class TabBarView: NSView {
         configure(overflowButton, symbol: "chevron.down", description: "All Tabs", action: #selector(showOverflow))
         overflowButton.toolTip = "All Tabs"
         overflowButton.isHidden = true
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes([.fileURL, ArchiveEntryPromiseProvider.internalType])
     }
     required init?(coder: NSCoder) { fatalError() }
     deinit {

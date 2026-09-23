@@ -243,7 +243,7 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
             check("ZIP fixture prepares a retained snapshot", false); return
         }
         extracted.append(firstSession)
-        let physical = try ArchiveWorkspace.shared.readableURL(for: logical)
+        let physical = try ArchiveWorkspace.shared.physicalURL(for: logical)
         original.browser.navigate(to: physical)
         await listed(original.browser, at: logical)
         let captured = original.workspaceSessionState
@@ -255,6 +255,12 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
         check("ZIP capture retains a read-only ordinary navigation entry", captured.tabs[0].panes[0].search == nil && original.browser.isBrowsingArchive && !original.browser.canModifyCurrentLocation)
         original.close()
         firstSession.close()
+        // Closing removes storage at once when nothing is extracting, and once
+        // a running extraction has stopped otherwise (D96); a listing of the
+        // same folder can still be in flight here.
+        await waitUntil("the first private extraction is removed", detail: { firstSession.storageURL.path }) {
+            !manager.fileExists(atPath: firstSession.storageURL.path)
+        }
         check("ZIP fixture removes its first private extraction before restoration", !manager.fileExists(atPath: firstSession.storageURL.path) && ArchiveWorkspace.shared.session(for: logical) == nil)
 
         let restored = makeWindow(at: folders[4], store: views)
@@ -268,7 +274,9 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
         extracted.append(secondSession)
         check("ZIP restoration creates a different private snapshot", secondSession !== firstSession && secondSession.rootURL != firstSession.rootURL && manager.fileExists(atPath: secondSession.rootURL.path))
         check("restored ZIP displays original content using logical file URLs", restored.browser.model.items.map(\.name) == ["note.txt"] && restored.browser.model.items.allSatisfy { $0.url.path.hasPrefix(logical.path + "/") && $0.isArchiveEntry })
-        let readable = restored.browser.model.items.first?.readableContentURL
+        // The folder on screen is prefetched in the background (D102).
+        await waitUntil("the restored folder is prefetched") { restored.browser.model.items.first?.publishedContentURL != nil }
+        let readable = restored.browser.model.items.first?.publishedContentURL
         let contents = try readable.map { try String(contentsOf: $0) }
         check("restored ZIP reads the re-extracted file", contents == "restored ZIP content")
         check("restored ZIP retains fresh history and active keyboard focus", restored.browser.history.entries.count == 1 && restored.window?.firstResponder === restored.browser.focusView && restored.browser.isBrowsingArchive && !restored.browser.canModifyCurrentLocation)

@@ -113,7 +113,12 @@ enum Grouping {
 
     static func applicationBucket(_ item: FileItem) -> (title: String, order: Int) {
         if item.isNavigable { return ("Finder", 0) }
-        guard let app = NSWorkspace.shared.urlForApplication(toOpen: item.url) else { return ("No Application", 2) }
+        // An archive entry's URL is logical and exists nowhere, so asking by
+        // URL finds nothing; its type is what an application is chosen by.
+        let app = item.isArchiveEntry
+            ? item.contentType.flatMap { NSWorkspace.shared.urlForApplication(toOpen: $0) }
+            : NSWorkspace.shared.urlForApplication(toOpen: item.url)
+        guard let app else { return ("No Application", 2) }
         return (FileManager.default.displayName(atPath: app.path), 1)
     }
 

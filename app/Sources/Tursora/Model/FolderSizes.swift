@@ -147,11 +147,24 @@ final class FolderSizes {
         lastItems = items
         lastAllowsRecursiveSizes = recursive
         let wantsSize = calculatesAllSizes && recursive && allowsRecursiveSizes
+        var seeded = false
         for item in items where item.isNavigable {
-            // An archive entry validates containment again on every access and
-            // lists from an extracted snapshot: count it, never walk it.
-            let itemWantsSize = wantsSize && !item.isArchiveEntry
-            guard let contentURL = item.readableContentURL else { continue }
+            // A lazily mounted archive folder is counted from its tree, never
+            // from disk: until it is entered it holds only its skeleton. It is
+            // never walked for a size either, so nothing needs scheduling.
+            if let count = item.archiveChildCount {
+                let key = self.key(for: item)
+                if cache[key]?.itemCount != count {
+                    cache[key, default: Metrics()].itemCount = count
+                    seeded = true
+                }
+                continue
+            }
+            // An archive folder that could not be counted from its tree is not
+            // counted from disk either, where it is only a skeleton.
+            if item.isArchiveEntry { continue }
+            let itemWantsSize = wantsSize
+            guard let contentURL = item.publishedContentURL else { continue }
             let key = self.key(for: item)
             let cached = cache[key]
             let wantsCount = cached?.itemCount == nil
@@ -161,6 +174,7 @@ final class FolderSizes {
             inFlight[key] = generation
             schedule(Request(key: key, contentURL: contentURL, wantsCount: wantsCount, wantsSize: needsSize))
         }
+        if seeded { scheduleNotify() }
     }
 
     /// Navigation, a fresh listing or a new search: stop measuring. Results

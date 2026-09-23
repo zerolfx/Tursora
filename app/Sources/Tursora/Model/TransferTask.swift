@@ -47,6 +47,8 @@ final class TransferTask {
     private var errors: [FileOperations.Failure] = []
     private var activeDuration: TimeInterval = 0
     private var activeSince: TimeInterval?
+    private var pausable = true
+    private var cancellationActions: [() -> Void] = []
 
     init(sources: [URL], destination: URL, kind: FileOperations.Kind) {
         self.sources = FileOperations.mutationSources(sources.map(\.standardizedFileURL))
@@ -59,7 +61,7 @@ final class TransferTask {
         let elapsed = activeDuration + (activeSince.map { ProcessInfo.processInfo.systemUptime - $0 } ?? 0)
         let speed = state == .running && elapsed > 0.1 && bytes > 0 ? Double(bytes) / elapsed : nil
         let eta = total.flatMap { total in speed.map { max(0, Double(total - bytes)) / $0 } }
-        return Snapshot(id: id, state: state, supportsPause: kind != .extract, currentItem: item, totalBytes: total,
+        return Snapshot(id: id, state: state, supportsPause: kind != .extract && pausable, currentItem: item, totalBytes: total,
                         completedBytes: bytes, bytesPerSecond: speed, estimatedTimeRemaining: eta,
                         phaseDetail: detail, successfulItems: successes, skippedItems: skipped, failures: errors,
                         isCancellationRequested: cancelRequested, isPauseRequested: pauseRequested)
@@ -76,9 +78,31 @@ final class TransferTask {
         pauseRequested = false; condition.broadcast()
     }
     func cancel() {
-        condition.lock(); defer { condition.unlock() }
-        guard !state.isTerminal else { return }
+        condition.lock()
+        guard !state.isTerminal else { condition.unlock(); return }
         cancelRequested = true; pauseRequested = false; condition.broadcast()
+        let actions = cancellationActions
+        cancellationActions.removeAll()
+        condition.unlock()
+        actions.forEach { $0() }
+    }
+    /// Runs when the task is cancelled — at once if it already has been — so
+    /// work the task does not drive itself, such as bytes being extracted from
+    /// an archive for it, stops with it.
+    func onCancel(_ action: @escaping () -> Void) {
+        condition.lock()
+        let now = cancelRequested
+        if !now, !state.isTerminal { cancellationActions.append(action) }
+        condition.unlock()
+        if now { action() }
+    }
+    /// Pause needs a checkpoint of the task's own between data writes. While a
+    /// transfer waits on an archive tool it has none, so Pause is offered only
+    /// around that wait (D98).
+    func setPausable(_ value: Bool) {
+        condition.lock(); defer { condition.unlock() }
+        pausable = value
+        if !value { pauseRequested = false; condition.broadcast() }
     }
     /// All data writes are between checkpoints. Paused is published only here.
     func checkpoint() throws {
@@ -151,6 +175,11 @@ struct TransferOptions {
     var forceCrossVolumeMove = false
     var duplicateInPlace = false
     var checkpoint: ((TransferCheckpoint, URL, Int64) throws -> Void)?
+    /// Runs on the worker before any source is pinned or scanned, to bring
+    /// sources that are not on disk yet — entries of a mounted archive — to
+    /// disk. Returns what could not be brought; throwing `TransferError.cancelled`
+    /// cancels the transfer.
+    var prepareSources: ((TransferTask) throws -> [FileOperations.Failure])?
 }
 
 enum TransferError: LocalizedError {

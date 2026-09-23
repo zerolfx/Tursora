@@ -92,9 +92,13 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                         let child = browser.model.node(for: childURL)!.item
                         browser.selectContextTargets([child])
                         check("expanded ZIP tree keeps same-name context targets distinct", browser.fileView.selectedItems.map(\.url) == [childURL] && browser.fileView.isReadOnly)
+                        // An expanded folder's files are not prefetched: Copy
+                        // extracts the member and fills the pasteboard when it
+                        // is ready (D98, D102).
                         browser.copy(nil)
-                        let treeCopy = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
-                        check("expanded ZIP tree copies the selected nested member", treeCopy?.map(\.standardizedFileURL) == [child.readableContentURL!.standardizedFileURL] && (try? String(contentsOf: child.contentURL)) == "nested duplicate name")
+                        await waitUntil("expanded ZIP member reaches the pasteboard") { NSPasteboard.general.externalFileURLs.count == 1 }
+                        let treeCopy = NSPasteboard.general.externalFileURLs
+                        check("expanded ZIP tree copies the selected nested member", treeCopy.compactMap { ArchiveHandoffStore.shared.logicalURL(forHandOff: $0) } == [child.url] && treeCopy.first.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "nested duplicate name")
                     }
                     browser.fileView.select(name: "Docs")
                     browser.openSelection()
@@ -115,14 +119,22 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                     browser.nameFilter = ""
                     browser.fileView.select(name: "notes.txt")
                     let note = browser.fileView.selectedItems[0]
-                    let noteCopy = note.readableContentURL!
+                    // The folder on screen is prefetched in the background (D102).
+                    await waitUntil("\(mode): the folder's files are prefetched") { note.publishedContentURL != nil }
+                    guard let noteCopy = note.publishedContentURL else { return }
                     let originalOpened = opened.count
                     browser.openSelection()
-                    check("\(mode): deliberate Open launches the validated temporary copy", opened.count == originalOpened + 1 && opened.last == noteCopy && opened.last != docs.appendingPathComponent("notes.txt"))
-                    check("\(mode): Share and Quick Look receive the copy", wc.sharingItems == [noteCopy] && browser.numberOfPreviewItems(in: nil) == 1 && browser.previewPanel(nil, previewItemAt: 0)?.previewItemURL == noteCopy)
+                    // Handed outside as a copy of the extracted file (D103).
+                    func handedOff(_ url: URL?) -> Bool {
+                        guard let url else { return false }
+                        return ArchiveHandoffStore.shared.logicalURL(forHandOff: url) == note.url
+                            && (try? String(contentsOf: url, encoding: .utf8)) == "original note" && url != noteCopy
+                    }
+                    check("\(mode): deliberate Open launches a hand-off copy of the validated temporary copy", opened.count == originalOpened + 1 && handedOff(opened.last) && opened.last != docs.appendingPathComponent("notes.txt"))
+                    check("\(mode): Share and Quick Look receive the hand-off copy", (wc.sharingItems as? [URL]).map { $0.count == 1 && handedOff($0.first) } == true && browser.numberOfPreviewItems(in: nil) == 1 && handedOff(browser.previewPanel(nil, previewItemAt: 0)?.previewItemURL))
                     browser.copy(nil)
                     let copied = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
-                    check("\(mode): Copy exports the snapshot member", copied?.map(\.standardizedFileURL) == [noteCopy.standardizedFileURL])
+                    check("\(mode): Copy exports the snapshot member as a hand-off copy", copied?.count == 1 && handedOff(copied?.first))
                     let changeCount = NSPasteboard.general.changeCount
                     browser.cut(nil)
                     check("\(mode): Cut is inert in an archive", NSPasteboard.general.changeCount == changeCount)
@@ -144,7 +156,7 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                     browser.fileView.select(name: "outside-link")
                     let beforeBlocked = opened.count
                     browser.openSelection()
-                    check("\(mode): escaped links cannot open, preview or share", opened.count == beforeBlocked && browser.readableSelectionURLs.isEmpty && !browser.canPreviewSelection && wc.sharingItems.isEmpty)
+                    check("\(mode): escaped links cannot open, preview or share", opened.count == beforeBlocked && browser.publishedSelectionURLs.isEmpty && !browser.canPreviewSelection && wc.sharingItems.isEmpty)
                     browser.goUp()
                     await listed(browser, at: archive)
                     browser.goUp()
@@ -152,7 +164,7 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                     check("\(mode): Up exits ZIP and selects the original archive", browser.fileView.selectedItems.map { $0.url.standardizedFileURL } == [archive.standardizedFileURL] && browser.canModifyCurrentLocation && !browser.fileView.isReadOnly)
                     browser.copy(nil)
                     let copiedArchive = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
-                    check("\(mode): copying a previously browsed ZIP copies the ZIP file", copiedArchive?.map(\.standardizedFileURL) == [archive.standardizedFileURL] && wc.sharingItems.map(\.standardizedFileURL) == [archive.standardizedFileURL])
+                    check("\(mode): copying a previously browsed ZIP copies the ZIP file", copiedArchive?.map(\.standardizedFileURL) == [archive.standardizedFileURL] && wc.sharingItems.compactMap { ($0 as? URL)?.standardizedFileURL } == [archive.standardizedFileURL])
                     let extractItem = MainMenu.actionsMenu(target: wc).items.first { ($0.representedObject as? String) == MainMenu.FileAction.extract.rawValue }!
                     check("\(mode): default browsing keeps explicit Extract in both menus", wc.validateMenuItem(extractItem) && browser.buildContextMenu(for: browser.fileView.selectedItems).items.contains { $0.title == "Extract" })
                     wc.performFileAction(extractItem)
@@ -197,7 +209,7 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                 check("copying out uses a writable destination and preserves ZIP", (try? String(contentsOf: output)) == "nested note" && (try? Data(contentsOf: archive)) == sourceBytes)
                 let archiveBeforeDrop = archived.model.items.map(\.name)
                 archived.dropFiles([welcome], to: archiveInner, op: .copy)
-                check("drop into archive is inert", archived.model.items.map(\.name) == archiveBeforeDrop && !fm.fileExists(atPath: try! ArchiveWorkspace.shared.readableURL(for: archiveInner).appendingPathComponent("welcome.txt").path))
+                check("drop into archive is inert", archived.model.items.map(\.name) == archiveBeforeDrop && !fm.fileExists(atPath: try! ArchiveWorkspace.shared.physicalURL(for: archiveInner).appendingPathComponent("welcome.txt").path))
                 wc.toggleTerminal(nil)
                 check("terminal uses the original archive parent", wc.terminalPanel?.pendingDirectory.standardizedFileURL.path == fixture.standardizedFileURL.path)
                 wc.hideTerminal()
@@ -205,7 +217,7 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                 archived.goUp()
                 await listed(archived, at: archiveDocs)
                 check("opting out leaves existing ZIP pages read-only", archived.isBrowsingArchive && archived.fileView.isReadOnly)
-                let retainedCopy = try ArchiveWorkspace.shared.readableURL(for: archiveDocs.appendingPathComponent("notes.txt"))
+                let retainedCopy = try ArchiveWorkspace.shared.physicalURL(for: archiveDocs.appendingPathComponent("notes.txt"))
                 _ = wc.tabs.closeCurrentTab()
                 check("closing archive tabs retains externally readable copies", fm.fileExists(atPath: retainedCopy.path))
                 check("closed archive tab can be reopened with its location", wc.tabs.reopenClosedTab() && wc.browser.currentURL == archiveDocs && wc.browser.isBrowsingArchive)

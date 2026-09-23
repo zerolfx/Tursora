@@ -521,7 +521,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         viewModeControl?.setToolTip(shortcutTooltip("as Columns", action: "menu.viewAsColumns"), forSegment: 2)
         syncSplitToolbar()
         syncTerminalToolbar()
-        shareItem?.isEnabled = !sharingItems.isEmpty
+        shareItem?.isEnabled = canShareSelection
         window?.toolbar?.validateVisibleItems()
     }
 
@@ -651,7 +651,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func goForward(_ sender: Any?) { browser.goForward() }
     @objc func goUp(_ sender: Any?) { browser.goUp() }
     @objc func goHome(_ sender: Any?) { browser.goHome() }
-    @objc func reload(_ sender: Any?) { browser.reload() }
+    @objc func reload(_ sender: Any?) { browser.reloadForgettingArchiveFailures() }
     @objc func openSelection(_ sender: Any?) {
         guard browser.canOpenSelection else { return }
         browser.openSelection()
@@ -771,12 +771,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case ToolbarID.back:    return browser.canGoBack
         case ToolbarID.forward: return browser.canGoForward
         case ToolbarID.up:      return browser.canGoUp
-        case ToolbarID.share:   return !sharingItems.isEmpty
+        case ToolbarID.share:   return canShareSelection
         default: return true
         }
     }
 
-    var sharingItems: [URL] { browser.readableSelectionURLs }
+    /// Pure: read from the rows, so validating the toolbar never extracts.
+    var canShareSelection: Bool { browser.hasAccessibleSelection }
+    /// What Share is handed: a file URL for anything on disk, and an item
+    /// provider that extracts first for a ZIP entry not yet extracted (D101).
+    var sharingItems: [Any] { browser.fileView.selectedItems.compactMap(ArchiveDragExport.sharingItem(for:)) }
 
     func items(for pickerToolbarItem: NSSharingServicePickerToolbarItem) -> [Any] { sharingItems }
 
@@ -794,7 +798,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case .getInfo: return !browser.isBrowsingArchive && browser.currentURL != nil
         case .open: return browser.canOpenSelection
         case .quickLook: return browser.canPreviewSelection
-        case .copy: return !browser.readableSelectionURLs.isEmpty
+        case .copy: return browser.hasAccessibleSelection
         case .rename:
             // Finder's plural wording for a multi-selection batch rename.
             item.title = BrowserViewController.batchRenameTitle(count: count)
@@ -899,7 +903,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.toolTip = "Share selected items"
             item.delegate = self
             item.autovalidates = false
-            item.isEnabled = !sharingItems.isEmpty
+            item.isEnabled = canShareSelection
             shareItem = item
             return item
         case ToolbarID.more:

@@ -68,7 +68,7 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         dropHighlight.layer?.cornerRadius = 5
         dropHighlight.isHidden = true
         addSubview(dropHighlight, positioned: .below, relativeTo: nil)
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes([.fileURL, ArchiveEntryPromiseProvider.internalType])
     }
     required init?(coder: NSCoder) { fatalError() }
     deinit { if let shortcutObserver { NotificationCenter.default.removeObserver(shortcutObserver) } }

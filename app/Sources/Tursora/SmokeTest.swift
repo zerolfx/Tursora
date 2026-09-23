@@ -42,6 +42,9 @@ enum SmokeTest: SmokeSuite {
         AppPreferences.experimentalZIPBrowsingEnabled = false
         AppPreferences.shared.shortcuts.resetAll()
         AppPreferences.shared.resetFilterShortcut()
+        // A ZIP's private copy is let go only when a check asks (D103), so no
+        // suite loses a session to a timer mid-check.
+        ArchiveWorkspace.shared.evictionSchedule = .manual
         // A failed earlier run may have left view state behind; start from defaults.
         wc.browser.setGroupKey(.none)
         wc.browser.setViewMode(.details)
@@ -74,6 +77,9 @@ enum SmokeTest: SmokeSuite {
             ArchivePreparationSmokeTests.run,
             ArchiveBrowserSmokeTests.run,
             ExtractTaskSmokeTests.run,
+            LazyArchiveSmokeTests.run,
+            ArchiveOpenSmokeTests.run,
+            ArchiveEvictionSmokeTests.run,
             SplitToolbarSmokeTests.run,
             FolderTreeSmokeTests.run,
             TrashSmokeTests.run,
@@ -1812,6 +1818,12 @@ enum SmokeTest: SmokeSuite {
         check("status bar shows counts", wc.browser.statusBar.description.isEmpty || true)
         archiveUI(wc, tmp) {
             try? FileManager.default.removeItem(at: tmp)
+            // Across the whole run, the archive tool never ran on the main
+            // thread: listing never extracts, and everything that does
+            // extracts off it (D102).
+            check("the archive tool never ran on the main thread in the whole run",
+                  SystemArchiveToolRunner.shared.mainThreadInvocations == 0,
+                  "\(SystemArchiveToolRunner.shared.mainThreadInvocations) of \(SystemArchiveToolRunner.shared.invocations) runs")
             print("SMOKE TEST PASSED")
             exit(0)
         }

@@ -30,6 +30,15 @@ final class ArchivePreparationCancellation: @unchecked Sendable {
         if isCancelled { throw ArchiveBrowsingSession.SessionError.cancelled }
     }
 
+    /// SIGKILL, for a child that ignored the SIGTERM `cancel` sent. Only ever a
+    /// last resort before storage it may be writing into is removed.
+    func kill() {
+        lock.lock()
+        let running = process
+        lock.unlock()
+        if let running, running.isRunning { Darwin.kill(running.processIdentifier, SIGKILL) }
+    }
+
     func checkpoint(_ point: Checkpoint) throws {
         try checkCancellation()
         checkpointHandler?(point)
@@ -70,6 +79,7 @@ struct ArchiveToolProgress {
 extension FileOperations {
     enum ArchiveError: LocalizedError {
         case noSelection, duplicateNames, destinationInsideSelection, unsupportedArchive, invalidArchive, emptyArchive
+        case encryptedArchive
         case cancelled
         case commandFailed(String)
 
@@ -81,6 +91,7 @@ extension FileOperations {
             case .unsupportedArchive: return "Only ZIP archives can be extracted here."
             case .invalidArchive: return "This file does not appear to be a valid ZIP archive."
             case .emptyArchive: return "The archive contains no files."
+            case .encryptedArchive: return "This ZIP is password-protected and cannot be opened here."
             case .cancelled: return "The extraction was cancelled."
             case .commandFailed(let message): return message
             }
@@ -128,7 +139,7 @@ extension FileOperations {
     /// No existing destination is used as an extraction root or replaced.
     static func extract(archive: URL, to directory: URL,
                         completion: @escaping (Result<URL, Error>) -> Void) {
-        extract(archive: archive, to: directory, preserveRoot: false, completion: completion)
+        extract(archive: archive, to: directory, cancellation: nil, completion: completion)
     }
 
     /// Extract with determinate progress and cancellation, for the explicit
@@ -171,16 +182,9 @@ extension FileOperations {
         }
     }
 
-    /// The read-only browser needs the exact archive hierarchy, including a
-    /// single top-level folder, instead of the normal extraction presentation.
-    static func extractArchiveContents(archive: URL, to directory: URL,
-                                       cancellation: ArchivePreparationCancellation? = nil,
-                                       completion: @escaping (Result<URL, Error>) -> Void) {
-        extract(archive: archive, to: directory, preserveRoot: true, cancellation: cancellation, completion: completion)
-    }
 
-    private static func extract(archive: URL, to directory: URL, preserveRoot: Bool,
-                                cancellation: ArchivePreparationCancellation? = nil,
+    private static func extract(archive: URL, to directory: URL,
+                                cancellation: ArchivePreparationCancellation?,
                                 completion: @escaping (Result<URL, Error>) -> Void) {
         archiveOperation(completion: completion) {
             try cancellation?.checkpoint(.beforeExtraction)
@@ -195,9 +199,6 @@ extension FileOperations {
                 try propagateArchiveQuarantine(from: archive, to: output, cancellation: cancellation)
                 let items = try FileManager.default.contentsOfDirectory(at: output, includingPropertiesForKeys: nil)
                 try cancellation?.checkpoint(.beforePublication)
-                if preserveRoot {
-                    return try publishArchiveItem(output, named: "Contents", in: directory)
-                }
                 guard !items.isEmpty else { throw ArchiveError.emptyArchive }
                 if items.count == 1, let item = items.first {
                     return try publishArchiveItem(item, named: item.lastPathComponent, in: directory)
@@ -208,13 +209,35 @@ extension FileOperations {
         }
     }
 
+    /// The first four bytes, plus the local header's general-purpose bit flag
+    /// when there is one. Encryption has to be refused here rather than
+    /// discovered during extraction, because the tool reports it in a way that
+    /// is actively dangerous to trust: `tar -tvf` on an encrypted archive exits
+    /// **0** with a complete, correct listing, and `tar -x` then exits 1 while
+    /// leaving a correctly-sized, entirely zero-filled file at the right path.
+    /// Anything that judged success by `fileExists` would serve those zeros to
+    /// Quick Look, drag-out and Copy. Measured; see
+    /// docs/research/lazy-zip-browsing.md.
+    /// The pre-flight the browsing path runs before it creates any storage:
+    /// a ZIP by extension, a real ZIP by signature, and not password-protected.
+    static func checkArchiveForBrowsing(_ archive: URL) throws {
+        guard canExtractArchive(archive) else { throw ArchiveError.unsupportedArchive }
+        try checkExtractionSignature(archive)
+    }
+
     private static func checkExtractionSignature(_ archive: URL) throws {
         let handle = try FileHandle(forReadingFrom: archive)
         defer { try? handle.close() }
-        let signature = try handle.read(upToCount: 4)
-        guard let signature, [Data([0x50, 0x4b, 0x03, 0x04]), Data([0x50, 0x4b, 0x05, 0x06])].contains(signature) else {
-            throw ArchiveError.invalidArchive
-        }
+        guard let header = try handle.read(upToCount: 8), header.count >= 4 else { throw ArchiveError.invalidArchive }
+        let signature = header.prefix(4)
+        let localFile = Data([0x50, 0x4b, 0x03, 0x04])
+        let emptyArchive = Data([0x50, 0x4b, 0x05, 0x06])
+        guard signature == localFile || signature == emptyArchive else { throw ArchiveError.invalidArchive }
+        // Only a local file header carries the flag; an empty archive has none.
+        guard signature == localFile, header.count >= 8 else { return }
+        let bytes = [UInt8](header)
+        let flags = UInt16(bytes[6]) | (UInt16(bytes[7]) << 8)
+        if flags & 0x0001 != 0 { throw ArchiveError.encryptedArchive }
     }
 
     /// Supplying a passphrase disables bsdtar's interactive callback entirely.
@@ -222,12 +245,60 @@ extension FileOperations {
     /// without opening /dev/tty, which redirecting stdin alone cannot prevent.
     /// `-v` is added only when something is reading the stream: the ZIP
     /// browsing path keeps a clean error log.
-    private static func extractionArguments(archive: URL, output: URL, verbose: Bool) -> [String] {
-        (verbose ? ["-x", "-v"] : ["-x"]) + [
+    private static func extractionArguments(archive: URL, output: URL, verbose: Bool,
+                                            memberList: URL? = nil, noRecursion: Bool = false,
+                                            excludes: [String] = []) -> [String] {
+        var arguments = ["-x"]
+        if verbose { arguments.append("-v") }
+        // `-n` stops a leaf's name prefix-matching a deeper entry: a member
+        // `clash` otherwise also tries `clash/inside.txt` and reports an error
+        // (measured). It must NOT be used for a directory or a package — a ZIP
+        // need store no directory record, and with `-n` such a member is
+        // "Not found in archive". `-q`/`--fast-read` must never be used at all:
+        // it stops at the first match and silently truncates a subtree.
+        if noRecursion { arguments.append("-n") }
+        arguments += [
             "-f", archive.path, "-C", output.path,
             "--no-same-owner", "--no-same-permissions", "--mac-metadata", "--no-acls", "--no-fflags",
             "--passphrase", UUID().uuidString,
         ]
+        // Excludes before the member list, as options: bsdtar stops reading
+        // options at the first positional pattern.
+        for exclude in excludes { arguments += ["--exclude", exclude] }
+        // A member list goes through a file, never argv: ARG_MAX is 1 MiB and a
+        // directory can hold more names than that.
+        if let memberList { arguments += ["-T", memberList.path] }
+        return arguments
+    }
+
+    /// Extract exactly the named members of an archive into `output`.
+    ///
+    /// Two measured properties shape this and must not be softened.
+    /// **Exit status is archive-wide**: a batch of two members where one is
+    /// missing exits 1 *and* writes the other, so a non-zero status does not
+    /// mean nothing happened. And **existence is never evidence of success**:
+    /// a member of an encrypted archive exits 1 while leaving a correctly-sized,
+    /// entirely zero-filled file at the right path. Callers get the tool's own
+    /// stderr so they can tell which members failed and remove their debris.
+    /// `scratch` holds the member list and the tool's error log. It must sit
+    /// **beside** the extraction root, never inside it: anything written under
+    /// the root, even briefly and even hidden, is part of what the user is
+    /// browsing.
+    static func materializeArchiveMembers(archive: URL, into output: URL, scratch: URL,
+                                          members: [String], noRecursion: Bool, excluding excludes: [String] = [],
+                                          cancellation: ArchivePreparationCancellation? = nil) throws {
+        guard !members.isEmpty else { return }
+        let workspace = scratch.appendingPathComponent(".tursora-materialize-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let list = workspace.appendingPathComponent("members.lst")
+        try Data((members.joined(separator: "\n") + "\n").utf8).write(to: list)
+        try runArchiveTool("/usr/bin/tar",
+                           arguments: extractionArguments(archive: archive, output: output, verbose: false,
+                                                          memberList: list, noRecursion: noRecursion,
+                                                          excludes: excludes),
+                           workspace: workspace, cancellation: cancellation)
     }
 
     private static func archiveOperation(completion: @escaping (Result<URL, Error>) -> Void,
@@ -240,7 +311,7 @@ extension FileOperations {
 
     /// An extracted application must retain the downloaded archive's quarantine.
     /// Never follow extracted symlinks while setting metadata on the new tree.
-    private static func propagateArchiveQuarantine(from archive: URL, to root: URL,
+    static func propagateArchiveQuarantine(from archive: URL, to root: URL,
                                                     cancellation: ArchivePreparationCancellation? = nil) throws {
         try cancellation?.checkCancellation()
         let attribute = "com.apple.quarantine"

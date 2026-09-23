@@ -169,7 +169,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     /// Off screen, nothing should keep playing in the preview column.
     override func viewDidDisappear() {
         super.viewDidDisappear()
-        preview.show(nil)
+        preview.show(item: nil)
     }
 
     /// Back on screen — a tab switch, say — the selected file is previewed
@@ -178,7 +178,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         super.viewDidAppear()
         let items = selectedItems
         if items.count == 1, !items[0].isNavigable {
-            preview.show(items[0].isArchiveEntry ? items[0].readableContentURL : items[0].url, force: true)
+            preview.show(item: items[0], force: true)
         }
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -202,7 +202,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         browser.takesTitleFromPreviousColumn = false
         browser.isTitled = false
         browser.setCellClass(NSBrowserCell.self)
-        browser.registerForDraggedTypes([.fileURL])
+        browser.registerForDraggedTypes([.fileURL, ArchiveEntryPromiseProvider.internalType])
         updateDragMasks()
         view.addSubview(browser)
         NSLayoutConstraint.activate([
@@ -259,7 +259,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
             }
             // The selected file may have changed on disk; `show` short-circuits
             // on an unchanged URL, so forget it and let the re-drill re-read.
-            if changed { preview.show(nil) }
+            if changed { preview.show(item: nil) }
         }
         shownGeneration = model.generation
         shownRootURL = model.url
@@ -365,7 +365,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         // NSBrowser shows a preview column for exactly one selected leaf; the
         // controller behind it must let go in every other case.
         let items = selectedItems
-        if !(items.count == 1 && !items[0].isNavigable) { preview.show(nil) }
+        if !(items.count == 1 && !items[0].isNavigable) { preview.show(item: nil) }
     }
 
     func openSelection() {
@@ -631,11 +631,9 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     /// The row's icon, drawn as the first character of the title.
     private func iconAttachment(for item: FileItem, cut: Bool) -> NSTextAttachment {
         let attachment = NSTextAttachment()
-        // An archive entry's URL is logical: nothing exists at that path, so
-        // its icon comes from its type rather than from the filesystem.
-        let icon = item.isArchiveEntry
-            ? NSWorkspace.shared.icon(for: item.contentType ?? (item.isDirectory ? .folder : .data))
-            : NSWorkspace.shared.icon(forFile: item.contentURL.path)
+        // FileItem's own rule, so a published package shows its real icon
+        // here as it does in the other views.
+        let icon = item.iconImage
         // A cut row fades as a whole in the list and icon views, so the icon
         // fades here too rather than leaving a full-strength icon beside dimmed
         // text.
@@ -655,8 +653,8 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     func browser(_ browser: NSBrowser, previewViewControllerForLeafItem item: Any) -> NSViewController? {
         guard let node = item as? FileNode else { return nil }
         _ = preview.view
-        // An archive entry previews through its path-validated temporary copy.
-        preview.show(node.item.isArchiveEntry ? node.item.readableContentURL : node.url)
+        // An archive entry not yet extracted is extracted for it first (D99).
+        preview.show(item: node.item)
         return preview
     }
 
@@ -676,13 +674,13 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
                  to pasteboard: NSPasteboard) -> Bool {
         let items = rowIndexes.compactMap { (browser.item(atRow: $0, inColumn: column) as? FileNode)?.item }
         // Other apps get real paths: an archive entry's logical URL exists
-        // nowhere on disk, so it is written as its readable copy, and such a
-        // drag can only ever copy.
-        let urls = items.compactMap { $0.isArchiveEntry ? $0.readableContentURL : $0.url }
-        guard !urls.isEmpty else { return false }
+        // nowhere on disk, so it is written as its file, or as a promise when
+        // not yet extracted (D101), and such a drag can only ever copy.
+        let writers = items.compactMap { $0.isArchiveEntry ? ArchiveDragExport.writer(for: $0) : $0.url as NSURL }
+        guard !writers.isEmpty else { return false }
         draggingReadOnlyItems = items.contains(where: \.isArchiveEntry)
         pasteboard.clearContents()
-        pasteboard.writeObjects(urls as [NSURL])
+        pasteboard.writeObjects(writers)
         return true
     }
 
@@ -691,9 +689,11 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
                  column: UnsafeMutablePointer<Int>, dropOperation: UnsafeMutablePointer<NSBrowser.DropOperation>)
         -> NSDragOperation {
         guard !isReadOnly,
-              let destination = dropTarget(row: row.pointee, column: column.pointee, operation: dropOperation.pointee),
-              let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL]
+              let destination = dropTarget(row: row.pointee, column: column.pointee, operation: dropOperation.pointee)
         else { return [] }
+        // Through the shared reader, so a promised ZIP entry counts too.
+        let urls = info.fileURLs
+        guard !urls.isEmpty else { return [] }
         // A ⌘ drag reaches a destination with its mask narrowed to .generic, so
         // the answer must be given within that mask or AppKit refuses the drop
         // (D70). This layer is what every other destination answers through;
@@ -710,8 +710,8 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
 
     func browser(_ browser: NSBrowser, acceptDrop info: NSDraggingInfo, atRow row: Int, column: Int,
                  dropOperation: NSBrowser.DropOperation) -> Bool {
-        guard let destination = dropTarget(row: row, column: column, operation: dropOperation),
-              let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty
+        let urls = info.fileURLs
+        guard let destination = dropTarget(row: row, column: column, operation: dropOperation), !urls.isEmpty
         else { return false }
         let operation = FileOperations.dropOperation(for: urls, into: destination, sourceMask: info.draggingSourceOperationMask)
         guard !operation.isEmpty else { return false }
@@ -761,6 +761,9 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     var isPreviewColumnEmptyForTesting: Bool { preview.shownURL == nil }
     func rowCountForTesting(_ column: Int) -> Int { rowCount(inColumn: column) }
     var previewedURLForTesting: URL? { preview.shownURL }
+    var previewStateForTesting: PreviewPanelController.State { preview.state }
+    var isPreviewShowAnywayVisibleForTesting: Bool { preview.isShowAnywayVisibleForTesting }
+    func pressPreviewShowAnywayForTesting() { preview.pressShowAnywayForTesting() }
     var previewAutoresizesForTesting: Bool { _ = preview.view; return preview.autoresizesForTesting }
     var previewStartFrameForTesting: NSRect { _ = preview.view; return preview.startFrameForTesting }
     func simulateClickForTesting() { browserClicked(nil) }

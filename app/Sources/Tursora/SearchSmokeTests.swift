@@ -189,7 +189,7 @@ enum SearchSmokeTests: SmokeSuite {
                     let actualParent = browser.fileView.selectedItems[0].url.deletingLastPathComponent()
                     check("icon results show each original enclosing directory", cell?.locationLabel.isHidden == false && cell?.locationLabel.lineBreakMode == .byTruncatingMiddle && cell?.locationLabel.stringValue == (actualParent.path as NSString).abbreviatingWithTildeInPath && sameLocation(actualParent, secondDirectory))
                 } else { check("icon search selection has a collection item", false) }
-                check("\(mode): Quick Look, Share and Info retain the real source URL", sameLocation(browser.previewPanel(nil, previewItemAt: 0)?.previewItemURL, secondFile) && paths(wc.sharingItems) == paths([secondFile]) && paths(browser.infoTargets) == paths([secondFile]))
+                check("\(mode): Quick Look, Share and Info retain the real source URL", sameLocation(browser.previewPanel(nil, previewItemAt: 0)?.previewItemURL, secondFile) && paths(wc.sharingItems.compactMap { $0 as? URL }) == paths([secondFile]) && paths(browser.infoTargets) == paths([secondFile]))
                 let beforeOpen = openedFiles.count
                 browser.openSelection()
                 check("\(mode): Open launches the exact nested file and retains its search context", openedFiles.count == beforeOpen + 1 && sameLocation(openedFiles.last, secondFile) && browser.isSearching && browser.model.isSearchResults)

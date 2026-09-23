@@ -4,9 +4,30 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Changed
+
+- **Opening a ZIP no longer extracts it.** The archive is read and its structure shown straight away. Entering a folder in a ZIP no longer reads its files either: a file is read when you open, preview, copy, drag or share it, and small folders fetch theirs in the background while you look at them. A large archive that used to take seconds to open now lists almost immediately, and browsing one folder no longer writes the whole archive to disk. Applications and multi-file documents inside an archive are still brought in whole, so they open correctly.
+- A ZIP that mixes ordinary files with password-protected or damaged ones now opens, showing the files that are intact. It used to refuse to open at all, and a damaged file is never shown with broken contents.
+- **A password-protected ZIP is now refused by name** when you try to browse or extract it, instead of failing part way through with a generic message.
+- A ZIP that is too large for the free space on your startup volume is refused before anything is written, and a damaged ZIP now reports what went wrong instead of appearing to be an empty archive.
+- Inside a ZIP, **Kind** now reads as it will once the file is extracted — a command-line tool is a "Unix Executable File", not a "Document" — and an application shows the size of everything it holds. Date Created is the archive's own date, and Date Added and Date Last Opened show "--", since neither has happened to a file that is still in the archive.
+- A ZIP holding two names your Mac treats as one, such as `Report.txt` and `report.txt`, now shows one file — the one extracting it would leave — instead of two rows for a single file.
+
+### Fixed
+
+- **Browsing ZIPs no longer piles up temporary files until you quit.** A ZIP's temporary copy is removed about a minute after you stop browsing it. Files you opened in another app, copied, dragged or shared out get their own copy, which is kept until you quit, so the app using them keeps working. Going Back to the ZIP, or reopening its tab, opens it again from where it is — so if you have moved or deleted the ZIP since, Back reports that instead. In the Quick Look panel a folder inside a ZIP now shows as its name only.
+- Temporary ZIP staging left behind by a crash is cleaned up at the next launch. It is removed only when no running copy of Tursora still holds it, so a second window or a second copy of the app is never disturbed.
+- **Group by Application** inside a ZIP put every file under "No Application". Files are now grouped under the application that would open them.
+- **Copying a folder out of a ZIP now copies all of it.** Copy to Other Pane, or Copy and Paste, used to bring only the subfolders you had already opened; the rest arrived as empty folders. Anything that has to be left out, such as a password-protected file, is now listed when the copy finishes.
+- Copying, opening or Quick Look on an item in a ZIP no longer freezes the window while the item is extracted; it happens in the background, and a large one appears in File Operations where it can be cancelled.
+
 ### Added
 
 - **Extracting a ZIP** now appears in **File Operations** with a real progress bar and a **Cancel** button, instead of a small spinner you could not stop. Each selected archive gets its own row; cancelling one stops the rest, and closing the window cancels the extraction just as it does a copy.
+- Dragging an item out of a ZIP, or sharing it, now works whether or not it has been extracted: Finder receives the file, folder or application whole once it is extracted, and another Tursora pane copies it directly. Apps that only take file paths, such as Terminal, still need the item to be extracted first.
+- Thumbnails inside a ZIP no longer need the folder to be extracted: the files on screen are read out of the archive together for their previews and then removed, and scrolling away from a page stops its thumbnails being fetched.
+- Inside a ZIP, Quick Look opens straight away and shows the file as soon as it is extracted, and the column view's preview column says it is preparing instead of staying blank. A file over 64 MB is previewed only when you click **Show Preview**.
+- Inside a ZIP, **Open**, **Open With**, **Quick Look** and **Copy** work on any item, including one reached through a link into a folder you have not opened. Several files opened together are extracted in one go. **Reload** (⌘R) tries again a file that could not be extracted.
 - **Settings ▸ Shortcuts** gains a File View command, **Open Selection (Alternative)**, which ships with no key. Give it Return and Return opens the selection — entering a folder, launching a file — instead of renaming it, the way Windows Explorer and Dolphin behave. Clear Rename's Return first, since a key has one owner; Rename stays available from File ▸ Rename, the context menu and the slow double-click.
 
 ### Changed
