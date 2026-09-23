@@ -77,9 +77,12 @@ extension NSTextField {
 }
 
 extension NSPasteboard {
-    /// The file URLs on the pasteboard, or none.
+    /// The file URLs on the pasteboard, or none. A ZIP entry this process
+    /// promised but has not extracted yet comes as its logical URL first, so
+    /// a drop copies it the way Copy to Other Pane does (D101).
     var fileURLs: [URL] {
-        (readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        ArchiveEntryPromiseProvider.logicalURLs(on: self)
+            + ((readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? [])
     }
 }
 

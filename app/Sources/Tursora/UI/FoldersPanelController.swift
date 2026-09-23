@@ -50,7 +50,7 @@ final class FoldersPanelController: NSViewController, NSOutlineViewDataSource, N
         outlineView.delegate = self
         outlineView.setAccessibilityLabel("Folders")
         outlineView.contextMenuForRow = { [weak self] row in self?.contextMenu(forRow: row) }
-        outlineView.registerForDraggedTypes([.fileURL])
+        outlineView.registerForDraggedTypes([.fileURL, ArchiveEntryPromiseProvider.internalType])
         let scroll = scrollView
         scroll.documentView = outlineView
         scroll.hasVerticalScroller = true

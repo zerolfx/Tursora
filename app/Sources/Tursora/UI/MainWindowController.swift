@@ -521,7 +521,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         viewModeControl?.setToolTip(shortcutTooltip("as Columns", action: "menu.viewAsColumns"), forSegment: 2)
         syncSplitToolbar()
         syncTerminalToolbar()
-        shareItem?.isEnabled = !sharingItems.isEmpty
+        shareItem?.isEnabled = canShareSelection
         window?.toolbar?.validateVisibleItems()
     }
 
@@ -771,12 +771,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case ToolbarID.back:    return browser.canGoBack
         case ToolbarID.forward: return browser.canGoForward
         case ToolbarID.up:      return browser.canGoUp
-        case ToolbarID.share:   return !sharingItems.isEmpty
+        case ToolbarID.share:   return canShareSelection
         default: return true
         }
     }
 
-    var sharingItems: [URL] { browser.publishedSelectionURLs }
+    /// Pure: read from the rows, so validating the toolbar never extracts.
+    var canShareSelection: Bool { browser.hasAccessibleSelection }
+    /// What Share is handed: a file URL for anything on disk, and an item
+    /// provider that extracts first for a ZIP entry not yet extracted (D101).
+    var sharingItems: [Any] { browser.fileView.selectedItems.compactMap(ArchiveDragExport.sharingItem(for:)) }
 
     func items(for pickerToolbarItem: NSSharingServicePickerToolbarItem) -> [Any] { sharingItems }
 
@@ -899,7 +903,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.toolTip = "Share selected items"
             item.delegate = self
             item.autovalidates = false
-            item.isEnabled = !sharingItems.isEmpty
+            item.isEnabled = canShareSelection
             shareItem = item
             return item
         case ToolbarID.more:

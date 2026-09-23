@@ -119,7 +119,7 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                     let originalOpened = opened.count
                     browser.openSelection()
                     check("\(mode): deliberate Open launches the validated temporary copy", opened.count == originalOpened + 1 && opened.last == noteCopy && opened.last != docs.appendingPathComponent("notes.txt"))
-                    check("\(mode): Share and Quick Look receive the copy", wc.sharingItems == [noteCopy] && browser.numberOfPreviewItems(in: nil) == 1 && browser.previewPanel(nil, previewItemAt: 0)?.previewItemURL == noteCopy)
+                    check("\(mode): Share and Quick Look receive the copy", (wc.sharingItems as? [URL]) == [noteCopy] && browser.numberOfPreviewItems(in: nil) == 1 && browser.previewPanel(nil, previewItemAt: 0)?.previewItemURL == noteCopy)
                     browser.copy(nil)
                     let copied = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
                     check("\(mode): Copy exports the snapshot member", copied?.map(\.standardizedFileURL) == [noteCopy.standardizedFileURL])
@@ -152,7 +152,7 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                     check("\(mode): Up exits ZIP and selects the original archive", browser.fileView.selectedItems.map { $0.url.standardizedFileURL } == [archive.standardizedFileURL] && browser.canModifyCurrentLocation && !browser.fileView.isReadOnly)
                     browser.copy(nil)
                     let copiedArchive = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
-                    check("\(mode): copying a previously browsed ZIP copies the ZIP file", copiedArchive?.map(\.standardizedFileURL) == [archive.standardizedFileURL] && wc.sharingItems.map(\.standardizedFileURL) == [archive.standardizedFileURL])
+                    check("\(mode): copying a previously browsed ZIP copies the ZIP file", copiedArchive?.map(\.standardizedFileURL) == [archive.standardizedFileURL] && wc.sharingItems.compactMap { ($0 as? URL)?.standardizedFileURL } == [archive.standardizedFileURL])
                     let extractItem = MainMenu.actionsMenu(target: wc).items.first { ($0.representedObject as? String) == MainMenu.FileAction.extract.rawValue }!
                     check("\(mode): default browsing keeps explicit Extract in both menus", wc.validateMenuItem(extractItem) && browser.buildContextMenu(for: browser.fileView.selectedItems).items.contains { $0.title == "Extract" })
                     wc.performFileAction(extractItem)

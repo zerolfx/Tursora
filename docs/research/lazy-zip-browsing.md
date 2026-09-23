@@ -408,9 +408,33 @@ before entering the archive, had been running in the list view three times. Both
 the default from an ordinary folder first and check that the archive opens in it; they pass in all
 three views.
 
+Drag and Share (D101), per view with a split pane and a second tab:
+
+- Each view's drag source writes a file promise carrying the private type for an entry not yet
+  extracted and the file URL for an extracted one (the column view through its `writeRowsWith`).
+- A drop in Tursora reads the promised entries' logical URLs; the column view's drop validation
+  accepts them through the shared reader; dropping them into the other pane copies their bytes, a
+  folder whole.
+- Keeping the promise into a temporary folder writes a file, a folder with its whole subtree and an
+  application bundle whole.
+- Share is enabled without running the archive tool, is handed an item provider for an entry not yet
+  extracted and a URL for an extracted one, and loading the provider yields the entry's bytes.
+
 What is not covered: the File Operations row for a request estimated above a second or 128 MiB is
 decided by the measured cost model but not exercised, since the suite's fixtures stay under 50 MB; and
 no computer-use pass has been made.
+
+## Computer-use pass (Stage 2) — pending
+
+None of the following has been done yet, and nothing in this record claims it:
+
+- Dropping a file, a folder and a `.app` not yet extracted onto Finder from each of the three views —
+  the column view's legacy drag path especially, which the suite exercises only by writing its
+  pasteboard.
+- Share through Mail and AirDrop for an entry not yet extracted.
+- What the Quick Look panel shows while its placeholder item loads.
+- Opening a folder of 20,000 files, and opening a multi-GB member with its File Operations row and
+  Cancel.
 
 ## Status
 
@@ -423,10 +447,10 @@ active, plus the bundle and `..` cases — in `LazyArchiveSmokeTests`.
 
 Stage 2 is in progress: the staging and publication core, the private clone with drain-on-close, and
 rows built from the table of contents are implemented and covered as described in their sections.
-Open, Open With, Quick Look, the preview column, Copy, copying out and thumbnails bring what they need
-first (above). Still missing: listing still extracts a folder's own files, so a single directory
-holding tens of thousands of files, or one very large member, still pays for the whole directory on
-entry; and drag and Share still need an entry's bytes on disk already.
+Open, Open With, Quick Look, the preview column, Copy, copying out, thumbnails, drag and Share bring
+what they need first (above). Still missing: listing still extracts a folder's own files, so a single
+directory holding tens of thousands of files, or one very large member, still pays for the whole
+directory on entry; and the computer-use pass above.
 
 No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
 opening a large archive actually feels.

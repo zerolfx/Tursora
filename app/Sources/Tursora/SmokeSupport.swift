@@ -238,3 +238,30 @@ final class WorkerGate: @unchecked Sendable {
     }
     func release() { condition.lock(); released = true; condition.broadcast(); condition.unlock() }
 }
+
+/// A drag in progress, as a drop target sees it, carrying a pasteboard the
+/// suite filled — for asking a view's validate-drop without a real drag.
+final class FakeDraggingInfo: NSObject, NSDraggingInfo {
+    let draggingPasteboard: NSPasteboard
+    let draggingSourceOperationMask: NSDragOperation
+    init(pasteboard: NSPasteboard, mask: NSDragOperation = .copy) {
+        draggingPasteboard = pasteboard
+        draggingSourceOperationMask = mask
+    }
+    var draggingDestinationWindow: NSWindow? { nil }
+    var draggingLocation: NSPoint { .zero }
+    var draggedImageLocation: NSPoint { .zero }
+    var draggedImage: NSImage? { nil }
+    var draggingSource: Any? { nil }
+    var draggingSequenceNumber: Int { 1 }
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    var draggingFormation: NSDraggingFormation = .default
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 0
+    func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?,
+                                classes classArray: [AnyClass],
+                                searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+                                using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+    func resetSpringLoading() {}
+}

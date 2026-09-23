@@ -202,7 +202,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         browser.takesTitleFromPreviousColumn = false
         browser.isTitled = false
         browser.setCellClass(NSBrowserCell.self)
-        browser.registerForDraggedTypes([.fileURL])
+        browser.registerForDraggedTypes([.fileURL, ArchiveEntryPromiseProvider.internalType])
         updateDragMasks()
         view.addSubview(browser)
         NSLayoutConstraint.activate([
@@ -674,13 +674,13 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
                  to pasteboard: NSPasteboard) -> Bool {
         let items = rowIndexes.compactMap { (browser.item(atRow: $0, inColumn: column) as? FileNode)?.item }
         // Other apps get real paths: an archive entry's logical URL exists
-        // nowhere on disk, so it is written as its readable copy, and such a
-        // drag can only ever copy.
-        let urls = items.compactMap { $0.isArchiveEntry ? $0.publishedContentURL : $0.url }
-        guard !urls.isEmpty else { return false }
+        // nowhere on disk, so it is written as its file, or as a promise when
+        // not yet extracted (D101), and such a drag can only ever copy.
+        let writers = items.compactMap { $0.isArchiveEntry ? ArchiveDragExport.writer(for: $0) : $0.url as NSURL }
+        guard !writers.isEmpty else { return false }
         draggingReadOnlyItems = items.contains(where: \.isArchiveEntry)
         pasteboard.clearContents()
-        pasteboard.writeObjects(urls as [NSURL])
+        pasteboard.writeObjects(writers)
         return true
     }
 
@@ -689,9 +689,11 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
                  column: UnsafeMutablePointer<Int>, dropOperation: UnsafeMutablePointer<NSBrowser.DropOperation>)
         -> NSDragOperation {
         guard !isReadOnly,
-              let destination = dropTarget(row: row.pointee, column: column.pointee, operation: dropOperation.pointee),
-              let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL]
+              let destination = dropTarget(row: row.pointee, column: column.pointee, operation: dropOperation.pointee)
         else { return [] }
+        // Through the shared reader, so a promised ZIP entry counts too.
+        let urls = info.fileURLs
+        guard !urls.isEmpty else { return [] }
         // A ⌘ drag reaches a destination with its mask narrowed to .generic, so
         // the answer must be given within that mask or AppKit refuses the drop
         // (D70). This layer is what every other destination answers through;
@@ -708,8 +710,8 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
 
     func browser(_ browser: NSBrowser, acceptDrop info: NSDraggingInfo, atRow row: Int, column: Int,
                  dropOperation: NSBrowser.DropOperation) -> Bool {
-        guard let destination = dropTarget(row: row, column: column, operation: dropOperation),
-              let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty
+        let urls = info.fileURLs
+        guard let destination = dropTarget(row: row, column: column, operation: dropOperation), !urls.isEmpty
         else { return false }
         let operation = FileOperations.dropOperation(for: urls, into: destination, sourceMask: info.draggingSourceOperationMask)
         guard !operation.isEmpty else { return false }

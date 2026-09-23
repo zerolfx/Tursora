@@ -79,7 +79,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         layout.sectionHeadersPinToVisibleBounds = true
         collectionView.dataSource = self
         collectionView.delegate = self
-        collectionView.registerForDraggedTypes([.fileURL])
+        collectionView.registerForDraggedTypes([.fileURL, ArchiveEntryPromiseProvider.internalType])
         updateDragOperations()
         collectionView.onReturn = { [weak self] in
             guard let self, let item = self.selectedItems.first, self.selectedItems.count == 1 else { return }
@@ -379,9 +379,8 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         indexPaths.contains { node(at: $0)?.item.canAccess == true }
     }
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        guard let item = node(at: indexPath)?.item, item.canAccess,
-              let url = item.publishedContentURL else { return nil }
-        return url as NSURL
+        guard let item = node(at: indexPath)?.item else { return nil }
+        return ArchiveDragExport.writer(for: item)
     }
 
     func collectionView(_ collectionView: NSCollectionView, draggingSession session: NSDraggingSession,

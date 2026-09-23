@@ -211,7 +211,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         tableView.target = self
         tableView.doubleAction = #selector(doubleClicked(_:))
         setSort(key: model.sortKey, ascending: model.ascending)
-        tableView.registerForDraggedTypes([.fileURL])
+        tableView.registerForDraggedTypes([.fileURL, ArchiveEntryPromiseProvider.internalType])
         updateDragOperations()
 
         tableView.onMiddleClickRow = { [weak self] row in
@@ -523,11 +523,11 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         model.setSort(key: column.sortKey, ascending: d.ascending)
     }
 
-    // Archive entries export validated snapshot URLs with a copy-only mask.
+    // Archive entries go out as their file, or as a promise when not yet
+    // extracted, with a copy-only mask (D101).
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        guard let entry = (item as? FileNode)?.item, entry.canAccess,
-              let url = entry.publishedContentURL else { return nil }
-        return url as NSURL
+        guard let entry = (item as? FileNode)?.item else { return nil }
+        return ArchiveDragExport.writer(for: entry)
     }
 
     func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession,

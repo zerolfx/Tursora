@@ -1,5 +1,6 @@
 import AppKit
 import Quartz
+import UniformTypeIdentifiers
 
 /// Open, Copy and Copy to Other Pane on ZIP entries that are not extracted yet
 /// (D98), through the real pane: all three views, with a split pane and a
@@ -260,6 +261,7 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                 try await reloadChecks(root: root, window: wc, openedArchives: &openedArchives)
                 try await previewChecks(root: root, window: wc, openedArchives: &openedArchives)
                 try await thumbnailChecks(root: root, window: wc, openedArchives: &openedArchives)
+                try await dragChecks(root: root, window: wc, openedArchives: &openedArchives)
             } catch {
                 check("unexpected error", false, "\(error)")
             }
@@ -547,6 +549,174 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
         pane.setViewMode(.details)
         pane.setZoomIndex(ZoomLevel.defaultIndex(for: .details))
         pane.useCurrentViewAsDefault()
+    }
+
+    /// Dragging and sharing entries not yet extracted (D101): a file promise
+    /// for other applications, the logical URL for Tursora's own panes.
+    @MainActor private static func dragChecks(root: URL, window wc: MainWindowController,
+                                              openedArchives: inout [URL]) async throws {
+        let fm = FileManager.default
+        let workspace = ArchiveWorkspace.shared
+        let runner = SystemArchiveToolRunner.shared
+        let entries: [(name: String, contents: String)] = [
+            ("Box/f.txt", "file"), ("Box/Folder/sub/x.txt", "deep"), ("Box/App.app/Contents/Info.plist", "plist"),
+            ("Box/App.app/Contents/MacOS/App", "code"), ("Box/pub.txt", "published"), ("Box/share.txt", "shared"),
+        ]
+        func read(_ url: URL, _ path: String = "") -> String? {
+            try? String(contentsOf: path.isEmpty ? url : url.appendingPathComponent(path), encoding: .utf8)
+        }
+        let pane = wc.browser
+        guard let other = wc.tabs.currentPage.inactive else { check("drag: a split pane is open", false); return }
+
+        // The writer, through each view's own drag source.
+        for mode in ViewMode.allCases {
+            let archive = root.appendingPathComponent("Drag-\(mode.rawValue).zip")
+            try SmokeFixtures.zip(entries).write(to: archive)
+            openedArchives.append(archive)
+            let folder = archive.appendingPathComponent("Box")
+            pane.navigate(to: root)
+            await waitUntil("drag: \(mode.rawValue) back on an ordinary folder") {
+                pane.model.url?.standardizedFileURL == root.standardizedFileURL
+                    && pane.model.items.contains { $0.name == archive.lastPathComponent }
+            }
+            pane.setViewMode(mode)
+            pane.setShowsPreviews(false)
+            pane.useCurrentViewAsDefault()
+            pane.navigate(to: folder)
+            // By URL: the previous archive's folder has the same names.
+            await waitUntil("drag: \(mode.rawValue) lists the archive") {
+                pane.model.items.contains { $0.url.standardizedFileURL == folder.appendingPathComponent("pub.txt").standardizedFileURL }
+            }
+            guard let session = workspace.session(for: archive) else { check("drag: a session exists", false); return }
+            try session.materializer.materialize(session.tree.batchPlan(for: ["Box/pub.txt"]))
+            func node(_ name: String) -> FileNode? { pane.model.node(for: folder.appendingPathComponent(name)) }
+            var writers: [NSPasteboardWriting?] = []
+            switch mode {
+            case .details:
+                writers = ["f.txt", "pub.txt"].map { name in node(name).flatMap { pane.fileList.outlineView(pane.fileList.tableView, pasteboardWriterForItem: $0) } }
+            case .icons:
+                let items = pane.model.groups.first?.nodes ?? []
+                writers = ["f.txt", "pub.txt"].map { name in
+                    items.firstIndex { $0.item.name == name }.flatMap {
+                        pane.iconGrid.collectionView(pane.iconGrid.collectionView, pasteboardWriterForItemAt: IndexPath(item: $0, section: 0))
+                    }
+                }
+            case .columns:
+                let columns = pane.columnView
+                let drag = NSPasteboard(name: NSPasteboard.Name("tursora-drag-\(UUID().uuidString)"))
+                defer { drag.releaseGlobally() }
+                var indexes = IndexSet()
+                for row in 0..<pane.model.items.count {
+                    if let item = (columns.browser.item(atRow: row, inColumn: 0) as? FileNode)?.item, ["f.txt", "pub.txt"].contains(item.name) {
+                        indexes.insert(row)
+                    }
+                }
+                let wrote = columns.browser(columns.browser, writeRowsWith: indexes, inColumn: 0, to: drag)
+                check("drag: the column view writes both rows", wrote && drag.pasteboardItems?.count == 2,
+                      "\(String(describing: drag.pasteboardItems?.count))")
+                check("drag: columns: a file not yet extracted is promised with the private type, an extracted one is its file",
+                      drag.fileURLs.map(\.lastPathComponent).sorted() == ["f.txt", "pub.txt"]
+                      && drag.types?.contains(ArchiveEntryPromiseProvider.internalType) == true,
+                      "\(drag.fileURLs)")
+                continue
+            }
+            check("drag: \(mode.rawValue): a file not yet extracted is promised with the private type, an extracted one is its file",
+                  writers.count == 2 && (writers[0] as? ArchiveEntryPromiseProvider)?.logicalURL == folder.appendingPathComponent("f.txt")
+                  && (writers[1] as? NSURL).flatMap { read($0 as URL) } == "published",
+                  "\(writers.map { String(describing: type(of: $0)) })")
+        }
+
+        // Promises kept: a file, a folder with its whole subtree, a package.
+        let promised = root.appendingPathComponent("Promise.zip")
+        try SmokeFixtures.zip(entries).write(to: promised)
+        openedArchives.append(promised)
+        pane.navigate(to: promised.appendingPathComponent("Box"))
+        await waitUntil("drag: the promise archive lists") {
+            pane.model.items.contains { $0.url.standardizedFileURL == promised.appendingPathComponent("Box/Folder").standardizedFileURL }
+        }
+        let target = root.appendingPathComponent("promised-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: target, withIntermediateDirectories: false)
+        for name in ["f.txt", "Folder", "App.app"] {
+            guard let item = pane.model.items.first(where: { $0.name == name }),
+                  let provider = ArchiveDragExport.writer(for: item) as? ArchiveEntryPromiseProvider else {
+                check("drag: \(name) is promised", false); return
+            }
+            let error: Error? = await withCheckedContinuation { continuation in
+                provider.operationQueue(for: provider).addOperation {
+                    provider.filePromiseProvider(provider, writePromiseTo: target.appendingPathComponent(name)) {
+                        continuation.resume(returning: $0)
+                    }
+                }
+            }
+            check("drag: keeping the promise for \(name) writes it", error == nil, "\(String(describing: error))")
+        }
+        check("drag: the promised file, folder and package arrive whole",
+              read(target, "f.txt") == "file" && read(target, "Folder/sub/x.txt") == "deep"
+              && read(target, "App.app/Contents/MacOS/App") == "code" && read(target, "App.app/Contents/Info.plist") == "plist")
+
+        // Tursora's own panes: the logical URL, copied like Copy to Other Pane.
+        let drop = root.appendingPathComponent("Drop.zip")
+        try SmokeFixtures.zip(entries).write(to: drop)
+        openedArchives.append(drop)
+        let dropFolder = drop.appendingPathComponent("Box")
+        pane.navigate(to: dropFolder)
+        await waitUntil("drag: the drop archive lists") {
+            pane.model.items.contains { $0.url.standardizedFileURL == dropFolder.appendingPathComponent("Folder").standardizedFileURL }
+        }
+        let destination = root.appendingPathComponent("dropped-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+        other.navigate(to: destination)
+        await waitUntil("drag: the other pane shows the destination") {
+            other.model.url?.standardizedFileURL == destination.standardizedFileURL
+        }
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("tursora-drop-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        pasteboard.writeObjects(["f.txt", "Folder"].compactMap { name in
+            pane.model.items.first { $0.name == name }.flatMap(ArchiveDragExport.writer(for:))
+        })
+        let dropped = pasteboard.fileURLs
+        check("drag: a drop in Tursora reads the entries' logical URLs",
+              Set(dropped.map(\.standardizedFileURL)) == Set(["f.txt", "Folder"].map { dropFolder.appendingPathComponent($0).standardizedFileURL }),
+              "\(dropped)")
+        other.setViewMode(.columns)
+        await waitUntil("drag: the other pane shows columns") { other.viewMode == .columns }
+        var row = -1, column = 0
+        var operation = NSBrowser.DropOperation.on
+        let validated = other.columnView.browser(other.columnView.browser, validateDrop: FakeDraggingInfo(pasteboard: pasteboard),
+                                                 proposedRow: &row, column: &column, dropOperation: &operation)
+        check("drag: the column view accepts a promised entry through the shared reader", validated == .copy, "\(validated)")
+        other.setViewMode(.details)
+        let previous = other.lastTransferTask
+        other.dropFiles(dropped, to: destination, op: .copy)
+        let task = other.lastTransferTask
+        await waitUntil("drag: the dropped entries are copied") { task !== previous && task?.snapshot.isTerminal == true }
+        check("drag: dropping them into the other pane copies their bytes, the folder whole",
+              read(destination, "f.txt") == "file" && read(destination, "Folder/sub/x.txt") == "deep",
+              "\((try? fm.contentsOfDirectory(atPath: destination.path)) ?? [])")
+
+        // Share: a provider for an entry not yet extracted, a URL for one that is.
+        pane.fileView.select(urls: ["share.txt", "pub.txt"].map { dropFolder.appendingPathComponent($0) })
+        guard let dropSession = workspace.session(for: drop) else { check("drag: a session exists", false); return }
+        try dropSession.materializer.materialize(dropSession.tree.batchPlan(for: ["Box/pub.txt"]))
+        let runsBefore = runner.invocations
+        let shareable = wc.canShareSelection
+        check("drag: enabling Share never runs the archive tool", shareable && runner.invocations == runsBefore)
+        let items = wc.sharingItems
+        let provider = items.compactMap { $0 as? NSItemProvider }.first
+        check("drag: Share is handed an item provider for an entry not yet extracted and a URL for one that is",
+              items.count == 2 && provider != nil && items.compactMap { $0 as? URL }.map(\.lastPathComponent) == ["pub.txt"],
+              "\(items.map { String(describing: type(of: $0)) })")
+        var shared: String?
+        var loaded = false
+        _ = provider?.loadFileRepresentation(forTypeIdentifier: UTType.plainText.identifier) { url, _ in
+            shared = url.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+            loaded = true
+        }
+        await waitUntil("drag: the shared item loads") { loaded }
+        check("drag: loading the provider yields the entry's bytes", shared == "shared", "\(String(describing: shared))")
+        pane.navigate(to: root)
+        await waitUntil("drag: leaving the archive") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
     }
 
     /// Each thumbnail run since a point, as its members' names and the size

@@ -123,7 +123,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         contextMenu.delegate = self
         outlineView.menu = contextMenu
         outlineView.contextMenuForRow = { [weak self] row in self?.contextMenu(forRow: row) }
-        outlineView.registerForDraggedTypes([.fileURL, Self.placeType])
+        outlineView.registerForDraggedTypes([.fileURL, ArchiveEntryPromiseProvider.internalType, Self.placeType])
         outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
 
         let scroll = NSScrollView()
