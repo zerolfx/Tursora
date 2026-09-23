@@ -1814,6 +1814,12 @@ enum SmokeTest: SmokeSuite {
         check("status bar shows counts", wc.browser.statusBar.description.isEmpty || true)
         archiveUI(wc, tmp) {
             try? FileManager.default.removeItem(at: tmp)
+            // Across the whole run, the archive tool never ran on the main
+            // thread: listing never extracts, and everything that does
+            // extracts off it (D102).
+            check("the archive tool never ran on the main thread in the whole run",
+                  SystemArchiveToolRunner.shared.mainThreadInvocations == 0,
+                  "\(SystemArchiveToolRunner.shared.mainThreadInvocations) of \(SystemArchiveToolRunner.shared.invocations) runs")
             print("SMOKE TEST PASSED")
             exit(0)
         }

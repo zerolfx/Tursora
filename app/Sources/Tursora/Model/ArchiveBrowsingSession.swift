@@ -5,8 +5,10 @@ import UniformTypeIdentifiers
 /// A mounted archive: its table of contents, and private storage its entries'
 /// bytes are extracted into as they are needed. Its URLs never replace the
 /// original archive, and every directory read or file launch rechecks the
-/// resolved containment.
-final class ArchiveBrowsingSession {
+/// resolved containment. Used from listing queues and workers as well as the
+/// main thread: its own state is behind `stateLock`, the materializer's behind
+/// its condition, and the tree never changes after mount.
+final class ArchiveBrowsingSession: @unchecked Sendable {
     private static let preparationLock = NSLock()
     private static var pendingStorage: [URL: ArchivePreparationCancellation] = [:]
     private static var isShuttingDown = false
@@ -146,18 +148,14 @@ final class ArchiveBrowsingSession {
         try? FileManager.default.destinationOfSymbolicLink(atPath: rootURL.appendingPathComponent(path).path)
     }
 
-    /// Put one directory's own contents on disk, through the materializer.
-    /// Idempotent and coalesced.
-    func materializeDirectory(containing url: URL) throws {
-        guard let path = resolvedArchivePath(of: url) else { return }
-        try materializeDirectory(at: path)
-    }
-
-    private func materializeDirectory(at path: String) throws {
-        guard tree.children(of: path) != nil else { return }
-        guard !isClosed else { throw SessionError.closed }
-        try materializer.materialize(tree.prefetchPlan(for: path, skipping: materializer.settledPaths))
-    }
+    /// Whether the archive is read from this Mac's own disk: always for the
+    /// private clone, and for an original that could not be cloned only when
+    /// its volume is local. A prefetch never reads over the network.
+    let sourceIsLocal: Bool
+    private var prefetched: Int64 = 0
+    /// Bytes this session has prefetched, against its budget.
+    var prefetchedBytes: Int64 { stateLock.lock(); defer { stateLock.unlock() }; return prefetched }
+    func notePrefetch(_ bytes: Int64) { stateLock.lock(); prefetched += bytes; stateLock.unlock() }
 
     /// Whether an entry's bytes are all on disk, judged from its state and
     /// never from the disk, where a file's existence says nothing about
@@ -194,8 +192,9 @@ final class ArchiveBrowsingSession {
 
     fileprivate init(archive: URL, storage: URL, root: URL, fileID: UInt64, lock: Int32 = -1,
                      tree: ArchiveTree, typeCatalog: ArchiveTypeCatalog, source: URL? = nil,
-                     sourceIdentity: ArchiveMaterializer.SourceIdentity? = nil,
+                     sourceIdentity: ArchiveMaterializer.SourceIdentity? = nil, sourceIsLocal: Bool = true,
                      runner: ArchiveToolRunning = SystemArchiveToolRunner.shared) {
+        self.sourceIsLocal = sourceIsLocal
         archiveURL = archive.standardizedFileURL
         storageURL = storage
         rootURL = root.resolvingSymlinksInPath().standardizedFileURL
@@ -254,18 +253,16 @@ final class ArchiveBrowsingSession {
         return url.standardizedFileURL
     }
 
-    /// A folder's rows, from the table of contents. The folder's own files
-    /// are still brought in first — listing is where bytes arrive until a
-    /// background prefetch takes that over (stage2 C5) — but nothing about a
-    /// row is read back from disk, save where a symbolic link leads.
-    /// `beforeReadingEntry` runs before that one read, for the suite.
-    func entries(in directory: URL, materializing: Bool = true,
-                 beforeReadingEntry: ((URL) throws -> Void)? = nil) throws -> [Entry] {
+    /// A folder's rows, from the table of contents alone. Listing never
+    /// extracts anything (D102): bytes arrive when something asks for them,
+    /// or through the pane's background prefetch. Nothing about a row is read
+    /// from disk save where a symbolic link leads; `beforeReadingEntry` runs
+    /// before that one read, for the suite.
+    func entries(in directory: URL, beforeReadingEntry: ((URL) throws -> Void)? = nil) throws -> [Entry] {
         let directory = try validatedURL(directory)
         guard let path = resolvedArchivePath(of: directory), let children = tree.listedChildren(of: path) else {
             throw SessionError.notDirectory
         }
-        if materializing { try materializeDirectory(at: path) }
         return try children.map { node -> Entry in
             let url = directory.appendingPathComponent(node.name)
             if node.kind == .symbolicLink {
@@ -462,6 +459,8 @@ extension FileOperations {
                 let cloned = cloneArchive(archive, clone)
                 let source = cloned ? clone : archive
                 let identity = cloned ? nil : ArchiveMaterializer.SourceIdentity(of: archive)
+                let sourceIsLocal = cloned
+                    || (try? archive.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal == true
                 let entries = try listing.entries(of: source)
                 // Two names the volume holds as one are one row — `A.txt` and
                 // `a.txt` extract to a single file — so the tree folds names
@@ -505,7 +504,8 @@ extension FileOperations {
                 let session = ArchiveBrowsingSession(archive: logicalArchiveURL ?? archive, storage: storage,
                                                      root: root, fileID: id, lock: lock, tree: tree,
                                                      typeCatalog: catalog, source: source,
-                                                     sourceIdentity: identity, runner: runner)
+                                                     sourceIdentity: identity, sourceIsLocal: sourceIsLocal,
+                                                     runner: runner)
                 ArchiveBrowsingSession.finishPreparation(storage)
                 DispatchQueue.main.async { completion(.success(session)) }
             } catch {

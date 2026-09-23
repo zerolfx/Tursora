@@ -73,7 +73,8 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                         .appendingPathComponent(folder.lastPathComponent)
                         .appendingPathComponent("escape").path)) != nil)
 
-                // Listing one directory brings its own files and nothing else.
+                // Listing never extracts (D102); a prefetch brings a folder's
+                // own files and nothing else.
                 _ = try provider.listDirectory(logicalFolder)
                 let deepPath = session.rootURL.appendingPathComponent(folder.lastPathComponent)
                     .appendingPathComponent(nested.lastPathComponent)
@@ -81,9 +82,12 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                 check("listing a directory leaves a deeper directory's files alone",
                       !fm.fileExists(atPath: deepPath.path))
                 _ = try provider.listDirectory(logicalNested)
-                check("listing a directory brings in that directory's own files",
-                      fm.fileExists(atPath: deepPath.path)
-                      && (try? String(contentsOf: deepPath, encoding: .utf8)) == "snapshot contents")
+                check("listing a directory extracts nothing, not even its own files", !fm.fileExists(atPath: deepPath.path))
+                var prefetched = false
+                let prefetch = workspace.prefetch(logicalNested) { prefetched = true }
+                await waitUntil("the nested folder's prefetch finishes") { prefetched }
+                check("a prefetch brings in that directory's own files",
+                      prefetch != nil && (try? String(contentsOf: deepPath, encoding: .utf8)) == "snapshot contents")
 
                 check("ZIP session preserves original logical archive identity", session.archiveURL == archive)
                 check("root maps between original ZIP and private directory", try workspace.physicalURL(for: archive) == session.rootURL && workspace.logicalURL(for: session.rootURL) == archive)
@@ -175,6 +179,9 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                 let mixed = try SmokeFixtures.mixedEncryptionZip(in: fixture)
                 let mixedSession = try await prepare(mixed, workspace: workspace)
                 let mixedRows = try provider.listDirectory(mixed.appendingPathComponent("d"))
+                var mixedPrefetched = false
+                _ = workspace.prefetch(mixed.appendingPathComponent("d")) { mixedPrefetched = true }
+                await waitUntil("the mixed folder's prefetch finishes") { mixedPrefetched }
                 let encryptedPath = mixedSession.rootURL.appendingPathComponent("d/b.txt")
                 check("an encrypted member inside an ordinary ZIP never lands on disk as zeros",
                       !fm.fileExists(atPath: encryptedPath.path),
@@ -196,27 +203,38 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                 check("a package is not on disk, not even as an empty shell, before it is asked for",
                       !fm.fileExists(atPath: appPackage.path))
                 _ = try provider.listDirectory(appZIP)
-                check("a package arrives whole when its folder is listed",
+                _ = workspace.prefetch(appZIP)
+                try await Task.sleep(nanoseconds: 200_000_000)
+                check("a prefetch never brings a package", !fm.fileExists(atPath: appPackage.path))
+                try await SmokeFixtures.materialize(appSession, ["Demo.app"])
+                check("a package arrives whole when it is asked for",
                       (try? String(contentsOf: appPackage.appendingPathComponent("Contents/Info.plist"), encoding: .utf8)) == "plist")
                 check("an encrypted member inside a package is left out rather than written as zeros",
                       !fm.fileExists(atPath: appPackage.appendingPathComponent("Contents/bin").path))
 
-                // A refused batch must not be remembered as done: the next
-                // listing tries again rather than trusting an unfilled folder.
+                // A refused batch must not be remembered as done: asking again
+                // tries again rather than trusting an unfilled entry.
                 let retryZIP = try SmokeFixtures.infoZip([("r/one.txt", "first", nil)], in: fixture)
                 let retrySession = try await prepare(retryZIP, workspace: workspace)
-                retrySession.spaceCheck = { needed, _ in .insufficientSpace(needed: needed, available: 0) }
-                var refused: Error?
-                do { _ = try provider.listDirectory(retryZIP.appendingPathComponent("r")) } catch { refused = error }
-                check("a folder whose batch does not fit fails to list, rather than listing as empty",
-                      refused?.localizedDescription.contains("temporary space") == true,
-                      refused?.localizedDescription ?? "listed without error")
-                retrySession.spaceCheck = { _, _ in nil }
                 let retried = try provider.listDirectory(retryZIP.appendingPathComponent("r"))
-                check("once there is room, the same folder is extracted on the next listing",
-                      retried.first { $0.name == "one.txt" }?.publishedContentURL
-                        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "first",
-                      "\(retried.map(\.name))")
+                check("listing a folder whose files would not fit still lists it", retried.map(\.name) == ["one.txt"])
+                retrySession.spaceCheck = { needed, _ in .insufficientSpace(needed: needed, available: 0) }
+                let one = retryZIP.appendingPathComponent("r/one.txt")
+                let refusal: Result<ArchiveMaterializationResult, Error> = await withCheckedContinuation { continuation in
+                    workspace.materialize([one]) { continuation.resume(returning: $0) }
+                }
+                var refused: Error?
+                if case .failure(let error) = refusal { refused = error }
+                check("an entry that does not fit is refused for space",
+                      refused?.localizedDescription.contains("temporary space") == true,
+                      refused?.localizedDescription ?? "extracted without error")
+                retrySession.spaceCheck = { _, _ in nil }
+                let retry: Result<ArchiveMaterializationResult, Error> = await withCheckedContinuation { continuation in
+                    workspace.materialize([one]) { continuation.resume(returning: $0) }
+                }
+                check("once there is room, the same entry is extracted when asked again",
+                      (try? retry.get())?.urls.first.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "first",
+                      "\(retry)")
 
                 try await rowChecks(in: fixture)
                 try await systemAliasRecoveryChecks(archiveData: archiveData, folder: folder.lastPathComponent,
@@ -335,7 +353,7 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
         let sub = rows.first { $0.name == "sub" }
         check("rows: a file not yet extracted has no readable URL, and nor does its folder",
               inner?.publishedContentURL == nil && linkToInner?.publishedContentURL == nil && sub?.publishedContentURL == nil)
-        try session.materializer.materialize(session.tree.batchPlan(for: ["Rows/sub/deep/inner.txt"]))
+        try await SmokeFixtures.materialize(session, ["Rows/sub/deep/inner.txt"])
         check("rows: once extracted, the same row reads its bytes, through the link as well",
               inner?.publishedContentURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "inner"
               && linkToInner?.publishedContentURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "inner")
@@ -375,6 +393,9 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
         let session = try await prepare(archive, workspace: workspace)
         let provider = ArchiveFileProvider(base: LocalFileProvider(), workspace: workspace)
         let entries = try provider.listDirectory(logicalNested)
+        var prefetched = false
+        _ = workspace.prefetch(logicalNested) { prefetched = true }
+        await waitUntil("the repaired folder's prefetch finishes") { prefetched }
         let physicalNested = try workspace.physicalURL(for: logicalNested)
         let expected = session.archiveURL.appendingPathComponent(folder).appendingPathComponent(nested)
         check("repairing a ZIP restores members requested through the system parent alias",

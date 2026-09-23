@@ -92,9 +92,13 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                         let child = browser.model.node(for: childURL)!.item
                         browser.selectContextTargets([child])
                         check("expanded ZIP tree keeps same-name context targets distinct", browser.fileView.selectedItems.map(\.url) == [childURL] && browser.fileView.isReadOnly)
+                        // An expanded folder's files are not prefetched: Copy
+                        // extracts the member and fills the pasteboard when it
+                        // is ready (D98, D102).
                         browser.copy(nil)
-                        let treeCopy = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
-                        check("expanded ZIP tree copies the selected nested member", treeCopy?.map(\.standardizedFileURL) == [child.publishedContentURL!.standardizedFileURL] && (try? String(contentsOf: child.contentURL)) == "nested duplicate name")
+                        await waitUntil("expanded ZIP member reaches the pasteboard") { NSPasteboard.general.fileURLs.count == 1 }
+                        let treeCopy = NSPasteboard.general.fileURLs
+                        check("expanded ZIP tree copies the selected nested member", treeCopy.map(\.standardizedFileURL) == child.publishedContentURL.map { [$0.standardizedFileURL] } && treeCopy.first.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "nested duplicate name")
                     }
                     browser.fileView.select(name: "Docs")
                     browser.openSelection()
@@ -115,7 +119,9 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                     browser.nameFilter = ""
                     browser.fileView.select(name: "notes.txt")
                     let note = browser.fileView.selectedItems[0]
-                    let noteCopy = note.publishedContentURL!
+                    // The folder on screen is prefetched in the background (D102).
+                    await waitUntil("\(mode): the folder's files are prefetched") { note.publishedContentURL != nil }
+                    guard let noteCopy = note.publishedContentURL else { return }
                     let originalOpened = opened.count
                     browser.openSelection()
                     check("\(mode): deliberate Open launches the validated temporary copy", opened.count == originalOpened + 1 && opened.last == noteCopy && opened.last != docs.appendingPathComponent("notes.txt"))

@@ -117,12 +117,20 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                           names.isSuperset(of: ["top.txt", "Inner", "Demo.app"]), "\(names.sorted())")
 
                     // A bundle must be whole or the app it represents is broken.
+                    // Listing and prefetching never bring it (D102); Open does,
+                    // in one piece.
                     let physicalBundle = session.rootURL.appendingPathComponent("Payload/Demo.app")
-                    check("\(mode.rawValue): a bundle is materialized whole, not as an empty shell",
-                          fm.fileExists(atPath: physicalBundle.appendingPathComponent("Contents/Info.plist").path)
-                          && fm.fileExists(atPath: physicalBundle.appendingPathComponent("Contents/MacOS/Demo").path))
                     check("\(mode.rawValue): a bundle reads as one item, not a folder to walk into",
                           pane.model.items.first { $0.name == "Demo.app" }?.isNavigable == false)
+                    var opened: [URL] = []
+                    pane.archiveFileOpener = { opened.append($0); return true }
+                    pane.fileView.select(urls: [logicalPayload.appendingPathComponent("Demo.app")])
+                    pane.openSelection()
+                    await expectEventually("\(mode.rawValue): a bundle arrives whole when it is opened") {
+                        opened.count == 1
+                            && fm.fileExists(atPath: physicalBundle.appendingPathComponent("Contents/Info.plist").path)
+                            && fm.fileExists(atPath: physicalBundle.appendingPathComponent("Contents/MacOS/Demo").path)
+                    }
 
                     // The other regression: an unentered folder is only its
                     // skeleton on disk, so counting it from disk said 0 items.
@@ -138,10 +146,11 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                         check("\(mode.rawValue): the Inner folder is listed", false)
                     }
 
-                    // A file's bytes are there because its directory was listed.
+                    // A file's bytes arrive by the pane's background prefetch.
                     let top = pane.model.items.first { $0.name == "top.txt" }
-                    check("\(mode.rawValue): a listed file has readable bytes",
-                          top?.publishedContentURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "top")
+                    await expectEventually("\(mode.rawValue): the folder on screen is prefetched") {
+                        top?.publishedContentURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "top"
+                    }
                     // …and a deeper directory's are still absent.
                     check("\(mode.rawValue): a directory not yet entered is still unstaged",
                           !fm.fileExists(atPath: session.rootURL.appendingPathComponent("Payload/Inner/deep.txt").path))
@@ -160,9 +169,10 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                         pane.currentURL?.standardizedFileURL == logicalInner.standardizedFileURL
                             && pane.model.items.map(\.name) == ["deep.txt"]
                     }
-                    check("\(mode.rawValue): the deeper directory's file arrives on entry",
-                          pane.model.items.first?.publishedContentURL
-                            .flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "deep")
+                    await expectEventually("\(mode.rawValue): the deeper directory's file arrives once it is on screen") {
+                        pane.model.items.first?.publishedContentURL
+                            .flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "deep"
+                    }
                     check("\(mode.rawValue): the other pane and the second tab are untouched",
                           wc.tabs.count == 2 && wc.tabs.currentPage.panes.count == 2)
 

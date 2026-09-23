@@ -274,6 +274,8 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
         extracted.append(secondSession)
         check("ZIP restoration creates a different private snapshot", secondSession !== firstSession && secondSession.rootURL != firstSession.rootURL && manager.fileExists(atPath: secondSession.rootURL.path))
         check("restored ZIP displays original content using logical file URLs", restored.browser.model.items.map(\.name) == ["note.txt"] && restored.browser.model.items.allSatisfy { $0.url.path.hasPrefix(logical.path + "/") && $0.isArchiveEntry })
+        // The folder on screen is prefetched in the background (D102).
+        await waitUntil("the restored folder is prefetched") { restored.browser.model.items.first?.publishedContentURL != nil }
         let readable = restored.browser.model.items.first?.publishedContentURL
         let contents = try readable.map { try String(contentsOf: $0) }
         check("restored ZIP reads the re-extracted file", contents == "restored ZIP content")

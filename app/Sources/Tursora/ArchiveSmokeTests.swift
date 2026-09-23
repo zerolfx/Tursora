@@ -984,7 +984,7 @@ enum ArchiveSmokeTests: SmokeSuite {
         try zip([Entry("m/a.txt", "still here")]).write(to: original)
         let cloned = try await mount(original)
         try fm.moveItem(at: original, to: area.appendingPathComponent("moved-away.zip"))
-        try cloned.materializeDirectory(containing: cloned.rootURL.appendingPathComponent("m"))
+        try await extractFolder(cloned, "m")
         check("archive lifecycle: a ZIP renamed after it was opened still reads correctly",
               read(cloned.materializer.publishedURL(for: "m/a.txt")) == "still here")
         cloned.close()
@@ -1006,7 +1006,7 @@ enum ArchiveSmokeTests: SmokeSuite {
         try fm.removeItem(at: replaced)
         try zip([Entry("r/a.txt", "SECOND, and longer")]).write(to: replaced)
         var changedError: Error?
-        do { try uncloned.materializeDirectory(containing: uncloned.rootURL.appendingPathComponent("r")) }
+        do { try await extractFolder(uncloned, "r") }
         catch { changedError = error }
         var sawSourceChanged = false
         if let changedError, case ArchiveMaterializer.MaterializeError.sourceChanged = changedError { sawSourceChanged = true }
@@ -1015,7 +1015,7 @@ enum ArchiveSmokeTests: SmokeSuite {
         check("archive lifecycle: a replaced source makes no member fail for good",
               uncloned.materializer.state(of: "r/a.txt") == .absent)
         let remounted = try await prepareInHolder()
-        try remounted.materializeDirectory(containing: remounted.rootURL.appendingPathComponent("r"))
+        try await extractFolder(remounted, "r")
         check("archive lifecycle: the workspace mounts a replaced archive afresh, and reads its new contents",
               remounted !== uncloned
               && read(remounted.materializer.publishedURL(for: "r/a.txt")) == "SECOND, and longer")
@@ -1028,8 +1028,7 @@ enum ArchiveSmokeTests: SmokeSuite {
         try zip([Entry("b/a.txt", "a"), Entry("b/b.txt", "b")]).write(to: busyZIP)
         let gate = GatedRunner(holdFirst: true)
         let busy = try await mount(busyZIP, runner: gate)
-        let folder = busy.rootURL.appendingPathComponent("b")
-        DispatchQueue.global().async { try? busy.materializeDirectory(containing: folder) }
+        DispatchQueue.global().async { try? busy.materializer.materialize(busy.tree.prefetchPlan(for: "b")) }
         let started = await eventually { gate.count == 1 }
         var drained = 0
         busy.close(onDrained: { drained += 1 })
@@ -1053,8 +1052,7 @@ enum ArchiveSmokeTests: SmokeSuite {
         let quitSession: ArchiveBrowsingSession = try await withCheckedThrowingContinuation { continuation in
             quitting.prepare(archive: quitZIP) { continuation.resume(with: $0) }
         }
-        let quitFolder = quitSession.rootURL.appendingPathComponent("q")
-        DispatchQueue.global().async { try? quitSession.materializeDirectory(containing: quitFolder) }
+        DispatchQueue.global().async { try? quitSession.materializer.materialize(quitSession.tree.prefetchPlan(for: "q")) }
         _ = await eventually { quitGate.count == 1 }
         var quitDone = false
         quitting.shutdownAll { quitDone = true }
@@ -1084,6 +1082,19 @@ enum ArchiveSmokeTests: SmokeSuite {
             FileOperations.extract(archive: archive, to: directory) { result in
                 if !Thread.isMainThread { check("archive: extraction completion is on main", false) }
                 continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// A folder's own files, extracted off the main thread as a pane's
+    /// prefetch would: the tool never runs on the main thread (D102).
+    private static func extractFolder(_ session: ArchiveBrowsingSession, _ path: String) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try session.materializer.materialize(session.tree.prefetchPlan(for: path, skipping: session.materializer.settledPaths))
+                    continuation.resume()
+                } catch { continuation.resume(throwing: error) }
             }
         }
     }

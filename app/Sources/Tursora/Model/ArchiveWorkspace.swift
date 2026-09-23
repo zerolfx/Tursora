@@ -65,15 +65,35 @@ struct ArchiveMaterializationResult {
     var failures: [FileOperations.Failure] = []
 }
 
-/// When a ZIP folder's own files are extracted. Rows never depend on it: they
-/// come from the table of contents either way (D97).
+/// Whether a ZIP folder's own files are fetched ahead of being asked for.
+/// Listing never extracts either way (D102); rows come from the table of
+/// contents (D97).
 enum ArchiveMaterializationPolicy {
-    /// While the folder is listed, as since Stage 1. A background prefetch
-    /// replaces this (stage2 C5).
-    case onListing
+    /// A folder the pane is showing has its small files fetched in the
+    /// background, within `ArchivePrefetch`'s limits.
+    case prefetch
     /// Only when something asks for an entry's bytes. Lets the suite prove a
     /// listing needs no extraction at all.
     case never
+}
+
+/// When a folder's files are fetched before anything asks for them (stage2
+/// plan §2). Up to 1,000 files and 64 MiB, one tool run costs less than the
+/// second or so of separate runs that opening two of them one by one would;
+/// past that, it is the case per-entry extraction exists for. Never a
+/// package, never over the network, and never more per archive than
+/// min(1 GiB, 10% of free space). Pure, so the rules are checked directly.
+enum ArchivePrefetch {
+    static let maximumFiles = 1_000
+    static let maximumBytes: Int64 = 64 << 20
+
+    static func sessionBudget(freeSpace: Int64) -> Int64 { min(1 << 30, max(0, freeSpace) / 10) }
+
+    static func allows(fileCount: Int, bytes: Int64, alreadyPrefetched: Int64, freeSpace: Int64,
+                       sourceIsLocal: Bool) -> Bool {
+        sourceIsLocal && fileCount > 0 && fileCount <= maximumFiles && bytes <= maximumBytes
+            && alreadyPrefetched + bytes <= sessionBudget(freeSpace: freeSpace)
+    }
 }
 
 /// Keeps read-only snapshots alive while navigation uses paths under the
@@ -112,7 +132,7 @@ final class ArchiveWorkspace {
         set { lock.lock(); policy = newValue; lock.unlock() }
     }
 
-    init(materializationPolicy: ArchiveMaterializationPolicy = .onListing,
+    init(materializationPolicy: ArchiveMaterializationPolicy = .prefetch,
          preparer: @escaping Preparer = { source, logical, completion in
         ArchiveBrowsingSession.prepare(archive: source, logicalArchiveURL: logical, completion: completion)
     }) {
@@ -403,6 +423,7 @@ final class ArchiveWorkspace {
     /// and whatever could not be brought, down to a member of a folder.
     func materializeBlocking(_ locations: [URL],
                              cancellation: ArchivePreparationCancellation? = nil) throws -> ArchiveMaterializationResult {
+        dispatchPrecondition(condition: .notOnQueue(.main))
         struct Request { let physical: URL; let session: ArchiveBrowsingSession?; let path: String? }
         var requests: [Request] = []
         for location in locations {
@@ -477,6 +498,31 @@ final class ArchiveWorkspace {
         DispatchQueue.global(qos: .userInitiated).async { [self] in
             let result = Result { try materializeBlocking(locations, cancellation: cancellation) }
             DispatchQueue.main.async { completion(result) }
+        }
+        return cancellation
+    }
+
+    /// Fetches a folder's own small files in the background, within
+    /// `ArchivePrefetch`'s limits and never a package; nil when the folder
+    /// does not qualify or the policy is `.never`. The pane asks once its
+    /// listing is shown, and cancels when it navigates away (D102).
+    func prefetch(_ directory: URL, completion: (() -> Void)? = nil) -> ArchivePreparationCancellation? {
+        guard materializationPolicy == .prefetch, let entry = archiveEntry(for: directory) else { return nil }
+        let session = entry.session
+        var plan = session.tree.prefetchPlan(for: entry.path, skipping: session.materializer.settledPaths)
+        plan.packages = []
+        plan.packageExcludes = []
+        let files = plan.leaves + plan.selected
+        plan.bytes = files.reduce(Int64(0)) { $0 + (session.tree.node(at: $1.path)?.uncompressedSize ?? 0) }
+        let free = ((try? FileManager.default.attributesOfFileSystem(forPath: session.storageURL.path))?[.systemFreeSize]
+                    as? NSNumber)?.int64Value ?? 0
+        guard ArchivePrefetch.allows(fileCount: files.count, bytes: plan.bytes, alreadyPrefetched: session.prefetchedBytes,
+                                     freeSpace: free, sourceIsLocal: session.sourceIsLocal) else { return nil }
+        session.notePrefetch(plan.bytes)
+        let cancellation = ArchivePreparationCancellation()
+        DispatchQueue.global(qos: .utility).async {
+            try? session.materializer.materialize(plan, cancellation: cancellation)
+            DispatchQueue.main.async { completion?() }
         }
         return cancellation
     }
@@ -583,9 +629,8 @@ final class ArchiveFileProvider: FileProvider {
         // Each row's logical URL is the folder's plus its name: resolving
         // every row's physical URL back would touch the disk once per row.
         let logical = workspace.logicalURL(for: physical)
-        // `entries(in:)` still brings the folder's own files in first. It runs
-        // on the listing queue, never the main thread (DirectoryModel.load).
-        return try session.entries(in: physical, materializing: workspace.materializationPolicy == .onListing).map { entry in
+        // Rows only: listing never extracts (D102).
+        return try session.entries(in: physical).map { entry in
             FileItem(archiveEntry: entry, logicalURL: logical.appendingPathComponent(entry.name, isDirectory: false),
                      session: session)
         }

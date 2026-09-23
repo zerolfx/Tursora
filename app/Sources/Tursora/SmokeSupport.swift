@@ -265,3 +265,19 @@ final class FakeDraggingInfo: NSObject, NSDraggingInfo {
     var springLoadingHighlight: NSSpringLoadingHighlight { .none }
     func resetSpringLoading() {}
 }
+
+extension SmokeFixtures {
+    /// Brings archive entries to disk off the main thread, as every caller in
+    /// the app does: the suite must not run the archive tool on the main
+    /// thread either, or its main-thread count means nothing (D102).
+    static func materialize(_ session: ArchiveBrowsingSession, _ paths: [String]) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try session.materializer.materialize(session.tree.batchPlan(for: paths, skipping: session.materializer.settledPaths))
+                    continuation.resume()
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+}

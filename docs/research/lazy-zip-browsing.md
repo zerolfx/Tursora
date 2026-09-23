@@ -436,21 +436,31 @@ None of the following has been done yet, and nothing in this record claims it:
 - Opening a folder of 20,000 files, and opening a multi-GB member with its File Operations row and
   Cancel.
 
+## What shipped (Stage 2)
+
+- **Listing never extracts** (D102). A folder's rows come from the table of contents (D97); bytes
+  arrive when something asks for them, through staging, per-member attribution and one exclusive,
+  no-follow rename each (D95), from a private clone of the archive (D96).
+- **Every reader asks**: Open, Open With, Quick Look, the preview column, Copy, Copy to Other Pane,
+  paste and drop (D98, D99); thumbnails from a transient extraction (D100); drag as a file promise and
+  Share as an item provider (D101).
+- **The folder on screen is prefetched** in the background, within measured limits — at most 1,000
+  files and 64 MiB, never a package, never over the network, and a per-archive budget of
+  min(1 GiB, 10% of free space) — and navigating away cancels it (D102).
+- **The archive tool never runs on the main thread**: `materializeBlocking` asserts it, and the suite
+  ends by checking that no run in the whole suite happened there.
+
 ## Status
 
-Stage 0 (the pre-flight refusals above, the throwing listing seam, the free-space guard and the
-lock-based launch sweep) and the lazy mount are both implemented. Coverage: pure tree rules in
-`ArchiveSmokeTests`; the invariant that mounting writes no regular file anywhere under the root, and
-that listing one directory leaves a deeper one alone, in `ArchiveWorkspaceSmokeTests`; and the pane
-path in all three views — with a split pane and a second tab open and with a filter and grouping
-active, plus the bundle and `..` cases — in `LazyArchiveSmokeTests`.
+Stage 0, Stage 1, Stage 2 and Stage 3 are implemented. Coverage: pure tree, tool and catalog rules in
+`ArchiveSmokeTests`; mounting, rows compared with a full extraction, prefetching and link resolution
+in `ArchiveWorkspaceSmokeTests`; the pane path in all three views — with a split pane and a second tab
+open and with a filter and grouping active — in `LazyArchiveSmokeTests` and `ArchiveOpenSmokeTests`,
+the latter with nothing extracted on listing so that every byte it sees was brought by the action
+under test.
 
-Stage 2 is in progress: the staging and publication core, the private clone with drain-on-close, and
-rows built from the table of contents are implemented and covered as described in their sections.
-Open, Open With, Quick Look, the preview column, Copy, copying out, thumbnails, drag and Share bring
-what they need first (above). Still missing: listing still extracts a folder's own files, so a single
-directory holding tens of thousands of files, or one very large member, still pays for the whole
-directory on entry; and the computer-use pass above.
+Still missing: the computer-use pass above; eviction of extracted bytes before quit; and browsing a ZIP
+nested inside another.
 
 No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
-opening a large archive actually feels.
+opening a large archive, dragging to Finder or sharing actually feels.

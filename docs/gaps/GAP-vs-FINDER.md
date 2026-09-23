@@ -101,7 +101,7 @@ The Dock already offers three entry points — New Window / Downloads / Applicat
 - [x] Connect to Server (⌘K) and browsing / ejecting network volumes mounted by the system; interoperability with a real server has not been tested yet.
 - [x] A basic settings window, the switch for showing extensions, and a customizable shortcut for the name filter.
 - [x] Per-directory view memory, one shared default, saving the current settings as the default and restoring a directory's default; both the list and the icons are saved, and the full Finder view options dialog is still not implemented. For the automated and on-device verification see the [directory view verification record](../research/computer-use-2026-09-12-directory-views.md).
-- [x] The terminal panel enabled by default, and the experiment with read-only ZIP browsing in the current pane; an archive supports copying / dragging out, Quick Look and sharing, but not writing back.
+- [x] The terminal panel enabled by default, and the experiment with read-only ZIP browsing in the current pane; an archive supports copying / dragging out, Quick Look and sharing — each extracting only what it needs, since listing a folder extracts nothing — but not writing back.
 - Tags and Import from iPhone are product boundaries that are explicitly out of scope.
 
 ## 2026-09-12 tab bar and appearance

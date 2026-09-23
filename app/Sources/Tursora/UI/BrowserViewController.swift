@@ -112,6 +112,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// Requests for archive bytes this pane started. Closing the pane cancels
     /// them; navigating does not, so an Open already asked for still happens.
     private var archiveRequests: [UUID: ArchivePreparationCancellation] = [:]
+    /// The background fetch of the ZIP folder on screen.
+    private(set) var prefetchRequest: ArchivePreparationCancellation?
     /// Quick Look's request for bytes, and what it covers.
     private var quickLookRequest: (locations: Set<URL>, token: ArchivePreparationCancellation)?
     /// How many times Quick Look's bytes arrived and the panel was refreshed.
@@ -202,6 +204,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     required init?(coder: NSCoder) { fatalError() }
     deinit {
         archivePreparation?.cancel()
+        prefetchRequest?.cancel()
         archiveRequests.values.forEach { $0.cancel() }
         NotificationCenter.default.removeObserver(self)
         if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
@@ -756,9 +759,20 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         if suspendedNavigation != nil { clearArchiveNotice() }
     }
 
+    /// Fetches the small files of the ZIP folder now on screen, in the
+    /// background, so opening, previewing or copying one of them rarely waits.
+    /// Owned by the pane: navigating away or closing it cancels the fetch.
+    private func startArchivePrefetch(for url: URL) {
+        guard isBrowsingArchive, currentURL?.standardizedFileURL == url.standardizedFileURL else { return }
+        prefetchRequest?.cancel()
+        prefetchRequest = ArchiveWorkspace.shared.prefetch(url)
+    }
+
     /// Stops every archive extraction this pane asked for. A transfer owns its
     /// own, and is not stopped here.
     func cancelArchiveRequests() {
+        prefetchRequest?.cancel()
+        prefetchRequest = nil
         let requests = archiveRequests.values
         archiveRequests.removeAll()
         quickLookRequest?.token.cancel()
@@ -1841,7 +1855,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         refreshDebounce?.cancel()
         if changingDirectory, isFiltering { nameFilter = "" }     // Dolphin: clear on directory change
         watcher = isBrowsingArchive ? nil : DirectoryWatcher(directory: url) { [weak self] paths in self?.fileSystemChanged(paths) }
-        model.load(url) { [weak self] in self?.restoreViewState() }
+        // Leaving a folder stops fetching its files; the new one's start once
+        // it is on screen (D102).
+        prefetchRequest?.cancel()
+        prefetchRequest = nil
+        model.load(url) { [weak self] in
+            self?.restoreViewState()
+            self?.startArchivePrefetch(for: url)
+        }
         onLocationChanged?(url)
         NotificationCenter.default.post(name: .tursoraSelectionChanged, object: self)
     }

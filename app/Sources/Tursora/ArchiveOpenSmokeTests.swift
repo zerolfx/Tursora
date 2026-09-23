@@ -262,6 +262,7 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                 try await previewChecks(root: root, window: wc, openedArchives: &openedArchives)
                 try await thumbnailChecks(root: root, window: wc, openedArchives: &openedArchives)
                 try await dragChecks(root: root, window: wc, openedArchives: &openedArchives)
+                try await prefetchChecks(root: root, window: wc, openedArchives: &openedArchives)
             } catch {
                 check("unexpected error", false, "\(error)")
             }
@@ -588,7 +589,7 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                 pane.model.items.contains { $0.url.standardizedFileURL == folder.appendingPathComponent("pub.txt").standardizedFileURL }
             }
             guard let session = workspace.session(for: archive) else { check("drag: a session exists", false); return }
-            try session.materializer.materialize(session.tree.batchPlan(for: ["Box/pub.txt"]))
+            try await SmokeFixtures.materialize(session, ["Box/pub.txt"])
             func node(_ name: String) -> FileNode? { pane.model.node(for: folder.appendingPathComponent(name)) }
             var writers: [NSPasteboardWriting?] = []
             switch mode {
@@ -698,7 +699,7 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
         // Share: a provider for an entry not yet extracted, a URL for one that is.
         pane.fileView.select(urls: ["share.txt", "pub.txt"].map { dropFolder.appendingPathComponent($0) })
         guard let dropSession = workspace.session(for: drop) else { check("drag: a session exists", false); return }
-        try dropSession.materializer.materialize(dropSession.tree.batchPlan(for: ["Box/pub.txt"]))
+        try await SmokeFixtures.materialize(dropSession, ["Box/pub.txt"])
         let runsBefore = runner.invocations
         let shareable = wc.canShareSelection
         check("drag: enabling Share never runs the archive tool", shareable && runner.invocations == runsBefore)
@@ -717,6 +718,91 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
         check("drag: loading the provider yields the entry's bytes", shared == "shared", "\(String(describing: shared))")
         pane.navigate(to: root)
         await waitUntil("drag: leaving the archive") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
+    }
+
+    /// Listing never extracts; the folder on screen is prefetched within the
+    /// limits, and navigating away stops it (D102).
+    @MainActor private static func prefetchChecks(root: URL, window wc: MainWindowController,
+                                                  openedArchives: inout [URL]) async throws {
+        let workspace = ArchiveWorkspace.shared
+        let runner = SystemArchiveToolRunner.shared
+        let mib: Int64 = 1 << 20, gib: Int64 = 1 << 30
+        check("prefetch: a folder of up to 1,000 files and 64 MiB on this Mac is fetched ahead",
+              ArchivePrefetch.allows(fileCount: 1_000, bytes: 64 * mib, alreadyPrefetched: 0, freeSpace: 100 * gib, sourceIsLocal: true))
+        check("prefetch: not 1,001 files, not a byte over 64 MiB, not over the network, not an empty folder",
+              !ArchivePrefetch.allows(fileCount: 1_001, bytes: mib, alreadyPrefetched: 0, freeSpace: 100 * gib, sourceIsLocal: true)
+              && !ArchivePrefetch.allows(fileCount: 10, bytes: 64 * mib + 1, alreadyPrefetched: 0, freeSpace: 100 * gib, sourceIsLocal: true)
+              && !ArchivePrefetch.allows(fileCount: 10, bytes: mib, alreadyPrefetched: 0, freeSpace: 100 * gib, sourceIsLocal: false)
+              && !ArchivePrefetch.allows(fileCount: 0, bytes: 0, alreadyPrefetched: 0, freeSpace: 100 * gib, sourceIsLocal: true))
+        check("prefetch: an archive's budget is the smaller of 1 GiB and a tenth of free space",
+              ArchivePrefetch.sessionBudget(freeSpace: 100 * gib) == gib && ArchivePrefetch.sessionBudget(freeSpace: 5 * gib) == 512 * mib
+              && !ArchivePrefetch.allows(fileCount: 10, bytes: 2 * mib, alreadyPrefetched: gib - mib, freeSpace: 100 * gib, sourceIsLocal: true))
+
+        let previousPolicy = workspace.materializationPolicy
+        workspace.materializationPolicy = .prefetch
+        defer { workspace.materializationPolicy = previousPolicy; runner.beforeRunForTesting = nil }
+        var entries: [(name: String, contents: String)] = (0...1_000).map { ("Big/f\(String(format: "%04d", $0)).txt", "\($0)") }
+        entries += [("Small/a.txt", "a"), ("Small/b.txt", "b"), ("Held/h.txt", "held")]
+        let archive = root.appendingPathComponent("Many.zip")
+        try SmokeFixtures.zip(entries).write(to: archive)
+        openedArchives.append(archive)
+        let pane = wc.browser
+        pane.setViewMode(.details)
+        pane.navigate(to: archive)
+        await waitUntil("prefetch: the archive opens") {
+            pane.model.items.contains { $0.url.standardizedFileURL == archive.appendingPathComponent("Big").standardizedFileURL }
+        }
+        guard let session = workspace.session(for: archive) else { check("prefetch: a session exists", false); return }
+        let bigItem = pane.model.items.first { $0.name == "Big" }
+        await expectEventually("prefetch: a folder of 1,001 files counts its items from the tree",
+                               detail: { bigItem.map { pane.model.folderSizes.displaySize(for: $0) } ?? "nil" }) {
+            bigItem.map { pane.model.folderSizes.displaySize(for: $0) } == "1001 items"
+        }
+        pane.navigate(to: archive.appendingPathComponent("Big"))
+        await waitUntil("prefetch: the large folder lists") { pane.model.items.count == 1_001 }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        check("prefetch: a folder of 1,001 files is not fetched ahead, and shows the rows it counted",
+              pane.prefetchRequest == nil && session.materializer.publishedPaths.isEmpty && pane.model.items.count == 1_001)
+
+        // A small folder: fetched while it is on screen.
+        pane.navigate(to: archive.appendingPathComponent("Small"))
+        await expectEventually("prefetch: a small folder on screen is fetched in the background") {
+            session.isPublished("Small/a.txt") && session.isPublished("Small/b.txt")
+        }
+
+        // Navigating away stops a fetch still at the tool.
+        let gate = WorkerGate()
+        runner.beforeRunForTesting = { gate.arriveAndWait() }
+        pane.navigate(to: archive.appendingPathComponent("Held"))
+        await waitUntil("prefetch: the held folder's fetch reaches the tool") { gate.arrived }
+        pane.navigate(to: root)
+        await waitUntil("prefetch: back on an ordinary folder") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
+        runner.beforeRunForTesting = nil
+        gate.release()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        check("prefetch: navigating away cancels a fetch still at the tool", !session.isPublished("Held/h.txt"))
+
+        // No path that shows or completes a folder runs the tool on the main
+        // thread: expanding in the list, selecting in the columns, address
+        // completion and the breadcrumb submenu.
+        let mainBefore = runner.mainThreadInvocations
+        pane.navigate(to: archive)
+        await waitUntil("prefetch: back at the archive root") {
+            pane.model.items.contains { $0.url.standardizedFileURL == archive.appendingPathComponent("Held").standardizedFileURL }
+                && pane.currentURL?.standardizedFileURL == archive.standardizedFileURL
+        }
+        if let held = pane.model.node(for: archive.appendingPathComponent("Held")) { pane.fileList.expand(held) }
+        let completions = PathCompleter.completions(for: "Sm", cwd: archive, home: root)
+        let submenu = wc.tabs.addressBar.subfolderMenu(of: archive, current: nil)
+        pane.setViewMode(.columns)
+        pane.columnView.select(urls: [archive.appendingPathComponent("Held")])
+        await drainMainQueue()
+        check("prefetch: expanding, column selection, completion and the breadcrumb menu never run the tool on the main thread",
+              runner.mainThreadInvocations == mainBefore && completions == ["Small/"] && submenu.items.count >= 3,
+              "main runs \(runner.mainThreadInvocations - mainBefore), completions \(completions), menu \(submenu.items.count)")
+        pane.setViewMode(.details)
+        pane.navigate(to: root)
+        await waitUntil("prefetch: leaving the archive") { pane.currentURL?.standardizedFileURL == root.standardizedFileURL }
     }
 
     /// Each thumbnail run since a point, as its members' names and the size

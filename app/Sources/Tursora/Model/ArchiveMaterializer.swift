@@ -76,8 +76,9 @@ final class SystemArchiveToolRunner: ArchiveToolRunning {
 /// the log confirms is quarantined and then published by one exclusive,
 /// no-follow rename. A member whose bytes are corrupt, encrypted, refused or
 /// merely unconfirmed never reaches the tree — so there is no debris to clean
-/// up, and nothing half-written is ever visible to a reader.
-final class ArchiveMaterializer {
+/// up, and nothing half-written is ever visible to a reader. Called from any
+/// thread: every piece of mutable state is behind `condition`.
+final class ArchiveMaterializer: @unchecked Sendable {
     enum State: Equatable {
         case absent
         case inFlight
