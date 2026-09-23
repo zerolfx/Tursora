@@ -10,10 +10,13 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 - A ZIP that mixes ordinary files with password-protected or damaged ones now opens, showing the files that are intact. It used to refuse to open at all, and a damaged file is never shown with broken contents.
 - **A password-protected ZIP is now refused by name** when you try to browse or extract it, instead of failing part way through with a generic message.
 - A ZIP that is too large for the free space on your startup volume is refused before anything is written, and a damaged ZIP now reports what went wrong instead of appearing to be an empty archive.
+- Inside a ZIP, **Kind** now reads as it will once the file is extracted — a command-line tool is a "Unix Executable File", not a "Document" — and an application shows the size of everything it holds. Date Created is the archive's own date, and Date Added and Date Last Opened show "--", since neither has happened to a file that is still in the archive.
+- A ZIP holding two names your Mac treats as one, such as `Report.txt` and `report.txt`, now shows one file — the one extracting it would leave — instead of two rows for a single file.
 
 ### Fixed
 
 - Temporary ZIP staging left behind by a crash is cleaned up at the next launch. It is removed only when no running copy of Tursora still holds it, so a second window or a second copy of the app is never disturbed.
+- **Group by Application** inside a ZIP put every file under "No Application". Files are now grouped under the application that would open them.
 
 ### Added
 

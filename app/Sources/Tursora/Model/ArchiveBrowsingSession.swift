@@ -1,8 +1,11 @@
 import Foundation
 import Darwin
+import UniformTypeIdentifiers
 
-/// A private extracted snapshot. Its URLs never replace the original archive,
-/// and every directory read or file launch rechecks the resolved containment.
+/// A mounted archive: its table of contents, and private storage its entries'
+/// bytes are extracted into as they are needed. Its URLs never replace the
+/// original archive, and every directory read or file launch rechecks the
+/// resolved containment.
 final class ArchiveBrowsingSession {
     private static let preparationLock = NSLock()
     private static var pendingStorage: [URL: ArchivePreparationCancellation] = [:]
@@ -30,18 +33,25 @@ final class ArchiveBrowsingSession {
         pendingStorage[url] = nil
     }
 
+    /// One row, built from the table of contents: nothing about it is read
+    /// from disk except where a symbolic link leads (D97).
     struct Entry {
         let url: URL
         let name: String
+        /// The tree path whose bytes this row reads: its own, or for a link
+        /// the entry the link leads to. Nil for a link that leads nowhere this
+        /// session can read.
+        let contentPath: String?
         let isDirectory: Bool
         let isPackage: Bool
         let isSymbolicLink: Bool
         let canAccess: Bool
         let size: Int64
-        /// The archive's own date for this entry, from the tree. Preferred over
-        /// the file on disk, whose date for a directory is merely when the
-        /// skeleton was created (D93).
+        /// The archive's own date for this entry (D93).
         var modificationDate: Date? = nil
+        var contentType: UTType? = nil
+        /// The Kind string, as the extracted item would show it.
+        var kind: String? = nil
         var isNavigable: Bool { isDirectory && !isPackage && canAccess }
     }
 
@@ -76,38 +86,39 @@ final class ArchiveBrowsingSession {
 
     // MARK: - Lazy materialization
 
-    /// The archive's shape, read at mount from its table of contents. Nil when
-    /// the session was staged whole, which is still the path for anything the
-    /// lazy route cannot serve.
-    private let tree: ArchiveTree?
+    /// The archive's shape, read at mount from its table of contents. Every
+    /// row comes from here.
+    let tree: ArchiveTree
+    /// Kind strings and content types for rows whose bytes are not here yet.
+    let typeCatalog: ArchiveTypeCatalog
     /// Every byte arrives through this: staging, per-member attribution and
     /// one exclusive, no-follow rename per member (D95). It also coalesces:
     /// two panes asking for one folder cause one run, and a member one batch is
     /// writing is waited for by another rather than written twice.
-    let materializer: ArchiveMaterializer?
+    let materializer: ArchiveMaterializer
 
-    var isLazilyMounted: Bool { tree != nil }
+    var isLazilyMounted: Bool { true }
     /// Decides whether a batch of this many bytes fits. Injectable so the suite
     /// can refuse one batch and then allow the retry, which a real disk cannot
     /// be made to do on demand.
     var spaceCheck: (Int64, URL) -> SessionError? {
-        get { materializer?.spaceCheck ?? { FileOperations.requiredSpaceRefusal(forExtracting: $0, into: $1) } }
-        set { materializer?.spaceCheck = newValue }
+        get { materializer.spaceCheck }
+        set { materializer.spaceCheck = newValue }
     }
-    /// Visible to the smoke suite, which asserts what is and is not on disk.
-    var archiveTree: ArchiveTree? { tree }
 
     /// What `entries(in:)` lists for a directory, counted from the tree rather
     /// than the disk: an unentered directory holds only its skeleton, so a
     /// count read from disk would say "0 items" for a folder full of files.
-    /// Matches the listing exactly — extractable children, not dotfiles, which
-    /// is also what Finder's "N items" counts.
+    /// Matches the listing exactly — the rows it shows, less dotfiles, which
+    /// is also what Finder's "N items" counts. A folder reached through a link
+    /// is counted where the link leads.
     func listedChildCount(of url: URL) -> Int? {
-        guard let tree, let children = tree.children(of: archivePath(of: url)) else { return nil }
-        return children.filter { $0.isExtractable && !$0.name.hasPrefix(".") }.count
+        guard let path = resolvedArchivePath(of: url), let children = tree.listedChildren(of: path) else { return nil }
+        return children.filter { !$0.name.hasPrefix(".") }.count
     }
 
-    /// The archive-relative path of a URL inside this session's root.
+    /// The archive-relative path of a URL inside this session's root, as
+    /// spelled: a link along it is not followed.
     func archivePath(of url: URL) -> String {
         let root = rootURL.standardizedFileURL.pathComponents
         let candidate = url.standardizedFileURL.pathComponents
@@ -115,15 +126,61 @@ final class ArchiveBrowsingSession {
         return candidate.dropFirst(root.count).joined(separator: "/")
     }
 
+    /// The entry a URL inside the root stands for, with every link along it
+    /// followed through the tree. Nil when it leaves the archive, dangles or
+    /// loops.
+    func resolvedArchivePath(of url: URL) -> String? {
+        // `archivePath` spells anything outside the root as the root itself.
+        guard Self.containsPath(root: rootURL, candidate: url),
+              case .inside(let path) = tree.resolve(archivePath(of: url), readLink: readLink) else { return nil }
+        return path
+    }
+
+    /// A link's target, from the link bsdtar wrote at mount. Every component
+    /// before it is a real directory — the tree resolves as it goes — so
+    /// reading it never follows another link.
+    private func readLink(_ path: String) -> String? {
+        try? FileManager.default.destinationOfSymbolicLink(atPath: rootURL.appendingPathComponent(path).path)
+    }
+
     /// Put one directory's own contents on disk, through the materializer.
-    /// Idempotent and coalesced; a no-op for an eagerly staged session.
+    /// Idempotent and coalesced.
     func materializeDirectory(containing url: URL) throws {
-        guard let tree, let materializer else { return }
-        let path = archivePath(of: url)
+        guard let path = resolvedArchivePath(of: url) else { return }
+        try materializeDirectory(at: path)
+    }
+
+    private func materializeDirectory(at path: String) throws {
         guard tree.children(of: path) != nil else { return }
         guard !isClosed else { throw SessionError.closed }
         try materializer.materialize(tree.prefetchPlan(for: path, skipping: materializer.settledPaths))
     }
+
+    /// Whether an entry's bytes are all on disk, judged from its state and
+    /// never from the disk, where a file's existence says nothing about
+    /// whether it is sound. A file or package is once it is published. A
+    /// folder is once nothing below it is left to bring — everything that
+    /// can be extracted is published or has failed — so it is never handed
+    /// out half-filled; that answer is kept until some state changes.
+    func isPublished(_ path: String) -> Bool {
+        if let node = tree.node(at: path), !node.isDirectory || node.isPackage {
+            return materializer.state(of: node.path) == .published
+        }
+        let generation = materializer.generation
+        stateLock.lock()
+        if let cached = completeFolders[path], cached.generation == generation {
+            stateLock.unlock()
+            return cached.complete
+        }
+        stateLock.unlock()
+        let complete = tree.subtreePlan(for: path, skipping: materializer.settledPaths).isEmpty
+        stateLock.lock()
+        completeFolders[path] = (generation, complete)
+        stateLock.unlock()
+        return complete
+    }
+
+    private var completeFolders: [String: (generation: Int, complete: Bool)] = [:]
 
     private let stateLock = NSLock()
     private var closed = false
@@ -133,7 +190,7 @@ final class ArchiveBrowsingSession {
     }
 
     fileprivate init(archive: URL, storage: URL, root: URL, fileID: UInt64, lock: Int32 = -1,
-                     tree: ArchiveTree? = nil, source: URL? = nil,
+                     tree: ArchiveTree, typeCatalog: ArchiveTypeCatalog, source: URL? = nil,
                      sourceIdentity: ArchiveMaterializer.SourceIdentity? = nil,
                      runner: ArchiveToolRunning = SystemArchiveToolRunner.shared) {
         archiveURL = archive.standardizedFileURL
@@ -142,13 +199,13 @@ final class ArchiveBrowsingSession {
         storageFileID = fileID
         lockDescriptor = lock
         self.tree = tree
+        self.typeCatalog = typeCatalog
         // The file bsdtar reads is the physical archive, which is not the same
         // as `archiveURL` for an archive reached through another one.
-        materializer = tree.map {
-            ArchiveMaterializer(tree: $0, source: source ?? archive, rootURL: root.resolvingSymlinksInPath().standardizedFileURL,
-                                storageURL: storage, runner: runner, sourceIdentity: sourceIdentity,
-                                spaceCheck: { FileOperations.requiredSpaceRefusal(forExtracting: $0, into: $1) })
-        }
+        materializer = ArchiveMaterializer(tree: tree, source: source ?? archive,
+                                           rootURL: root.resolvingSymlinksInPath().standardizedFileURL,
+                                           storageURL: storage, runner: runner, sourceIdentity: sourceIdentity,
+                                           spaceCheck: { FileOperations.requiredSpaceRefusal(forExtracting: $0, into: $1) })
     }
 
     static func releaseStorageLock(_ descriptor: Int32) {
@@ -194,51 +251,84 @@ final class ArchiveBrowsingSession {
         return url.standardizedFileURL
     }
 
-    /// The directory's real contents. On a lazily mounted session this is also
-    /// where its bytes arrive: reading the disk is only correct once the
-    /// directory has been materialized, so the two belong together rather than
-    /// leaving every caller to remember.
-    func entries(in directory: URL, beforeReadingEntry: ((URL) throws -> Void)? = nil) throws -> [Entry] {
+    /// A folder's rows, from the table of contents. The folder's own files
+    /// are still brought in first — listing is where bytes arrive until a
+    /// background prefetch takes that over (stage2 C5) — but nothing about a
+    /// row is read back from disk, save where a symbolic link leads.
+    /// `beforeReadingEntry` runs before that one read, for the suite.
+    func entries(in directory: URL, materializing: Bool = true,
+                 beforeReadingEntry: ((URL) throws -> Void)? = nil) throws -> [Entry] {
         let directory = try validatedURL(directory)
-        try materializeDirectory(containing: directory)
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+        guard let path = resolvedArchivePath(of: directory), let children = tree.listedChildren(of: path) else {
             throw SessionError.notDirectory
         }
-        let urls = try FileManager.default.contentsOfDirectory(at: directory,
-            includingPropertiesForKeys: nil)
-        return try urls.compactMap { url -> Entry? in
-            let attributes: [FileAttributeKey: Any]
-            do {
-                try beforeReadingEntry?(url)
-                attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-            } catch {
-                let failure = error as NSError
-                // Editors commonly replace a temporary document atomically.
-                // Only a vanished child is skipped; permissions/I/O errors
-                // still surface instead of silently hiding a damaged snapshot.
-                if (failure.domain == NSCocoaErrorDomain
-                    && [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(failure.code))
-                    || (failure.domain == NSPOSIXErrorDomain && failure.code == ENOENT) { return nil }
-                throw error
+        if materializing { try materializeDirectory(at: path) }
+        return try children.map { node -> Entry in
+            let url = directory.appendingPathComponent(node.name)
+            if node.kind == .symbolicLink {
+                do { try beforeReadingEntry?(url) } catch {
+                    // A link that vanished is read as leading nowhere; any
+                    // other failure still surfaces rather than hiding a
+                    // damaged snapshot.
+                    let failure = error as NSError
+                    guard (failure.domain == NSCocoaErrorDomain
+                           && [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(failure.code))
+                        || (failure.domain == NSPOSIXErrorDomain && failure.code == ENOENT) else { throw error }
+                }
             }
-            let link = attributes[.type] as? FileAttributeType == .typeSymbolicLink
-            let contained = (try? validatedURL(url)) != nil
-            // Do not inspect an escaped link's target, even just for its icon or size.
-            let target = link ? url.resolvingSymlinksInPath() : url
-            let values = contained ? try? target.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .fileSizeKey]) : nil
-            return Entry(url: url, name: url.lastPathComponent, isDirectory: values?.isDirectory == true,
-                         isPackage: values?.isPackage == true, isSymbolicLink: link,
-                         canAccess: contained && values != nil, size: Int64(values?.fileSize ?? 0),
-                         modificationDate: tree?.node(at: archivePath(of: url))?.modificationDate)
+            return entry(for: node, at: url)
         }.sorted {
             if $0.isNavigable != $1.isNavigable { return $0.isNavigable }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
     }
 
+    private func entry(for node: ArchiveTree.Node, at url: URL) -> Entry {
+        let description = typeCatalog.describe(node)
+        guard node.kind == .symbolicLink else {
+            return Entry(url: url, name: node.name, contentPath: node.path, isDirectory: node.isDirectory,
+                         isPackage: node.isPackage, isSymbolicLink: false, canAccess: !hasFailed(node.path),
+                         size: size(of: node), modificationDate: node.modificationDate,
+                         contentType: description.contentType, kind: description.kind)
+        }
+        // A link shows the shape, size and readability of where it leads, and
+        // its own date and Kind — as a link in an ordinary folder does.
+        var target: ArchiveTree.Node?
+        var readable = false
+        var contentPath: String?
+        if case .inside(let path) = tree.resolve(node.path, readLink: readLink) {
+            if path.isEmpty {
+                readable = true
+            } else if let reached = tree.node(at: path) {
+                target = reached
+                // Inside a package, bytes arrive only with the package whole.
+                readable = reached.isExtractable && !reached.insidePackage && !hasFailed(reached.path)
+            }
+            if readable { contentPath = target?.path ?? "" }
+        }
+        return Entry(url: url, name: node.name, contentPath: contentPath,
+                     isDirectory: readable && (target?.isDirectory ?? true), isPackage: target?.isPackage == true,
+                     isSymbolicLink: true, canAccess: readable, size: readable ? target.map(size(of:)) ?? 0 : 0,
+                     modificationDate: node.modificationDate,
+                     contentType: description.contentType, kind: description.kind)
+    }
+
+    /// A file's own size; a package's is everything it holds, as Finder
+    /// shows a package's size.
+    private func size(of node: ArchiveTree.Node) -> Int64 {
+        if node.isPackage { return tree.packageBytes(node.path) }
+        return node.kind == .file ? node.uncompressedSize : 0
+    }
+
+    /// An attributed extraction failure is sticky until Reload, and the row
+    /// reads as unavailable until then.
+    private func hasFailed(_ path: String) -> Bool {
+        if case .failed = materializer.state(of: path) { return true }
+        return false
+    }
+
     /// The archive was replaced after mount; the workspace mounts it again.
-    var isSourceChanged: Bool { materializer?.sourceChanged ?? false }
+    var isSourceChanged: Bool { materializer.sourceChanged }
 
     func close() { close(onDrained: nil) }
 
@@ -258,12 +348,12 @@ final class ArchiveBrowsingSession {
             Self.releaseStorageLock(descriptor)
             FileOperations.discardArchiveBrowsingSession(storageURL, fileID: storageFileID)
         }
-        guard let materializer, materializer.shutDown() else {
+        guard materializer.shutDown() else {
             finish()
             onDrained?()
             return
         }
-        DispatchQueue.global(qos: .utility).async {
+        DispatchQueue.global(qos: .utility).async { [materializer] in
             if !materializer.waitForDrain(timeout: 3) {
                 materializer.killActiveRuns()
                 _ = materializer.waitForDrain(timeout: 7)
@@ -370,9 +460,15 @@ extension FileOperations {
                 let source = cloned ? clone : archive
                 let identity = cloned ? nil : ArchiveMaterializer.SourceIdentity(of: archive)
                 let entries = try listing.entries(of: source)
+                // Two names the volume holds as one are one row — `A.txt` and
+                // `a.txt` extract to a single file — so the tree folds names
+                // exactly when the volume the bytes land on does.
+                let caseSensitive = (try? storage.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?
+                    .volumeSupportsCaseSensitiveNames ?? false
                 // Dates and per-member encryption come from the central
                 // directory, joined by path; the listing stays the tool's own.
-                let tree = ArchiveTree(entries: entries, records: ZIPCentralDirectory.records(of: source))
+                let tree = ArchiveTree(entries: entries, records: ZIPCentralDirectory.records(of: source),
+                                       caseInsensitive: !caseSensitive)
                 // Mounting writes only the skeleton and the symbolic links, so
                 // the whole archive's size is not what has to fit; each batch
                 // is checked against free space as it runs.
@@ -399,9 +495,13 @@ extension FileOperations {
                                               members: tree.symbolicLinkMembers, noRecursion: true,
                                               cancellation: cancellation)
                 try? propagateArchiveQuarantine(from: archive, to: root, cancellation: cancellation)
+                // Kind strings for rows whose bytes are not here yet, asked of
+                // the system through empty probes beside the root (D97).
+                let catalog = ArchiveTypeCatalog.probing(tree, in: storage.appendingPathComponent(".tursora-kind-probes"))
                 try cancellation.checkpoint(.beforePublication)
                 let session = ArchiveBrowsingSession(archive: logicalArchiveURL ?? archive, storage: storage,
-                                                     root: root, fileID: id, lock: lock, tree: tree, source: source,
+                                                     root: root, fileID: id, lock: lock, tree: tree,
+                                                     typeCatalog: catalog, source: source,
                                                      sourceIdentity: identity, runner: runner)
                 ArchiveBrowsingSession.finishPreparation(storage)
                 DispatchQueue.main.async { completion(.success(session)) }

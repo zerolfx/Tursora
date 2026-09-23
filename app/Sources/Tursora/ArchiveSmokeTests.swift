@@ -1,3 +1,4 @@
+import UniformTypeIdentifiers
 import Foundation
 import Darwin
 
@@ -108,6 +109,8 @@ enum ArchiveSmokeTests: SmokeSuite {
                 try await centralDirectoryAgreesWithExtraction(in: root)
                 try await extractionProgress(archive: folderZIP, root: root)
                 try materializerChecks(in: root)
+                try foldingChecks(in: root)
+                typeCatalogChecks(in: root)
                 try await lifecycleChecks(in: root)
 
                 try fm.removeItem(at: root)
@@ -311,6 +314,84 @@ enum ArchiveSmokeTests: SmokeSuite {
               bulk.selection?.include == "m" && bulk.selected.count == 290 && bulk.leaves.isEmpty
               && bulk.selection?.excludes.count == 11,   // m/*/* and the ten not asked for
               "sel=\(String(describing: bulk.selection?.excludes.count)) leaves=\(bulk.leaves.count)")
+
+        // D97: names the volume holds as one are one row. Measured on APFS:
+        // `c/A.txt` then `c/a.txt` leaves one file, `a.txt`, with the later
+        // bytes; `D/one.txt` then `d/two.txt` puts both in `D`.
+        let pairs = [entry("c/A.txt", 5), entry("c/a.txt", 6), entry("D/one.txt", 1), entry("d/two.txt", 2)]
+        let folded = ArchiveTree(entries: pairs, caseInsensitive: true)
+        check("archive tree: A.txt and a.txt are one row, with the later entry's spelling and size",
+              folded.listedChildren(of: "c")?.map(\.name) == ["a.txt"] && folded.node(at: "c/A.txt")?.uncompressedSize == 6,
+              "\(String(describing: folded.listedChildren(of: "c")?.map(\.name)))")
+        check("archive tree: a folder keeps its first spelling, and a later spelling lands in it",
+              Set((folded.children(of: "") ?? []).map(\.name)) == ["c", "D"]
+              && folded.node(at: "d/two.txt")?.path == "D/two.txt" && folded.children(of: "d")?.count == 2,
+              "\((folded.children(of: "") ?? []).map(\.name)) \(folded.node(at: "d/two.txt")?.path ?? "nil")")
+        check("archive tree: the skeleton has one folder per folded name",
+              folded.directoryPaths.sorted() == ["D", "c"], "\(folded.directoryPaths)")
+        let foldedPrefetch = folded.prefetchPlan(for: "d")
+        check("archive tree: a member spelled differently from its folder is asked for by name",
+              foldedPrefetch.leaves.map(\.raw) == ["d/two.txt"] && foldedPrefetch.selected.map(\.path) == ["D/one.txt"]
+              && foldedPrefetch.selection?.include == "D",
+              "leaves=\(foldedPrefetch.leaves.map(\.raw)) selected=\(foldedPrefetch.selected.map(\.path)) \(String(describing: foldedPrefetch.selection))")
+        let shadowPlan = folded.prefetchPlan(for: "c")
+        check("archive tree: the replaced spelling is excluded by name from its folder's selection",
+              shadowPlan.selected.map(\.path) == ["c/a.txt"] && shadowPlan.selection?.excludes.contains("c/A.txt") == true,
+              "\(String(describing: shadowPlan.selection))")
+        check("archive tree: on a case-sensitive volume both spellings are rows",
+              ArchiveTree(entries: pairs, caseInsensitive: false).children(of: "c")?.count == 2)
+        let german = ArchiveTree(entries: [entry("Straße.txt", 1), entry("STRASSE.txt", 2)], caseInsensitive: true)
+        check("archive tree: names fold as APFS folds them, not merely lowercased",
+              german.children(of: "")?.count == 1 && german.node(at: "strasse.txt")?.uncompressedSize == 2)
+        // libarchive hands names over in NFD, and Swift compares strings by
+        // canonical equivalence, so the two forms of one name meet.
+        let composed = ArchiveTree(entries: [entry("caf\u{E9}.txt", 3), entry("cafe\u{301}.txt", 4)],
+                                   records: ["caf\u{E9}.txt": ZIPCentralDirectory.Record(isEncrypted: true)])
+        check("archive tree: the NFC and NFD spellings of one name are one row",
+              composed.children(of: "")?.count == 1 && composed.node(at: "caf\u{E9}.txt")?.uncompressedSize == 4)
+        check("archive tree: a central-directory record joins across normalization forms",
+              composed.node(at: "cafe\u{301}.txt")?.inertReason == .encrypted)
+        let strays = ArchiveTree(entries: [entry("Demo.app/Contents/Info.plist", 1), entry("demo.app/Contents/extra", 1)],
+                                 caseInsensitive: true)
+        check("archive tree: a member spelled differently from its package is named with the package",
+              strays.packageMembers("Demo.app") == ["Demo.app", "demo.app/Contents/extra"],
+              "\(strays.packageMembers("Demo.app"))")
+        check("archive tree: every spelling inside a package is attributed to the package",
+              Set(strays.packageSpellings("demo.app").map(\.path)) == ["Demo.app"]
+              && strays.packageSpellings("Demo.app").contains { $0.raw == "demo.app/Contents/extra" })
+
+        // Rows: what cannot be extracted is not listed.
+        check("archive tree: listed children leave out what cannot be extracted",
+              Set((hostile.listedChildren(of: "") ?? []).map(\.name)) == ["up", "safe.txt"]
+              && hostile.listedChildren(of: "up")?.isEmpty == true
+              && encrypted.listedChildren(of: "d")?.map(\.name).sorted() == ["a.txt", "c.txt"],
+              "\((hostile.listedChildren(of: "") ?? []).map(\.name))")
+
+        // Links, followed lexically through the tree as the kernel would on disk.
+        var linkEntries = [entry("docs/a.txt", 1), entry("sub/deep/x.txt", 1), entry("Demo.app/Contents/Info.plist", 1),
+                           entry("secret.txt", 1), entry("secret-link", 0, .symbolicLink)]
+        var targets = ["to-file": "docs/a.txt", "to-dir": "sub/deep", "abs": "/etc/hosts", "up": "../outside",
+                       "gone": "docs/missing.txt", "loop1": "loop2", "loop2": "loop1",
+                       "via-pkg": "Demo.app/Contents/Info.plist", "chain": "to-dir/x.txt", "docs/rel": "../to-file",
+                       "through-file": "docs/a.txt/inner", "dot": ".", "secret-link": "secret.txt"]
+        for index in 0...32 {
+            targets["h\(index)"] = index == 32 ? "docs/a.txt" : "h\(index + 1)"
+        }
+        linkEntries += targets.keys.filter { $0 != "secret-link" }.map { entry($0, 0, .symbolicLink) }
+        let linked = ArchiveTree(entries: linkEntries,
+                                 records: ["secret-link": ZIPCentralDirectory.Record(isEncrypted: true)])
+        let readLink: (String) -> String? = { targets[$0] }
+        let resolutions: [(String, ArchiveTree.LinkResolution)] = [
+            ("to-file", .inside("docs/a.txt")), ("to-dir", .inside("sub/deep")), ("to-dir/x.txt", .inside("sub/deep/x.txt")),
+            ("abs", .escapes), ("up", .escapes), ("gone", .dangling), ("loop1", .loop),
+            ("via-pkg", .inside("Demo.app/Contents/Info.plist")), ("chain", .inside("sub/deep/x.txt")),
+            ("docs/rel", .inside("docs/a.txt")), ("through-file", .dangling), ("dot", .inside("")),
+            ("h1", .inside("docs/a.txt")), ("h0", .loop), ("secret-link", .dangling), ("docs/a.txt", .inside("docs/a.txt")),
+        ]
+        for (path, expected) in resolutions {
+            let actual = linked.resolve(path, readLink: readLink)
+            check("archive tree: link resolution of \(path) is \(expected)", actual == expected, "\(actual)")
+        }
 
         let links = ArchiveTree(entries: [entry("alias", 0, .symbolicLink), entry("real.txt", 4)])
         check("archive tree: symbolic links are named for materialization at mount",
@@ -618,6 +699,16 @@ enum ArchiveSmokeTests: SmokeSuite {
         check("archive: a line that is not a listing entry is ignored",
               BSDTarListingParser.entry(from: "tar: Error exit delayed from previous errors.") == nil
               && BSDTarListingParser.entry(from: "") == nil)
+        // The owner's execute bit decides "Unix Executable File" (D97).
+        func executable(_ mode: String) -> Bool? {
+            BSDTarListingParser.entry(from: "\(mode)  0 501    0          10 Sep 22 19:42 tool")?.isExecutable
+        }
+        check("archive: the owner's execute bit is read from the mode, setuid included",
+              executable("-rwxr-xr-x") == true && executable("-rwsr-xr-x") == true
+              && executable("-rw-r--r--") == false && executable("-rwSr--r--") == false
+              && executable("-rw-r-xr-x") == false)
+        check("archive: a directory is never an executable file",
+              BSDTarListingParser.entry(from: "drwxr-xr-x  0 501    0           0 Sep 22 19:42 sub/")?.isExecutable == false)
     }
 
     /// Progress accounting, with no I/O at all.
@@ -733,14 +824,14 @@ enum ArchiveSmokeTests: SmokeSuite {
 
     /// A materializer over a real archive, mounted the way a session mounts:
     /// the skeleton and the links, nothing else.
-    private static func mount(_ archive: URL, in parent: URL, runner: ArchiveToolRunning)
+    private static func mount(_ archive: URL, in parent: URL, runner: ArchiveToolRunning, caseInsensitive: Bool = false)
         throws -> (ArchiveMaterializer, root: URL, storage: URL) {
         let fm = FileManager.default
         let storage = parent.appendingPathComponent("storage-\(UUID().uuidString)", isDirectory: true)
         let root = storage.appendingPathComponent("Contents", isDirectory: true)
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
         let tree = ArchiveTree(entries: try BSDTarArchiveListing().entries(of: archive),
-                               records: ZIPCentralDirectory.records(of: archive))
+                               records: ZIPCentralDirectory.records(of: archive), caseInsensitive: caseInsensitive)
         for path in tree.directoryPaths { try fm.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true) }
         try FileOperations.materializeArchiveMembers(archive: archive, into: root, scratch: storage,
                                                      members: tree.symbolicLinkMembers, noRecursion: true)
@@ -895,7 +986,7 @@ enum ArchiveSmokeTests: SmokeSuite {
         try fm.moveItem(at: original, to: area.appendingPathComponent("moved-away.zip"))
         try cloned.materializeDirectory(containing: cloned.rootURL.appendingPathComponent("m"))
         check("archive lifecycle: a ZIP renamed after it was opened still reads correctly",
-              read(cloned.materializer?.publishedURL(for: "m/a.txt")) == "still here")
+              read(cloned.materializer.publishedURL(for: "m/a.txt")) == "still here")
         cloned.close()
 
         // No clone (another volume): a replaced source is noticed, not read,
@@ -922,12 +1013,12 @@ enum ArchiveSmokeTests: SmokeSuite {
         check("archive lifecycle: without a clone, a replaced ZIP is refused rather than read",
               sawSourceChanged && uncloned.isSourceChanged, "\(String(describing: changedError))")
         check("archive lifecycle: a replaced source makes no member fail for good",
-              uncloned.materializer?.state(of: "r/a.txt") == .absent)
+              uncloned.materializer.state(of: "r/a.txt") == .absent)
         let remounted = try await prepareInHolder()
         try remounted.materializeDirectory(containing: remounted.rootURL.appendingPathComponent("r"))
         check("archive lifecycle: the workspace mounts a replaced archive afresh, and reads its new contents",
               remounted !== uncloned
-              && read(remounted.materializer?.publishedURL(for: "r/a.txt")) == "SECOND, and longer")
+              && read(remounted.materializer.publishedURL(for: "r/a.txt")) == "SECOND, and longer")
         let oldClosed = await eventually { uncloned.isClosed }
         check("archive lifecycle: the session over the replaced archive is closed", oldClosed)
         holder.shutdownAll()
@@ -995,6 +1086,81 @@ enum ArchiveSmokeTests: SmokeSuite {
                 continuation.resume(returning: result)
             }
         }
+    }
+
+    /// D97: two names the volume holds as one extract to one file, the later
+    /// entry's. The tree agrees with that, and so do the bytes published.
+    private static func foldingChecks(in root: URL) throws {
+        let fm = FileManager.default
+        let area = root.appendingPathComponent("folding", isDirectory: true)
+        try fm.createDirectory(at: area, withIntermediateDirectories: true)
+        let caseSensitive = (try? area.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?
+            .volumeSupportsCaseSensitiveNames ?? false
+        guard !caseSensitive else {
+            print("NOTE folding: the temporary volume is case-sensitive; case folding is not exercised")
+            return
+        }
+        func read(_ url: URL?) -> String? { url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } }
+        let archive = area.appendingPathComponent("fold.zip")
+        try zip([Entry("c/A.txt", "upper"), Entry("c/a.txt", "lower"), Entry("D/one.txt", "1"), Entry("d/two.txt", "2"),
+                 Entry("Demo.app/Contents/Info.plist", "plist"), Entry("demo.app/Contents/extra", "extra")]).write(to: archive)
+        let runner = GatedRunner()
+        let mounted = try mount(archive, in: area, runner: runner, caseInsensitive: true)
+        let materializer = mounted.0
+        try materializer.materialize(materializer.tree.prefetchPlan(for: "c"))
+        check("folding: A.txt then a.txt publishes one file, with the later entry's bytes",
+              read(materializer.publishedURL(for: "c/a.txt")) == "lower"
+              && (try? fm.contentsOfDirectory(atPath: mounted.root.appendingPathComponent("c").path)) == ["a.txt"],
+              "\((try? fm.contentsOfDirectory(atPath: mounted.root.appendingPathComponent("c").path)) ?? [])")
+        try materializer.materialize(materializer.tree.prefetchPlan(for: "D"))
+        check("folding: a member spelled with a folder's other case is published into that folder",
+              read(materializer.publishedURL(for: "D/one.txt")) == "1" && read(materializer.publishedURL(for: "D/two.txt")) == "2"
+              && Set((try? fm.contentsOfDirectory(atPath: mounted.root.path)) ?? []) == ["c", "D"],
+              "\(materializer.state(of: "D/one.txt")) \(materializer.state(of: "D/two.txt"))")
+        try materializer.materialize(materializer.tree.batchPlan(for: ["Demo.app"]))
+        check("folding: a package arrives whole, members spelled with its other case included",
+              read(materializer.publishedURL(for: "Demo.app").map { $0.appendingPathComponent("Contents/extra") }) == "extra"
+              && read(materializer.publishedURL(for: "Demo.app").map { $0.appendingPathComponent("Contents/Info.plist") }) == "plist")
+        try? fm.removeItem(at: mounted.storage)
+    }
+
+    /// D97: Kind strings come from empty probes, asked of the system, and fall
+    /// back to `UTType` past the probe limit.
+    private static func typeCatalogChecks(in root: URL) {
+        let fm = FileManager.default
+        func entry(_ name: String, _ kind: ArchiveEntrySummary.Kind = .file, executable: Bool = false) -> ArchiveEntrySummary {
+            ArchiveEntrySummary(name: name, uncompressedSize: 1, kind: kind, isExecutable: executable)
+        }
+        let tree = ArchiveTree(entries: [entry("a.txt"), entry("b.txt"), entry("tool", executable: true), entry("plain"),
+                                         entry("Demo.app/Contents/Info.plist"), entry("link", .symbolicLink),
+                                         entry("folder/", .directory), entry(".hidden"), entry("rare.zzqqx")])
+        let probes = root.appendingPathComponent("kind-probes-\(UUID().uuidString)")
+        let catalog = ArchiveTypeCatalog.probing(tree, in: probes)
+        func describe(_ path: String) -> ArchiveTypeCatalog.Description? { tree.node(at: path).map(catalog.describe) }
+        check("type catalog: an executable without an extension is a Unix executable, as extracted",
+              describe("tool")?.contentType == .unixExecutable && describe("plain")?.contentType == .data,
+              "\(String(describing: describe("tool"))) \(String(describing: describe("plain")))")
+        check("type catalog: a package is typed as its bundle, a link as a link, a folder as a folder",
+              describe("Demo.app")?.contentType == .applicationBundle && describe("link")?.contentType == .symbolicLink
+              && describe("folder")?.contentType == .folder)
+        check("type catalog: a dotfile is typed as the extracted file is",
+              describe(".hidden")?.contentType == .data)
+        check("type catalog: probes are deleted once read", !fm.fileExists(atPath: probes.path))
+        check("type catalog: Kind strings are the system's own, not the type's description",
+              describe("a.txt")?.kind != nil && describe("a.txt")?.kind != UTType.plainText.localizedDescription
+              && describe("tool")?.kind != UTType.unixExecutable.localizedDescription,
+              "\(describe("a.txt")?.kind ?? "nil") / \(describe("tool")?.kind ?? "nil")")
+        let limited = ArchiveTypeCatalog.probing(tree, in: probes, limit: 2)
+        check("type catalog: the most common shapes are probed first, up to the limit",
+              limited.probedCount == 2 && limited.describe(tree.node(at: "a.txt")!).kind == describe("a.txt")?.kind)
+        check("type catalog: past the limit a shape falls back to UTType",
+              tree.node(at: "rare.zzqqx").map(limited.describe)?.contentType?.conforms(to: .data) == true
+              && tree.node(at: "tool").map(limited.describe)?.contentType == .unixExecutable)
+        let wide = ArchiveTree(entries: (0..<300).map { entry("f.x\($0)") })
+        let full = ArchiveTypeCatalog.probing(wide, in: probes)
+        check("type catalog: at most 256 shapes are probed",
+              full.probedCount == ArchiveTypeCatalog.maximumProbes && !fm.fileExists(atPath: probes.path),
+              "\(full.probedCount)")
     }
 
     /// Minimal stored ZIP writer for hostile fixtures, independent of the system

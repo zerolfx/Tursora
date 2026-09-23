@@ -14,6 +14,8 @@ enum ArchivePreparationSmokeTests: SmokeSuite {
                 try manager.createDirectory(at: source, withIntermediateDirectories: true)
                 try Data("keep".utf8).write(to: source.appendingPathComponent("keep.txt"))
                 try Data("vanish".utf8).write(to: source.appendingPathComponent("vanish.txt"))
+                try manager.createSymbolicLink(atPath: source.appendingPathComponent("vanish-link").path,
+                                               withDestinationPath: "keep.txt")
                 let archive = try await SmokeFixtures.compress([source], to: fixture)
                 let bytes = try Data(contentsOf: archive)
                 try await subscriptionChecks(archive: archive, fixture: fixture)
@@ -175,15 +177,23 @@ enum ArchivePreparationSmokeTests: SmokeSuite {
         let session = try await prepare(archive)
         defer { session.close() }
         let root = session.rootURL.appendingPathComponent("Source")
+        // Rows come from the table of contents; the one disk read left is
+        // where a symbolic link leads, and the hook runs before exactly that.
+        var hooked: [String] = []
         let entries = try session.entries(in: root) { url in
-            if url.lastPathComponent == "vanish.txt" { try FileManager.default.removeItem(at: url) }
+            hooked.append(url.lastPathComponent)
+            if url.lastPathComponent == "vanish-link" { try FileManager.default.removeItem(at: url) }
         }
-        check("a child removed between ZIP enumeration and metadata read does not blank the directory",
-              entries.map(\.name) == ["keep.txt"] && !FileManager.default.fileExists(atPath: root.appendingPathComponent("vanish.txt").path))
+        check("the entry hook runs for link rows only, before their target is read", hooked == ["vanish-link"], "\(hooked)")
+        check("a link removed before its target is read leads nowhere, without blanking the directory",
+              entries.map(\.name) == ["keep.txt", "vanish-link", "vanish.txt"]
+              && entries.first { $0.name == "vanish-link" }?.canAccess == false
+              && entries.first { $0.name == "keep.txt" }?.canAccess == true,
+              "\(entries.map { "\($0.name) \($0.canAccess)" })")
         var permissionError = false
         do { _ = try session.entries(in: root) { _ in throw POSIXError(.EACCES) } }
         catch { permissionError = (error as NSError).domain == NSPOSIXErrorDomain && (error as NSError).code == EACCES }
-        check("ZIP listing continues to report errors other than a vanished child", permissionError)
+        check("ZIP listing continues to report errors other than a vanished link", permissionError)
     }
 
     @MainActor private static func processChecks() async {

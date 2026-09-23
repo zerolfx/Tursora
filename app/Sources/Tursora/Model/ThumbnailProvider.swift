@@ -18,7 +18,7 @@ final class ThumbnailProvider {
     private init() { cache.countLimit = 3000 }
 
     static func canPreview(_ item: FileItem) -> Bool {
-        !item.isNavigable && !item.isPackage && item.readableContentURL != nil
+        !item.isNavigable && !item.isPackage && item.publishedContentURL != nil
     }
 
     static func cacheKey(for item: FileItem, size: CGFloat, scale: CGFloat) -> String {
@@ -30,7 +30,7 @@ final class ThumbnailProvider {
     @discardableResult
     func thumbnail(for item: FileItem, size: CGFloat, scale: CGFloat,
                    completion: @escaping (NSImage?) -> Void) -> NSImage? {
-        guard Self.canPreview(item), let contentURL = item.readableContentURL else { return nil }
+        guard Self.canPreview(item), let contentURL = item.publishedContentURL else { return nil }
         let k = Self.cacheKey(for: item, size: size, scale: scale)
         if let hit = cache.object(forKey: k as NSString) { return hit }
         if unsupported.contains(k) { return nil }
@@ -40,7 +40,7 @@ final class ThumbnailProvider {
         let deliver: (NSImage?) -> Void = { [weak self] image in
             DispatchQueue.main.async {
                 guard let self else { return }
-                let image = item.readableContentURL == contentURL ? image : nil
+                let image = item.publishedContentURL == contentURL ? image : nil
                 if let image { self.cache.setObject(image, forKey: k as NSString) } else { self.unsupported.insert(k) }
                 let callbacks = self.pending.removeValue(forKey: k) ?? []
                 callbacks.forEach { $0(image) }
@@ -48,7 +48,7 @@ final class ThumbnailProvider {
         }
         DispatchQueue.global(qos: .userInitiated).async {
             if TextThumbnailRenderer.supports(item),
-               let safeURL = item.readableContentURL, safeURL == contentURL,
+               let safeURL = item.publishedContentURL, safeURL == contentURL,
                let snippet = TextThumbnailRenderer.readSnippet(from: safeURL),
                let image = TextThumbnailRenderer.render(text: snippet.text, size: size, scale: scale) {
                 deliver(image)
@@ -56,7 +56,7 @@ final class ThumbnailProvider {
             }
             // Rich documents, images and unsupported text encodings retain
             // the platform thumbnail provider and its existing fallback.
-            guard item.readableContentURL == contentURL else { deliver(nil); return }
+            guard item.publishedContentURL == contentURL else { deliver(nil); return }
             let request = QLThumbnailGenerator.Request(fileAt: contentURL, size: CGSize(width: size, height: size),
                                                        scale: scale, representationTypes: .thumbnail)
             request.iconMode = false

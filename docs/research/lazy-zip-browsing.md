@@ -68,9 +68,9 @@ $ ls -l out/src/s.txt && xxd out/src/s.txt
 ```
 
 The listing **succeeds**, with the right name and the right size. The extraction then fails and leaves a
-correctly-sized, entirely zero-filled file at the correct path. `FileItem.readableContentURL` tests only
+correctly-sized, entirely zero-filled file at the correct path. `FileItem.readableContentURL` tested only
 `fileExists`, so that file would be handed to Quick Look, `NSWorkspace`, drag-out and Copy as if it were
-the real thing.
+the real thing. (It is now `publishedContentURL`, which reads the entry's state instead — D97.)
 
 Two consequences, both now implemented (D91):
 
@@ -275,6 +275,82 @@ Closing and quitting are checked with a runner that holds a batch in flight: a s
 keeps its storage until the child stops, then removes it and completes once, and a quit does not
 complete until then.
 
+## Rows from the table of contents
+
+A row has to exist before its bytes do and must not change when they arrive, so every field of an
+archive row now comes from the tree (D97). Measured on this Mac, APFS, case-insensitive:
+
+**Two spellings of one name.** An archive holding `c/A.txt` ("upper") then `c/a.txt` ("lower"),
+extracted whole, leaves one file named `a.txt` holding "lower": the later entry wins the name and the
+bytes. `D/one.txt` then `d/two.txt` leaves one folder, `D`, holding both: a folder keeps the first
+spelling it was created with. The tree does the same, keyed by the folded path.
+
+**How APFS folds.** Creating one name and testing for the other:
+
+| Pair | APFS collides | `lowercased()` equal | `folding(.caseInsensitive)` equal |
+|---|---|---|---|
+| `ß` / `ss`, `ß` / `SS` | yes | no | yes |
+| `ẞ` / `ß`, `Σ` / `σ`, `Å` / `å`, `Ǆ` / `ǅ`, `K` / Kelvin sign | yes | yes | yes |
+| `σ` / `ς`, `ﬁ` / `fi` | yes | no | yes |
+| `ı` / `I`, `İ` / `i` | no | no | no |
+
+So the tree folds with `folding(options: .caseInsensitive, locale: nil)`, with a `lowercased()` fast
+path for ASCII, and only when the storage volume reports `volumeSupportsCaseSensitiveNames == false`.
+
+**Unicode normalization needs no code.** An archive holding `café.txt` in NFC then in NFD lists
+*both* as NFD (`63 61 66 65 cc 81`): libarchive converts every name to NFD on macOS. An NFC pattern in
+`-T` is "Not found in archive"; the NFD pattern extracts both entries. Swift compares and hashes
+strings by canonical equivalence, so the two forms are one tree key, and a central-directory record
+stored in NFC still joins onto the NFD listing name.
+
+**bsdtar's matching is case-sensitive; the volume is not.** `-T` with `c/a.txt` takes only that
+entry, and with `c/A.txt` only that one. A directory include `D` takes `D/one.txt` and not
+`d/two.txt`. `--exclude c/A.txt` leaves `c/a.txt` extracted. Hence two rules: a member whose own
+spelling differs from its row's path is always asked for by name, and an earlier spelling a later one
+replaced is excluded from its folder's selection by name. The exclusion is only recorded for a
+spelling bsdtar tells apart — it treats a leading `./` or `/` and repeated separators as the same
+name, so excluding `./a.txt` would take `a.txt` with it. A package member spelled with the package's
+other case (`demo.app/x` beside `Demo.app/…`) is named in the package's run, and the package arrives
+whole.
+
+**Creation dates.** bsdtar sets each item's modification date, and on APFS setting it earlier than
+the item's birth moves the birth back with it: after extraction a file and a folder both have
+`birth == mtime ==` the archive's date. So Date Created on a row is the archive's date, as it will be
+on the extracted copy. Date Added and Date Last Opened have not happened to an entry that is only in
+the archive, and show "--".
+
+**Kind.** In an ordinary folder a symbolic link reads as Kind "Alias", type `public.symlink`, with the
+link's own size; a folder is "Folder"; an extensionless file is "Document" (`public.data`), or
+"Unix Executable File" (`public.unix-executable`) with its execute bit set; `X.app` is "Application"
+and `X.rtfd` "Rich Text Document with Attachments" even as empty directories. `UTType`'s own
+descriptions differ — "folder", "symbolic link", "Unix executable", "data" — so they are only the
+fallback. LaunchServices decides a Kind from the extension, folder-ness and the execute bit, not from
+the contents, so an empty probe file of the same shape answers exactly as the extracted item. Probes
+are made at mount under `storage/.tursora-kind-probes`, for at most 256 shapes, most common first, and
+deleted once read. `NSString.pathExtension` gives a dotfile such as `.hidden` no extension, so its
+probe is an extensionless file, as the extracted dotfile is.
+
+**Links.** A link row is resolved through the tree the way the kernel resolves it on disk: each link's
+target is read from the link bsdtar wrote at mount, `..` after a link climbs from where the link
+leads, an absolute target or `..` above the root escapes, and more than 32 links (`MAXSYMLINKS`) is a
+loop. A link row shows the shape, size and readability of where it leads, with its own date and Kind,
+so a link into a folder not yet entered can be entered, and one that escapes, dangles or loops is
+shown unavailable.
+
+**Readable URLs.** `readableContentURL` became `publishedContentURL`: the entry's state must be
+`published` — never `fileExists`, which says nothing about whether the bytes are sound — and
+containment is checked again at the point of use. A folder qualifies once nothing below it is left to
+bring (everything extractable published or failed); that walk of the tree is kept until any entry's
+state changes, so menu validation does not repeat it.
+
+Coverage: pure tree checks for folding, normalization, the link table (including a 33-hop chain and a
+hop through a package) and listed children; a materializer check that the folded pair publishes one
+file with the later bytes and that a folder's other-case member and a package's other-case member
+arrive; the type catalog, including the 256-probe limit; and, in `ArchiveWorkspaceSmokeTests` with
+nothing extracted on listing, rows for a `.txt`, an extensionless file, an executable, a dotfile,
+`.app`, `.rtfd`, `.framework`, `.xcodeproj` and a folder compared field by field with a full
+extraction of the same ZIP, links into unentered folders, and a walk proving no file was written.
+
 ## Status
 
 Stage 0 (the pre-flight refusals above, the throwing listing seam, the free-space guard and the
@@ -284,8 +360,12 @@ that listing one directory leaves a deeper one alone, in `ArchiveWorkspaceSmokeT
 path in all three views — with a split pane and a second tab open and with a filter and grouping
 active, plus the bundle and `..` cases — in `LazyArchiveSmokeTests`.
 
-Still missing: a single directory holding tens of thousands of files, or one very large member, still
-pays for the whole directory on entry. That is Stage 2, true per-entry deferral.
+Stage 2 is in progress: the staging and publication core, the private clone with drain-on-close, and
+rows built from the table of contents are implemented and covered as described in their sections.
+Still missing: listing still extracts a folder's own files, so a single directory holding tens of
+thousands of files, or one very large member, still pays for the whole directory on entry; and Open,
+Copy, drag, Share, Quick Look, the preview column and thumbnails still need an entry's bytes on disk
+already.
 
 No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
 opening a large archive actually feels.

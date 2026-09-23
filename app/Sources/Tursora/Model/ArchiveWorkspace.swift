@@ -37,6 +37,17 @@ final class ArchivePreparationSubscription {
     }
 }
 
+/// When a ZIP folder's own files are extracted. Rows never depend on it: they
+/// come from the table of contents either way (D97).
+enum ArchiveMaterializationPolicy {
+    /// While the folder is listed, as since Stage 1. A background prefetch
+    /// replaces this (stage2 C5).
+    case onListing
+    /// Only when something asks for an entry's bytes. Lets the suite prove a
+    /// listing needs no extraction at all.
+    case never
+}
+
 /// Keeps read-only snapshots alive while navigation uses paths under the
 /// original ZIP. The registry is safe to query from directory-loading queues.
 final class ArchiveWorkspace {
@@ -65,10 +76,15 @@ final class ArchiveWorkspace {
     private var pendingDrains = 0
     private let preparer: Preparer
     private var closed = false
+    let materializationPolicy: ArchiveMaterializationPolicy
 
-    init(preparer: @escaping Preparer = { source, logical, completion in
+    init(materializationPolicy: ArchiveMaterializationPolicy = .onListing,
+         preparer: @escaping Preparer = { source, logical, completion in
         ArchiveBrowsingSession.prepare(archive: source, logicalArchiveURL: logical, completion: completion)
-    }) { self.preparer = preparer }
+    }) {
+        self.materializationPolicy = materializationPolicy
+        self.preparer = preparer
+    }
 
     @discardableResult
     func prepare(archive: URL, completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) -> ArchivePreparationSubscription {
@@ -385,10 +401,14 @@ final class ArchiveFileProvider: FileProvider {
     func listDirectory(_ url: URL) throws -> [FileItem] {
         guard let session = workspace.session(for: url) else { return try base.listDirectory(url) }
         let physical = try workspace.readableURL(for: url)
-        // `entries(in:)` materializes the directory itself. It runs on the
-        // listing queue, never the main thread (DirectoryModel.load).
-        return try session.entries(in: physical).map { entry in
-            FileItem(archiveEntry: entry, logicalURL: workspace.logicalURL(for: entry.url), session: session)
+        // Each row's logical URL is the folder's plus its name: resolving
+        // every row's physical URL back would touch the disk once per row.
+        let logical = workspace.logicalURL(for: physical)
+        // `entries(in:)` still brings the folder's own files in first. It runs
+        // on the listing queue, never the main thread (DirectoryModel.load).
+        return try session.entries(in: physical, materializing: workspace.materializationPolicy == .onListing).map { entry in
+            FileItem(archiveEntry: entry, logicalURL: logical.appendingPathComponent(entry.name, isDirectory: false),
+                     session: session)
         }
     }
 }

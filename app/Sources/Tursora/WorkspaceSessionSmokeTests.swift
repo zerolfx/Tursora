@@ -268,7 +268,7 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
         extracted.append(secondSession)
         check("ZIP restoration creates a different private snapshot", secondSession !== firstSession && secondSession.rootURL != firstSession.rootURL && manager.fileExists(atPath: secondSession.rootURL.path))
         check("restored ZIP displays original content using logical file URLs", restored.browser.model.items.map(\.name) == ["note.txt"] && restored.browser.model.items.allSatisfy { $0.url.path.hasPrefix(logical.path + "/") && $0.isArchiveEntry })
-        let readable = restored.browser.model.items.first?.readableContentURL
+        let readable = restored.browser.model.items.first?.publishedContentURL
         let contents = try readable.map { try String(contentsOf: $0) }
         check("restored ZIP reads the re-extracted file", contents == "restored ZIP content")
         check("restored ZIP retains fresh history and active keyboard focus", restored.browser.history.entries.count == 1 && restored.window?.firstResponder === restored.browser.focusView && restored.browser.isBrowsingArchive && !restored.browser.canModifyCurrentLocation)

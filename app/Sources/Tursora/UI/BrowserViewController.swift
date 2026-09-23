@@ -100,7 +100,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var canPreviewSelection: Bool { !readableSelectionURLs.isEmpty && !isPreparingArchive }
     var canOpenSelection: Bool { canPreviewSelection }
     private func readableURLs(_ items: [FileItem]) -> [URL] {
-        items.compactMap(\.readableContentURL)
+        items.compactMap(\.publishedContentURL)
     }
     private func isArchiveContent(_ url: URL) -> Bool {
         guard let session = ArchiveWorkspace.shared.session(for: url) else { return false }
@@ -1397,7 +1397,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             if !items.isEmpty {
                 add("Open", #selector(ctxOpen(_:)), enabled: readable)
                 if let single = items.first, items.count == 1, !single.isNavigable,
-                   let url = single.readableContentURL { menu.addItem(openWithMenuItem(for: url)) }
+                   let url = single.publishedContentURL { menu.addItem(openWithMenuItem(for: url)) }
                 addOpenInItems(folders)
                 add("Quick Look", #selector(ctxQuickLook(_:)), enabled: readable, symbol: "eye")
                 add("Copy", #selector(ctxCopy(_:)), enabled: readable, symbol: "doc.on.doc")
@@ -1672,7 +1672,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         guard item.canAccess else { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem); return }
         if item.isArchiveEntry {
             if item.isNavigable { navigate(to: item.url) }
-            else if let copy = item.readableContentURL {
+            else if let copy = item.publishedContentURL {
                 if !archiveFileOpener(copy) { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
             } else { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
             return

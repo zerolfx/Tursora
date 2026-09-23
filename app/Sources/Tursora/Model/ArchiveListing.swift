@@ -8,6 +8,10 @@ struct ArchiveEntrySummary: Equatable {
     let name: String
     let uncompressedSize: Int64
     let kind: Kind
+    /// The owner's execute bit, from the listing's mode. Extraction keeps it
+    /// (the umask only touches group and other), and it is what makes an
+    /// extensionless file a "Unix Executable File" rather than a "Document".
+    var isExecutable: Bool = false
     /// Directories and symbolic links occupy no extracted bytes worth counting;
     /// a symlink is listed as size 0 regardless.
     var countsTowardBytes: Bool { kind == .file }
@@ -70,7 +74,11 @@ enum BSDTarListingParser {
         default: kind = .file
         }
         guard !name.isEmpty else { return nil }
-        return ArchiveEntrySummary(name: name, uncompressedSize: max(0, size), kind: kind)
+        // `-rwxr-xr-x`: the owner's execute slot is the fourth character, and
+        // `s` there is setuid over an execute bit (`S` is setuid without one).
+        let modeCharacters = Array(parts[0])
+        let executable = kind == .file && modeCharacters.count > 3 && "xs".contains(modeCharacters[3])
+        return ArchiveEntrySummary(name: name, uncompressedSize: max(0, size), kind: kind, isExecutable: executable)
     }
 
     static func entries(from listing: String) -> [ArchiveEntrySummary] {

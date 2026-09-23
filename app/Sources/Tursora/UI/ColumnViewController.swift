@@ -178,7 +178,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         super.viewDidAppear()
         let items = selectedItems
         if items.count == 1, !items[0].isNavigable {
-            preview.show(items[0].isArchiveEntry ? items[0].readableContentURL : items[0].url, force: true)
+            preview.show(items[0].isArchiveEntry ? items[0].publishedContentURL : items[0].url, force: true)
         }
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -631,11 +631,9 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     /// The row's icon, drawn as the first character of the title.
     private func iconAttachment(for item: FileItem, cut: Bool) -> NSTextAttachment {
         let attachment = NSTextAttachment()
-        // An archive entry's URL is logical: nothing exists at that path, so
-        // its icon comes from its type rather than from the filesystem.
-        let icon = item.isArchiveEntry
-            ? NSWorkspace.shared.icon(for: item.contentType ?? (item.isDirectory ? .folder : .data))
-            : NSWorkspace.shared.icon(forFile: item.contentURL.path)
+        // FileItem's own rule, so a published package shows its real icon
+        // here as it does in the other views.
+        let icon = item.iconImage
         // A cut row fades as a whole in the list and icon views, so the icon
         // fades here too rather than leaving a full-strength icon beside dimmed
         // text.
@@ -656,7 +654,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         guard let node = item as? FileNode else { return nil }
         _ = preview.view
         // An archive entry previews through its path-validated temporary copy.
-        preview.show(node.item.isArchiveEntry ? node.item.readableContentURL : node.url)
+        preview.show(node.item.isArchiveEntry ? node.item.publishedContentURL : node.url)
         return preview
     }
 
@@ -678,7 +676,7 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         // Other apps get real paths: an archive entry's logical URL exists
         // nowhere on disk, so it is written as its readable copy, and such a
         // drag can only ever copy.
-        let urls = items.compactMap { $0.isArchiveEntry ? $0.readableContentURL : $0.url }
+        let urls = items.compactMap { $0.isArchiveEntry ? $0.publishedContentURL : $0.url }
         guard !urls.isEmpty else { return false }
         draggingReadOnlyItems = items.contains(where: \.isArchiveEntry)
         pasteboard.clearContents()

@@ -523,7 +523,7 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     // Archive entries export validated snapshot URLs with a copy-only mask.
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         guard let entry = (item as? FileNode)?.item, entry.canAccess,
-              let url = entry.readableContentURL else { return nil }
+              let url = entry.publishedContentURL else { return nil }
         return url as NSURL
     }
 

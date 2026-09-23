@@ -128,7 +128,8 @@ final class ArchiveMaterializer {
     var spaceCheck: (Int64, URL) -> ArchiveBrowsingSession.SessionError?
 
     private let condition = NSCondition()
-    private var states: [String: State] = [:]
+    private var states: [String: State] = [:] { didSet { stateGeneration &+= 1 } }
+    private var stateGeneration = 0
     /// Set by `shutDown`: no new batch starts.
     private var closed = false
     /// Every run in flight, so `shutDown` can stop each child.
@@ -158,6 +159,13 @@ final class ArchiveMaterializer {
     func state(of path: String) -> State {
         condition.lock(); defer { condition.unlock() }
         return states[path] ?? .absent
+    }
+
+    /// Changes whenever any entry's state does, so an answer computed from
+    /// many states — whether a folder is complete — can be kept until then.
+    var generation: Int {
+        condition.lock(); defer { condition.unlock() }
+        return stateGeneration
     }
 
     var publishedPaths: Set<String> {
@@ -298,7 +306,10 @@ final class ArchiveMaterializer {
         // Packages whole, less their inert members.
         if !plan.packages.isEmpty {
             let list = staging.appendingPathComponent(".members-packages")
-            try Data((plan.packages.map(\.escaped).joined(separator: "\n") + "\n").utf8).write(to: list)
+            // A member spelled differently from its package is named too:
+            // matching is case-sensitive, the volume is not.
+            let members = plan.packages.flatMap { tree.packageMembers($0.path) }
+            try Data((members.joined(separator: "\n") + "\n").utf8).write(to: list)
             let result = try runner.run(ArchiveTool.extractionArguments(source: source, output: staging, noRecursion: false,
                                                                           memberList: list, excludes: plan.packageExcludes),
                                         scratch: storageURL, cancellation: cancellation)

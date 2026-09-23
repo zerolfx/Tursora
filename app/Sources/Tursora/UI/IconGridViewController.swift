@@ -366,7 +366,7 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
     }
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
         guard let item = node(at: indexPath)?.item, item.canAccess,
-              let url = item.readableContentURL else { return nil }
+              let url = item.publishedContentURL else { return nil }
         return url as NSURL
     }
 

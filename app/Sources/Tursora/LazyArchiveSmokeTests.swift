@@ -137,7 +137,7 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                     // A file's bytes are there because its directory was listed.
                     let top = pane.model.items.first { $0.name == "top.txt" }
                     check("\(mode.rawValue): a listed file has readable bytes",
-                          top?.readableContentURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "top")
+                          top?.publishedContentURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "top")
                     // …and a deeper directory's are still absent.
                     check("\(mode.rawValue): a directory not yet entered is still unstaged",
                           !fm.fileExists(atPath: session.rootURL.appendingPathComponent("Payload/Inner/deep.txt").path))
@@ -157,7 +157,7 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                             && pane.model.items.map(\.name) == ["deep.txt"]
                     }
                     check("\(mode.rawValue): the deeper directory's file arrives on entry",
-                          pane.model.items.first?.readableContentURL
+                          pane.model.items.first?.publishedContentURL
                             .flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "deep")
                     check("\(mode.rawValue): the other pane and the second tab are untouched",
                           wc.tabs.count == 2 && wc.tabs.currentPage.panes.count == 2)

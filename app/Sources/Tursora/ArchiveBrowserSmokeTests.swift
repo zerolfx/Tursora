@@ -94,7 +94,7 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                         check("expanded ZIP tree keeps same-name context targets distinct", browser.fileView.selectedItems.map(\.url) == [childURL] && browser.fileView.isReadOnly)
                         browser.copy(nil)
                         let treeCopy = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
-                        check("expanded ZIP tree copies the selected nested member", treeCopy?.map(\.standardizedFileURL) == [child.readableContentURL!.standardizedFileURL] && (try? String(contentsOf: child.contentURL)) == "nested duplicate name")
+                        check("expanded ZIP tree copies the selected nested member", treeCopy?.map(\.standardizedFileURL) == [child.publishedContentURL!.standardizedFileURL] && (try? String(contentsOf: child.contentURL)) == "nested duplicate name")
                     }
                     browser.fileView.select(name: "Docs")
                     browser.openSelection()
@@ -115,7 +115,7 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                     browser.nameFilter = ""
                     browser.fileView.select(name: "notes.txt")
                     let note = browser.fileView.selectedItems[0]
-                    let noteCopy = note.readableContentURL!
+                    let noteCopy = note.publishedContentURL!
                     let originalOpened = opened.count
                     browser.openSelection()
                     check("\(mode): deliberate Open launches the validated temporary copy", opened.count == originalOpened + 1 && opened.last == noteCopy && opened.last != docs.appendingPathComponent("notes.txt"))

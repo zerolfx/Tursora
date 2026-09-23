@@ -160,10 +160,11 @@ final class FolderSizes {
                 }
                 continue
             }
-            // An archive entry validates containment again on every access and
-            // lists from an extracted snapshot: count it, never walk it.
-            let itemWantsSize = wantsSize && !item.isArchiveEntry
-            guard let contentURL = item.readableContentURL else { continue }
+            // An archive folder that could not be counted from its tree is not
+            // counted from disk either, where it is only a skeleton.
+            if item.isArchiveEntry { continue }
+            let itemWantsSize = wantsSize
+            guard let contentURL = item.publishedContentURL else { continue }
             let key = self.key(for: item)
             let cached = cache[key]
             let wantsCount = cached?.itemCount == nil
