@@ -112,6 +112,12 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// Requests for archive bytes this pane started. Closing the pane cancels
     /// them; navigating does not, so an Open already asked for still happens.
     private var archiveRequests: [UUID: ArchivePreparationCancellation] = [:]
+    /// The history entry on screen while a remount from history prepares.
+    private var pendingHistorySlot: Int?
+    /// The failure notice on screen is for a remount, which Retry repeats as one.
+    private var failedArchiveRemounts = false
+    /// The ZIP location a closed tab was showing, to mount again on reopen.
+    private var suspendedArchiveLocation: URL?
     /// The background fetch of the ZIP folder on screen.
     private(set) var prefetchRequest: ArchivePreparationCancellation?
     /// Quick Look's request for bytes, and what it covers.
@@ -121,6 +127,18 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// Opens asked for in this main-queue pass, sent as one request.
     private var pendingArchiveOpens: [URL] = []
     private var archiveOpensInFlight = Set<URL>()
+    /// A file handed to something Tursora cannot watch — another application,
+    /// Finder pasting it, the Quick Look panel — goes as a copy outside the
+    /// ZIP's private copy, which is let go once no pane shows the ZIP (D103).
+    private func handOff(_ url: URL) -> URL? {
+        guard isArchiveContent(url) else { return url }
+        return ArchiveHandoffStore.shared.handOff(url, logical: ArchiveWorkspace.shared.logicalURL(for: url))
+    }
+
+    private func reportHandOffFailure() {
+        showArchiveError(ArchiveBrowsingSession.SessionError.notExtracted("A copy for another application could not be made."))
+    }
+
     private func isArchiveContent(_ url: URL) -> Bool {
         guard let session = ArchiveWorkspace.shared.session(for: url) else { return false }
         return url.resolvingSymlinksInPath().standardizedFileURL != session.archiveURL.resolvingSymlinksInPath().standardizedFileURL
@@ -205,6 +223,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     deinit {
         archivePreparation?.cancel()
         prefetchRequest?.cancel()
+        // At once on the main thread: a new pane at the same address must not
+        // lose its registration to a late removal.
+        let owner = ObjectIdentifier(self)
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { ArchiveWorkspace.shared.setDisplayed(nil, byOwner: owner) }
+        } else {
+            DispatchQueue.main.async { ArchiveWorkspace.shared.setDisplayed(nil, byOwner: owner) }
+        }
         archiveRequests.values.forEach { $0.cancel() }
         NotificationCenter.default.removeObserver(self)
         if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
@@ -547,7 +573,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let items = quickLookItems
         guard items.indices.contains(index) else { return nil }
         let item = items[index]
-        if let url = item.previewContentURL { return url as NSURL }
+        guard item.isArchiveEntry else { return item.previewContentURL.map { $0 as NSURL } }
+        // The panel can hand what it shows to other applications, so it is
+        // shown a hand-off copy; a folder, which would be only partly there,
+        // shows as its name (D103).
+        if item.isNavigable { return ArchivePendingPreviewItem(logicalURL: item.url, title: item.name) }
+        if let url = item.publishedContentURL {
+            if let handed = handOff(url) { return handed as NSURL }
+            return ArchivePendingPreviewItem(logicalURL: item.url, title: item.name)
+        }
         requestQuickLookBytes(for: [item])
         return ArchivePendingPreviewItem(logicalURL: item.url, title: item.name)
     }
@@ -589,7 +623,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: QLPreviewItem!) -> NSRect {
-        guard let url = (item as? ArchivePendingPreviewItem)?.logicalURL ?? item.previewItemURL else { return .zero }
+        guard let shown = (item as? ArchivePendingPreviewItem)?.logicalURL ?? item.previewItemURL else { return .zero }
+        let url = ArchiveHandoffStore.shared.logicalURL(forHandOff: shown) ?? shown
         return fileView.frameOnScreen(for: ArchiveWorkspace.shared.logicalURL(for: url))
     }
 
@@ -618,7 +653,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var canGoForward: Bool { history.canGoForward }
     var canGoUp: Bool { (currentURL ?? failedArchive?.source ?? openingArchive?.source).map { $0.path != "/" } ?? false }
 
-    func navigate(to url: URL) {
+    func navigate(to url: URL) { navigate(to: url, remounting: false) }
+
+    /// `remounting` opens a ZIP whatever the ZIP-browsing preference: for a
+    /// location that was browsable when it was recorded (D103).
+    private func navigate(to url: URL, remounting: Bool) {
+        // A remount from history still preparing: the cursor goes back to the
+        // entry on screen first, so its view state is saved there and the new
+        // location is pushed after it.
+        if let slot = pendingHistorySlot { history.go(to: slot) }
         saveViewState()
         leaveSearchContext()
         stopArchivePreparation()
@@ -636,29 +679,69 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         onWorkspaceSessionChanged?()
         if workspace.session(for: logical) != nil {
             enterPreparedArchive(logical)
-        } else if AppPreferences.experimentalZIPBrowsingEnabled, let archive = workspace.archiveURL(containing: logical) {
-            isPreparingArchive = true
-            syncReadOnly()
-            openingArchive = (archive, logical)
-            statusBar.beginBusy()
-            archiveNotice.showOpening(archive)
-            mountArchiveNotice()
-            updateStatus()
-            archivePreparation = workspace.prepare(archive: archive) { [weak self] result in
-                guard let self, self.navigationGeneration == generation else { return }
-                self.stopArchivePreparation()
-                switch result {
-                case .success: self.enterPreparedArchive(logical)
-                case .failure(let error): self.showArchiveError(error, archive: archive, target: logical)
-                }
-            }
+        } else if AppPreferences.experimentalZIPBrowsingEnabled || remounting,
+                  let archive = workspace.archiveURL(containing: logical) {
+            beginArchivePreparation(archive, target: logical, generation: generation, returningTo: nil)
         } else {
             history.push(logical)
             load(logical)
         }
     }
 
-    private func enterPreparedArchive(_ requested: URL) {
+    /// Mounts a ZIP, then shows `logical` in it. From history (`slot` set) the
+    /// location is shown without adding to history, and a failure puts the
+    /// history cursor back on the entry still on screen.
+    private func beginArchivePreparation(_ archive: URL, target logical: URL, generation: Int, returningTo slot: Int?) {
+        let workspace = ArchiveWorkspace.shared
+        isPreparingArchive = true
+        syncReadOnly()
+        openingArchive = (archive, logical)
+        pendingHistorySlot = slot
+        statusBar.beginBusy()
+        archiveNotice.showOpening(archive)
+        mountArchiveNotice()
+        updateStatus()
+        archivePreparation = workspace.prepare(archive: archive) { [weak self] result in
+            guard let self, self.navigationGeneration == generation else { return }
+            let slot = self.pendingHistorySlot
+            self.stopArchivePreparation()
+            switch result {
+            case .success: self.enterPreparedArchive(logical, recordingHistory: slot == nil, returningTo: slot)
+            case .failure(let error):
+                if let slot { self.history.go(to: slot) }
+                // The location on screen could not be mounted again — a
+                // reopened tab whose ZIP is gone: its rows belong to a closed
+                // session, so list it afresh, which says what is wrong.
+                if slot != nil, self.isShowing(logical) { self.load(logical); return }
+                self.failedArchiveRemounts = slot != nil
+                self.showArchiveError(error, archive: archive, target: logical)
+            }
+        }
+    }
+
+    /// A location from history, or the one a reopened tab shows. Inside a ZIP
+    /// whose private copy was let go (D103), it is mounted again first —
+    /// whatever the ZIP-browsing preference, since it was browsable when it
+    /// was recorded — and shown without adding to history.
+    private func showHistoryLocation(_ url: URL, returningTo slot: Int) {
+        let workspace = ArchiveWorkspace.shared
+        guard workspace.session(for: url) == nil, let archive = workspace.archiveURL(containing: url) else {
+            load(url)
+            return
+        }
+        stopArchivePreparation()
+        clearArchiveNotice()
+        suspendedNavigation = nil
+        navigationGeneration += 1
+        beginArchivePreparation(archive, target: workspace.logicalURL(for: url), generation: navigationGeneration,
+                                returningTo: slot)
+    }
+
+    private func isShowing(_ location: URL) -> Bool {
+        currentURL.map { ArchiveWorkspace.shared.logicalURL(for: $0).standardizedFileURL == location.standardizedFileURL } ?? false
+    }
+
+    private func enterPreparedArchive(_ requested: URL, recordingHistory: Bool = true, returningTo slot: Int? = nil) {
         let logical = ArchiveWorkspace.shared.logicalURL(for: requested)
         do {
             _ = try ArchiveWorkspace.shared.physicalURL(for: logical)
@@ -667,9 +750,12 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             guard ArchiveWorkspace.shared.isNavigableFolder(logical) else {
                 throw ArchiveBrowsingSession.SessionError.notDirectory
             }
-            history.push(logical)
+            if recordingHistory { history.push(logical) }
             load(logical)
         } catch {
+            // Mounted, but the location is not a folder in it: the history
+            // cursor goes back to the entry still on screen.
+            if let slot { history.go(to: slot) }
             showArchiveError(error, archive: ArchiveWorkspace.shared.archiveURL(containing: logical) ?? logical,
                              target: logical)
         }
@@ -686,6 +772,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     private func clearArchiveNotice() {
         failedArchive = nil
+        failedArchiveRemounts = false
         archiveNotice.removeFromSuperview()
         locationNotice?.removeFromSuperview()
         locationNotice = nil
@@ -712,6 +799,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         archivePreparation?.cancel()
         archivePreparation = nil
         openingArchive = nil
+        pendingHistorySlot = nil
         if isPreparingArchive { statusBar.endBusy() }
         isPreparingArchive = false
         syncReadOnly()
@@ -719,9 +807,17 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     @objc func cancelArchiveOpening(_ sender: Any?) {
         guard let openingArchive else { return }
+        let remountingShown = pendingHistorySlot != nil && isShowing(openingArchive.target)
+        if let slot = pendingHistorySlot { history.go(to: slot) }
         navigationGeneration += 1
         stopArchivePreparation()
         clearArchiveNotice()
+        if remountingShown {
+            // The rows on screen belong to a session let go: list afresh.
+            load(openingArchive.target)
+            view.window?.makeFirstResponder(focusView)
+            return
+        }
         if let currentURL {
             workspaceNavigationURL = ArchiveWorkspace.shared.logicalURL(for: currentURL)
             onWorkspaceSessionChanged?()
@@ -741,7 +837,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     @objc func retryArchiveOpening(_ sender: Any?) {
-        if let failedArchive { navigate(to: failedArchive.target) }
+        // A failed remount of a recorded location retries as one, whatever
+        // the ZIP-browsing preference.
+        if let failedArchive { navigate(to: failedArchive.target, remounting: failedArchiveRemounts) }
     }
 
     @objc func openArchiveEnclosingFolder(_ sender: Any?) {
@@ -751,12 +849,19 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// Closed tabs retain controllers for Reopen Closed Tab. Stop the worker
     /// now, then retry the requested location only if that tab is reopened.
     func suspendPendingNavigation() {
-        if let openingArchive { suspendedNavigation = openingArchive.target }
+        // A remount from history is dropped with its cursor put back: the tab
+        // reopens on the location it was showing, mounted again if needed.
+        if let slot = pendingHistorySlot { history.go(to: slot) }
+        else if let openingArchive { suspendedNavigation = openingArchive.target }
         else if navigationGeneration == 0 { suspendedNavigation = workspaceNavigationURL }
+        suspendedArchiveLocation = isBrowsingArchive || pendingHistorySlot != nil ? currentURL : nil
         navigationGeneration += 1
         stopArchivePreparation()
         cancelArchiveRequests()
         if suspendedNavigation != nil { clearArchiveNotice() }
+        // A closed tab no longer shows its ZIP, so the ZIP may be let go;
+        // reopening mounts it again (D103).
+        ArchiveWorkspace.shared.setDisplayed(nil, by: self)
     }
 
     /// Fetches the small files of the ZIP folder now on screen, in the
@@ -783,7 +888,18 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     func resumePendingNavigation() {
-        if let suspendedNavigation { navigate(to: suspendedNavigation) }
+        if let suspendedNavigation { navigate(to: suspendedNavigation); return }
+        guard let location = suspendedArchiveLocation else { return }
+        suspendedArchiveLocation = nil
+        // Its ZIP still mounted: the tab is simply shown again, selection and
+        // scroll intact. Let go meanwhile: mounted again and listed — or, if
+        // the ZIP has moved since, listed as missing rather than left showing
+        // a closed session's rows.
+        if ArchiveWorkspace.shared.session(for: location) != nil {
+            ArchiveWorkspace.shared.setDisplayed(location, by: self)
+        } else {
+            showHistoryLocation(location, returningTo: history.index)
+        }
     }
 
     private func showArchiveError(_ error: Error, archive: URL? = nil, target: URL? = nil) {
@@ -809,12 +925,17 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         if isPreparingArchive { cancelArchiveOpening(nil); return }
         if isSearching { closeSearch(); return }
         saveViewState()
-        if let url = history.goBack() { load(url) }
+        let slot = history.index
+        if let url = history.goBack() { showHistoryLocation(url, returningTo: slot) }
     }
 
     func goForward() {
+        // A remount still preparing is cancelled first, so the move starts
+        // from the entry actually on screen.
+        if isPreparingArchive { cancelArchiveOpening(nil) }
         saveViewState()
-        if let url = history.goForward() { load(url) }
+        let slot = history.index
+        if let url = history.goForward() { showHistoryLocation(url, returningTo: slot) }
     }
 
     func goUp() {
@@ -829,8 +950,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     /// Jump to any history slot (from the back/forward long-press menus).
     func goToHistory(slot: Int) {
+        if isPreparingArchive { cancelArchiveOpening(nil) }
         saveViewState()
-        if let url = history.go(to: slot) { load(url) }
+        let from = history.index
+        if let url = history.go(to: slot) { showHistoryLocation(url, returningTo: from) }
     }
 
     /// Entries behind (back) or ahead (forward) of the current one, nearest first.
@@ -861,6 +984,13 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func reload() {
         if failedArchive != nil { retryArchiveOpening(nil); return }
         if isPreparingArchive { return }
+        // The ZIP on screen let go (a reopened tab whose remount failed):
+        // Reload mounts it again.
+        if let currentURL, ArchiveWorkspace.shared.session(for: currentURL) == nil,
+           ArchiveWorkspace.shared.archiveURL(containing: currentURL) != nil {
+            showHistoryLocation(currentURL, returningTo: history.index)
+            return
+        }
         if isSearching { restartSearch(); return }
         if let currentURL, Self.persistenceKey(for: currentURL) != viewPropertiesKey {
             load(currentURL)
@@ -1036,15 +1166,21 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         Self.cutState = nil
         setCutMarkers([])
         let ready = readable.map(\.publishedContentURL)
+        // A paste may be read by Finder long after this pane has moved on, so
+        // the pasteboard holds hand-off copies (D103).
         if !ready.contains(nil) {
             pb.clearContents()
-            pb.writeObjects(ready.compactMap { $0 } as [NSURL])
+            let handed = ready.compactMap { $0 }.compactMap(handOff)
+            if handed.count < ready.count { reportHandOffFailure() }
+            pb.writeObjects(handed as [NSURL])
             return
         }
         let claimed = pb.clearContents()
-        requestArchiveBytes(readable.map(\.url), title: Self.readingTitle(readable.map(\.name), from: archiveSourceURL)) { result in
+        requestArchiveBytes(readable.map(\.url), title: Self.readingTitle(readable.map(\.name), from: archiveSourceURL)) { [weak self] result in
             guard pb.changeCount == claimed, !result.urls.isEmpty else { return }
-            pb.writeObjects(result.urls as [NSURL])
+            let handed = result.urls.compactMap { self?.handOff($0) }
+            if handed.count < result.urls.count { self?.reportHandOffFailure() }
+            pb.writeObjects(handed as [NSURL])
         }
     }
 
@@ -1276,6 +1412,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let name = actionName ?? (kind == .copy ? "Copy" : "Move")
         var options = transferOptions
         options.duplicateInPlace = duplicateInPlace
+        // The transfer reads from the ZIP's private copy until it ends (D103).
+        let lease = archiveSources.isEmpty ? nil : ArchiveWorkspace.shared.lease(archiveSources)
         if !archiveSources.isEmpty {
             let archiveName = ArchiveWorkspace.shared.archiveURL(containing: archiveSources[0])?.lastPathComponent ?? "the ZIP"
             let prepareArchiveSources = options.prepareSources
@@ -1309,6 +1447,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         ) { [self] result in
             // Retain this pane and its original undo manager through completion,
             // even if the originating tab was closed or another pane is active.
+            lease?.release()
             self.statusBar.endBusy()
             if let journal = result.journal, let capturedUndo {
                 self.registerTransferUndo(journal, undo: capturedUndo, actionName: name)
@@ -1730,7 +1869,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc private func ctxOpenWith(_ s: NSMenuItem) {
         guard let app = s.representedObject as? URL else { return }
         let targets = contextTargets(for: s)
-        withPublishedURLs(targets, title: Self.readingTitle(targets.map(\.name), from: archiveSourceURL)) { [weak self] urls in
+        withPublishedURLs(targets, title: Self.readingTitle(targets.map(\.name), from: archiveSourceURL)) { [weak self] found in
+            let urls = found.compactMap { self?.handOff($0) }
+            if urls.count < found.count { self?.reportHandOffFailure() }
             guard !urls.isEmpty else { return }
             if let opener = self?.openWithOpener { opener(urls, app); return }
             NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
@@ -1845,6 +1986,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
         if changingDirectory { pendingRenames = [:] }
         currentURL = url
+        // Before the listing starts: a ZIP on screen is never let go (D103).
+        ArchiveWorkspace.shared.setDisplayed(url, by: self)
         workspaceNavigationURL = ArchiveWorkspace.shared.logicalURL(for: url)
         addressBar.url = url
         viewPropertiesKey = destinationKey
@@ -1873,7 +2016,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         if item.isArchiveEntry {
             if item.isNavigable { navigate(to: item.url) }
             else if let copy = item.publishedContentURL {
-                if !archiveFileOpener(copy) { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
+                guard let handed = handOff(copy) else { reportHandOffFailure(); return }
+                if !archiveFileOpener(handed) { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
             } else { enqueueArchiveOpen(item.url) }
             return
         }
@@ -1910,8 +2054,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         requestArchiveBytes(batch, title: Self.readingTitle(batch.map(\.lastPathComponent), from: archiveSourceURL),
                             finally: { [weak self] in self?.archiveOpensInFlight.subtract(batch) }) { [weak self] result in
             guard let self else { return }
-            for url in result.urls where !self.archiveFileOpener(url) {
-                self.showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem)
+            for url in result.urls {
+                guard let handed = self.handOff(url) else { self.reportHandOffFailure(); continue }
+                if !self.archiveFileOpener(handed) { self.showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
             }
         }
     }

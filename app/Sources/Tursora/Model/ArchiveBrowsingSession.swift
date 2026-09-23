@@ -339,18 +339,31 @@ final class ArchiveBrowsingSession: @unchecked Sendable {
     /// `onDrained`, once, on the main queue.
     func close(onDrained: (() -> Void)?) {
         stateLock.lock()
-        guard !closed else { stateLock.unlock(); onDrained?(); return }
+        // A second close while the first is still draining waits for that
+        // drain rather than reporting drained at once: quit counts on it.
+        if closed {
+            if drained { stateLock.unlock(); onDrained?(); return }
+            if let onDrained { drainWaiters.append(onDrained) }
+            stateLock.unlock()
+            return
+        }
         closed = true
+        if let onDrained { drainWaiters.append(onDrained) }
         let descriptor = lockDescriptor
         lockDescriptor = -1
         stateLock.unlock()
-        let finish = { [storageURL, storageFileID] in
+        let finish = { [self, storageURL, storageFileID] in
             Self.releaseStorageLock(descriptor)
             FileOperations.discardArchiveBrowsingSession(storageURL, fileID: storageFileID)
+            stateLock.lock()
+            drained = true
+            let waiters = drainWaiters
+            drainWaiters.removeAll()
+            stateLock.unlock()
+            return waiters
         }
         guard materializer.shutDown() else {
-            finish()
-            onDrained?()
+            finish().forEach { $0() }
             return
         }
         DispatchQueue.global(qos: .utility).async { [materializer] in
@@ -358,10 +371,13 @@ final class ArchiveBrowsingSession: @unchecked Sendable {
                 materializer.killActiveRuns()
                 _ = materializer.waitForDrain(timeout: 7)
             }
-            finish()
-            DispatchQueue.main.async { onDrained?() }
+            let waiters = finish()
+            DispatchQueue.main.async { waiters.forEach { $0() } }
         }
     }
+
+    private var drained = false
+    private var drainWaiters: [() -> Void] = []
 }
 
 extension FileOperations {
@@ -395,7 +411,9 @@ extension FileOperations {
     static func sweepOrphanedStorage(in root: URL = FileManager.default.temporaryDirectory) {
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: root.path) else { return }
-        for name in names where name.hasPrefix(ArchiveBrowsingSession.storagePrefix) {
+        // Hand-off copies (D103) are owned the same way.
+        for name in names where name.hasPrefix(ArchiveBrowsingSession.storagePrefix)
+            || name.hasPrefix(ArchiveHandoffStore.prefix) {
             let url = root.appendingPathComponent(name)
             guard let attributes = try? fm.attributesOfItem(atPath: url.path),
                   attributes[.type] as? FileAttributeType == .typeDirectory else { continue }

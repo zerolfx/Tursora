@@ -87,6 +87,10 @@ final class ArchiveThumbnailQueue {
     private static func perform(_ run: [Request]) {
         if SmokeTest.isRequested { shared.record(run.map(\.key)) }
         let session = run[0].session
+        // Thumbnailers read the transient files after the tool has finished;
+        // the ZIP's private copy must stay until they have (D103).
+        let lease = ArchiveWorkspace.shared.lease(session: session)
+        defer { lease.release() }
         let tree = session.tree
         let members = run.compactMap { tree.node(at: $0.path) }.map(tree.spelling(of:))
         let transient: ArchiveMaterializer.TransientExtraction

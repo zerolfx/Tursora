@@ -55,6 +55,21 @@ enum ArchivePreviewLimit {
     static var automaticBytes: Int64 = 64 << 20
 }
 
+/// Holds a ZIP's private copy while work reads from it (D103).
+final class ArchiveSessionLease: @unchecked Sendable {
+    private let lock = NSLock()
+    private var action: (() -> Void)?
+    init(_ action: @escaping () -> Void) { self.action = action }
+    func release() {
+        lock.lock()
+        let action = self.action
+        self.action = nil
+        lock.unlock()
+        action?()
+    }
+    deinit { release() }
+}
+
 /// What a request for an archive's bytes brought.
 struct ArchiveMaterializationResult {
     /// Each requested location now readable, as the physical URL to read it
@@ -122,6 +137,12 @@ final class ArchiveWorkspace {
     /// Sessions closed by `shutdownAll` that are still stopping their children.
     /// Quitting waits for these as well as for preparations (D96).
     private var pendingDrains = 0
+    /// Each pane's ZIP, by pane (D103).
+    private var displayers: [ObjectIdentifier: URL] = [:]
+    /// Work holding each ZIP's private copy.
+    private var leases: [URL: Int] = [:]
+    /// Main thread only.
+    private var evictionTimers: [URL: DispatchWorkItem] = [:]
     private let preparer: Preparer
     private var closed = false
     private var policy: ArchiveMaterializationPolicy
@@ -153,10 +174,11 @@ final class ArchiveWorkspace {
             return subscription
         }
         if let existing = sessions[logical], existing.isSourceChanged {
-            // The archive was replaced after mount: discard that session off
-            // the main thread and mount the archive again below.
+            // The archive was replaced after mount: retire that session and
+            // mount the archive again below.
             sessions[logical] = nil
-            DispatchQueue.global(qos: .utility).async { existing.close() }
+            pendingDrains += 1
+            retire(existing)       // only dispatches; safe under the lock
         }
         if let existing = sessions[logical], !existing.isClosed {
             lock.unlock()
@@ -247,6 +269,9 @@ final class ArchiveWorkspace {
         if discarded, case .success(let session) = result {
             session.close(onDrained: { [self] in complete(job) })
         } else { complete(job) }
+        // A session nobody ends up showing is let go like any other (D103);
+        // a pane given it below registers before the check runs.
+        if !discarded, case .success = result { scheduleEviction(archive) }
         // Publish and deliver in the same main-thread turn, so a pane cannot
         // cancel between registration and receiving its prepared session.
         for waiter in waiters {
@@ -495,9 +520,15 @@ final class ArchiveWorkspace {
     func materialize(_ locations: [URL],
                      completion: @escaping (Result<ArchiveMaterializationResult, Error>) -> Void) -> ArchivePreparationCancellation {
         let cancellation = ArchivePreparationCancellation()
+        // Held until the completion has used what arrived — opened it, put
+        // it on the pasteboard — so the copy is not let go in between (D103).
+        let lease = lease(locations)
         DispatchQueue.global(qos: .userInitiated).async { [self] in
             let result = Result { try materializeBlocking(locations, cancellation: cancellation) }
-            DispatchQueue.main.async { completion(result) }
+            DispatchQueue.main.async {
+                completion(result)
+                lease.release()
+            }
         }
         return cancellation
     }
@@ -525,6 +556,139 @@ final class ArchiveWorkspace {
             DispatchQueue.main.async { completion?() }
         }
         return cancellation
+    }
+
+    // MARK: - Letting a ZIP's private copy go (D103)
+
+    /// When a ZIP nobody shows is let go: after a delay, so leaving and coming
+    /// straight back keeps what was extracted, or only when the suite says.
+    enum EvictionSchedule: Equatable {
+        case after(TimeInterval)
+        case manual
+    }
+
+    /// Main thread only.
+    var evictionSchedule: EvictionSchedule = .after(60)
+
+    /// What a pane shows, by pane: the ZIP a location is inside, or nothing.
+    /// A ZIP some pane shows is never let go; the last pane leaving starts the
+    /// delay. Main thread only.
+    func setDisplayed(_ location: URL?, by owner: AnyObject) {
+        setDisplayed(location, byOwner: ObjectIdentifier(owner))
+    }
+
+    func setDisplayed(_ location: URL?, byOwner id: ObjectIdentifier) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let key = location.flatMap(sessionKey(for:))
+        lock.lock()
+        let previous = displayers[id]
+        if let key { displayers[id] = key } else { displayers[id] = nil }
+        lock.unlock()
+        if let previous, previous != key { scheduleEviction(previous) }
+    }
+
+    /// Keeps a ZIP's private copy while work reads from it — a transfer
+    /// copying out of it, an extraction whose result is about to be used, a
+    /// promise not yet kept. Release it when done; releasing twice is
+    /// harmless, and a lease released by nobody is released when it goes.
+    func lease(_ locations: [URL]) -> ArchiveSessionLease {
+        let keys = Set(locations.compactMap(sessionKey(for:)))
+        return lease(keys: keys)
+    }
+
+    /// The same, for a session in hand.
+    func lease(session: ArchiveBrowsingSession) -> ArchiveSessionLease {
+        lock.lock()
+        let key = sessions.first { $0.value === session }?.key
+        lock.unlock()
+        return lease(keys: key.map { [$0] } ?? [])
+    }
+
+    private func lease(keys: Set<URL>) -> ArchiveSessionLease {
+        lock.lock()
+        keys.forEach { leases[$0, default: 0] += 1 }
+        lock.unlock()
+        return ArchiveSessionLease { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            for key in keys {
+                let count = (self.leases[key] ?? 1) - 1
+                self.leases[key] = count > 0 ? count : nil
+            }
+            self.lock.unlock()
+            DispatchQueue.main.async { keys.forEach(self.scheduleEviction) }
+        }
+    }
+
+    /// Lets go now of every ZIP nobody shows or holds, whatever the delay.
+    func runEvictionsForTesting() {
+        lock.lock()
+        let keys = Array(sessions.keys)
+        lock.unlock()
+        keys.forEach(evictIfIdle)
+    }
+
+    func retentionForTesting(_ archive: URL) -> (displayers: Int, leases: Int) {
+        guard let key = sessionKey(for: archive) else { return (0, 0) }
+        lock.lock(); defer { lock.unlock() }
+        return (displayers.values.filter { $0 == key }.count, leases[key] ?? 0)
+    }
+
+    /// Retires a suite's own session through the same path as eviction.
+    func discard(archive: URL) {
+        guard let key = sessionKey(for: archive) else { return }
+        lock.lock()
+        let session = sessions.removeValue(forKey: key)
+        if session != nil { pendingDrains += 1 }
+        lock.unlock()
+        if let session { retire(session) }
+    }
+
+    private func scheduleEviction(_ key: URL) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard case .after(let delay) = evictionSchedule else { return }
+        evictionTimers[key]?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.evictionTimers[key] = nil
+            self?.evictIfIdle(key)
+        }
+        evictionTimers[key] = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// Everything is decided afresh when the delay ends: a pane may have
+    /// come back, and the session under the key may be a newer one.
+    private func evictIfIdle(_ key: URL) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        lock.lock()
+        guard !closed, let session = sessions[key], !displayers.values.contains(key), (leases[key] ?? 0) == 0 else {
+            lock.unlock(); return
+        }
+        sessions[key] = nil
+        pendingDrains += 1
+        lock.unlock()
+        retire(session)
+    }
+
+    /// The one way a session leaves the registry before quit: closed off the
+    /// main thread — removing a large copy takes time — with quit waiting for
+    /// it to drain.
+    private func retire(_ session: ArchiveBrowsingSession) {
+        DispatchQueue.global(qos: .utility).async { [self] in
+            session.close(onDrained: { [self] in
+                DispatchQueue.main.async { [self] in
+                    lock.lock(); pendingDrains -= 1; lock.unlock()
+                    fireShutdownCompletionsIfSettled()
+                }
+            })
+        }
+    }
+
+    /// The registry key for a location: the ZIP it is inside.
+    private func sessionKey(for location: URL) -> URL? {
+        if let record = record(for: location) { return record.archive }
+        guard let archive = archiveURL(containing: location) else { return nil }
+        return URL(fileURLWithPath: logicalURL(for: archive).standardizedFileURL.path, isDirectory: false)
     }
 
     /// Forget the extraction failures in and below a folder, so the next
@@ -594,7 +758,14 @@ final class ArchiveWorkspace {
         pendingDrains += retained.count
         lock.unlock()
         cancellations.forEach { $0.cancel() }
-        if self === Self.shared { ArchiveBrowsingSession.shutdownPreparingSessions() }
+        evictionTimers.values.forEach { $0.cancel() }
+        evictionTimers.removeAll()
+        if self === Self.shared {
+            ArchiveBrowsingSession.shutdownPreparingSessions()
+            // Copies handed to other applications go at quit, as the ZIPs'
+            // private copies always have (D103).
+            ArchiveHandoffStore.shared.removeAll()
+        }
         // Waiters hear that the workspace closed before any quit completion
         // runs, as they always did; queued first, so they are delivered first.
         DispatchQueue.main.async {

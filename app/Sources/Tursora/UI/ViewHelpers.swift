@@ -81,8 +81,26 @@ extension NSPasteboard {
     /// promised but has not extracted yet comes as its logical URL first, so
     /// a drop copies it the way Copy to Other Pane does (D101).
     var fileURLs: [URL] {
-        ArchiveEntryPromiseProvider.logicalURLs(on: self)
-            + ((readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? [])
+        // Item by item, so an entry this process put there is read by its
+        // logical URL and its file URL — a hand-off copy made on demand — is
+        // never asked for.
+        guard let items = pasteboardItems else { return [] }
+        let own = ArchiveEntryPromiseProvider.logicalURLs(in: items)
+        var urls: [URL] = []
+        for (index, item) in items.enumerated() {
+            if let logical = own[index] { urls.append(logical); continue }
+            guard let string = item.string(forType: .fileURL), let url = URL(string: string), url.isFileURL else { continue }
+            // A hand-off copy of an entry whose ZIP is still mounted is read as
+            // the entry, so a drop or paste in Tursora copies from the ZIP —
+            // and a folder dropped on the tab strip opens inside it (D103).
+            if let logical = ArchiveHandoffStore.shared.logicalURL(forHandOff: url),
+               ArchiveWorkspace.shared.session(for: logical) != nil {
+                urls.append(logical)
+            } else {
+                urls.append(url.standardizedFileURL)
+            }
+        }
+        return urls
     }
 }
 

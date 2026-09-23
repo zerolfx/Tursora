@@ -281,3 +281,11 @@ extension SmokeFixtures {
         }
     }
 }
+
+extension NSPasteboard {
+    /// The file URLs another application reads — for a ZIP entry, its hand-off
+    /// copy — where `fileURLs` gives Tursora's own view (D103).
+    var externalFileURLs: [URL] {
+        (readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+    }
+}

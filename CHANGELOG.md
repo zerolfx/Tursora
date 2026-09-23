@@ -15,6 +15,7 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ### Fixed
 
+- **Browsing ZIPs no longer piles up temporary files until you quit.** A ZIP's temporary copy is removed about a minute after you stop browsing it. Files you opened in another app, copied, dragged or shared out get their own copy, which is kept until you quit, so the app using them keeps working. Going Back to the ZIP, or reopening its tab, opens it again from where it is — so if you have moved or deleted the ZIP since, Back reports that instead. In the Quick Look panel a folder inside a ZIP now shows as its name only.
 - Temporary ZIP staging left behind by a crash is cleaned up at the next launch. It is removed only when no running copy of Tursora still holds it, so a second window or a second copy of the app is never disturbed.
 - **Group by Application** inside a ZIP put every file under "No Application". Files are now grouped under the application that would open them.
 - **Copying a folder out of a ZIP now copies all of it.** Copy to Other Pane, or Copy and Paste, used to bring only the subfolders you had already opened; the rest arrived as empty folders. Anything that has to be left out, such as a password-protected file, is now listed when the copy finishes.

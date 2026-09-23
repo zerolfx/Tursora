@@ -178,12 +178,12 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                     let before = pb.changeCount
                     pane.copy(nil)
                     check("\(name): Copy of entries not yet extracted clears the pasteboard at once",
-                          pb.changeCount != before && pb.fileURLs.isEmpty)
+                          pb.changeCount != before && pb.externalFileURLs.isEmpty)
                     await expectEventually("\(name): the copied package and folder are on the pasteboard once extracted") {
-                        pb.fileURLs.count == 2
+                        pb.externalFileURLs.count == 2
                     }
-                    let copiedApp = pb.fileURLs.first { $0.lastPathComponent == "Tool.app" }
-                    let copiedFolder = pb.fileURLs.first { $0.lastPathComponent == "Sub" }
+                    let copiedApp = pb.externalFileURLs.first { $0.lastPathComponent == "Tool.app" }
+                    let copiedFolder = pb.externalFileURLs.first { $0.lastPathComponent == "Sub" }
                     check("\(name): the pasteboard holds the whole package and the whole folder",
                           copiedApp.flatMap { try? String(contentsOf: $0.appendingPathComponent("Contents/MacOS/Tool"), encoding: .utf8) } == "code"
                           && copiedFolder.flatMap { try? String(contentsOf: $0.appendingPathComponent("Never/deep.txt"), encoding: .utf8) } == "deep")
@@ -195,7 +195,7 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                     await drainMainQueue()
                     await drainMainQueue()
                     check("\(name): a Copy still being prepared never overwrites what was copied after it",
-                          pb.string(forType: .string) == "copied meanwhile" && pb.fileURLs.isEmpty)
+                          pb.string(forType: .string) == "copied meanwhile" && pb.externalFileURLs.isEmpty)
 
                     // Copy to Other Pane: the whole tree, never-entered folders
                     // and the package included (the Stage 1 partial-copy bug).
@@ -621,10 +621,19 @@ enum ArchiveOpenSmokeTests: SmokeSuite {
                       "\(drag.fileURLs)")
                 continue
             }
-            check("drag: \(mode.rawValue): a file not yet extracted is promised with the private type, an extracted one is its file",
+            let written = NSPasteboard(name: NSPasteboard.Name("tursora-drag-\(UUID().uuidString)"))
+            defer { written.releaseGlobally() }
+            written.clearContents()
+            written.writeObjects(writers.compactMap { $0 })
+            // Tursora reads both by their logical URLs; another application
+            // asking for the extracted one's file gets a hand-off copy.
+            let external = written.pasteboardItems?.last?.string(forType: .fileURL).flatMap(URL.init(string:))
+            check("drag: \(mode.rawValue): a file not yet extracted is promised, an extracted one hands out a copy on demand, and Tursora reads both by their place in the ZIP",
                   writers.count == 2 && (writers[0] as? ArchiveEntryPromiseProvider)?.logicalURL == folder.appendingPathComponent("f.txt")
-                  && (writers[1] as? NSURL).flatMap { read($0 as URL) } == "published",
-                  "\(writers.map { String(describing: type(of: $0)) })")
+                  && written.fileURLs == [folder.appendingPathComponent("f.txt"), folder.appendingPathComponent("pub.txt")]
+                  && external.flatMap { read($0) } == "published"
+                  && external.flatMap(ArchiveHandoffStore.shared.logicalURL(forHandOff:)) == folder.appendingPathComponent("pub.txt"),
+                  "\(writers.map { String(describing: type(of: $0)) }) \(written.fileURLs) \(String(describing: external))")
         }
 
         // Promises kept: a file, a folder with its whole subtree, a package.

@@ -96,9 +96,9 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                         // extracts the member and fills the pasteboard when it
                         // is ready (D98, D102).
                         browser.copy(nil)
-                        await waitUntil("expanded ZIP member reaches the pasteboard") { NSPasteboard.general.fileURLs.count == 1 }
-                        let treeCopy = NSPasteboard.general.fileURLs
-                        check("expanded ZIP tree copies the selected nested member", treeCopy.map(\.standardizedFileURL) == child.publishedContentURL.map { [$0.standardizedFileURL] } && treeCopy.first.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "nested duplicate name")
+                        await waitUntil("expanded ZIP member reaches the pasteboard") { NSPasteboard.general.externalFileURLs.count == 1 }
+                        let treeCopy = NSPasteboard.general.externalFileURLs
+                        check("expanded ZIP tree copies the selected nested member", treeCopy.compactMap { ArchiveHandoffStore.shared.logicalURL(forHandOff: $0) } == [child.url] && treeCopy.first.flatMap { try? String(contentsOf: $0, encoding: .utf8) } == "nested duplicate name")
                     }
                     browser.fileView.select(name: "Docs")
                     browser.openSelection()
@@ -124,11 +124,17 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
                     guard let noteCopy = note.publishedContentURL else { return }
                     let originalOpened = opened.count
                     browser.openSelection()
-                    check("\(mode): deliberate Open launches the validated temporary copy", opened.count == originalOpened + 1 && opened.last == noteCopy && opened.last != docs.appendingPathComponent("notes.txt"))
-                    check("\(mode): Share and Quick Look receive the copy", (wc.sharingItems as? [URL]) == [noteCopy] && browser.numberOfPreviewItems(in: nil) == 1 && browser.previewPanel(nil, previewItemAt: 0)?.previewItemURL == noteCopy)
+                    // Handed outside as a copy of the extracted file (D103).
+                    func handedOff(_ url: URL?) -> Bool {
+                        guard let url else { return false }
+                        return ArchiveHandoffStore.shared.logicalURL(forHandOff: url) == note.url
+                            && (try? String(contentsOf: url, encoding: .utf8)) == "original note" && url != noteCopy
+                    }
+                    check("\(mode): deliberate Open launches a hand-off copy of the validated temporary copy", opened.count == originalOpened + 1 && handedOff(opened.last) && opened.last != docs.appendingPathComponent("notes.txt"))
+                    check("\(mode): Share and Quick Look receive the hand-off copy", (wc.sharingItems as? [URL]).map { $0.count == 1 && handedOff($0.first) } == true && browser.numberOfPreviewItems(in: nil) == 1 && handedOff(browser.previewPanel(nil, previewItemAt: 0)?.previewItemURL))
                     browser.copy(nil)
                     let copied = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
-                    check("\(mode): Copy exports the snapshot member", copied?.map(\.standardizedFileURL) == [noteCopy.standardizedFileURL])
+                    check("\(mode): Copy exports the snapshot member as a hand-off copy", copied?.count == 1 && handedOff(copied?.first))
                     let changeCount = NSPasteboard.general.changeCount
                     browser.cut(nil)
                     check("\(mode): Cut is inert in an archive", NSPasteboard.general.changeCount == changeCount)

@@ -13,8 +13,8 @@ enum ArchiveDragExport {
     /// What a drag writes for an item, or nil when it cannot be dragged.
     static func writer(for item: FileItem) -> NSPasteboardWriting? {
         guard item.canAccess else { return nil }
-        if let url = item.publishedContentURL { return url as NSURL }
-        guard item.isArchiveEntry else { return nil }
+        guard item.isArchiveEntry else { return item.publishedContentURL.map { $0 as NSURL } }
+        if let url = item.publishedContentURL { return ArchiveHandoffPasteboardItem.make(physical: url, logical: item.url) }
         return ArchiveEntryPromiseProvider(item: item)
     }
 
@@ -22,11 +22,15 @@ enum ArchiveDragExport {
     /// here, otherwise an item provider that extracts it first.
     static func sharingItem(for item: FileItem) -> Any? {
         guard item.canAccess else { return nil }
-        if let url = item.publishedContentURL { return url }
-        guard item.isArchiveEntry else { return nil }
+        guard item.isArchiveEntry else { return item.publishedContentURL }
+        // A sharing service reads the file when it likes: it is given a
+        // hand-off copy, outside the ZIP's private copy (D103).
+        if let url = item.publishedContentURL { return ArchiveHandoffStore.shared.handOff(url, logical: item.url) }
         let provider = NSItemProvider()
         provider.suggestedName = item.name
         let location = item.url
+        // Held until the provider delivers the file, or goes away unused (D103).
+        let lease = ArchiveWorkspace.shared.lease([location])
         provider.registerFileRepresentation(forTypeIdentifier: typeIdentifier(for: item), fileOptions: [],
                                             visibility: .all) { completion in
             let progress = Progress(totalUnitCount: 1)
@@ -35,11 +39,13 @@ enum ArchiveDragExport {
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     let result = try ArchiveWorkspace.shared.materializeBlocking([location], cancellation: cancellation)
-                    guard let url = result.urls.first else {
+                    guard let url = result.urls.first,
+                          let copy = ArchiveHandoffStore.shared.handOff(url, logical: location) else {
                         throw result.failures.first?.error ?? ArchiveBrowsingSession.SessionError.unavailableItem
                     }
                     // Not coordinated: the receiver is given its own copy.
-                    completion(url, false, nil)
+                    completion(copy, false, nil)
+                    lease.release()
                 } catch {
                     completion(nil, false, error)
                 }
@@ -52,6 +58,41 @@ enum ArchiveDragExport {
 
     static func typeIdentifier(for item: FileItem) -> String {
         (item.isNavigable ? UTType.folder : (item.contentType ?? .data)).identifier
+    }
+}
+
+/// An extracted ZIP entry on a drag pasteboard (D103). Tursora's own drop
+/// targets read the private type and copy by the logical URL. Another
+/// application asking for the file URL is given a hand-off copy, made only
+/// then — a drag that ends inside Tursora, or nowhere, clones nothing.
+final class ArchiveHandoffPasteboardItem: NSObject, NSPasteboardItemDataProvider {
+    private let physical: URL
+    private let logical: URL
+    /// Kept alive until the pasteboard is done with them; main thread only.
+    private static var retained: [ObjectIdentifier: ArchiveHandoffPasteboardItem] = [:]
+
+    private init(physical: URL, logical: URL) {
+        self.physical = physical
+        self.logical = logical
+    }
+
+    static func make(physical: URL, logical: URL) -> NSPasteboardItem {
+        let provider = ArchiveHandoffPasteboardItem(physical: physical, logical: logical)
+        retained[ObjectIdentifier(provider)] = provider
+        let item = NSPasteboardItem()
+        item.setPropertyList(ArchiveEntryPromiseProvider.internalPropertyList(for: logical),
+                             forType: ArchiveEntryPromiseProvider.internalType)
+        item.setDataProvider(provider, forTypes: [.fileURL])
+        return item
+    }
+
+    func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType) {
+        guard type == .fileURL, let copy = ArchiveHandoffStore.shared.handOff(physical, logical: logical) else { return }
+        item.setString(copy.absoluteString, forType: .fileURL)
+    }
+
+    func pasteboardFinishedWithDataProvider(_ pasteboard: NSPasteboard) {
+        Self.retained[ObjectIdentifier(self)] = nil
     }
 }
 
@@ -93,9 +134,13 @@ final class ArchiveEntryPromiseProvider: NSFilePromiseProvider, NSFilePromisePro
 
     override func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
         guard type == Self.internalType else { return super.pasteboardPropertyList(forType: type) }
-        // The process, so a drop in another copy of Tursora is not taken for
-        // one of its own entries.
-        return ["url": logicalURL.absoluteString, "pid": NSNumber(value: getpid())]
+        return Self.internalPropertyList(for: logicalURL)
+    }
+
+    /// The process, so a drop in another copy of Tursora is not taken for one
+    /// of its own entries.
+    static func internalPropertyList(for logical: URL) -> [String: Any] {
+        ["url": logical.absoluteString, "pid": NSNumber(value: getpid())]
     }
 
     func filePromiseProvider(_ filePromiseProvider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
@@ -108,6 +153,12 @@ final class ArchiveEntryPromiseProvider: NSFilePromiseProvider, NSFilePromisePro
     /// then copies it to where the destination asked.
     func filePromiseProvider(_ filePromiseProvider: NSFilePromiseProvider, writePromiseTo url: URL,
                              completionHandler: @escaping (Error?) -> Void) {
+        // Held while the promise is being kept: the ZIP's private copy is read
+        // until the copy at the destination is complete (D103). A drop lands
+        // while the pane that started the drag still shows the ZIP, so nothing
+        // needs holding before.
+        let lease = ArchiveWorkspace.shared.lease([logicalURL])
+        defer { lease.release() }
         do {
             let result = try ArchiveWorkspace.shared.materializeBlocking([logicalURL])
             guard let source = result.urls.first else {
@@ -120,13 +171,15 @@ final class ArchiveEntryPromiseProvider: NSFilePromiseProvider, NSFilePromisePro
         }
     }
 
-    /// The logical URLs of this process's own promised entries on a pasteboard.
-    static func logicalURLs(on pasteboard: NSPasteboard) -> [URL] {
-        (pasteboard.pasteboardItems ?? []).compactMap { item in
+    /// This process's own ZIP entries among pasteboard items, by item index.
+    static func logicalURLs(in items: [NSPasteboardItem]) -> [Int: URL] {
+        var urls: [Int: URL] = [:]
+        for (index, item) in items.enumerated() {
             guard let plist = item.propertyList(forType: internalType) as? [String: Any],
                   (plist["pid"] as? NSNumber)?.int32Value == getpid(),
-                  let string = plist["url"] as? String else { return nil }
-            return URL(string: string)
+                  let string = plist["url"] as? String, let url = URL(string: string) else { continue }
+            urls[index] = url
         }
+        return urls
     }
 }

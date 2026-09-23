@@ -42,6 +42,9 @@ enum SmokeTest: SmokeSuite {
         AppPreferences.experimentalZIPBrowsingEnabled = false
         AppPreferences.shared.shortcuts.resetAll()
         AppPreferences.shared.resetFilterShortcut()
+        // A ZIP's private copy is let go only when a check asks (D103), so no
+        // suite loses a session to a timer mid-check.
+        ArchiveWorkspace.shared.evictionSchedule = .manual
         // A failed earlier run may have left view state behind; start from defaults.
         wc.browser.setGroupKey(.none)
         wc.browser.setViewMode(.details)
@@ -76,6 +79,7 @@ enum SmokeTest: SmokeSuite {
             ExtractTaskSmokeTests.run,
             LazyArchiveSmokeTests.run,
             ArchiveOpenSmokeTests.run,
+            ArchiveEvictionSmokeTests.run,
             SplitToolbarSmokeTests.run,
             FolderTreeSmokeTests.run,
             TrashSmokeTests.run,

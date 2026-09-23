@@ -411,7 +411,8 @@ three views.
 Drag and Share (D101), per view with a split pane and a second tab:
 
 - Each view's drag source writes a file promise carrying the private type for an entry not yet
-  extracted and the file URL for an extracted one (the column view through its `writeRowsWith`).
+  extracted, and for an extracted one the private type plus a file URL made on demand — a hand-off
+  copy since D103 (the column view through its `writeRowsWith`).
 - A drop in Tursora reads the promised entries' logical URLs; the column view's drop validation
   accepts them through the shared reader; dropping them into the other pane copies their bytes, a
   folder whole.
@@ -423,6 +424,38 @@ Drag and Share (D101), per view with a split pane and a second tab:
 What is not covered: the File Operations row for a request estimated above a second or 128 MiB is
 decided by the measured cost model but not exercised, since the suite's fixtures stay under 50 MB; and
 no computer-use pass has been made.
+
+## Letting the private copy go (D103)
+
+Designed, then reviewed by four independent readers against the code before implementation (lenses:
+hand-offs to things Tursora cannot observe, lifecycle and concurrency, where display must be tracked,
+and the test plan). Their convergent findings changed the design from pins and pasteboard polling to
+hand-off clones plus leases; the decision row lists them.
+
+Checked in `ArchiveEvictionSmokeTests`, on private workspaces and through real panes on the shared one
+(eviction run by hand):
+
+- A ZIP a pane shows is kept, and kept while a second pane shows it; once none does, it leaves the
+  registry at once and its storage is removed.
+- A lease keeps it; releasing one lease twice does not release another; once all are released it is
+  let go.
+- On the real timer, a ZIP shown is kept and one nobody ever showed is let go.
+- A hand-off copy lives outside the session's storage, is reused for the same item until an
+  application changes it, keeps a link entry's own name, and survives the session being let go; the
+  launch sweep spares a live process's hand-off folder and removes an orphaned one; `removeAll` deletes
+  it. That the shared workspace's quit calls `removeAll` is by inspection, not checked.
+- Quit waits for a session let go while its tool is running, and the storage goes once the child has
+  stopped.
+- Back into a ZIP let go mounts it again — with ZIP browsing turned off — read-only, without changing
+  history; Forward during that remount cancels it and leaves the cursor on the entry on screen; a failed
+  open elsewhere keeps the ZIP on screen registered.
+- Reopen Closed Tab mounts a ZIP let go since the tab was closed; with the ZIP still mounted it only
+  shows the tab again, rows and selection intact; with the ZIP moved away since, it lists the location
+  as missing instead of showing a closed session's rows.
+- An extracted ZIP folder dropped on the tab strip opens a tab inside the ZIP, not in its hand-off copy.
+- A file opened in another application and one copied to the pasteboard stay readable after the
+  session is let go; a copy out still reading from a ZIP holds it, arrives whole, and afterwards the ZIP
+  is let go.
 
 ## Computer-use pass (Stage 2) — pending
 
@@ -459,8 +492,7 @@ open and with a filter and grouping active — in `LazyArchiveSmokeTests` and `A
 the latter with nothing extracted on listing so that every byte it sees was brought by the action
 under test.
 
-Still missing: the computer-use pass above; eviction of extracted bytes before quit; and browsing a ZIP
-nested inside another.
+Still missing: the computer-use pass above, and browsing a ZIP nested inside another.
 
 No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
 opening a large archive, dragging to Finder or sharing actually feels.
