@@ -130,7 +130,7 @@ extension FileOperations {
     /// No existing destination is used as an extraction root or replaced.
     static func extract(archive: URL, to directory: URL,
                         completion: @escaping (Result<URL, Error>) -> Void) {
-        extract(archive: archive, to: directory, preserveRoot: false, completion: completion)
+        extract(archive: archive, to: directory, cancellation: nil, completion: completion)
     }
 
     /// Extract with determinate progress and cancellation, for the explicit
@@ -173,16 +173,9 @@ extension FileOperations {
         }
     }
 
-    /// The read-only browser needs the exact archive hierarchy, including a
-    /// single top-level folder, instead of the normal extraction presentation.
-    static func extractArchiveContents(archive: URL, to directory: URL,
-                                       cancellation: ArchivePreparationCancellation? = nil,
-                                       completion: @escaping (Result<URL, Error>) -> Void) {
-        extract(archive: archive, to: directory, preserveRoot: true, cancellation: cancellation, completion: completion)
-    }
 
-    private static func extract(archive: URL, to directory: URL, preserveRoot: Bool,
-                                cancellation: ArchivePreparationCancellation? = nil,
+    private static func extract(archive: URL, to directory: URL,
+                                cancellation: ArchivePreparationCancellation?,
                                 completion: @escaping (Result<URL, Error>) -> Void) {
         archiveOperation(completion: completion) {
             try cancellation?.checkpoint(.beforeExtraction)
@@ -197,9 +190,6 @@ extension FileOperations {
                 try propagateArchiveQuarantine(from: archive, to: output, cancellation: cancellation)
                 let items = try FileManager.default.contentsOfDirectory(at: output, includingPropertiesForKeys: nil)
                 try cancellation?.checkpoint(.beforePublication)
-                if preserveRoot {
-                    return try publishArchiveItem(output, named: "Contents", in: directory)
-                }
                 guard !items.isEmpty else { throw ArchiveError.emptyArchive }
                 if items.count == 1, let item = items.first {
                     return try publishArchiveItem(item, named: item.lastPathComponent, in: directory)

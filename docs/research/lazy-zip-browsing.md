@@ -222,6 +222,46 @@ Separately, package status is decided per path by extension, so the skeleton use
 `Demo.app/Contents` — and with it the package's empty shell — before the package was extracted. A
 node now knows it is inside a package and is left out of both the skeleton and the mount-time links.
 
+## Staging, attribution and publication (Stage 2 core)
+
+Three measurements decided the shape of the core.
+
+A CRC-corrupt member is written to disk **with the corrupt bytes**; the only sign is on stderr:
+
+```
+x d/a.txt
+x d/bad.txt: ZIP bad CRC: 0xbde39420 should be 0x5ca44334: Unknown error: -1
+x d/c.txt
+tar: d/nope\*.txt: Not found in archive
+tar: Error exit delayed from previous errors.
+
+on disk:  d/a.txt[good one]  d/bad.txt[�orrupt me]  d/c.txt[good three]
+```
+
+So bsdtar never writes into the tree being browsed any more; it writes into staging, and a member is
+published only on a clean `x name` line. The same log also shows the "Not found" line repeating the
+**escaped** spelling it was given, which is why attribution matches it that way.
+
+Extracting into empty staging bypasses bsdtar's own symlink defence, and a plain rename then follows
+the link:
+
+```
+renamex_np(staging/link/x.txt, root/link/x.txt, RENAME_EXCL)                    rc=0      outside/: x.txt
+renamex_np(…,                                 RENAME_EXCL|RENAME_NOFOLLOW_ANY) ELOOP     outside/: (empty)
+```
+
+And bsdtar's option order is load-bearing: `… big --exclude 'big/*/*'` reads `--exclude` as a second
+pattern and extracts the whole subtree, package included; `--exclude 'big/*/*' -- big` takes exactly
+the direct files.
+
+One thing only running the suite revealed: `RENAME_NOFOLLOW_ANY` applies to **both** paths. Staging
+lives under `$TMPDIR`, which is under `/var`, itself a symbolic link, so publication failed with ELOOP
+on every member until the staging side was put through `realpath(3)` as the destination already was.
+
+For a Finder-made archive, `-v` names only real entries (no `__MACOSX` lines) and a custom extended
+attribute survives both a selection and a leaf extraction. A selection also announces the selected
+folder's own record (`x F/`), which attribution counts as a known name.
+
 ## Status
 
 Stage 0 (the pre-flight refusals above, the throwing listing seam, the free-space guard and the

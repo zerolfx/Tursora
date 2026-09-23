@@ -119,6 +119,20 @@ struct ArchiveToolVerdict: Equatable {
                 else { verdict.unrecognized.append(line) }
                 continue
             }
+            // `tar: <member>: <reason>` — an error reported on its own line
+            // rather than after the announcement. Placed only for a known name,
+            // longest first; anything else about the run is unrecognised.
+            if line.hasPrefix("tar: ") {
+                let body = String(line.dropFirst(5))
+                if let key = keys.first(where: { body.hasPrefix($0 + ": ") }) {
+                    let path = announced[key]!
+                    verdict.failed[path] = String(body.dropFirst(key.count + 2))
+                    verdict.extracted.remove(path)
+                } else {
+                    verdict.unrecognized.append(line)
+                }
+                continue
+            }
             guard line.hasPrefix("x ") else { verdict.unrecognized.append(line); continue }
             let rest = String(line.dropFirst(2))
             // 1. Exactly a known name: a clean announcement.

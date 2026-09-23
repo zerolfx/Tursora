@@ -223,6 +223,19 @@ struct ArchiveTree {
         return true
     }
 
+    /// Every entry a selection of this folder may announce — its direct children,
+    /// or everything below it — each under its own path. A selection also names
+    /// directory records (`x F/`), which are never published but must not read
+    /// as lines the verdict cannot place.
+    func spellings(within directory: String, recursive: Bool) -> [ArchiveMemberSpelling] {
+        let key = Self.key(directory)
+        let prefix = key.isEmpty ? "" : key + "/"
+        return nodes.values.filter { node in
+            guard key.isEmpty || node.path.hasPrefix(prefix) else { return false }
+            return recursive || !node.path.dropFirst(prefix.count).contains("/")
+        }.map(spelling(of:))
+    }
+
     /// A package and every entry inside it, each spelled as bsdtar will name it
     /// and all attributed to the package, so its log lines match exactly.
     func packageSpellings(_ package: String) -> [ArchiveMemberSpelling] {
@@ -381,19 +394,6 @@ struct ArchiveTree {
         return plan
     }
 
-    /// What to extract to make one directory's own listing complete: its files,
-    /// and any package among its children, which must come whole.
-    /// Sub-directories need nothing — the skeleton already holds them.
-    func materializationPlan(for path: String) -> (leaves: [String], packages: [String]) {
-        guard let children = children(of: path) else { return ([], []) }
-        var leaves: [String] = []
-        var packages: [String] = []
-        for child in children where child.isExtractable {
-            if child.isPackage { packages.append(child.member) }
-            else if child.kind == .file { leaves.append(child.member) }
-        }
-        return (leaves, packages)
-    }
 
     // MARK: - Construction rules
 
@@ -433,6 +433,19 @@ struct ArchiveTree {
     /// libarchive folds a literal backslash in an entry name to `/`, so a
     /// backslash surviving into a listing is always an escape.
     static func isAddressable(_ raw: String) -> Bool { !raw.contains("\\") }
+
+    /// The inverse of `escapeMember`, for turning a selection's include back
+    /// into the tree path it names.
+    static func unescape(_ escaped: String) -> String {
+        var result = ""
+        var pending = false
+        for character in escaped {
+            if pending { result.append(character); pending = false }
+            else if character == "\\" { pending = true }
+            else { result.append(character) }
+        }
+        return result
+    }
 
     /// Escaping is mandatory: unescaped `star*.txt` takes three files, escaped
     /// takes one (measured). Over-escaping is harmless.

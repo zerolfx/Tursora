@@ -107,6 +107,7 @@ enum ArchiveSmokeTests: SmokeSuite {
                 archiveToolLayer()
                 try await centralDirectoryAgreesWithExtraction(in: root)
                 try await extractionProgress(archive: folderZIP, root: root)
+                try materializerChecks(in: root)
 
                 try fm.removeItem(at: root)
                 DispatchQueue.main.async { completion() }
@@ -203,10 +204,10 @@ enum ArchiveSmokeTests: SmokeSuite {
                                            entry("note.txt", 4)])
         check("archive tree: a bundle is one package node, not a directory to walk into",
               bundle.node(at: "Demo.app")?.isPackage == true)
-        let plan = bundle.materializationPlan(for: "")
-        check("archive tree: the root's plan takes its files with -n and its packages whole",
-              plan.leaves == ["note.txt"] && plan.packages == ["Demo.app"],
-              "leaves=\(plan.leaves) packages=\(plan.packages)")
+        let plan = bundle.prefetchPlan(for: "")
+        check("archive tree: the root's plan selects its files and takes its packages whole",
+              plan.selected.map(\.path) == ["note.txt"] && plan.packages.map(\.path) == ["Demo.app"],
+              "selected=\(plan.selected.map(\.path)) packages=\(plan.packages.map(\.path))")
         check("archive tree: a package is not in the directory skeleton — it arrives whole",
               !bundle.directoryPaths.contains("Demo.app"), "\(bundle.directoryPaths)")
         check("archive tree: the skeleton lists parents before children",
@@ -214,10 +215,10 @@ enum ArchiveSmokeTests: SmokeSuite {
 
         // Sub-directories need nothing: the skeleton already holds them.
         let nested = ArchiveTree(entries: [entry("dir/inner/x.txt", 1), entry("dir/y.txt", 2)])
-        let dirPlan = nested.materializationPlan(for: "dir")
+        let dirPlan = nested.prefetchPlan(for: "dir")
         check("archive tree: a directory's plan takes its own files and not its subtree",
-              dirPlan.leaves == ["dir/y.txt"] && dirPlan.packages.isEmpty,
-              "leaves=\(dirPlan.leaves)")
+              dirPlan.publishes == ["dir/y.txt"] && dirPlan.packages.isEmpty,
+              "publishes=\(dirPlan.publishes)")
 
         // D94: the central directory's encryption flag makes a member inert,
         // so it is never put in a batch that would leave zeros behind.
@@ -226,9 +227,11 @@ enum ArchiveSmokeTests: SmokeSuite {
         check("archive tree: an encrypted member is inert, for that reason",
               encrypted.node(at: "d/b.txt")?.inertReason == .encrypted
               && encrypted.node(at: "d/a.txt")?.inertReason == nil)
-        check("archive tree: an encrypted member is left out of its folder's batch",
-              encrypted.materializationPlan(for: "d").leaves == ["d/a.txt", "d/c.txt"],
-              "\(encrypted.materializationPlan(for: "d").leaves)")
+        let encryptedPlan = encrypted.prefetchPlan(for: "d")
+        check("archive tree: an encrypted member is left out of its folder's batch, and excluded from its run",
+              Set(encryptedPlan.publishes) == ["d/a.txt", "d/c.txt"]
+              && encryptedPlan.selection?.excludes.contains("d/b.txt") == true,
+              "\(encryptedPlan.publishes) \(String(describing: encryptedPlan.selection))")
 
         // A package's descendants are never created on their own: not in the
         // skeleton, and not as a mount-time link, or the package would exist as
@@ -708,6 +711,156 @@ enum ArchiveSmokeTests: SmokeSuite {
         check("archive: a cancelled extraction reports cancellation, not a tool failure", wasCancelled, "\(cancelled)")
         check("archive: a cancelled extraction publishes nothing and leaves no staging directory",
               (try? FileManager.default.contentsOfDirectory(atPath: cancelDestination.path))?.isEmpty == true)
+    }
+
+    /// Counts runs, and can hold the first one until released, so concurrent
+    /// callers really do arrive while it is in flight.
+    private final class GatedRunner: ArchiveToolRunning {
+        private let lock = NSLock()
+        private var runs = 0
+        private let gate = DispatchSemaphore(value: 0)
+        private var holdFirst: Bool
+        init(holdFirst: Bool = false) { self.holdFirst = holdFirst }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return runs }
+        func release() { gate.signal() }
+        func run(_ arguments: [String], scratch: URL, cancellation: ArchivePreparationCancellation?) throws -> ArchiveToolRun {
+            lock.lock(); runs += 1; let hold = holdFirst; holdFirst = false; lock.unlock()
+            if hold { gate.wait() }
+            return try SystemArchiveToolRunner.shared.run(arguments, scratch: scratch, cancellation: cancellation)
+        }
+    }
+
+    /// A materializer over a real archive, mounted the way a session mounts:
+    /// the skeleton and the links, nothing else.
+    private static func mount(_ archive: URL, in parent: URL, runner: ArchiveToolRunning)
+        throws -> (ArchiveMaterializer, root: URL, storage: URL) {
+        let fm = FileManager.default
+        let storage = parent.appendingPathComponent("storage-\(UUID().uuidString)", isDirectory: true)
+        let root = storage.appendingPathComponent("Contents", isDirectory: true)
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        let tree = ArchiveTree(entries: try BSDTarArchiveListing().entries(of: archive),
+                               records: ZIPCentralDirectory.records(of: archive))
+        for path in tree.directoryPaths { try fm.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true) }
+        try FileOperations.materializeArchiveMembers(archive: archive, into: root, scratch: storage,
+                                                     members: tree.symbolicLinkMembers, noRecursion: true)
+        let materializer = ArchiveMaterializer(tree: tree, source: archive, rootURL: root.resolvingSymlinksInPath(),
+                                               storageURL: storage, runner: runner, spaceCheck: { _, _ in nil })
+        return (materializer, root.resolvingSymlinksInPath(), storage)
+    }
+
+    /// Stage 2's core: staging, per-member attribution, one exclusive no-follow
+    /// rename per member, and coalescing (D95).
+    private static func materializerChecks(in root: URL) throws {
+        let fm = FileManager.default
+        let area = root.appendingPathComponent("materializer", isDirectory: true)
+        try fm.createDirectory(at: area, withIntermediateDirectories: true)
+        func stagingLeft(_ storage: URL) -> Bool {
+            ((try? fm.contentsOfDirectory(atPath: storage.path)) ?? []).contains { $0.hasPrefix(".tursora-stage-") }
+        }
+        func read(_ url: URL?) -> String? { url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } }
+
+        // One entry: exactly its bytes, and nothing else written.
+        let plain = area.appendingPathComponent("plain.zip")
+        try zip([Entry("d/a.txt", "alpha"), Entry("d/b.txt", "beta")]).write(to: plain)
+        let basic = try mount(plain, in: area, runner: GatedRunner())
+        try basic.0.materialize(basic.0.tree.batchPlan(for: ["d/a.txt"]))
+        check("materializer: one requested entry is published with exactly its bytes",
+              read(basic.0.publishedURL(for: "d/a.txt")) == "alpha")
+        check("materializer: an entry not asked for is not written",
+              !fm.fileExists(atPath: basic.root.appendingPathComponent("d/b.txt").path))
+        check("materializer: no staging directory is left behind", !stagingLeft(basic.storage))
+
+        // A CRC-corrupt member: bsdtar writes it with the corrupt bytes and says
+        // so on one stderr line. It must never be published.
+        var corrupt = zip([Entry("c/good.txt", "fine"), Entry("c/bad.txt", "corrupt me"), Entry("c/good2.txt", "fine too")])
+        if let range = corrupt.range(of: Data("corrupt me".utf8)) { corrupt[range.lowerBound] ^= 0xFF }
+        let crcZIP = area.appendingPathComponent("crc.zip")
+        try corrupt.write(to: crcZIP)
+        let crcRunner = GatedRunner()
+        let crc = try mount(crcZIP, in: area, runner: crcRunner)
+        try crc.0.materialize(crc.0.tree.prefetchPlan(for: "c"))
+        var crcReason = ""
+        if case .failed(let reason) = crc.0.state(of: "c/bad.txt") { crcReason = reason }
+        check("materializer: a CRC-corrupt member fails, with bsdtar's reason",
+              crcReason.contains("CRC"), "\(crc.0.state(of: "c/bad.txt"))")
+        check("materializer: a CRC-corrupt member leaves nothing at its path",
+              !fm.fileExists(atPath: crc.root.appendingPathComponent("c/bad.txt").path))
+        check("materializer: its sound siblings in the same run are published",
+              read(crc.0.publishedURL(for: "c/good.txt")) == "fine" && read(crc.0.publishedURL(for: "c/good2.txt")) == "fine too")
+        let runsBefore = crcRunner.count
+        try crc.0.materialize(crc.0.tree.prefetchPlan(for: "c", skipping: crc.0.settledPaths))
+        check("materializer: a member that failed is not asked for again",
+              crcRunner.count == runsBefore, "runs \(runsBefore) -> \(crcRunner.count)")
+        crc.0.forgetFailures(under: "c")
+        check("materializer: Reload forgets a failure so it can be tried again",
+              crc.0.state(of: "c/bad.txt") == .absent)
+
+        // Eight concurrent requests for one entry: one run, one publication.
+        let gated = GatedRunner(holdFirst: true)
+        let many = try mount(plain, in: area, runner: gated)
+        let group = DispatchGroup()
+        let plan = many.0.tree.batchPlan(for: ["d/b.txt"])
+        for _ in 0..<8 {
+            group.enter()
+            DispatchQueue.global().async { try? many.0.materialize(plan); group.leave() }
+        }
+        Thread.sleep(forTimeInterval: 0.2)
+        gated.release()
+        group.wait()
+        check("materializer: eight concurrent requests for one entry cause one run",
+              gated.count == 1, "\(gated.count) runs")
+        check("materializer: and every caller sees it published", read(many.0.publishedURL(for: "d/b.txt")) == "beta")
+
+        // Overlapping batches: the shared member is written once.
+        let overlapZIP = area.appendingPathComponent("overlap.zip")
+        try zip([Entry("o/a", "A"), Entry("o/b", "B"), Entry("o/c", "C"), Entry("o/d", "D")]).write(to: overlapZIP)
+        let held = GatedRunner(holdFirst: true)
+        let overlap = try mount(overlapZIP, in: area, runner: held)
+        let first = DispatchGroup(); first.enter()
+        DispatchQueue.global().async { try? overlap.0.materialize(overlap.0.tree.batchPlan(for: ["o/a", "o/b", "o/c"])); first.leave() }
+        Thread.sleep(forTimeInterval: 0.1)
+        let second = DispatchGroup(); second.enter()
+        DispatchQueue.global().async { try? overlap.0.materialize(overlap.0.tree.batchPlan(for: ["o/b", "o/d"])); second.leave() }
+        Thread.sleep(forTimeInterval: 0.1)
+        held.release()
+        first.wait(); second.wait()
+        let inode = { (path: String) in
+            (try? fm.attributesOfItem(atPath: overlap.root.appendingPathComponent(path).path)[.systemFileNumber] as? NSNumber)?.intValue
+        }
+        let bInode = inode("o/b")
+        check("materializer: overlapping batches publish every member once",
+              ["o/a", "o/b", "o/c", "o/d"].allSatisfy { overlap.0.state(of: $0) == .published }
+              && held.count == 2 && inode("o/b") == bInode, "runs \(held.count)")
+
+        // Staging must never publish through a link into somewhere outside.
+        let outside = area.appendingPathComponent("outside", isDirectory: true)
+        try fm.createDirectory(at: outside, withIntermediateDirectories: true)
+        let escapeZIP = area.appendingPathComponent("escape.zip")
+        try zip([Entry("link", outside.path, mode: 0o120777), Entry("link/outside.txt", "overwrite")]).write(to: escapeZIP)
+        let escape = try mount(escapeZIP, in: area, runner: GatedRunner())
+        check("materializer: a member under a link is never planned", escape.0.tree.batchPlan(for: ["link/outside.txt"]).isEmpty)
+        // Force it anyway, past the plan: publication must still refuse it.
+        var forced = ArchiveTree.BatchPlan()
+        forced.leaves = [ArchiveMemberSpelling(path: "link/outside.txt", raw: "link/outside.txt", escaped: "link/outside.txt")]
+        try? escape.0.materialize(forced)
+        check("materializer: a member forced through a link is refused at publication",
+              escape.0.state(of: "link/outside.txt") != .published
+              && ((try? fm.contentsOfDirectory(atPath: outside.path)) ?? []).isEmpty,
+              "\(escape.0.state(of: "link/outside.txt")) outside=\((try? fm.contentsOfDirectory(atPath: outside.path)) ?? [])")
+
+        // A downloaded archive's quarantine reaches what is published from it.
+        let quarantined = area.appendingPathComponent("quarantined.zip")
+        try zip([Entry("q/app.txt", "q")]).write(to: quarantined)
+        let mark = Data("0083;65000000;TursoraSmokeTest;".utf8)
+        _ = mark.withUnsafeBytes { setxattr(quarantined.path, "com.apple.quarantine", $0.baseAddress, mark.count, 0, 0) }
+        let q = try mount(quarantined, in: area, runner: GatedRunner())
+        try q.0.materialize(q.0.tree.batchPlan(for: ["q/app.txt"]))
+        var stamped = Data(count: mark.count)
+        let got = stamped.withUnsafeMutableBytes {
+            getxattr(q.root.appendingPathComponent("q/app.txt").path, "com.apple.quarantine", $0.baseAddress, mark.count, 0, 0)
+        }
+        check("materializer: a published entry carries its archive's download quarantine",
+              got == mark.count && stamped == mark)
     }
 
     private static func contents(_ url: URL) -> String? { try? String(contentsOf: url, encoding: .utf8) }

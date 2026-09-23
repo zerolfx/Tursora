@@ -80,28 +80,20 @@ final class ArchiveBrowsingSession {
     /// the session was staged whole, which is still the path for anything the
     /// lazy route cannot serve.
     private let tree: ArchiveTree?
-    /// Directory paths whose own listing is complete on disk.
-    private var materialized: Set<String> = []
-    /// One batch per directory even when two panes ask at once: libarchive
-    /// writes in place, so two writers on one path is a torn read.
-    private var materializing: [String: MaterializationAttempt] = [:]
-    private let materializeLock = NSLock()
-
-    /// One run for one directory, and what became of it. A pane that arrives
-    /// while another pane's run is in flight waits on this and receives the
-    /// same outcome — including its error, rather than finding the directory
-    /// marked done and listing whatever happened to be on disk.
-    private final class MaterializationAttempt {
-        let condition = NSCondition()
-        var finished = false
-        var error: Error?
-    }
+    /// Every byte arrives through this: staging, per-member attribution and
+    /// one exclusive, no-follow rename per member (D95). It also coalesces:
+    /// two panes asking for one folder cause one run, and a member one batch is
+    /// writing is waited for by another rather than written twice.
+    let materializer: ArchiveMaterializer?
 
     var isLazilyMounted: Bool { tree != nil }
     /// Decides whether a batch of this many bytes fits. Injectable so the suite
     /// can refuse one batch and then allow the retry, which a real disk cannot
     /// be made to do on demand.
-    var spaceCheck: (Int64, URL) -> SessionError? = { FileOperations.requiredSpaceRefusal(forExtracting: $0, into: $1) }
+    var spaceCheck: (Int64, URL) -> SessionError? {
+        get { materializer?.spaceCheck ?? { FileOperations.requiredSpaceRefusal(forExtracting: $0, into: $1) } }
+        set { materializer?.spaceCheck = newValue }
+    }
     /// Visible to the smoke suite, which asserts what is and is not on disk.
     var archiveTree: ArchiveTree? { tree }
 
@@ -123,92 +115,16 @@ final class ArchiveBrowsingSession {
         return candidate.dropFirst(root.count).joined(separator: "/")
     }
 
-    /// Put one directory's own contents on disk. Idempotent, coalesced, and a
-    /// no-op for an eagerly staged session.
+    /// Put one directory's own contents on disk, through the materializer.
+    /// Idempotent and coalesced; a no-op for an eagerly staged session.
     func materializeDirectory(containing url: URL) throws {
-        guard let tree else { return }
+        guard let tree, let materializer else { return }
         let path = archivePath(of: url)
         guard tree.children(of: path) != nil else { return }
-
-        materializeLock.lock()
-        if materialized.contains(path) { materializeLock.unlock(); return }
-        if let inFlight = materializing[path] {
-            // Another caller owns this directory; wait for its outcome.
-            materializeLock.unlock()
-            inFlight.condition.lock()
-            while !inFlight.finished { inFlight.condition.wait() }
-            let error = inFlight.error
-            inFlight.condition.unlock()
-            if let error { throw error }
-            return
-        }
-        let attempt = MaterializationAttempt()
-        materializing[path] = attempt
-        materializeLock.unlock()
-
-        var outcome: Error?
-        defer {
-            // Done only on success. A refused or failed run is not recorded, so
-            // the next listing tries again rather than trusting a directory that
-            // was never filled (D94).
-            materializeLock.lock()
-            if outcome == nil { materialized.insert(path) }
-            materializing[path] = nil
-            materializeLock.unlock()
-            attempt.condition.lock()
-            attempt.finished = true
-            attempt.error = outcome
-            attempt.condition.broadcast()
-            attempt.condition.unlock()
-        }
-        do {
-            try runMaterialization(path, tree: tree)
-        } catch {
-            outcome = error
-            throw error
-        }
-    }
-
-    private func runMaterialization(_ path: String, tree: ArchiveTree) throws {
         guard !isClosed else { throw SessionError.closed }
-        let plan = tree.materializationPlan(for: path)
-        guard !plan.leaves.isEmpty || !plan.packages.isEmpty else { return }
-        // The whole archive never has to fit, but this directory's batch does.
-        let batchBytes = (tree.children(of: path) ?? [])
-            .filter { $0.isExtractable && ($0.kind == .file || $0.isPackage) }
-            .reduce(Int64(0)) { $0 + $1.uncompressedSize }
-        if let refusal = spaceCheck(batchBytes, storageURL) {
-            throw refusal
-        }
-        let destination = path.isEmpty ? rootURL : rootURL.appendingPathComponent(path)
-        // Two invocations at most: `-n` is right for a leaf and wrong for a
-        // package, and it is a switch rather than a per-member option. A
-        // package is extracted whole, less any member of it that is inert.
-        try materialize(plan.leaves, noRecursion: true)
-        let packageExcludes = plan.packages.flatMap { member in
-            (tree.children(of: path) ?? []).filter { $0.member == member }
-                .flatMap { tree.inertMembers(inside: $0.path) }
-        }
-        try materialize(plan.packages, noRecursion: false, excluding: packageExcludes)
-        try? FileOperations.propagateArchiveQuarantine(from: archiveURL, to: destination)
+        try materializer.materialize(tree.prefetchPlan(for: path, skipping: materializer.settledPaths))
     }
 
-    private func materialize(_ members: [String], noRecursion: Bool, excluding excludes: [String] = []) throws {
-        guard !members.isEmpty else { return }
-        do {
-            try FileOperations.materializeArchiveMembers(archive: archiveURL, into: rootURL,
-                                                         scratch: storageURL, members: members,
-                                                         noRecursion: noRecursion, excluding: excludes)
-        } catch {
-            // Exit status is archive-wide: some members may have been written
-            // while others failed. The listing that follows reads the disk, so
-            // whatever did land is shown and whatever did not simply is not —
-            // which is the same inert row an escaping symlink already produces.
-            // Reported rather than thrown, so one bad member cannot make a
-            // whole directory unbrowsable.
-            if SmokeTest.isRequested { print("ERROR materialize: \(error)") }
-        }
-    }
     private let stateLock = NSLock()
     private var closed = false
     var isClosed: Bool {
@@ -217,13 +133,20 @@ final class ArchiveBrowsingSession {
     }
 
     fileprivate init(archive: URL, storage: URL, root: URL, fileID: UInt64, lock: Int32 = -1,
-                     tree: ArchiveTree? = nil) {
+                     tree: ArchiveTree? = nil, source: URL? = nil) {
         archiveURL = archive.standardizedFileURL
         storageURL = storage
         rootURL = root.resolvingSymlinksInPath().standardizedFileURL
         storageFileID = fileID
         lockDescriptor = lock
         self.tree = tree
+        // The file bsdtar reads is the physical archive, which is not the same
+        // as `archiveURL` for an archive reached through another one.
+        materializer = tree.map {
+            ArchiveMaterializer(tree: $0, source: source ?? archive, rootURL: root.resolvingSymlinksInPath().standardizedFileURL,
+                                storageURL: storage,
+                                spaceCheck: { FileOperations.requiredSpaceRefusal(forExtracting: $0, into: $1) })
+        }
     }
 
     static func releaseStorageLock(_ descriptor: Int32) {
@@ -437,7 +360,7 @@ extension FileOperations {
                 try? propagateArchiveQuarantine(from: archive, to: root, cancellation: cancellation)
                 try cancellation.checkpoint(.beforePublication)
                 let session = ArchiveBrowsingSession(archive: logicalArchiveURL ?? archive, storage: storage,
-                                                     root: root, fileID: id, lock: lock, tree: tree)
+                                                     root: root, fileID: id, lock: lock, tree: tree, source: archive)
                 ArchiveBrowsingSession.finishPreparation(storage)
                 DispatchQueue.main.async { completion(.success(session)) }
             } catch {
