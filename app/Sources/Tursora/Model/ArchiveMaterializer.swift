@@ -80,10 +80,36 @@ final class ArchiveMaterializer {
 
     enum MaterializeError: LocalizedError {
         case sourceUnreadable(String)
+        /// The archive on disk is no longer the one that was mounted. Never
+        /// sticky: the session is replaced, and the entry is read again.
+        case sourceChanged
         var errorDescription: String? {
             switch self {
             case .sourceUnreadable(let detail): return "The ZIP could not be read. \(detail)"
+            case .sourceChanged: return "This ZIP has changed since it was opened. Open it again to see its current contents."
             }
+        }
+    }
+
+    /// What identifies the archive when it could not be cloned at mount — it is
+    /// on another volume — so a replacement is noticed before bsdtar reads a
+    /// different file than the tree describes.
+    struct SourceIdentity: Equatable {
+        let device: Int
+        let inode: Int
+        let size: Int64
+        let modified: Date?
+
+        init?(of url: URL) {
+            // Through FileManager: URL.resourceValues caches for the run-loop
+            // pass, and a replaced file must be seen as replaced (rule 5).
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let device = (attributes[.systemNumber] as? NSNumber)?.intValue,
+                  let inode = (attributes[.systemFileNumber] as? NSNumber)?.intValue else { return nil }
+            self.device = device
+            self.inode = inode
+            size = (attributes[.size] as? NSNumber)?.int64Value ?? -1
+            modified = attributes[.modificationDate] as? Date
         }
     }
 
@@ -103,12 +129,24 @@ final class ArchiveMaterializer {
 
     private let condition = NSCondition()
     private var states: [String: State] = [:]
+    /// Set by `shutDown`: no new batch starts.
+    private var closed = false
+    /// Every run in flight, so `shutDown` can stop each child.
+    private var activeRuns: [UUID: ArchivePreparationCancellation] = [:]
+    private let drain = DispatchGroup()
+    private let sourceIdentity: SourceIdentity?
+    private var changedSource = false
+    /// The archive was replaced after mount. The session is discarded and the
+    /// archive mounted again, rather than read from a file it no longer is.
+    var sourceChanged: Bool { condition.lock(); defer { condition.unlock() }; return changedSource }
 
     init(tree: ArchiveTree, source: URL, rootURL: URL, storageURL: URL,
          runner: ArchiveToolRunning = SystemArchiveToolRunner.shared,
+         sourceIdentity: SourceIdentity? = nil,
          spaceCheck: @escaping (Int64, URL) -> ArchiveBrowsingSession.SessionError?) {
         self.tree = tree
         self.source = source
+        self.sourceIdentity = sourceIdentity
         self.rootURL = rootURL
         self.rootRealPath = Self.realPath(rootURL.path)
         self.storageURL = storageURL
@@ -163,9 +201,24 @@ final class ArchiveMaterializer {
         try materialize(plan, cancellation: cancellation, retryingOthers: true)
     }
 
-    private func materialize(_ plan: ArchiveTree.BatchPlan, cancellation: ArchivePreparationCancellation?,
+    private func materialize(_ plan: ArchiveTree.BatchPlan, cancellation provided: ArchivePreparationCancellation?,
                              retryingOthers: Bool) throws {
         guard !plan.isEmpty else { return }
+        // Every batch is cancellable, so closing can stop its child, and every
+        // batch is counted, so closing can wait for it before storage goes.
+        let cancellation = provided ?? ArchivePreparationCancellation()
+        let token = UUID()
+        condition.lock()
+        guard !closed else { condition.unlock(); throw ArchiveBrowsingSession.SessionError.closed }
+        activeRuns[token] = cancellation
+        drain.enter()
+        condition.unlock()
+        defer {
+            condition.lock()
+            activeRuns[token] = nil
+            condition.unlock()
+            drain.leave()
+        }
         // Claim what nobody else is doing; note what someone else is.
         var mine = Set<String>()
         var others = Set<String>()
@@ -211,6 +264,7 @@ final class ArchiveMaterializer {
 
     private func run(_ plan: ArchiveTree.BatchPlan,
                      cancellation: ArchivePreparationCancellation?) throws -> [String: State] {
+        try checkSource()
         let staging = storageURL.appendingPathComponent(".tursora-stage-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false,
                                                 attributes: [.posixPermissions: 0o700])
@@ -306,6 +360,40 @@ final class ArchiveMaterializer {
         case EEXIST: return .published      // another batch got there first
         case ELOOP: return .failed("It would be written through a symbolic link.")
         default: return .absent
+        }
+    }
+
+    // MARK: - Lifecycle
+
+    /// Stop accepting batches and ask every running child to stop. Returns
+    /// whether anything was in flight, so the caller knows whether to wait.
+    @discardableResult
+    func shutDown() -> Bool {
+        condition.lock()
+        closed = true
+        let running = Array(activeRuns.values)
+        condition.unlock()
+        running.forEach { $0.cancel() }
+        return !running.isEmpty
+    }
+
+    func waitForDrain(timeout: TimeInterval) -> Bool {
+        drain.wait(timeout: .now() + timeout) == .success
+    }
+
+    /// The last resort before storage a child may be writing into is removed.
+    func killActiveRuns() {
+        condition.lock()
+        let running = Array(activeRuns.values)
+        condition.unlock()
+        running.forEach { $0.kill() }
+    }
+
+    private func checkSource() throws {
+        guard let sourceIdentity else { return }
+        guard SourceIdentity(of: source) == sourceIdentity else {
+            condition.lock(); changedSource = true; condition.unlock()
+            throw MaterializeError.sourceChanged
         }
     }
 

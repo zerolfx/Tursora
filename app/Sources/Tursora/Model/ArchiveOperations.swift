@@ -30,6 +30,15 @@ final class ArchivePreparationCancellation: @unchecked Sendable {
         if isCancelled { throw ArchiveBrowsingSession.SessionError.cancelled }
     }
 
+    /// SIGKILL, for a child that ignored the SIGTERM `cancel` sent. Only ever a
+    /// last resort before storage it may be writing into is removed.
+    func kill() {
+        lock.lock()
+        let running = process
+        lock.unlock()
+        if let running, running.isRunning { Darwin.kill(running.processIdentifier, SIGKILL) }
+    }
+
     func checkpoint(_ point: Checkpoint) throws {
         try checkCancellation()
         checkpointHandler?(point)

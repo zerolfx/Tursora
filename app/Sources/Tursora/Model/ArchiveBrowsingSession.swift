@@ -133,7 +133,9 @@ final class ArchiveBrowsingSession {
     }
 
     fileprivate init(archive: URL, storage: URL, root: URL, fileID: UInt64, lock: Int32 = -1,
-                     tree: ArchiveTree? = nil, source: URL? = nil) {
+                     tree: ArchiveTree? = nil, source: URL? = nil,
+                     sourceIdentity: ArchiveMaterializer.SourceIdentity? = nil,
+                     runner: ArchiveToolRunning = SystemArchiveToolRunner.shared) {
         archiveURL = archive.standardizedFileURL
         storageURL = storage
         rootURL = root.resolvingSymlinksInPath().standardizedFileURL
@@ -144,7 +146,7 @@ final class ArchiveBrowsingSession {
         // as `archiveURL` for an archive reached through another one.
         materializer = tree.map {
             ArchiveMaterializer(tree: $0, source: source ?? archive, rootURL: root.resolvingSymlinksInPath().standardizedFileURL,
-                                storageURL: storage,
+                                storageURL: storage, runner: runner, sourceIdentity: sourceIdentity,
                                 spaceCheck: { FileOperations.requiredSpaceRefusal(forExtracting: $0, into: $1) })
         }
     }
@@ -235,15 +237,40 @@ final class ArchiveBrowsingSession {
         }
     }
 
-    func close() {
+    /// The archive was replaced after mount; the workspace mounts it again.
+    var isSourceChanged: Bool { materializer?.sourceChanged ?? false }
+
+    func close() { close(onDrained: nil) }
+
+    /// Never removes storage a child may still be writing into (D96). With
+    /// nothing in flight it is immediate, as it always was. Otherwise it stops
+    /// every run, waits for the children off the caller's thread — SIGKILL
+    /// after 3 s, giving up at 10 s — and only then removes storage and calls
+    /// `onDrained`, once, on the main queue.
+    func close(onDrained: (() -> Void)?) {
         stateLock.lock()
-        guard !closed else { stateLock.unlock(); return }
+        guard !closed else { stateLock.unlock(); onDrained?(); return }
         closed = true
         let descriptor = lockDescriptor
         lockDescriptor = -1
         stateLock.unlock()
-        Self.releaseStorageLock(descriptor)
-        FileOperations.discardArchiveBrowsingSession(storageURL, fileID: storageFileID)
+        let finish = { [storageURL, storageFileID] in
+            Self.releaseStorageLock(descriptor)
+            FileOperations.discardArchiveBrowsingSession(storageURL, fileID: storageFileID)
+        }
+        guard let materializer, materializer.shutDown() else {
+            finish()
+            onDrained?()
+            return
+        }
+        DispatchQueue.global(qos: .utility).async {
+            if !materializer.waitForDrain(timeout: 3) {
+                materializer.killActiveRuns()
+                _ = materializer.waitForDrain(timeout: 7)
+            }
+            finish()
+            DispatchQueue.main.async { onDrained?() }
+        }
     }
 }
 
@@ -298,8 +325,16 @@ extension FileOperations {
         }
     }
 
+    /// Clones the archive into a session's storage. A seam so the suite can
+    /// make it fail, which a real volume cannot be asked to do; production
+    /// never changes it.
+    static var cloneArchive: (URL, URL) -> Bool = { source, clone in
+        clonefile(source.path, clone.path, UInt32(CLONE_NOFOLLOW)) == 0
+    }
+
     static func prepareArchiveBrowsingSession(archive: URL, logicalArchiveURL: URL? = nil,
         listing: ArchiveListing = BSDTarArchiveListing(),
+        runner: ArchiveToolRunning = SystemArchiveToolRunner.shared,
         cancellation: ArchivePreparationCancellation = ArchivePreparationCancellation(),
         completion: @escaping (Result<ArchiveBrowsingSession, Error>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
@@ -309,23 +344,9 @@ extension FileOperations {
             var storageLock: Int32 = -1
             do {
                 try cancellation.checkCancellation()
-                // Before a byte is staged: refuse an archive we cannot read,
-                // one that is password-protected, and one that will not fit.
+                // Before a byte is staged: refuse an archive we cannot read and
+                // one that is password-protected.
                 try FileOperations.checkArchiveForBrowsing(archive)
-                let entries = try listing.entries(of: archive)
-                // Dates come from the central directory, joined by path; the
-                // listing stays the tool's own (D93).
-                // Dates and per-member encryption come from the central
-                // directory, joined by path; the listing stays the tool's own.
-                let tree = ArchiveTree(entries: entries, records: ZIPCentralDirectory.records(of: archive))
-                // Mounting writes only the skeleton and the symbolic links, so
-                // the whole archive's size is not what has to fit; each
-                // directory's batch is checked against free space as it runs.
-                // What must fit up front is the skeleton itself.
-                if let refusal = requiredSpaceRefusal(forExtracting: Int64(tree.directoryPaths.count) * 4096,
-                                                      into: fm.temporaryDirectory) {
-                    throw refusal
-                }
                 try cancellation.checkCancellation()
                 try fm.createDirectory(at: storage, withIntermediateDirectories: false,
                                        attributes: [.posixPermissions: 0o700])
@@ -337,13 +358,33 @@ extension FileOperations {
                     throw ArchiveBrowsingSession.SessionError.closed
                 }
                 try cancellation.checkpoint(.storageCreated(storage))
+                // Everything reads a private clone, so moving, renaming or
+                // replacing the original cannot break a mounted session, and the
+                // tree and the bytes bsdtar reads always come from one file. A
+                // clone on APFS shares blocks and costs next to nothing, and it
+                // carries the quarantine over. On another volume it cannot be
+                // made; the original is read then, and checked before every run
+                // against the identity it had at mount (D96).
+                let clone = storage.appendingPathComponent("source.zip")
+                let cloned = cloneArchive(archive, clone)
+                let source = cloned ? clone : archive
+                let identity = cloned ? nil : ArchiveMaterializer.SourceIdentity(of: archive)
+                let entries = try listing.entries(of: source)
+                // Dates and per-member encryption come from the central
+                // directory, joined by path; the listing stays the tool's own.
+                let tree = ArchiveTree(entries: entries, records: ZIPCentralDirectory.records(of: source))
+                // Mounting writes only the skeleton and the symbolic links, so
+                // the whole archive's size is not what has to fit; each batch
+                // is checked against free space as it runs.
+                if let refusal = requiredSpaceRefusal(forExtracting: Int64(tree.directoryPaths.count) * 4096,
+                                                      into: fm.temporaryDirectory) {
+                    throw refusal
+                }
                 // Mount, rather than stage: the table of contents becomes a
                 // directory skeleton, the symbolic links are written so
                 // containment can be judged from the real links, and not one
-                // file's bytes are read. A directory's contents arrive when it
-                // is listed (D92).
-                // The same moment the eager path reported: storage exists and
-                // nothing from the archive has been written yet.
+                // file's bytes are read (D92). The same moment the eager path
+                // reported as "before extraction".
                 try cancellation.checkpoint(.beforeExtraction)
                 let root = storage.appendingPathComponent("Contents", isDirectory: true)
                 try fm.createDirectory(at: root, withIntermediateDirectories: false)
@@ -354,13 +395,14 @@ extension FileOperations {
                 // An escaping symbolic link must be on disk before any row
                 // claims to be readable: `entries(in:)` derives `canAccess`
                 // from `validatedURL` on the real link.
-                try materializeArchiveMembers(archive: archive, into: root, scratch: storage,
+                try materializeArchiveMembers(archive: source, into: root, scratch: storage,
                                               members: tree.symbolicLinkMembers, noRecursion: true,
                                               cancellation: cancellation)
                 try? propagateArchiveQuarantine(from: archive, to: root, cancellation: cancellation)
                 try cancellation.checkpoint(.beforePublication)
                 let session = ArchiveBrowsingSession(archive: logicalArchiveURL ?? archive, storage: storage,
-                                                     root: root, fileID: id, lock: lock, tree: tree, source: archive)
+                                                     root: root, fileID: id, lock: lock, tree: tree, source: source,
+                                                     sourceIdentity: identity, runner: runner)
                 ArchiveBrowsingSession.finishPreparation(storage)
                 DispatchQueue.main.async { completion(.success(session)) }
             } catch {

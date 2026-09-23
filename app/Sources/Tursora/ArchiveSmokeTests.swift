@@ -108,6 +108,7 @@ enum ArchiveSmokeTests: SmokeSuite {
                 try await centralDirectoryAgreesWithExtraction(in: root)
                 try await extractionProgress(archive: folderZIP, root: root)
                 try materializerChecks(in: root)
+                try await lifecycleChecks(in: root)
 
                 try fm.removeItem(at: root)
                 DispatchQueue.main.async { completion() }
@@ -861,6 +862,117 @@ enum ArchiveSmokeTests: SmokeSuite {
         }
         check("materializer: a published entry carries its archive's download quarantine",
               got == mark.count && stamped == mark)
+    }
+
+    private static func mount(_ archive: URL, runner: ArchiveToolRunning = SystemArchiveToolRunner.shared) async throws
+        -> ArchiveBrowsingSession {
+        try await withCheckedThrowingContinuation { continuation in
+            FileOperations.prepareArchiveBrowsingSession(archive: archive, runner: runner) { continuation.resume(with: $0) }
+        }
+    }
+
+    private static func eventually(_ timeout: TimeInterval = 5, _ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+        return condition()
+    }
+
+    /// The session's lifecycle around the core (D96): a private clone, a
+    /// replaced source when there is no clone, and closing or quitting while a
+    /// child is still writing.
+    /// On the main actor: the workspace's shutdown barrier asserts it runs there.
+    @MainActor
+    private static func lifecycleChecks(in root: URL) async throws {
+        let fm = FileManager.default
+        let area = root.appendingPathComponent("lifecycle", isDirectory: true)
+        try fm.createDirectory(at: area, withIntermediateDirectories: true)
+        func read(_ url: URL?) -> String? { url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } }
+
+        // A clone: renaming the ZIP after mount changes nothing.
+        let original = area.appendingPathComponent("moved.zip")
+        try zip([Entry("m/a.txt", "still here")]).write(to: original)
+        let cloned = try await mount(original)
+        try fm.moveItem(at: original, to: area.appendingPathComponent("moved-away.zip"))
+        try cloned.materializeDirectory(containing: cloned.rootURL.appendingPathComponent("m"))
+        check("archive lifecycle: a ZIP renamed after it was opened still reads correctly",
+              read(cloned.materializer?.publishedURL(for: "m/a.txt")) == "still here")
+        cloned.close()
+
+        // No clone (another volume): a replaced source is noticed, not read,
+        // and the workspace that holds the session mounts the archive afresh.
+        let replaced = area.appendingPathComponent("replaced.zip")
+        try zip([Entry("r/a.txt", "first")]).write(to: replaced)
+        let savedClone = FileOperations.cloneArchive
+        FileOperations.cloneArchive = { _, _ in false }
+        let holder = ArchiveWorkspace()
+        func prepareInHolder() async throws -> ArchiveBrowsingSession {
+            try await withCheckedThrowingContinuation { continuation in
+                holder.prepare(archive: replaced) { continuation.resume(with: $0) }
+            }
+        }
+        let uncloned = try await prepareInHolder()
+        FileOperations.cloneArchive = savedClone
+        try fm.removeItem(at: replaced)
+        try zip([Entry("r/a.txt", "SECOND, and longer")]).write(to: replaced)
+        var changedError: Error?
+        do { try uncloned.materializeDirectory(containing: uncloned.rootURL.appendingPathComponent("r")) }
+        catch { changedError = error }
+        var sawSourceChanged = false
+        if let changedError, case ArchiveMaterializer.MaterializeError.sourceChanged = changedError { sawSourceChanged = true }
+        check("archive lifecycle: without a clone, a replaced ZIP is refused rather than read",
+              sawSourceChanged && uncloned.isSourceChanged, "\(String(describing: changedError))")
+        check("archive lifecycle: a replaced source makes no member fail for good",
+              uncloned.materializer?.state(of: "r/a.txt") == .absent)
+        let remounted = try await prepareInHolder()
+        try remounted.materializeDirectory(containing: remounted.rootURL.appendingPathComponent("r"))
+        check("archive lifecycle: the workspace mounts a replaced archive afresh, and reads its new contents",
+              remounted !== uncloned
+              && read(remounted.materializer?.publishedURL(for: "r/a.txt")) == "SECOND, and longer")
+        let oldClosed = await eventually { uncloned.isClosed }
+        check("archive lifecycle: the session over the replaced archive is closed", oldClosed)
+        holder.shutdownAll()
+
+        // Closing while a child is writing: storage outlives the child.
+        let busyZIP = area.appendingPathComponent("busy.zip")
+        try zip([Entry("b/a.txt", "a"), Entry("b/b.txt", "b")]).write(to: busyZIP)
+        let gate = GatedRunner(holdFirst: true)
+        let busy = try await mount(busyZIP, runner: gate)
+        let folder = busy.rootURL.appendingPathComponent("b")
+        DispatchQueue.global().async { try? busy.materializeDirectory(containing: folder) }
+        let started = await eventually { gate.count == 1 }
+        var drained = 0
+        busy.close(onDrained: { drained += 1 })
+        check("archive lifecycle: a session closed mid-run keeps its storage until its child stops",
+              started && fm.fileExists(atPath: busy.storageURL.path) && drained == 0)
+        gate.release()
+        let finished = await eventually { drained == 1 }
+        check("archive lifecycle: once the child stops, storage is removed and the close completes once",
+              finished && !fm.fileExists(atPath: busy.storageURL.path) && drained == 1)
+
+        // Quitting waits for that too.
+        let quitZIP = area.appendingPathComponent("quit.zip")
+        try zip([Entry("q/a.txt", "a")]).write(to: quitZIP)
+        let quitGate = GatedRunner(holdFirst: true)
+        let quitting = ArchiveWorkspace(preparer: { source, logical, completion in
+            let cancellation = ArchivePreparationCancellation()
+            FileOperations.prepareArchiveBrowsingSession(archive: source, logicalArchiveURL: logical, runner: quitGate,
+                                                         cancellation: cancellation, completion: completion)
+            return cancellation
+        })
+        let quitSession: ArchiveBrowsingSession = try await withCheckedThrowingContinuation { continuation in
+            quitting.prepare(archive: quitZIP) { continuation.resume(with: $0) }
+        }
+        let quitFolder = quitSession.rootURL.appendingPathComponent("q")
+        DispatchQueue.global().async { try? quitSession.materializeDirectory(containing: quitFolder) }
+        _ = await eventually { quitGate.count == 1 }
+        var quitDone = false
+        quitting.shutdownAll { quitDone = true }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        check("archive lifecycle: quitting waits while a child is still writing", !quitDone)
+        quitGate.release()
+        let quit = await eventually { quitDone }
+        check("archive lifecycle: and completes once it has stopped and its storage is gone",
+              quit && !fm.fileExists(atPath: quitSession.storageURL.path))
     }
 
     private static func contents(_ url: URL) -> String? { try? String(contentsOf: url, encoding: .utf8) }

@@ -60,6 +60,9 @@ final class ArchiveWorkspace {
     private var pending: [URL: Job] = [:]
     private var inFlight: [UUID: Job] = [:]
     private var shutdownCompletions: [() -> Void] = []
+    /// Sessions closed by `shutdownAll` that are still stopping their children.
+    /// Quitting waits for these as well as for preparations (D96).
+    private var pendingDrains = 0
     private let preparer: Preparer
     private var closed = false
 
@@ -78,6 +81,12 @@ final class ArchiveWorkspace {
             lock.unlock()
             DispatchQueue.main.async { subscription.deliver(.failure(ArchiveBrowsingSession.SessionError.closed), to: completion) }
             return subscription
+        }
+        if let existing = sessions[logical], existing.isSourceChanged {
+            // The archive was replaced after mount: discard that session off
+            // the main thread and mount the archive again below.
+            sessions[logical] = nil
+            DispatchQueue.global(qos: .utility).async { existing.close() }
         }
         if let existing = sessions[logical], !existing.isClosed {
             lock.unlock()
@@ -156,10 +165,7 @@ final class ArchiveWorkspace {
         // A cancelled old job can finish after a same-URL retry. Its private
         // result must be cleaned without touching the new pending job/session.
         if discarded, case .success(let session) = result {
-            DispatchQueue.global(qos: .utility).async { [self] in
-                session.close()
-                complete(job)
-            }
+            session.close(onDrained: { [self] in complete(job) })
         } else { complete(job) }
         // Publish and deliver in the same main-thread turn, so a pane cannot
         // cancel between registration and receiving its prepared session.
@@ -174,7 +180,16 @@ final class ArchiveWorkspace {
     private func complete(_ job: Job) {
         lock.lock()
         inFlight[job.id] = nil
-        let completions = closed && inFlight.isEmpty ? shutdownCompletions : []
+        lock.unlock()
+        fireShutdownCompletionsIfSettled()
+    }
+
+    /// Quitting may proceed once no preparation is running and every closed
+    /// session has stopped its children and removed its storage.
+    private func fireShutdownCompletionsIfSettled() {
+        lock.lock()
+        let settled = closed && inFlight.isEmpty && pendingDrains == 0
+        let completions = settled ? shutdownCompletions : []
         if !completions.isEmpty { shutdownCompletions.removeAll() }
         lock.unlock()
         if !completions.isEmpty { DispatchQueue.main.async { completions.forEach { $0() } } }
@@ -335,16 +350,24 @@ final class ArchiveWorkspace {
         pending.values.forEach { $0.waiters.removeAll() }
         pending.removeAll()
         if let completion { shutdownCompletions.append(completion) }
-        let completed = inFlight.isEmpty ? shutdownCompletions : []
-        if !completed.isEmpty { shutdownCompletions.removeAll() }
+        pendingDrains += retained.count
         lock.unlock()
         cancellations.forEach { $0.cancel() }
         if self === Self.shared { ArchiveBrowsingSession.shutdownPreparingSessions() }
-        retained.forEach { $0.close() }
+        // Waiters hear that the workspace closed before any quit completion
+        // runs, as they always did; queued first, so they are delivered first.
         DispatchQueue.main.async {
             waiters.forEach { $0.subscription.deliver(.failure(ArchiveBrowsingSession.SessionError.closed), to: $0.completion) }
-            completed.forEach { $0() }
         }
+        // Each session stops its own children before its storage goes; a
+        // session with nothing in flight reports drained at once.
+        for session in retained {
+            session.close(onDrained: { [self] in
+                lock.lock(); pendingDrains -= 1; lock.unlock()
+                fireShutdownCompletionsIfSettled()
+            })
+        }
+        fireShutdownCompletionsIfSettled()
     }
 }
 

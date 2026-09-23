@@ -262,6 +262,19 @@ For a Finder-made archive, `-v` names only real entries (no `__MACOSX` lines) an
 attribute survives both a selection and a leaf extraction. A selection also announces the selected
 folder's own record (`x F/`), which attribution counts as a known name.
 
+## Session lifecycle
+
+`clonefile(2)` of the archive into the session's storage succeeds whenever the ZIP and `$TMPDIR` share
+a device — an ordinary Mac, measured — and the clone carries `com.apple.quarantine` over, so the clone
+is the only file a session ever reads. Renaming the original after opening is checked to change
+nothing. With cloning forced to fail, replacing the original is checked to be refused as
+`sourceChanged`, to leave no member failed for good, and to make the holding workspace mount the new
+archive and read its new contents.
+
+Closing and quitting are checked with a runner that holds a batch in flight: a session closed mid-run
+keeps its storage until the child stops, then removes it and completes once, and a quit does not
+complete until then.
+
 ## Status
 
 Stage 0 (the pre-flight refusals above, the throwing listing seam, the free-space guard and the
