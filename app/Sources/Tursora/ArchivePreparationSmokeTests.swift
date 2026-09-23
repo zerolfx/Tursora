@@ -257,20 +257,4 @@ enum ArchivePreparationSmokeTests: SmokeSuite {
             set { lock.lock(); stored = newValue; lock.unlock() }
         }
     }
-
-    private final class WorkerGate: @unchecked Sendable {
-        private let condition = NSCondition()
-        private var reached = false
-        private var released = false
-        var arrived: Bool { condition.lock(); defer { condition.unlock() }; return reached }
-        func arriveAndWait() {
-            condition.lock()
-            reached = true
-            while !released {
-                if !condition.wait(until: Date().addingTimeInterval(10)) { break }
-            }
-            condition.unlock()
-        }
-        func release() { condition.lock(); released = true; condition.broadcast(); condition.unlock() }
-    }
 }

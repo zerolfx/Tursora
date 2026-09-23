@@ -17,10 +17,13 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 - Temporary ZIP staging left behind by a crash is cleaned up at the next launch. It is removed only when no running copy of Tursora still holds it, so a second window or a second copy of the app is never disturbed.
 - **Group by Application** inside a ZIP put every file under "No Application". Files are now grouped under the application that would open them.
+- **Copying a folder out of a ZIP now copies all of it.** Copy to Other Pane, or Copy and Paste, used to bring only the subfolders you had already opened; the rest arrived as empty folders. Anything that has to be left out, such as a password-protected file, is now listed when the copy finishes.
+- Copying, opening or Quick Look on an item in a ZIP no longer freezes the window while the item is extracted; it happens in the background, and a large one appears in File Operations where it can be cancelled.
 
 ### Added
 
 - **Extracting a ZIP** now appears in **File Operations** with a real progress bar and a **Cancel** button, instead of a small spinner you could not stop. Each selected archive gets its own row; cancelling one stops the rest, and closing the window cancels the extraction just as it does a copy.
+- Inside a ZIP, **Open**, **Open With**, **Quick Look** and **Copy** work on any item, including one reached through a link into a folder you have not opened. Several files opened together are extracted in one go. **Reload** (⌘R) tries again a file that could not be extracted.
 - **Settings ▸ Shortcuts** gains a File View command, **Open Selection (Alternative)**, which ships with no key. Give it Return and Return opens the selection — entering a folder, launching a file — instead of renaming it, the way Windows Explorer and Dolphin behave. Clear Rename's Return first, since a key has one owner; Rename stays available from File ▸ Rename, the context menu and the slow double-click.
 
 ### Changed

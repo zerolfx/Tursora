@@ -37,6 +37,25 @@ final class ArchivePreparationSubscription {
     }
 }
 
+/// What a request for an archive's bytes would cost, roughly.
+struct ArchiveMaterializationEstimate {
+    var bytes: Int64 = 0
+    var seconds: Double = 0
+    /// Past a second or 128 MiB a request earns a row in File Operations,
+    /// with Cancel; anything smaller only shows the pane busy (D98).
+    var warrantsProgressRow: Bool { seconds > 1 || bytes > 128 << 20 }
+}
+
+/// What a request for an archive's bytes brought.
+struct ArchiveMaterializationResult {
+    /// Each requested location now readable, as the physical URL to read it
+    /// through, in the order requested.
+    var urls: [URL] = []
+    /// What could not be brought: a requested entry, or a member of a
+    /// requested folder or package.
+    var failures: [FileOperations.Failure] = []
+}
+
 /// When a ZIP folder's own files are extracted. Rows never depend on it: they
 /// come from the table of contents either way (D97).
 enum ArchiveMaterializationPolicy {
@@ -76,13 +95,19 @@ final class ArchiveWorkspace {
     private var pendingDrains = 0
     private let preparer: Preparer
     private var closed = false
-    let materializationPolicy: ArchiveMaterializationPolicy
+    private var policy: ArchiveMaterializationPolicy
+    /// Read on the listing queue, so it is guarded; the suite switches the
+    /// shared workspace to `.never` while it proves rows need no bytes.
+    var materializationPolicy: ArchiveMaterializationPolicy {
+        get { lock.lock(); defer { lock.unlock() }; return policy }
+        set { lock.lock(); policy = newValue; lock.unlock() }
+    }
 
     init(materializationPolicy: ArchiveMaterializationPolicy = .onListing,
          preparer: @escaping Preparer = { source, logical, completion in
         ArchiveBrowsingSession.prepare(archive: source, logicalArchiveURL: logical, completion: completion)
     }) {
-        self.materializationPolicy = materializationPolicy
+        policy = materializationPolicy
         self.preparer = preparer
     }
 
@@ -124,10 +149,20 @@ final class ArchiveWorkspace {
         }
         if existingJob != nil { return subscription }
 
-        // A nested ZIP can itself live in an already prepared snapshot.
+        // A nested ZIP can itself live in an already prepared snapshot; it is
+        // read only once its bytes are there, never extracted from here, which
+        // is the main thread.
         let source: URL
-        do { source = try readableURL(for: logical) }
-        catch { finish(logical, job: job, result: .failure(error)); return subscription }
+        do {
+            if record(for: logical) != nil {
+                guard let published = publishedURL(for: logical) else {
+                    throw ArchiveBrowsingSession.SessionError.unavailableItem
+                }
+                source = published
+            } else {
+                source = try physicalURL(for: logical)
+            }
+        } catch { finish(logical, job: job, result: .failure(error)); return subscription }
         let cancellation = preparer(source, logical) { [self, job] result in
             finish(logical, job: job, result: result)
         }
@@ -293,32 +328,167 @@ final class ArchiveWorkspace {
         return URL(fileURLWithPath: logical.path, isDirectory: false)
     }
 
-    func readableURL(for location: URL) throws -> URL {
+    /// The physical URL a location stands for, contained and validated, and
+    /// without bringing any bytes: inside a mounted archive, where its bytes
+    /// are or will be; anywhere else, the location itself.
+    func physicalURL(for location: URL) throws -> URL {
         lock.lock()
         let ended = closed
         lock.unlock()
         guard !ended else { throw ArchiveBrowsingSession.SessionError.closed }
-        if let record = record(for: location) {
-            let safe = try record.session.validatedURL(record.physical)
-            if !FileManager.default.fileExists(atPath: safe.path) {
-                // A lazily mounted session has only the skeleton and the
-                // symbolic links until a directory is listed, so something
-                // addressing a file straight by URL — a restored session, a
-                // typed path, a nested archive — has to bring it in first.
-                // Tried only on a miss: a directory is always in the skeleton,
-                // so listing one never drags in its siblings.
-                try record.session.materializeDirectory(containing: safe.deletingLastPathComponent())
-                guard FileManager.default.fileExists(atPath: safe.path) else {
-                    throw ArchiveBrowsingSession.SessionError.unavailableItem
-                }
-            }
-            return safe
-        }
+        if let record = record(for: location) { return try record.session.validatedURL(record.physical) }
         if let archive = archiveURL(containing: location),
            archive.standardizedFileURL != location.standardizedFileURL {
             throw ArchiveBrowsingSession.SessionError.unavailableItem
         }
         return location.standardizedFileURL
+    }
+
+    /// The session and entry a location inside a mounted archive stands for,
+    /// every link along it followed. Nil anywhere else, and for a location
+    /// that leads nowhere.
+    func archiveEntry(for location: URL) -> (session: ArchiveBrowsingSession, path: String)? {
+        guard let record = record(for: location), let physical = try? record.session.validatedURL(record.physical),
+              let path = record.session.resolvedArchivePath(of: physical) else { return nil }
+        return (record.session, path)
+    }
+
+    /// Whether a location is a folder that can be entered, from the table of
+    /// contents alone. It never extracts, so the address bar and the tab bar
+    /// can ask on every keystroke and every drag update.
+    func isNavigableFolder(_ location: URL) -> Bool {
+        guard let entry = archiveEntry(for: location) else { return false }
+        guard let node = entry.session.tree.node(at: entry.path) else { return entry.path.isEmpty }
+        return node.isDirectory && !node.isPackage && node.isExtractable
+    }
+
+    /// Where a location's bytes are when all of them are on disk already, and
+    /// nil otherwise. Never extracts.
+    func publishedURL(for location: URL) -> URL? {
+        guard let record = record(for: location), let physical = try? record.session.validatedURL(record.physical),
+              let path = record.session.resolvedArchivePath(of: physical),
+              record.session.isPublished(path) else { return nil }
+        return physical
+    }
+
+    /// Roughly what bringing these locations in would cost, from the measured
+    /// model of the archive tool (stage2 plan §2): a fixed cost per run that
+    /// grows with the archive's entry count, plus the bytes written.
+    func estimate(for locations: [URL]) -> ArchiveMaterializationEstimate {
+        var estimate = ArchiveMaterializationEstimate()
+        for (session, paths) in grouped(locations.compactMap(archiveEntry(for:))) {
+            let settled = session.materializer.settledPaths
+            let plan = paths.contains("") ? session.tree.subtreePlan(for: "", skipping: settled)
+                : session.tree.batchPlan(for: paths, skipping: settled)
+            let runs = [!plan.leaves.isEmpty, !plan.packages.isEmpty, plan.selection != nil].filter { $0 }.count
+            estimate.bytes += plan.bytes
+            estimate.seconds += Double(runs) * (0.01 + 3.3e-6 * Double(session.tree.count)) + Double(plan.bytes) / 450e6
+        }
+        return estimate
+    }
+
+    /// Brings every location's bytes to disk — a file, a package whole, a
+    /// folder with everything below it — in one batch per archive, through
+    /// each session's materializer. Blocks, so it never runs on the main
+    /// thread. Returns each location's physical URL where it is now readable,
+    /// and whatever could not be brought, down to a member of a folder.
+    func materializeBlocking(_ locations: [URL],
+                             cancellation: ArchivePreparationCancellation? = nil) throws -> ArchiveMaterializationResult {
+        struct Request { let physical: URL; let session: ArchiveBrowsingSession?; let path: String? }
+        var requests: [Request] = []
+        for location in locations {
+            let physical = try physicalURL(for: location)
+            if let record = record(for: location) {
+                requests.append(Request(physical: physical, session: record.session,
+                                        path: record.session.resolvedArchivePath(of: physical)))
+            } else {
+                requests.append(Request(physical: physical, session: nil, path: nil))
+            }
+        }
+        let entries = requests.compactMap { request in request.session.flatMap { session in request.path.map { (session, $0) } } }
+        for (session, paths) in grouped(entries) {
+            try cancellation?.checkCancellation()
+            guard !session.isClosed else { throw ArchiveBrowsingSession.SessionError.closed }
+            let settled = session.materializer.settledPaths
+            let plan = paths.contains("") ? session.tree.subtreePlan(for: "", skipping: settled)
+                : session.tree.batchPlan(for: paths, skipping: settled)
+            try session.materializer.materialize(plan, cancellation: cancellation)
+        }
+
+        var result = ArchiveMaterializationResult()
+        var failedMembers: [URL] = []
+        func fail(_ url: URL, _ reason: String, sticky: Bool = false) {
+            result.failures.append(.init(url: url, error: ArchiveBrowsingSession.SessionError.notExtracted(reason)))
+            if sticky { failedMembers.append(url) }
+        }
+        for request in requests {
+            guard let session = request.session else { result.urls.append(request.physical); continue }
+            guard let path = request.path else {
+                result.failures.append(.init(url: request.physical, error: ArchiveBrowsingSession.SessionError.outsideArchive))
+                continue
+            }
+            let tree = session.tree, materializer = session.materializer
+            let node = tree.node(at: path)
+            if let node, !node.isDirectory || node.isPackage {
+                switch materializer.state(of: node.path) {
+                case .published: result.urls.append(request.physical)
+                case .failed(let reason): fail(request.physical, reason, sticky: true)
+                case .absent, .inFlight:
+                    if let reason = node.inertReason { fail(request.physical, reason.explanation) }
+                    else { result.failures.append(.init(url: request.physical, error: ArchiveBrowsingSession.SessionError.unavailableItem)) }
+                }
+                guard node.isPackage else { continue }
+            } else {
+                result.urls.append(request.physical)
+            }
+            // What a copy of this folder or package goes without.
+            let prefix = path.isEmpty ? 0 : path.count + 1
+            for member in tree.descendants(of: path) {
+                let url = request.physical.appendingPathComponent(String(member.path.dropFirst(prefix)))
+                if let reason = member.inertReason { fail(url, reason.explanation) }
+                else if case .failed(let reason) = materializer.state(of: member.path) { fail(url, reason, sticky: true) }
+            }
+        }
+        // A failure is sticky and turns its row unavailable; tell the panes
+        // showing its folder so they list it again (M54).
+        if !failedMembers.isEmpty {
+            let folders = failedMembers.map { logicalURL(for: $0).deletingLastPathComponent() }
+            DispatchQueue.main.async { DirectoryChanges.post(folders) }
+        }
+        return result
+    }
+
+    /// The same, off the main thread, delivering on the main queue. Cancel
+    /// through the returned token: the running child is stopped and nothing
+    /// half-written is published.
+    @discardableResult
+    func materialize(_ locations: [URL],
+                     completion: @escaping (Result<ArchiveMaterializationResult, Error>) -> Void) -> ArchivePreparationCancellation {
+        let cancellation = ArchivePreparationCancellation()
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let result = Result { try materializeBlocking(locations, cancellation: cancellation) }
+            DispatchQueue.main.async { completion(result) }
+        }
+        return cancellation
+    }
+
+    /// Forget the extraction failures in and below a folder, so the next
+    /// request tries them again. For Reload.
+    func forgetFailures(in location: URL) {
+        guard let entry = archiveEntry(for: location) else { return }
+        entry.session.materializer.forgetFailures(under: entry.path)
+    }
+
+    /// Requests grouped per session, in first-seen order.
+    private func grouped(_ entries: [(session: ArchiveBrowsingSession, path: String)]) -> [(ArchiveBrowsingSession, [String])] {
+        var order: [ObjectIdentifier] = []
+        var groups: [ObjectIdentifier: (ArchiveBrowsingSession, [String])] = [:]
+        for (session, path) in entries {
+            let id = ObjectIdentifier(session)
+            if groups[id] == nil { order.append(id); groups[id] = (session, []) }
+            groups[id]!.1.append(path)
+        }
+        return order.map { groups[$0]! }
     }
 
     /// A directory called something.zip remains an ordinary directory. Once
@@ -400,7 +570,7 @@ final class ArchiveFileProvider: FileProvider {
     }
     func listDirectory(_ url: URL) throws -> [FileItem] {
         guard let session = workspace.session(for: url) else { return try base.listDirectory(url) }
-        let physical = try workspace.readableURL(for: url)
+        let physical = try workspace.physicalURL(for: url)
         // Each row's logical URL is the folder's plus its name: resolving
         // every row's physical URL back would touch the disk once per row.
         let logical = workspace.logicalURL(for: physical)

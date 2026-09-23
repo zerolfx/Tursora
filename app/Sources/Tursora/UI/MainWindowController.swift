@@ -651,7 +651,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func goForward(_ sender: Any?) { browser.goForward() }
     @objc func goUp(_ sender: Any?) { browser.goUp() }
     @objc func goHome(_ sender: Any?) { browser.goHome() }
-    @objc func reload(_ sender: Any?) { browser.reload() }
+    @objc func reload(_ sender: Any?) { browser.reloadForgettingArchiveFailures() }
     @objc func openSelection(_ sender: Any?) {
         guard browser.canOpenSelection else { return }
         browser.openSelection()
@@ -776,7 +776,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    var sharingItems: [URL] { browser.readableSelectionURLs }
+    var sharingItems: [URL] { browser.publishedSelectionURLs }
 
     func items(for pickerToolbarItem: NSSharingServicePickerToolbarItem) -> [Any] { sharingItems }
 
@@ -794,7 +794,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case .getInfo: return !browser.isBrowsingArchive && browser.currentURL != nil
         case .open: return browser.canOpenSelection
         case .quickLook: return browser.canPreviewSelection
-        case .copy: return !browser.readableSelectionURLs.isEmpty
+        case .copy: return browser.hasAccessibleSelection
         case .rename:
             // Finder's plural wording for a multi-selection batch rename.
             item.title = BrowserViewController.batchRenameTitle(count: count)

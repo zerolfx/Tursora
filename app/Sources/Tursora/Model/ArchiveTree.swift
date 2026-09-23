@@ -70,6 +70,15 @@ struct ArchiveTree {
         /// Password-protected (D94). Extraction with the random passphrase the
         /// app supplies fails, leaving a correctly-sized file of zeros.
         case encrypted
+
+        /// Why a copy of the folder holding it goes without it.
+        var explanation: String {
+            switch self {
+            case .parentTraversal: return "Its name would place it outside the archive."
+            case .unaddressable: return "Its name cannot be read back from the archive."
+            case .encrypted: return "It is password-protected."
+            }
+        }
     }
 
     /// Where a path leads once every symbolic link along it is followed.
@@ -301,6 +310,14 @@ struct ArchiveTree {
     var count: Int { nodes.count }
 
     func forEachNode(_ body: (Node) -> Void) { nodes.values.forEach(body) }
+
+    /// Everything below a folder, for reporting what a copy of it goes
+    /// without.
+    func descendants(of directory: String) -> [Node] {
+        let scope = key(directory)
+        let prefix = scope.isEmpty ? "" : scope + "/"
+        return nodes.filter { scope.isEmpty || $0.key.hasPrefix(prefix) }.map(\.value)
+    }
 
     // MARK: - Stage 2 batch plans
 

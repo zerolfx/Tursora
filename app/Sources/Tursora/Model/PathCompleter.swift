@@ -13,8 +13,10 @@ enum PathCompleter {
             if workspace.session(for: url) == nil {
                 return archive.path == url.path ? archive : nil
             }
-            guard let physical = try? workspace.readableURL(for: url),
-                  FileItem(url: physical)?.isNavigable == true else { return nil }
+            // From the table of contents alone: this runs on every keystroke
+            // and on every drag update over the tab bar, so it must never
+            // extract anything.
+            guard workspace.isNavigableFolder(url) else { return nil }
             return workspace.logicalURL(for: url)
         }
         var isDir: ObjCBool = false

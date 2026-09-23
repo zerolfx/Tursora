@@ -351,6 +351,36 @@ nothing extracted on listing, rows for a `.txt`, an extensionless file, an execu
 `.app`, `.rtfd`, `.framework`, `.xcodeproj` and a folder compared field by field with a full
 extraction of the same ZIP, links into unentered folders, and a walk proving no file was written.
 
+## Open, Copy and copying out
+
+Stage 1 got an entry's bytes through `readableURL(for:)`, which on a miss extracted the entry's whole
+directory synchronously on the caller's thread — the main thread for ⌘C, Copy to Other Pane and a
+drop — and handed out a folder's skeleton, so a folder copied out of an archive arrived with only the
+subfolders that had been visited filled (D98).
+
+Checked in `ArchiveOpenSmokeTests`, in the list, icon and column views, with a second tab and a split
+pane open, grouping on and a filter applied, and the workspace set to extract nothing on listing — so
+every byte these checks see was brought by the action under test:
+
+- Menu, context-menu, palette and toolbar enabling, and the address bar resolving a folder never
+  visited, leave the counter of archive-tool runs where it was and extract nothing.
+- Open With lists applications for a `.txt` and an `.rtfd` before either exists on disk.
+- Opening three files not yet extracted, twice in the same turn, launches each once with its real
+  bytes, from one run of the tool.
+- Quick Look of a file not yet extracted brings it and then shows it.
+- ⌘C of a package not yet extracted clears the pasteboard at once and then holds the whole package; a
+  ⌘C still being prepared does not overwrite a string copied after it.
+- Copy to Other Pane on a folder gives a byte-identical tree, including a folder never visited and an
+  application bundle — the Stage 1 partial-copy bug.
+- A copy held at the archive tool (a gate in the runner) is preparing and offers no Pause; cancelling
+  it leaves the destination empty.
+- A CRC-damaged member that fails on Open turns unavailable in the pane without being opened, and
+  Reload (⌘R) forgets the failure so it can be tried again.
+
+What is not covered: the File Operations row for a request estimated above a second or 128 MiB is
+decided by the measured cost model but not exercised, since the suite's fixtures stay under 50 MB; and
+no computer-use pass has been made.
+
 ## Status
 
 Stage 0 (the pre-flight refusals above, the throwing listing seam, the free-space guard and the
@@ -362,10 +392,10 @@ active, plus the bundle and `..` cases — in `LazyArchiveSmokeTests`.
 
 Stage 2 is in progress: the staging and publication core, the private clone with drain-on-close, and
 rows built from the table of contents are implemented and covered as described in their sections.
-Still missing: listing still extracts a folder's own files, so a single directory holding tens of
-thousands of files, or one very large member, still pays for the whole directory on entry; and Open,
-Copy, drag, Share, Quick Look, the preview column and thumbnails still need an entry's bytes on disk
-already.
+Open, Open With, Quick Look, Copy and copying out bring what they need first (above). Still missing:
+listing still extracts a folder's own files, so a single directory holding tens of thousands of files,
+or one very large member, still pays for the whole directory on entry; and drag, Share, the preview
+column and thumbnails still need an entry's bytes on disk already.
 
 No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
 opening a large archive actually feels.

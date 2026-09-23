@@ -37,8 +37,8 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
 
                 check("archive workspace detects ZIP root and unprepared child", workspace.archiveURL(containing: archive) == archive && workspace.archiveURL(containing: logicalNote) == archive)
                 check("archive workspace leaves directories named zip ordinary", try workspace.archiveURL(containing: plainDirectory) == nil && provider.listDirectory(plainDirectory).isEmpty)
-                check("unprepared ZIP file remains a readable ordinary file", try workspace.readableURL(for: archive) == archive)
-                check("unprepared logical child cannot be read as an ordinary path", (try? workspace.readableURL(for: logicalNote)) == nil)
+                check("unprepared ZIP file remains a readable ordinary file", try workspace.physicalURL(for: archive) == archive)
+                check("unprepared logical child cannot be read as an ordinary path", (try? workspace.physicalURL(for: logicalNote)) == nil)
                 AppPreferences.experimentalZIPBrowsingEnabled = false
                 check("disabled experiment does not resolve a new ZIP directory", PathCompleter.resolveDirectory(archive.path, cwd: fixture, home: fixture, workspace: workspace) == nil)
                 AppPreferences.experimentalZIPBrowsingEnabled = true
@@ -86,8 +86,8 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                       && (try? String(contentsOf: deepPath, encoding: .utf8)) == "snapshot contents")
 
                 check("ZIP session preserves original logical archive identity", session.archiveURL == archive)
-                check("root maps between original ZIP and private directory", try workspace.readableURL(for: archive) == session.rootURL && workspace.logicalURL(for: session.rootURL) == archive)
-                let physicalNote = try workspace.readableURL(for: logicalNote)
+                check("root maps between original ZIP and private directory", try workspace.physicalURL(for: archive) == session.rootURL && workspace.logicalURL(for: session.rootURL) == archive)
+                let physicalNote = try workspace.physicalURL(for: logicalNote)
                 check("special characters survive component-by-component mapping", try workspace.logicalURL(for: physicalNote) == logicalNote && physicalNote.lastPathComponent == note.lastPathComponent && String(contentsOf: physicalNote) == "snapshot contents")
                 check("child and root parents remain logical file locations", logicalNested.deletingLastPathComponent().path == logicalFolder.path && workspace.logicalURL(for: session.rootURL).deletingLastPathComponent().path == fixture.path)
                 check("registry recognizes logical and physical descendants", workspace.session(for: logicalNote) === session && workspace.session(for: physicalNote) === session && workspace.containsArchiveLocation(logicalFolder))
@@ -101,7 +101,7 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                 check("escaped links remain inert visible entries", !escaped.canAccess && !escaped.isNavigable && escaped.publishedContentURL == nil && !ThumbnailProvider.canPreview(escaped))
                 check("dangling links remain inert without breaking directory listing", !missing.canAccess && missing.publishedContentURL == nil && entries.contains { $0.name == nested.lastPathComponent })
                 check("contained symlinks remain readable", safeLink.canAccess && safeLink.publishedContentURL != nil)
-                check("readableURL rejects escaped links and private workspace parents", (try? workspace.readableURL(for: escaped.url)) == nil && (try? workspace.readableURL(for: session.rootURL.appendingPathComponent("../unpublished"))) == nil)
+                check("physicalURL rejects escaped links and private workspace parents", (try? workspace.physicalURL(for: escaped.url)) == nil && (try? workspace.physicalURL(for: session.rootURL.appendingPathComponent("../unpublished"))) == nil)
                 let noteItem = try provider.listDirectory(logicalNested).first!
                 check("content items expose logical identity and physical bytes separately", noteItem.url == logicalNote && noteItem.publishedContentURL == physicalNote)
                 let ordinaryZIP = FileItem(url: archive)!
@@ -111,17 +111,17 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                 let aliasFolder = alias.appendingPathComponent(folder.lastPathComponent)
                 let aliasNote = aliasFolder.appendingPathComponent(nested.lastPathComponent).appendingPathComponent(note.lastPathComponent)
                 check("snapshot aliases retain archive ownership and logical navigation", workspace.session(for: aliasFolder) === session && workspace.containsArchiveLocation(aliasFolder) && workspace.logicalURL(for: aliasFolder) == logicalFolder && workspace.logicalURL(for: alias) == archive)
-                check("snapshot aliases read only their validated snapshot contents", try workspace.readableURL(for: aliasNote) == physicalNote && String(contentsOf: workspace.readableURL(for: aliasNote)) == "snapshot contents")
+                check("snapshot aliases read only their validated snapshot contents", try workspace.physicalURL(for: aliasNote) == physicalNote && String(contentsOf: workspace.physicalURL(for: aliasNote)) == "snapshot contents")
                 let aliasedEntries = try provider.listDirectory(aliasFolder)
                 check("aliased directory listing keeps read-only archive items", !aliasedEntries.isEmpty && aliasedEntries.allSatisfy { $0.isArchiveEntry && $0.url.path.hasPrefix(logicalFolder.path + "/") } && aliasedEntries.first { $0.name == "escape" }?.canAccess == false,
                       "expected=\(logicalFolder.path), entries=\(aliasedEntries.map { "\($0.name): \($0.url.path), archive=\($0.isArchiveEntry), access=\($0.canAccess)" })")
                 let aliasEscape = aliasFolder.appendingPathComponent("escape")
-                check("alias escape links retain ownership before their targets resolve", workspace.session(for: aliasEscape) === session && workspace.logicalURL(for: aliasEscape) == logicalFolder.appendingPathComponent("escape") && (try? workspace.readableURL(for: aliasEscape)) == nil)
+                check("alias escape links retain ownership before their targets resolve", workspace.session(for: aliasEscape) === session && workspace.logicalURL(for: aliasEscape) == logicalFolder.appendingPathComponent("escape") && (try? workspace.physicalURL(for: aliasEscape)) == nil)
                 let storageAlias = fixture.appendingPathComponent("storage-alias")
                 try fm.createSymbolicLink(at: storageAlias, withDestinationURL: session.storageURL)
-                check("private storage aliases cannot become ordinary writable locations", workspace.containsArchiveLocation(storageAlias) && workspace.archiveURL(containing: storageAlias) == archive && (try? workspace.readableURL(for: storageAlias)) == nil && (try? provider.listDirectory(storageAlias)) == nil)
+                check("private storage aliases cannot become ordinary writable locations", workspace.containsArchiveLocation(storageAlias) && workspace.archiveURL(containing: storageAlias) == archive && (try? workspace.physicalURL(for: storageAlias)) == nil && (try? provider.listDirectory(storageAlias)) == nil)
                 let storageAliasNote = storageAlias.appendingPathComponent(session.rootURL.lastPathComponent).appendingPathComponent(folder.lastPathComponent).appendingPathComponent(nested.lastPathComponent).appendingPathComponent(note.lastPathComponent)
-                check("storage aliases remap enclosed items without leaking temp paths", workspace.logicalURL(for: storageAliasNote) == logicalNote && (try? workspace.readableURL(for: storageAliasNote)) == physicalNote)
+                check("storage aliases remap enclosed items without leaking temp paths", workspace.logicalURL(for: storageAliasNote) == logicalNote && (try? workspace.physicalURL(for: storageAliasNote)) == physicalNote)
                 let ordinaryAlias = fixture.appendingPathComponent("ordinary-directory-alias")
                 try fm.createSymbolicLink(at: ordinaryAlias, withDestinationURL: plainDirectory)
                 let archiveFileAlias = fixture.appendingPathComponent("original-zip-alias")
@@ -131,7 +131,7 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                     ? String(session.rootURL.path.dropFirst("/private".count))
                     : "/private" + session.rootURL.path
                 let alternateRoot = URL(fileURLWithPath: alternatePath, isDirectory: true)
-                check("system temp aliases preserve the same snapshot identity", workspace.session(for: alternateRoot) === session && workspace.logicalURL(for: alternateRoot) == archive && (try? workspace.readableURL(for: alternateRoot)) == session.rootURL)
+                check("system temp aliases preserve the same snapshot identity", workspace.session(for: alternateRoot) === session && workspace.logicalURL(for: alternateRoot) == archive && (try? workspace.physicalURL(for: alternateRoot)) == session.rootURL)
                 let ordinaryItems = try provider.listDirectory(fixture)
                 check("provider delegates ordinary directory entries unchanged", ordinaryItems.first { $0.name == archive.lastPathComponent }?.publishedContentURL == ordinaryItems.first { $0.name == archive.lastPathComponent }?.url && ordinaryItems.first { $0.name == plainDirectory.lastPathComponent }?.isNavigable == true && ordinaryItems.allSatisfy { !$0.isArchiveEntry })
                 AppPreferences.experimentalZIPBrowsingEnabled = false
@@ -145,15 +145,15 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                 try fm.removeItem(at: physicalNote)
                 try fm.createSymbolicLink(atPath: physicalNote.path, withDestinationPath: outside.path)
                 check("cached entries revalidate targets before icon and preview reads", noteItem.publishedContentURL == nil && !ThumbnailProvider.canPreview(noteItem) && noteItem.icon(size: 16).size.width == 16)
-                check("replaced snapshot links cannot read outside contents", try (try? workspace.readableURL(for: logicalNote)) == nil && String(contentsOf: outside) == "outside original")
-                check("alias ownership survives an externally replaced escaping member", workspace.session(for: aliasNote) === session && workspace.logicalURL(for: aliasNote) == logicalNote && (try? workspace.readableURL(for: aliasNote)) == nil)
+                check("replaced snapshot links cannot read outside contents", try (try? workspace.physicalURL(for: logicalNote)) == nil && String(contentsOf: outside) == "outside original")
+                check("alias ownership survives an externally replaced escaping member", workspace.session(for: aliasNote) === session && workspace.logicalURL(for: aliasNote) == logicalNote && (try? workspace.physicalURL(for: aliasNote)) == nil)
                 let multipleZIP = try await SmokeFixtures.compress([folder, outside], to: fixture)
                 let multipleSession = try await prepare(multipleZIP, workspace: workspace)
                 check("archive workspace preserves multiple roots without an extra wrapper", Set(try provider.listDirectory(multipleZIP).map(\.name)) == Set([folder.lastPathComponent, outside.lastPathComponent]) && multipleSession.rootURL != session.rootURL)
                 let empty = fixture.appendingPathComponent("empty.zip")
                 try (Data([0x50, 0x4b, 0x05, 0x06]) + Data(repeating: 0, count: 18)).write(to: empty)
                 let emptySession = try await prepare(empty, workspace: workspace)
-                check("archive workspace supports an empty ZIP root", try provider.listDirectory(empty).isEmpty && workspace.readableURL(for: empty) == emptySession.rootURL)
+                check("archive workspace supports an empty ZIP root", try provider.listDirectory(empty).isEmpty && workspace.physicalURL(for: empty) == emptySession.rootURL)
                 let corrupt = fixture.appendingPathComponent("corrupt.zip")
                 try Data("not a ZIP".utf8).write(to: corrupt)
                 var corruptFailed = false
@@ -216,7 +216,7 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
                                                     nested: nested.lastPathComponent, note: note.lastPathComponent)
                 workspace.shutdownAll()
                 check("workspace shutdown closes snapshots without touching originals", session.isClosed && !fm.fileExists(atPath: session.storageURL.path) && fm.fileExists(atPath: archive.path) && fm.fileExists(atPath: note.path))
-                check("closed workspace rejects subsequent reads", (try? workspace.readableURL(for: logicalFolder)) == nil)
+                check("closed workspace rejects subsequent reads", (try? workspace.physicalURL(for: logicalFolder)) == nil)
                 DispatchQueue.main.async(execute: completion)
             } catch {
                 check("archive workspace setup and operations", false, error.localizedDescription)
@@ -368,11 +368,11 @@ enum ArchiveWorkspaceSmokeTests: SmokeSuite {
         let session = try await prepare(archive, workspace: workspace)
         let provider = ArchiveFileProvider(base: LocalFileProvider(), workspace: workspace)
         let entries = try provider.listDirectory(logicalNested)
-        let physicalNested = try workspace.readableURL(for: logicalNested)
+        let physicalNested = try workspace.physicalURL(for: logicalNested)
         let expected = session.archiveURL.appendingPathComponent(folder).appendingPathComponent(nested)
         check("repairing a ZIP restores members requested through the system parent alias",
               workspace.session(for: logicalNested) === session && entries.map(\.name) == [note]
-              && (try? String(contentsOf: workspace.readableURL(for: logicalNested.appendingPathComponent(note)))) == "snapshot contents")
+              && (try? String(contentsOf: workspace.physicalURL(for: logicalNested.appendingPathComponent(note)))) == "snapshot contents")
         check("system alias member mapping round-trips without losing ZIP path components",
               workspace.logicalURL(for: logicalNested).path == expected.path
               && workspace.logicalURL(for: physicalNested).path == expected.path)

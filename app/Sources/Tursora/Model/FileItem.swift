@@ -116,6 +116,14 @@ struct FileItem {
         return try? archiveSession.validatedURL(contentURL)
     }
 
+    /// What Quick Look shows: the bytes once they are here, and a folder as
+    /// the folder it is. A folder is only shown, never copied, so it need not
+    /// be complete; its skeleton is on disk from the moment the archive opens.
+    var previewContentURL: URL? {
+        guard isNavigable, let archiveSession else { return publishedContentURL }
+        return try? archiveSession.validatedURL(contentURL)
+    }
+
     /// The icon as NSWorkspace hands it back, at its own size.
     var iconImage: NSImage {
         guard isArchiveEntry else { return NSWorkspace.shared.icon(forFile: contentURL.path) }

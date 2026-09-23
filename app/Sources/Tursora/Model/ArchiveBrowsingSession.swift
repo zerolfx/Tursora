@@ -58,6 +58,8 @@ final class ArchiveBrowsingSession {
     enum SessionError: LocalizedError {
         case closed, cancelled, outsideArchive, notDirectory, unavailableItem
         case insufficientSpace(needed: Int64, available: Int64)
+        /// An entry that cannot be brought out of the archive, with the reason.
+        case notExtracted(String)
         var errorDescription: String? {
             switch self {
             case .closed: return "This ZIP browsing session has ended."
@@ -65,6 +67,7 @@ final class ArchiveBrowsingSession {
             case .outsideArchive: return "This link points outside the ZIP and cannot be opened here."
             case .notDirectory: return "This item is not a folder."
             case .unavailableItem: return "This item is unavailable in the ZIP snapshot."
+            case .notExtracted(let reason): return "This item could not be read from the ZIP. \(reason)"
             case .insufficientSpace(let needed, let available):
                 let format: (Int64) -> String = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
                 return "Opening this ZIP needs about \(format(needed)) of temporary space and only \(format(available)) is free."

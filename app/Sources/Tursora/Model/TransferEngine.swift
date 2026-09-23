@@ -249,6 +249,24 @@ final class TransferEngine {
     func run() -> FileOperations.TransferResult {
         var total: Int64 = 0
         var scanFailed = Set<String>()
+        if let prepare = options.prepareSources {
+            do {
+                let failures = try prepare(task)
+                result.failures += failures
+                // A source that could not be brought is reported once, here,
+                // rather than again as missing when it is scanned.
+                let sources = Set(task.sources.map(\.standardizedFileURL.path))
+                scanFailed.formUnion(failures.map(\.url.standardizedFileURL.path).filter(sources.contains))
+            } catch TransferError.cancelled {
+                result.cancelled = true
+                task.finished(result)
+                return result
+            } catch {
+                result.failures.append(.init(url: task.sources.first ?? task.destination, error: error))
+                task.finished(result)
+                return result
+            }
+        }
         do {
             if !options.duplicateInPlace { try pinDirectory(task.destination) }
             for source in task.sources { try pinDirectory(source.deletingLastPathComponent()) }
@@ -257,7 +275,7 @@ final class TransferEngine {
             task.finished(result)
             return result
         }
-        for source in task.sources {
+        for source in task.sources where !scanFailed.contains(source.path) {
             do {
                 try boundary(.preparing, source)
                 let amount = try scan(source, recursively: !canMoveAtomically(source, to: task.destination))

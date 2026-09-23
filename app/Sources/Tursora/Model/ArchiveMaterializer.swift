@@ -28,12 +28,22 @@ final class SystemArchiveToolRunner: ArchiveToolRunning {
     /// stay zero once listing no longer extracts.
     var invocations: Int { lock.lock(); defer { lock.unlock() }; return count }
     var mainThreadInvocations: Int { lock.lock(); defer { lock.unlock() }; return mainThreadCount }
+    private var gate: (() -> Void)?
+    /// Runs on the worker before each run starts, so the suite can hold a real
+    /// pane's request mid-flight. Never set outside the smoke test.
+    var beforeRunForTesting: (() -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return gate }
+        set { lock.lock(); gate = newValue; lock.unlock() }
+    }
 
     func run(_ arguments: [String], scratch: URL, cancellation: ArchivePreparationCancellation?) throws -> ArchiveToolRun {
         lock.lock()
         count += 1
         if Thread.isMainThread { mainThreadCount += 1 }
+        let gate = self.gate
         lock.unlock()
+        gate?()
+        try cancellation?.checkCancellation()
         let log = scratch.appendingPathComponent("tool-\(UUID().uuidString).log")
         FileManager.default.createFile(atPath: log.path, contents: nil)
         defer { try? FileManager.default.removeItem(at: log) }

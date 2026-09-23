@@ -91,17 +91,30 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private var archiveNoticeHeight: NSLayoutConstraint?
     var fileOpener: (URL) -> Bool = { NSWorkspace.shared.open($0) }
     var archiveFileOpener: (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    /// Test seam for Open With; nil opens through NSWorkspace.
+    var openWithOpener: (([URL], URL) -> Void)?
     var archiveSourceURL: URL? { currentURL.flatMap { ArchiveWorkspace.shared.session(for: $0)?.archiveURL } }
     var isBrowsingArchive: Bool { archiveSourceURL != nil }
     var canModifyCurrentLocation: Bool { canModifySelectedItems && !isSearching && !isBrowsingTrash }
     var canModifySelectedItems: Bool { currentURL != nil && !isBrowsingArchive && !isPreparingArchive }
     var archiveStatus: String? { isBrowsingArchive ? "ZIP · Read-only" : nil }
-    var readableSelectionURLs: [URL] { readableURLs(fileView.selectedItems) }
-    var canPreviewSelection: Bool { !readableSelectionURLs.isEmpty && !isPreparingArchive }
+    /// Whether the selection holds anything that can be read at all. Pure —
+    /// it reads the rows, never the disk and never the archive tool — because
+    /// menus, the toolbar and the command palette ask it constantly (D98).
+    var hasAccessibleSelection: Bool { fileView.selectedItems.contains(where: \.canAccess) }
+    var canPreviewSelection: Bool { hasAccessibleSelection && !isPreparingArchive }
     var canOpenSelection: Bool { canPreviewSelection }
-    private func readableURLs(_ items: [FileItem]) -> [URL] {
-        items.compactMap(\.publishedContentURL)
-    }
+    /// The selection's bytes that are on disk right now: what Share is handed
+    /// without waiting.
+    var publishedSelectionURLs: [URL] { fileView.selectedItems.compactMap(\.publishedContentURL) }
+    /// What Quick Look shows for the selection.
+    var previewSelectionURLs: [URL] { fileView.selectedItems.compactMap(\.previewContentURL) }
+    /// Requests for archive bytes this pane started. Closing the pane cancels
+    /// them; navigating does not, so an Open already asked for still happens.
+    private var archiveRequests: [UUID: ArchivePreparationCancellation] = [:]
+    /// Opens asked for in this main-queue pass, sent as one request.
+    private var pendingArchiveOpens: [URL] = []
+    private var archiveOpensInFlight = Set<URL>()
     private func isArchiveContent(_ url: URL) -> Bool {
         guard let session = ArchiveWorkspace.shared.session(for: url) else { return false }
         return url.resolvingSymlinksInPath().standardizedFileURL != session.archiveURL.resolvingSymlinksInPath().standardizedFileURL
@@ -185,6 +198,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     required init?(coder: NSCoder) { fatalError() }
     deinit {
         archivePreparation?.cancel()
+        archiveRequests.values.forEach { $0.cancel() }
         NotificationCenter.default.removeObserver(self)
         if let viewPropertiesObserver { NotificationCenter.default.removeObserver(viewPropertiesObserver) }
     }
@@ -486,17 +500,25 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func toggleQuickLook() {
         guard canPreviewSelection else { return }
         guard let panel = QLPreviewPanel.shared() else { return }
-        if panel.isVisible { panel.orderOut(nil) } else { panel.makeKeyAndOrderFront(nil) }
+        if panel.isVisible { panel.orderOut(nil); return }
+        // Quick Look is handed bytes that are on disk, so a file not yet
+        // extracted is brought first and the panel opens once it is here.
+        let waiting = fileView.selectedItems.filter { $0.canAccess && $0.previewContentURL == nil }
+        guard !waiting.isEmpty else { panel.makeKeyAndOrderFront(nil); return }
+        requestArchiveBytes(waiting.map(\.url), title: Self.readingTitle(waiting.map(\.name), from: archiveSourceURL)) { [weak self] _ in
+            guard let self, !self.previewSelectionURLs.isEmpty else { return }
+            QLPreviewPanel.shared()?.makeKeyAndOrderFront(nil)
+        }
     }
 
     override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
     override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) { panel.dataSource = self; panel.delegate = self }
     override func endPreviewPanelControl(_ panel: QLPreviewPanel!) { panel.dataSource = nil; panel.delegate = nil }
 
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { readableSelectionURLs.count }
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { previewSelectionURLs.count }
 
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        let urls = readableSelectionURLs
+        let urls = previewSelectionURLs
         return urls.indices.contains(index) ? urls[index] as NSURL : nil
     }
 
@@ -580,8 +602,12 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     private func enterPreparedArchive(_ requested: URL) {
         let logical = ArchiveWorkspace.shared.logicalURL(for: requested)
         do {
-            let physical = try ArchiveWorkspace.shared.readableURL(for: logical)
-            guard FileItem(url: physical)?.isNavigable == true else { throw ArchiveBrowsingSession.SessionError.notDirectory }
+            _ = try ArchiveWorkspace.shared.physicalURL(for: logical)
+            // Judged from the table of contents: entering a folder never
+            // extracts anything here, on the main thread.
+            guard ArchiveWorkspace.shared.isNavigableFolder(logical) else {
+                throw ArchiveBrowsingSession.SessionError.notDirectory
+            }
             history.push(logical)
             load(logical)
         } catch {
@@ -670,7 +696,18 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         else if navigationGeneration == 0 { suspendedNavigation = workspaceNavigationURL }
         navigationGeneration += 1
         stopArchivePreparation()
+        cancelArchiveRequests()
         if suspendedNavigation != nil { clearArchiveNotice() }
+    }
+
+    /// Stops every archive extraction this pane asked for. A transfer owns its
+    /// own, and is not stopped here.
+    func cancelArchiveRequests() {
+        let requests = archiveRequests.values
+        archiveRequests.removeAll()
+        pendingArchiveOpens.removeAll()
+        archiveOpensInFlight.removeAll()
+        requests.forEach { $0.cancel() }
     }
 
     func resumePendingNavigation() {
@@ -741,6 +778,13 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     @objc private func historyMenuItem(_ sender: NSMenuItem) { goToHistory(slot: sender.tag) }
+
+    /// Reload asked for by the user: inside an archive it also forgets the
+    /// folder's extraction failures, so they are tried again.
+    func reloadForgettingArchiveFailures() {
+        if let currentURL, isBrowsingArchive { ArchiveWorkspace.shared.forgetFailures(in: currentURL) }
+        reload()
+    }
 
     func reload() {
         if failedArchive != nil { retryArchiveOpening(nil); return }
@@ -892,19 +936,44 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     // Edit menu — reached via the responder chain when the list has focus.
 
-    @objc func copy(_ sender: Any?) { putOnPasteboard(selectedURLs, cut: false) }
+    @objc func copy(_ sender: Any?) {
+        if isBrowsingArchive { copyArchiveItems(fileView.selectedItems); return }
+        putOnPasteboard(selectedURLs, cut: false)
+    }
     @objc func cut(_ sender: Any?) { putOnPasteboard(selectedURLs, cut: true) }
 
     private func putOnPasteboard(_ urls: [URL], cut: Bool) {
         guard !urls.isEmpty, !isPreparingArchive else { return }
         if cut && (!canModifySelectedItems || isBrowsingTrash || urls.contains(where: isArchiveContent)) { return }
-        let urls = urls.compactMap { isArchiveContent($0) ? try? ArchiveWorkspace.shared.readableURL(for: $0) : $0 }
-        guard !urls.isEmpty else { return }
+        guard !urls.contains(where: isArchiveContent) else { return }
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.writeObjects(urls as [NSURL])
         Self.cutState = cut ? (pb.changeCount, urls) : nil
         setCutMarkers(cut ? Set(urls) : [])
+    }
+
+    /// Copy inside an archive. What is already extracted is written at once;
+    /// otherwise the pasteboard is claimed now — so the previous Copy cannot
+    /// be pasted by mistake while this one is prepared — and written when the
+    /// bytes are here, unless something else has been copied meanwhile (D98).
+    private func copyArchiveItems(_ items: [FileItem]) {
+        let readable = items.filter(\.canAccess)
+        guard !readable.isEmpty, !isPreparingArchive else { return }
+        let pb = NSPasteboard.general
+        Self.cutState = nil
+        setCutMarkers([])
+        let ready = readable.map(\.publishedContentURL)
+        if !ready.contains(nil) {
+            pb.clearContents()
+            pb.writeObjects(ready.compactMap { $0 } as [NSURL])
+            return
+        }
+        let claimed = pb.clearContents()
+        requestArchiveBytes(readable.map(\.url), title: Self.readingTitle(readable.map(\.name), from: archiveSourceURL)) { result in
+            guard pb.changeCount == claimed, !result.urls.isEmpty else { return }
+            pb.writeObjects(result.urls as [NSURL])
+        }
     }
 
     private func setCutMarkers(_ urls: Set<URL>) {
@@ -1124,7 +1193,10 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
                           then: (() -> Void)? = nil) {
         guard !ArchiveWorkspace.shared.containsArchiveLocation(destination), !urls.isEmpty else { return }
         if kind == .move && urls.contains(where: isArchiveContent) { return }
-        let urls = urls.compactMap { isArchiveContent($0) ? try? ArchiveWorkspace.shared.readableURL(for: $0) : $0 }
+        // An archive entry is handed over as where its bytes will be, and the
+        // transfer itself brings them first, on its own worker (D98).
+        let archiveSources = urls.filter(isArchiveContent)
+        let urls = urls.compactMap { isArchiveContent($0) ? try? ArchiveWorkspace.shared.physicalURL(for: $0) : $0 }
         guard !urls.isEmpty else { return }
         statusBar.beginBusy()
         let window = view.window
@@ -1132,6 +1204,27 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let name = actionName ?? (kind == .copy ? "Copy" : "Move")
         var options = transferOptions
         options.duplicateInPlace = duplicateInPlace
+        if !archiveSources.isEmpty {
+            let archiveName = ArchiveWorkspace.shared.archiveURL(containing: archiveSources[0])?.lastPathComponent ?? "the ZIP"
+            let prepareArchiveSources = options.prepareSources
+            options.prepareSources = { task in
+                var failures = try prepareArchiveSources?(task) ?? []
+                // No checkpoint of the task's own runs while the archive tool
+                // does, so Pause is off for exactly this wait.
+                task.setPausable(false)
+                task.setPhase(.preparing, detail: "Reading from “\(archiveName)”…")
+                defer { task.setPausable(true) }
+                let cancellation = ArchivePreparationCancellation()
+                task.onCancel { cancellation.cancel() }
+                do {
+                    failures += try ArchiveWorkspace.shared.materializeBlocking(archiveSources, cancellation: cancellation).failures
+                } catch ArchiveBrowsingSession.SessionError.cancelled {
+                    throw TransferError.cancelled
+                }
+                try task.checkpoint()
+                return failures
+            }
+        }
         let task = TransferTask(sources: urls, destination: destination, kind: kind)
         lastTransferTask = task
         let tasks = TransferTasksWindowController.shared
@@ -1392,12 +1485,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             add(fav ? "Remove from Favourites" : "Add to Favourites", #selector(ctxToggleFavourite(_:)), symbol: fav ? "star.slash" : "star")
         }
         if isBrowsingArchive {
-            let readable = !readableURLs(items).isEmpty
+            // Pure: built from the rows, never waiting for bytes (D98).
+            let readable = items.contains(where: \.canAccess)
             let folders = items.filter(\.isNavigable)
             if !items.isEmpty {
                 add("Open", #selector(ctxOpen(_:)), enabled: readable)
-                if let single = items.first, items.count == 1, !single.isNavigable,
-                   let url = single.publishedContentURL { menu.addItem(openWithMenuItem(for: url)) }
+                if let single = items.first, items.count == 1, !single.isNavigable, single.canAccess {
+                    menu.addItem(single.publishedContentURL.map(openWithMenuItem(for:))
+                                 ?? openWithMenuItem(forType: single.contentType ?? .data))
+                }
                 addOpenInItems(folders)
                 add("Quick Look", #selector(ctxQuickLook(_:)), enabled: readable, symbol: "eye")
                 add("Copy", #selector(ctxCopy(_:)), enabled: readable, symbol: "doc.on.doc")
@@ -1469,10 +1565,23 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     private func openWithMenuItem(for url: URL) -> NSMenuItem {
+        openWithMenuItem(defaultApp: NSWorkspace.shared.urlForApplication(toOpen: url),
+                         apps: NSWorkspace.shared.urlsForApplications(toOpen: url))
+    }
+
+    /// For an archive entry not yet extracted, whose logical URL exists
+    /// nowhere: the applications are the ones for its type. A package's type
+    /// is the one its folder conforms to (`com.apple.rtfd`), which is what
+    /// the row already carries.
+    private func openWithMenuItem(forType type: UTType) -> NSMenuItem {
+        openWithMenuItem(defaultApp: NSWorkspace.shared.urlForApplication(toOpen: type),
+                         apps: NSWorkspace.shared.urlsForApplications(toOpen: type))
+    }
+
+    private func openWithMenuItem(defaultApp: URL?, apps: [URL]) -> NSMenuItem {
         let item = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
         let sub = NSMenu()
-        let defaultApp = NSWorkspace.shared.urlForApplication(toOpen: url)
-        var apps = NSWorkspace.shared.urlsForApplications(toOpen: url)
+        var apps = apps
         if let defaultApp {
             apps.removeAll { $0 == defaultApp }
             apps.insert(defaultApp, at: 0)
@@ -1538,15 +1647,22 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc private func ctxDuplicate(_ s: Any?) { selectContextTargets(contextTargets(for: s)); duplicate(nil) }
     @objc private func ctxTrash(_ s: Any?) { trash(contextTargets(for: s).map(\.url)) }
     @objc private func ctxCut(_ s: Any?) { putOnPasteboard(contextTargets(for: s).map(\.url), cut: true) }
-    @objc private func ctxCopy(_ s: Any?) { putOnPasteboard(contextTargets(for: s).map(\.url), cut: false) }
+    @objc private func ctxCopy(_ s: Any?) {
+        if isBrowsingArchive { copyArchiveItems(contextTargets(for: s)); return }
+        putOnPasteboard(contextTargets(for: s).map(\.url), cut: false)
+    }
     /// Context actions that reuse selection-based commands first make the targets the selection.
     func selectContextTargets(_ items: [FileItem]) {
         fileView.select(urls: items.map(\.url))
     }
     @objc private func ctxOpenWith(_ s: NSMenuItem) {
         guard let app = s.representedObject as? URL else { return }
-        NSWorkspace.shared.open(readableURLs(contextTargets(for: s)), withApplicationAt: app,
-                                configuration: NSWorkspace.OpenConfiguration())
+        let targets = contextTargets(for: s)
+        withPublishedURLs(targets, title: Self.readingTitle(targets.map(\.name), from: archiveSourceURL)) { [weak self] urls in
+            guard !urls.isEmpty else { return }
+            if let opener = self?.openWithOpener { opener(urls, app); return }
+            NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+        }
     }
     @objc private func ctxOpenInNewTab(_ s: Any?) {
         for f in contextTargets(for: s).filter(\.isNavigable) { host?.openInNewTab(f.url, activate: false) }
@@ -1554,9 +1670,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     @objc private func ctxOpenInOtherPane(_ s: Any?) {
         if let f = contextTargets(for: s).first(where: \.isNavigable) { host?.openInOtherPane(f.url) }
     }
-    @objc private func ctxCopyToOtherPane(_ s: Any?) { host?.transferToOtherPane(readableURLs(contextTargets(for: s)), move: false) }
+    // Logical URLs: the transfer brings an archive entry's bytes itself.
+    @objc private func ctxCopyToOtherPane(_ s: Any?) {
+        host?.transferToOtherPane(contextTargets(for: s).filter(\.canAccess).map(\.url), move: false)
+    }
     @objc private func ctxMoveToOtherPane(_ s: Any?) { if canModifySelectedItems { host?.transferToOtherPane(contextTargets(for: s).map(\.url), move: true) } }
-    @objc func copyToOtherPane(_ s: Any?) { host?.transferToOtherPane(readableSelectionURLs, move: false) }
+    @objc func copyToOtherPane(_ s: Any?) {
+        host?.transferToOtherPane(fileView.selectedItems.filter(\.canAccess).map(\.url), move: false)
+    }
     @objc func moveToOtherPane(_ s: Any?) { if canModifySelectedItems { host?.transferToOtherPane(selectedURLs, move: true) } }
     @objc private func ctxOpenInNewWindow(_ s: Any?) {
         if let f = contextTargets(for: s).first(where: \.isNavigable) { host?.openInNewWindow(f.url) }
@@ -1674,7 +1795,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             if item.isNavigable { navigate(to: item.url) }
             else if let copy = item.publishedContentURL {
                 if !archiveFileOpener(copy) { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
-            } else { showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
+            } else { enqueueArchiveOpen(item.url) }
             return
         }
         if item.isNavigable {
@@ -1690,6 +1811,87 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             }
             else { _ = fileOpener(item.url) }
         }
+    }
+
+    /// Opens asked for in one main-queue pass go out as one request, so three
+    /// selected files cost one run of the archive tool, and an entry already
+    /// on its way is not asked for twice (D98).
+    private func enqueueArchiveOpen(_ location: URL) {
+        guard !archiveOpensInFlight.contains(location), !pendingArchiveOpens.contains(location) else { return }
+        pendingArchiveOpens.append(location)
+        guard pendingArchiveOpens.count == 1 else { return }
+        DispatchQueue.main.async { [weak self] in self?.flushArchiveOpens() }
+    }
+
+    private func flushArchiveOpens() {
+        let batch = pendingArchiveOpens
+        pendingArchiveOpens.removeAll()
+        guard !batch.isEmpty else { return }
+        archiveOpensInFlight.formUnion(batch)
+        requestArchiveBytes(batch, title: Self.readingTitle(batch.map(\.lastPathComponent), from: archiveSourceURL),
+                            finally: { [weak self] in self?.archiveOpensInFlight.subtract(batch) }) { [weak self] result in
+            guard let self else { return }
+            for url in result.urls where !self.archiveFileOpener(url) {
+                self.showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem)
+            }
+        }
+    }
+
+    /// Runs `body` with the readable URLs of the items that can be read.
+    /// Anything outside an archive, or already extracted, is handed over at
+    /// once, in this turn; otherwise the entries are extracted first.
+    private func withPublishedURLs(_ items: [FileItem], title: String, _ body: @escaping ([URL]) -> Void) {
+        let readable = items.filter(\.canAccess)
+        let ready = readable.map(\.publishedContentURL)
+        guard ready.contains(nil) else { body(ready.compactMap { $0 }); return }
+        requestArchiveBytes(readable.map(\.url), title: title) { body($0.urls) }
+    }
+
+    /// Extracts entries of a mounted archive off the main thread, with the
+    /// pane busy meanwhile and, for a request estimated at more than a second
+    /// or 128 MiB, a row in File Operations that can cancel it. Closing the
+    /// pane cancels it too. `completion` runs on the main thread unless the
+    /// request was cancelled; a failure is reported here, and `finally` runs
+    /// either way.
+    private func requestArchiveBytes(_ locations: [URL], title: String, finally: (() -> Void)? = nil,
+                                     completion: @escaping (ArchiveMaterializationResult) -> Void) {
+        let workspace = ArchiveWorkspace.shared
+        var row: TransferTask?
+        if workspace.estimate(for: locations).warrantsProgressRow, let archive = workspace.archiveURL(containing: locations[0]) {
+            let task = TransferTask(sources: locations, destination: archive, kind: .extract)
+            task.setPhase(.running, detail: "Reading from “\(archive.lastPathComponent)”…")
+            TransferTasksWindowController.shared.track(task, ownerWindow: view.window, title: title,
+                                                       destinationDescription: "From “\(archive.lastPathComponent)”")
+            row = task
+        }
+        let id = UUID()
+        statusBar.beginBusy()
+        let token = workspace.materialize(locations) { [weak self] result in
+            var summary = FileOperations.TransferResult()
+            if case .failure(ArchiveBrowsingSession.SessionError.cancelled) = result { summary.cancelled = true }
+            if case .failure(let error) = result, !summary.cancelled { summary.failures = [.init(url: locations[0], error: error)] }
+            if case .success(let brought) = result { summary.failures = brought.failures }
+            row?.finished(summary)
+            finally?()
+            guard let self else { return }
+            self.statusBar.endBusy()
+            self.archiveRequests[id] = nil
+            switch result {
+            case .success(let brought):
+                completion(brought)
+                if let failure = brought.failures.first { self.showArchiveError(failure.error) }
+            case .failure(let error):
+                if !summary.cancelled { self.showArchiveError(error) }
+            }
+        }
+        archiveRequests[id] = token
+        row?.onCancel { token.cancel() }
+    }
+
+    /// "Reading “notes.txt” from “A.zip”", or a count for several.
+    static func readingTitle(_ names: [String], from archive: URL?) -> String {
+        let what = names.count == 1 ? "“\(names[0])”" : "\(names.count) items"
+        return "Reading \(what)" + (archive.map { " from “\($0.lastPathComponent)”" } ?? "")
     }
 
     private func saveViewState() {

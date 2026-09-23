@@ -243,7 +243,7 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
             check("ZIP fixture prepares a retained snapshot", false); return
         }
         extracted.append(firstSession)
-        let physical = try ArchiveWorkspace.shared.readableURL(for: logical)
+        let physical = try ArchiveWorkspace.shared.physicalURL(for: logical)
         original.browser.navigate(to: physical)
         await listed(original.browser, at: logical)
         let captured = original.workspaceSessionState

@@ -220,3 +220,21 @@ enum SmokeFixtures {
         }
     }
 }
+
+/// Holds a worker thread at a point the suite chooses until it is released,
+/// giving up after ten seconds so a failed check cannot hang the run.
+final class WorkerGate: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var reached = false
+    private var released = false
+    var arrived: Bool { condition.lock(); defer { condition.unlock() }; return reached }
+    func arriveAndWait() {
+        condition.lock()
+        reached = true
+        while !released {
+            if !condition.wait(until: Date().addingTimeInterval(10)) { break }
+        }
+        condition.unlock()
+    }
+    func release() { condition.lock(); released = true; condition.broadcast(); condition.unlock() }
+}
