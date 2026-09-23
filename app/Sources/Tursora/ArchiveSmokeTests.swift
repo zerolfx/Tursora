@@ -104,6 +104,7 @@ enum ArchiveSmokeTests: SmokeSuite {
                 try browsingGuardrails(in: root)
                 archiveTree()
                 centralDirectoryDecoding()
+                archiveToolLayer()
                 try await centralDirectoryAgreesWithExtraction(in: root)
                 try await extractionProgress(archive: folderZIP, root: root)
 
@@ -249,10 +250,163 @@ enum ArchiveSmokeTests: SmokeSuite {
         check("archive tree: a package names its encrypted members so they can be excluded",
               packageWithSecret.inertMembers(inside: "Demo.app") == ["Demo.app/Contents/bin"])
 
+        // Stage 2: publication is refused under a link and inside a package.
+        let reach = ArchiveTree(entries: [entry("ok/file.txt", 1), entry("link", 0, .symbolicLink),
+                                          entry("link/through.txt", 1), entry("Demo.app/Contents/Info.plist", 1),
+                                          entry("up/../escape.txt", 1)])
+        check("archive tree: an ordinary file is reachable", reach.isReachable("ok/file.txt"))
+        check("archive tree: nothing under a symbolic link is reachable — staging would bypass bsdtar's own check",
+              !reach.isReachable("link/through.txt"))
+        check("archive tree: a package is reachable as a whole, its insides are not",
+              reach.isReachable("Demo.app") && !reach.isReachable("Demo.app/Contents/Info.plist"))
+        check("archive tree: an inert entry is never reachable", !reach.isReachable("up/escape.txt"))
+
+        // Prefetch: one folder's direct files in one selection.
+        let folder = ArchiveTree(entries: [entry("big/a.txt", 3), entry("big/b.txt", 4), entry("big/sub/deep.txt", 5),
+                                           entry("big/Demo.app/Contents/Info.plist", 6), entry("/big/abs.txt", 7),
+                                           entry("big/secret.txt", 8)],
+                                 records: ["big/secret.txt": ZIPCentralDirectory.Record(isEncrypted: true)])
+        let prefetch = folder.prefetchPlan(for: "big")
+        check("archive tree: a folder's direct files are one selection, excluding two levels down and the inert",
+              prefetch.selection == ArchiveTool.DirectorySelection(include: "big", excludes: ["big/*/*", "big/secret.txt"])
+              && Set(prefetch.selected.map(\.path)) == ["big/a.txt", "big/b.txt"],
+              "\(String(describing: prefetch.selection)) \(prefetch.selected.map(\.path))")
+        check("archive tree: a member bsdtar will not match through an include is asked for by name",
+              prefetch.leaves.map(\.path) == ["big/abs.txt"] && prefetch.leaves.first?.raw == "/big/abs.txt",
+              "\(prefetch.leaves.map(\.path))")
+        check("archive tree: a package in the folder comes whole, in its own run",
+              prefetch.packages.map(\.path) == ["big/Demo.app"])
+        check("archive tree: a folder's plan never reaches into a subfolder",
+              !prefetch.publishes.contains("big/sub/deep.txt"))
+        check("archive tree: the archive root is selected with no include",
+              folder.prefetchPlan(for: "").selection?.include == nil)
+        let mostlyThere = folder.prefetchPlan(for: "big", skipping: ["big/a.txt", "big/b.txt", "big/abs.txt"])
+        check("archive tree: a folder already mostly here names the rest instead of excluding what is here",
+              mostlyThere.selection == nil && mostlyThere.selected.isEmpty,
+              "\(String(describing: mostlyThere.selection))")
+
+        // Subtree: a folder and everything below it, for copying it out whole.
+        let subtree = folder.subtreePlan(for: "big")
+        check("archive tree: a folder's subtree plan reaches every file below it, never the inert",
+              Set(subtree.publishes) == ["big/a.txt", "big/b.txt", "big/sub/deep.txt", "big/Demo.app", "big/abs.txt"],
+              "\(subtree.publishes.sorted())")
+        check("archive tree: a subtree selection keeps packages for their own run",
+              subtree.selection?.excludes.contains("big/Demo.app") == true
+              && subtree.selection?.excludes.contains("big/secret.txt") == true,
+              "\(String(describing: subtree.selection))")
+
+        // An explicit request names files; a large request that is most of a
+        // folder becomes that folder's selection.
+        let named = folder.batchPlan(for: ["big/a.txt", "big/Demo.app"])
+        check("archive tree: an explicit request names its files and takes packages whole",
+              named.leaves.map(\.path) == ["big/a.txt"] && named.packages.map(\.path) == ["big/Demo.app"]
+              && named.selection == nil)
+        let many = ArchiveTree(entries: (0..<300).map { entry("m/f\($0).txt", 1) })
+        let bulk = many.batchPlan(for: (0..<290).map { "m/f\($0).txt" })
+        check("archive tree: requesting most of a large folder becomes one selection, not 290 names",
+              bulk.selection?.include == "m" && bulk.selected.count == 290 && bulk.leaves.isEmpty
+              && bulk.selection?.excludes.count == 11,   // m/*/* and the ten not asked for
+              "sel=\(String(describing: bulk.selection?.excludes.count)) leaves=\(bulk.leaves.count)")
+
         let links = ArchiveTree(entries: [entry("alias", 0, .symbolicLink), entry("real.txt", 4)])
         check("archive tree: symbolic links are named for materialization at mount",
               links.symbolicLinkMembers == ["alias"], "\(links.symbolicLinkMembers)")
         check("archive tree: an empty archive yields an empty tree", ArchiveTree(entries: []).isEmpty)
+    }
+
+    /// Stage 2's pure tool layer: the argument list, and per-member attribution
+    /// against log lines copied verbatim from real bsdtar runs.
+    private static func archiveToolLayer() {
+        let source = URL(fileURLWithPath: "/src.zip"), out = URL(fileURLWithPath: "/out")
+        let args = ArchiveTool.extractionArguments(source: source, output: out, noRecursion: false,
+                                                   excludes: ["big/*/*", "big/secret.txt"], includes: ["big"],
+                                                   passphrase: "P")
+        // Measured: a pattern before `--exclude` turns `--exclude` into a
+        // pattern and extracts the whole subtree, package included.
+        let firstExclude = args.firstIndex(of: "--exclude") ?? .max
+        let separator = args.firstIndex(of: "--") ?? .max
+        check("archive tool: every exclude comes before the include, behind a --",
+              firstExclude < separator && args.last == "big" && args[separator + 1] == "big", "\(args)")
+        check("archive tool: verbose is always on, and -n only when asked",
+              args.contains("-v") && !args.contains("-n")
+              && ArchiveTool.extractionArguments(source: source, output: out, noRecursion: true).contains("-n"))
+        check("archive tool: fast-read is never used",
+              !args.contains("-q") && !args.contains("--fast-read"))
+        // A member named like an option must still be a member.
+        let dashed = ArchiveTool.extractionArguments(source: source, output: out, noRecursion: false, includes: ["-n"])
+        check("archive tool: a member named -n is read as a member, after --",
+              Array(dashed.suffix(2)) == ["--", "-n"], "\(dashed.suffix(3))")
+        check("archive tool: the archive root is selected with no include at all",
+              ArchiveTool.directSelection(of: nil) == ArchiveTool.DirectorySelection(include: nil, excludes: ["*/*"]))
+        check("archive tool: a folder's direct files are selected by excluding two levels down",
+              ArchiveTool.directSelection(of: "big", excluding: ["big/secret.txt"])
+                == ArchiveTool.DirectorySelection(include: "big", excludes: ["big/*/*", "big/secret.txt"]))
+
+        func spelling(_ path: String, raw: String? = nil) -> ArchiveMemberSpelling {
+            let raw = raw ?? path
+            return ArchiveMemberSpelling(path: path, raw: raw, escaped: ArchiveTree.escapeMember(raw))
+        }
+        // Verbatim from a real run: a CRC failure, a clean pair, a missing member.
+        let crcLog = """
+        x d/a.txt
+        x d/bad.txt: ZIP bad CRC: 0xbde39420 should be 0x5ca44334: Unknown error: -1
+        x d/c.txt
+        tar: d/nope\\*.txt: Not found in archive
+        tar: Error exit delayed from previous errors.
+        """
+        let crc = ArchiveToolVerdict.attribute(log: crcLog, members: [spelling("d/a.txt"), spelling("d/bad.txt"),
+                                                                     spelling("d/c.txt"), spelling("d/nope*.txt")])
+        check("archive tool: a clean announcement is a success",
+              crc.extracted == ["d/a.txt", "d/c.txt"], "\(crc.extracted.sorted())")
+        check("archive tool: a CRC failure is pinned to its member, with bsdtar's reason",
+              crc.failed["d/bad.txt"]?.hasPrefix("ZIP bad CRC") == true, "\(crc.failed)")
+        check("archive tool: Not found is matched through the escaped spelling it repeats",
+              crc.notFound == ["d/nope*.txt"], "\(crc.notFound)")
+        check("archive tool: the run's trailer is not mistaken for a member",
+              crc.isTrustworthy, "\(crc.unrecognized)")
+
+        let encrypted = ArchiveToolVerdict.attribute(
+            log: "x d/a.txt\nx d/b.txt: Incorrect passphrase: Unknown error: -1\ntar: Error exit delayed from previous errors.",
+            members: [spelling("d/a.txt"), spelling("d/b.txt")])
+        check("archive tool: an encrypted member fails and its sibling does not",
+              encrypted.extracted == ["d/a.txt"] && encrypted.failed["d/b.txt"]?.contains("passphrase") == true)
+
+        let source404 = ArchiveToolVerdict.attribute(
+            log: "tar: Error opening archive: Failed to open '/nonexistent.zip'", members: [spelling("d/a.txt")])
+        check("archive tool: an unreadable archive is a source failure, not a member one",
+              source404.sourceFailure != nil && source404.failed.isEmpty && !source404.isTrustworthy)
+
+        // bsdtar reports a rewritten member under its rewritten name.
+        let rewritten = ArchiveToolVerdict.attribute(
+            log: "tar: Removing leading '/' from member names\nx etc/evil.txt",
+            members: [spelling("etc/evil.txt", raw: "/etc/evil.txt")])
+        check("archive tool: a leading slash bsdtar removed does not hide the member",
+              rewritten.extracted == ["etc/evil.txt"] && rewritten.isTrustworthy, "\(rewritten)")
+
+        // A package succeeds or fails as a unit.
+        let package = ArchiveToolVerdict.attribute(
+            log: "x Demo.app/\nx Demo.app/Contents/Info.plist\nx Demo.app/Contents/bin: ZIP bad CRC: x: Unknown error: -1",
+            members: [spelling("Demo.app")], packages: ["Demo.app"])
+        check("archive tool: a failure anywhere inside a package fails the package",
+              package.failed["Demo.app"] != nil && !package.extracted.contains("Demo.app"), "\(package)")
+        // The same, with every descendant's spelling supplied as the real
+        // caller does, including one whose name itself contains ": ".
+        let appTree = ArchiveTree(entries: ["Demo.app/Contents/Info.plist", "Demo.app/Contents/a: b"].map {
+            ArchiveEntrySummary(name: $0, uncompressedSize: 1, kind: .file)
+        })
+        let clean = ArchiveToolVerdict.attribute(
+            log: "x Demo.app/Contents/Info.plist\nx Demo.app/Contents/a: b",
+            members: appTree.packageSpellings("Demo.app"), packages: ["Demo.app"])
+        check("archive tool: with its descendants named, a sound package is a success even with \": \" in a name",
+              clean.extracted == ["Demo.app"] && clean.failed.isEmpty, "\(clean)")
+
+        let colon = ArchiveToolVerdict.attribute(log: "x d/a: b.txt", members: [spelling("d/a: b.txt"), spelling("d/a")])
+        check("archive tool: a name containing \": \" is a success, not a failure of a shorter name",
+              colon.extracted == ["d/a: b.txt"] && colon.failed.isEmpty, "\(colon)")
+
+        let stray = ArchiveToolVerdict.attribute(log: "x d/a.txt\nsomething bsdtar never said", members: [spelling("d/a.txt")])
+        check("archive tool: an unrecognised line makes the whole verdict untrustworthy",
+              !stray.isTrustworthy && stray.unrecognized == ["something bsdtar never said"])
     }
 
     /// Stage 3: the central-directory reader's pieces, without any archive.

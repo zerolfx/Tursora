@@ -24,6 +24,9 @@ struct ArchiveTree {
         /// bsdtar rewrites, e.g. `/etc/evil.txt` is the member and
         /// `etc/evil.txt` is the path.
         let member: String
+        /// The archive's own spelling, unescaped. What bsdtar names in a log
+        /// line, and how a member whose spelling bsdtar rewrites is recognised.
+        let rawName: String
         let kind: ArchiveEntrySummary.Kind
         let uncompressedSize: Int64
         /// A bundle, decided by extension. It has to be extracted whole or the
@@ -91,6 +94,7 @@ struct ArchiveTree {
             let node = Node(name: normalized.components.last ?? entry.name,
                             path: path,
                             member: Self.escapeMember(entry.name),
+                            rawName: entry.name,
                             kind: entry.kind,
                             uncompressedSize: entry.uncompressedSize,
                             isPackage: entry.kind == .directory && Self.isPackage(path),
@@ -173,6 +177,209 @@ struct ArchiveTree {
 
     var isEmpty: Bool { nodes.isEmpty }
     var count: Int { nodes.count }
+
+    // MARK: - Stage 2 batch plans
+
+    /// Everything one batch will ask bsdtar for, in at most three runs: leaves
+    /// one by one with `-n`, packages whole, and one directory selection.
+    struct BatchPlan: Equatable {
+        var leaves: [ArchiveMemberSpelling] = []
+        var packages: [ArchiveMemberSpelling] = []
+        var packageExcludes: [String] = []
+        var selection: ArchiveTool.DirectorySelection?
+        /// What the selection is expected to write.
+        var selected: [ArchiveMemberSpelling] = []
+        var bytes: Int64 = 0
+
+        var isEmpty: Bool { leaves.isEmpty && packages.isEmpty && selected.isEmpty }
+        /// Every path this batch may publish.
+        var publishes: [String] { (leaves + packages + selected).map(\.path) }
+    }
+
+    /// Past this many requested files that are also most of their folder, one
+    /// directory selection beats a member list: `-T` matching costs about
+    /// 14 ns per (archive entry × pattern), so 20,000 names against a 50,000-
+    /// entry archive take seconds to match before a byte is written (measured).
+    static let selectionThreshold = 256
+
+    func spelling(of node: Node) -> ArchiveMemberSpelling {
+        ArchiveMemberSpelling(path: node.path, raw: node.rawName, escaped: node.member)
+    }
+
+    /// Whether bytes for this path may be published under the root. Never under
+    /// a symbolic link — extracting into empty staging bypasses bsdtar's own
+    /// "Cannot extract through symlink" check, so publication must refuse it
+    /// itself — and never for something inside a package, which arrives with
+    /// its package in one piece.
+    func isReachable(_ path: String) -> Bool {
+        let key = Self.key(path)
+        guard let node = nodes[key], node.isExtractable, !node.insidePackage else { return false }
+        var ancestor = Self.parent(of: key)
+        while !ancestor.isEmpty {
+            guard let parent = nodes[ancestor], parent.isDirectory, !parent.isPackage,
+                  parent.kind != .symbolicLink, parent.isExtractable else { return false }
+            ancestor = Self.parent(of: ancestor)
+        }
+        return true
+    }
+
+    /// A package and every entry inside it, each spelled as bsdtar will name it
+    /// and all attributed to the package, so its log lines match exactly.
+    func packageSpellings(_ package: String) -> [ArchiveMemberSpelling] {
+        let key = Self.key(package)
+        let prefix = key + "/"
+        return nodes.values.filter { $0.path == key || $0.path.hasPrefix(prefix) }
+            .map { ArchiveMemberSpelling(path: key, raw: $0.rawName, escaped: $0.member) }
+    }
+
+    /// Everything a package holds, for sizing a request before it runs.
+    func packageBytes(_ path: String) -> Int64 {
+        let prefix = Self.key(path) + "/"
+        return nodes.values.filter { $0.kind == .file && $0.path.hasPrefix(prefix) }
+            .reduce(Int64(0)) { $0 + $1.uncompressedSize }
+    }
+
+    /// A member bsdtar will not match through a directory include: measured,
+    /// include `big` takes `./big/x`, `big//x` and `big/[x]`, but not `/big/x`
+    /// or `C:/big/x`. Such a member is always asked for by name.
+    private static func isIrregular(_ node: Node) -> Bool {
+        let raw = node.rawName
+        if raw.hasPrefix("/") { return true }
+        let characters = Array(raw)
+        return characters.count >= 2 && characters[1] == ":" && characters[0].isLetter
+    }
+
+    /// One folder's direct files, in one directory selection. For prefetching
+    /// the folder the user is looking at.
+    func prefetchPlan(for directory: String, skipping published: Set<String> = []) -> BatchPlan {
+        var plan = BatchPlan()
+        guard let children = children(of: directory) else { return plan }
+        var excludes: [String] = []
+        var skippedCount = 0
+        for child in children {
+            guard child.isExtractable else { excludes.append(child.member); continue }
+            guard !published.contains(child.path) else {
+                if child.kind == .file { excludes.append(child.member); skippedCount += 1 }
+                continue
+            }
+            if child.isPackage {
+                plan.packages.append(spelling(of: child))
+                plan.packageExcludes += inertMembers(inside: child.path)
+                plan.bytes += packageBytes(child.path)
+            } else if child.kind == .file {
+                if Self.isIrregular(child) { plan.leaves.append(spelling(of: child)) }
+                else { plan.selected.append(spelling(of: child)) }
+                plan.bytes += child.uncompressedSize
+            }
+        }
+        // When most of the folder is already here, naming the rest is cheaper
+        // than excluding what is here.
+        if !plan.selected.isEmpty, skippedCount > plan.selected.count {
+            plan.leaves += plan.selected
+            plan.selected = []
+        }
+        if !plan.selected.isEmpty {
+            let include = Self.key(directory).isEmpty ? nil : Self.escapeMember(Self.key(directory))
+            plan.selection = ArchiveTool.directSelection(of: include, excluding: excludes)
+        }
+        return plan
+    }
+
+    /// A folder and everything below it, for copying or dragging it out whole.
+    /// Its subfolders are already in the skeleton; this fills them.
+    func subtreePlan(for directory: String, skipping published: Set<String> = []) -> BatchPlan {
+        let key = Self.key(directory)
+        var plan = BatchPlan()
+        if let node = nodes[key], node.isPackage {
+            guard node.isExtractable, !published.contains(key) else { return plan }
+            plan.packages = [spelling(of: node)]
+            plan.packageExcludes = inertMembers(inside: key)
+            plan.bytes = packageBytes(key)
+            return plan
+        }
+        guard key.isEmpty || nodes[key]?.isDirectory == true else { return plan }
+        let prefix = key.isEmpty ? "" : key + "/"
+        var excludes: [String] = []
+        for node in nodes.values where key.isEmpty || node.path.hasPrefix(prefix) {
+            guard node.isExtractable else { excludes.append(node.member); continue }
+            guard !node.insidePackage, !published.contains(node.path) else { continue }
+            if node.isPackage {
+                plan.packages.append(spelling(of: node))
+                plan.packageExcludes += inertMembers(inside: node.path)
+                plan.bytes += packageBytes(node.path)
+            } else if node.kind == .file {
+                if Self.isIrregular(node) { plan.leaves.append(spelling(of: node)) }
+                else { plan.selected.append(spelling(of: node)) }
+                plan.bytes += node.uncompressedSize
+            }
+        }
+        // Packages are extracted in their own run; keep them out of this one.
+        excludes += plan.packages.map(\.escaped)
+        if !plan.selected.isEmpty {
+            plan.selection = ArchiveTool.DirectorySelection(include: key.isEmpty ? nil : Self.escapeMember(key),
+                                                            excludes: excludes.sorted())
+        }
+        plan.leaves.sort { $0.path < $1.path }
+        plan.packages.sort { $0.path < $1.path }
+        plan.selected.sort { $0.path < $1.path }
+        return plan
+    }
+
+    /// Specific entries, for Open, Copy, Quick Look and the like. Files are
+    /// asked for by name; a package comes whole; a folder brings its subtree.
+    func batchPlan(for paths: [String], skipping published: Set<String> = []) -> BatchPlan {
+        var plan = BatchPlan()
+        var seen = Set<String>()
+        var fileGroups: [String: [Node]] = [:]
+        for path in paths {
+            let key = Self.key(path)
+            guard seen.insert(key).inserted, let node = nodes[key], isReachable(key),
+                  !published.contains(key) else { continue }
+            if node.isPackage {
+                plan.packages.append(spelling(of: node))
+                plan.packageExcludes += inertMembers(inside: key)
+                plan.bytes += packageBytes(key)
+            } else if node.isDirectory {
+                let sub = subtreePlan(for: key, skipping: published)
+                plan.leaves += sub.leaves
+                plan.packages += sub.packages
+                plan.packageExcludes += sub.packageExcludes
+                plan.bytes += sub.bytes
+                if plan.selection == nil, sub.selection != nil {
+                    plan.selection = sub.selection
+                    plan.selected = sub.selected
+                } else {
+                    plan.leaves += sub.selected
+                }
+            } else if node.kind == .file {
+                fileGroups[Self.parent(of: key), default: []].append(node)
+                plan.bytes += node.uncompressedSize
+            }
+        }
+        // A large request that is most of one folder becomes that folder's
+        // selection; everything else is named.
+        let folderFiles: (String) -> Int = { self.children(of: $0)?.filter { $0.kind == .file && $0.isExtractable }.count ?? 0 }
+        let best = fileGroups.filter { $0.value.count >= Self.selectionThreshold
+                                       && $0.value.count * 2 >= folderFiles($0.key) }
+            .max { $0.value.count < $1.value.count }
+        for (folder, group) in fileGroups {
+            if plan.selection == nil, let best, best.key == folder {
+                let requested = Set(group.map(\.path))
+                let excluded = (children(of: folder) ?? [])
+                    .filter { $0.kind == .file && (!$0.isExtractable || !requested.contains($0.path)) }
+                    .map(\.member)
+                let regular = group.filter { !Self.isIrregular($0) }
+                plan.leaves += group.filter(Self.isIrregular).map(spelling(of:))
+                plan.selected = regular.map(spelling(of:))
+                plan.selection = ArchiveTool.directSelection(of: folder.isEmpty ? nil : Self.escapeMember(folder),
+                                                             excluding: excluded)
+            } else {
+                plan.leaves += group.map(spelling(of:))
+            }
+        }
+        plan.leaves.sort { $0.path < $1.path }
+        return plan
+    }
 
     /// What to extract to make one directory's own listing complete: its files,
     /// and any package among its children, which must come whole.
@@ -292,7 +499,7 @@ struct ArchiveTree {
             guard nodes[path] == nil else { continue }
             order.append(path)
             nodes[path] = Node(name: component, path: path, member: escapeMember(path),
-                               kind: .directory, uncompressedSize: 0,
+                               rawName: path, kind: .directory, uncompressedSize: 0,
                                isPackage: isPackage(path), inertReason: nil, insidePackage: false,
                                childCount: 0, modificationDate: nil)
         }
@@ -300,7 +507,7 @@ struct ArchiveTree {
 
     private static func marked(_ node: Node, package: Bool? = nil, insidePackage: Bool? = nil,
                                childCount: Int? = nil) -> Node {
-        Node(name: node.name, path: node.path, member: node.member, kind: node.kind,
+        Node(name: node.name, path: node.path, member: node.member, rawName: node.rawName, kind: node.kind,
              uncompressedSize: node.uncompressedSize, isPackage: package ?? node.isPackage,
              inertReason: node.inertReason, insidePackage: insidePackage ?? node.insidePackage,
              childCount: childCount ?? node.childCount, modificationDate: node.modificationDate)
