@@ -46,6 +46,12 @@ Finally it atomically creates a new `v<version>` tag at that exact commit and pu
 
 Tag creation and release creation are separate GitHub operations. If publishing fails after the tag is created, a normal rerun will reject the existing tag. Inspect the exact tag SHA and the successful run's verified assets before completing that same release; do not move/delete a published tag or rebuild different bytes under an existing version to bypass the check.
 
+## 0.5.0 preparation (2026-09-25)
+
+The ZIP browsing rework — a ZIP is listed from its table of contents and never extracted to be browsed — together with New Folder opening its name for editing, an optional Return-as-Open command, cancellable extraction and the Terminal button being withdrawn when the panel is off. [0.5.0 is published](https://github.com/zerolfx/Tursora/releases/tag/v0.5.0) from `7fd6453d9598214952f7b1f8341f4ce4244858e1`, build `1790336930`, by [Release 36131960552](https://github.com/zerolfx/Tursora/actions/runs/36131960552).
+
+Both the local release bundle and the published binary were run on a fixture ZIP with a 200 MB member before and after publication; neither wrote the member to disk to list it. The progress bar mid-extraction, the Terminal button's withdrawal and Return bound to Open were not seen on screen. See [the 0.5.0 record](research/release-0.5.0.md).
+
 ## 0.4.3 preparation (2026-09-17)
 
 Three defects reported against 0.4.2, all introduced during the 0.4.1 column-view work: a narrow column lost the filename entirely, **Set Tursora as Default** failed with the system's "The file couldn't be opened.", and the settings push buttons stretched the full width of the pane. [0.4.3 is published](https://github.com/zerolfx/Tursora/releases/tag/v0.4.3) from `fc4766fc97614fa76686492cce99f2b04092d345`, build `1789645346`, by [Release 35217600481](https://github.com/zerolfx/Tursora/actions/runs/35217600481).
