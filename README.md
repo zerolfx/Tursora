@@ -63,6 +63,8 @@ Tursora is an early project and does not yet cover everything Finder can do. The
 
 The features below are in the latest release. See the [version history](CHANGELOG.md) for released changes. Click a screenshot to view it at full size. Key combinations below are the defaults; customize application commands in **Settings → Shortcuts**.
 
+**In the current source, not yet released:** View Options (`⌘J`) and remembered column widths; New Folder undo and more selection/file commands; cancellable ZIP compression; a Recently Closed Tabs menu; and restored selection/scroll positions. The final source passed three consecutive 5,400-assertion smoke runs and a signed release build. The [2026-09-26 roadmap entry](docs/ROADMAP.md#implemented-extension-everyday-commands-and-continuity-2026-09-26) links the automated results and the separately recorded packaged-app observations.
+
 <table>
   <thead>
     <tr><th align="left" width="42%">Feature</th><th align="left" width="58%">Screenshot</th></tr>
@@ -220,15 +222,15 @@ These are current gaps, not promises of complete Finder parity:
 |---|---|
 | Views | Gallery view, free icon placement |
 | Search | Finder Smart Folder interoperability, Tags / rating conditions, ZIP contents |
-| Organization | Batch rename, New Folder with Selection, Make Alias / Show Original, Show Package Contents |
+| Organization | Make Alias / Show Original; the unreleased source adds New Folder with Selection and Show Package Contents |
 | Trash | Browsing Trash, Put Back, emptying Trash; moving files to Trash and undoing that move are supported |
-| Customization | Finder's full View Options dialog, column-layout memory and toolbar customization |
+| Customization | Full Finder View Options parity, free icon placement, recursive view-setting application and toolbar customization; the unreleased source adds supported View Options controls and width memory |
 | System integration | Quick Actions, Services and FinderSync cloud status badges |
 | File information | Full ACL editing, owner/group changes and recursive permission application |
 
 **Outside the design:** file tags and Import from iPhone. These are intentionally excluded, rather than items waiting to be implemented.
 
-Tursora currently has an English interface. Workspace restoration keeps locations and layout; filters, selection, scroll position, navigation history, closed tabs, terminal sessions, transfers and undo history do not survive quitting. Missing folders remain at their original paths with an inline error; restoration does not reconnect servers. Implementation and verification are tracked in the [workspace session record](docs/research/workspace-sessions.md). See the [Finder comparison](docs/gaps/GAP-vs-FINDER.md), [Dolphin comparison](docs/gaps/GAP-vs-DOLPHIN.md) and [roadmap](docs/ROADMAP.md) for the detailed status.
+Tursora currently has an English interface. Workspace restoration keeps locations and layout; the unreleased source also restores selection and scroll positions. Filters, navigation history, closed tabs, terminal sessions, transfers and undo history do not survive quitting. Missing folders remain at their original paths with an inline error; restoration does not reconnect servers. The [workspace session record](docs/research/workspace-sessions.md) covers the original behavior, and the [continuity record](docs/research/workspace-continuity-2026-09-26.md) records the extension and its verification. See the [Finder comparison](docs/gaps/GAP-vs-FINDER.md), [Dolphin comparison](docs/gaps/GAP-vs-DOLPHIN.md) and [roadmap](docs/ROADMAP.md) for the detailed status.
 
 ## Get Tursora
 

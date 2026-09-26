@@ -18,6 +18,23 @@ struct DirectoryViewProperties: Codable, Equatable {
     var listColumns: [String] = Self.defaultListColumns
     /// Finder's "Calculate all sizes" (ViewOptionsWindow.nib); off by default.
     var calculateAllSizes = false
+    /// Explicit user sizes only. Automatic layout must not create a record.
+    var listColumnWidths: [String: Double] = [:]
+    /// Widths by depth from this pane's column root, matching NSBrowser's
+    /// depth-based sizing; they are not settings for each descendant folder.
+    var columnViewWidths: [Double] = []
+
+    static func normalizedListColumnWidths(_ widths: [String: Double]) -> [String: Double] {
+        let known = Set(["name", "dateModified", "dateCreated", "dateLastOpened", "dateAdded", "size", "kind", "location"])
+        return widths.reduce(into: [:]) { result, pair in
+            guard known.contains(pair.key), pair.value.isFinite else { return }
+            result[pair.key] = min(1600, max(pair.key == "name" ? 180 : 60, pair.value))
+        }
+    }
+
+    static func normalizedColumnViewWidths(_ widths: [Double]) -> [Double] {
+        widths.prefix(64).map { $0.isFinite ? min(1200, max(100, $0)) : 245 }
+    }
 
     /// What a folder shows before anyone changes its columns: Finder's three
     /// default list columns beside Name.
@@ -50,13 +67,15 @@ struct DirectoryViewProperties: Codable, Equatable {
         // Sorted and deduplicated so two equal column sets compare equal and
         // a reordering alone never counts as an effective user change.
         result.listColumns = Array(Set(listColumns)).sorted()
+        result.listColumnWidths = Self.normalizedListColumnWidths(listColumnWidths)
+        result.columnViewWidths = Self.normalizedColumnViewWidths(columnViewWidths)
         return result
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, detailsZoomIndex, iconsZoomIndex, columnsZoomIndex, sortKey, ascending
         case groupKey, lastGroupKey, showHidden, showPreviews
-        case listColumns, calculateAllSizes
+        case listColumns, calculateAllSizes, listColumnWidths, columnViewWidths
     }
 
     init(from decoder: Decoder) throws {
@@ -89,6 +108,12 @@ struct DirectoryViewProperties: Codable, Equatable {
             listColumns = Array(Set(value)).sorted()
         }
         if let value = try? values.decode(Bool.self, forKey: .calculateAllSizes) { calculateAllSizes = value }
+        if let value = try? values.decode([String: Double].self, forKey: .listColumnWidths) {
+            listColumnWidths = Self.normalizedListColumnWidths(value)
+        }
+        if let value = try? values.decode([Double].self, forKey: .columnViewWidths) {
+            columnViewWidths = Self.normalizedColumnViewWidths(value)
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -106,6 +131,8 @@ struct DirectoryViewProperties: Codable, Equatable {
         try values.encode(value.showPreviews, forKey: .showPreviews)
         try values.encode(value.listColumns, forKey: .listColumns)
         try values.encode(value.calculateAllSizes, forKey: .calculateAllSizes)
+        try values.encode(value.listColumnWidths, forKey: .listColumnWidths)
+        try values.encode(value.columnViewWidths, forKey: .columnViewWidths)
     }
 }
 

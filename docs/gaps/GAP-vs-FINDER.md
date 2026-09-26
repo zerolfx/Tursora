@@ -14,12 +14,12 @@ How the estimates were made: 7 agents, one per category, estimated every item ag
 | **Get Info** (⌘I) / Show Inspector (⌥⌘I) / Get Summary Info (⌃⌘I) | ✅ Done | — | General / Preview are expanded by default and the rest collapsed, and an explicit choice is remembered; [evidence](../research/info-disclosures.md). Not done: Stationery pad, ACLs, changing owner/group (needs elevated privileges and has no public API → counted separately as L), Apply to enclosed items |
 | **Rename (a multi-selection opens the batch rename dialog)** | ✅ Done | — | Three modes — replace text / add text / format — plus a live preview; chained renames go through temporary names in two passes; for the wording evidence and what is inferred see [batch rename](../research/finder-batch-rename.md) |
 | **New Folder** (⇧⌘N), with the new folder's name opened for editing | ✅ Done | — | The folder is created, selected, scrolled into view and its name opened for editing in all three views; Escape keeps "untitled folder". Sourced from Finder's own binary — `setPendingNodesToSelect:startEditing:runNewFolderAnimation:renameOp:` and the per-view `startEditing…` entry points; see [the record](../research/finder-new-folder-rename.md) for what is certain and what is inferred |
-| **Undo / Redo New Folder** (Finder strings `NF1` / `NF2`) | ❌ | S | `newFolder()` registers nothing with the window's undo manager, so ⌘Z after creating a folder undoes whatever came before it. Trashing the folder is the obvious undo action, as `registerUndoTrash` already does for Extract |
-| **New Folder with Selection** (⌃⌘N) | ❌ | S | createDirectory plus the existing transfer; undo has to be combined into one group |
+| **Undo / Redo New Folder** (Finder strings `NF1` / `NF2`) | ✅ Implemented | — | Creation registers its own Trash-backed undo/redo; [current scope and verification](../research/everyday-commands-2026-09-26.md) |
+| **New Folder with Selection** (⌃⌘N) | ✅ Implemented | — | Creates an ordinary-folder destination, moves the selection through the task engine and registers one undo journal; unrelated new contents block folder removal |
 | **Compress** / Compress with password | Plain ZIP ✅; password ❌ | M for the password | Compress / extract keep colliding names and support undo and redo; the optional read-only ZIP browsing in the current pane is enabled by default (the browsing interaction follows Windows) |
 | **Make Alias** (⌃⌘A) / Show Original (⌘R) | ❌ | M | `URL.bookmarkData(options: .suitableForBookmarkFile)` plus `writeBookmarkData`; ⌘R clashes with our Reload |
 | Always Open With (⌥ with Open With) | ❌ | S | `setDefaultApplication(at:toOpen:)` (already used by Change All in Get Info); the context menu has to keep the alternate pair |
-| **Show Package Contents** | ❌ | S | Right-click a .app and navigate straight into the bundle directory |
+| **Show Package Contents** | ✅ Implemented | — | File/context command enters a single local package directory; unavailable inside ZIPs or Trash |
 | Add to Dock | ❌ | M | The only route is writing `com.apple.dock.plist` and restarting the Dock, and the format is undocumented |
 | Print | ❌ | S | `NSWorkspace.open(_:withApplicationAt:configuration:)` lets the default application print it, with no receipt |
 | Share… | ✅ The system share picker in the toolbar | — | Shares the files selected in the active pane; it does not send anything itself |
@@ -33,9 +33,9 @@ How the estimates were made: 7 agents, one per category, estimated every item ag
 
 | Finder | Tursora | Difficulty | Notes |
 |---|---|---|---|
-| **Move Items Here** (⌥⌘V) | ❌ | S | transfer(.move) already exists; make it the ⌥ alternate of Paste |
+| **Move Items Here** (⌥⌘V) | ✅ Implemented | — | Paste alternate moves copied file URLs through the transfer task; ZIP sources are refused and a changed clipboard is preserved |
 | Paste Exactly / Duplicate Exactly (⌥) | ❌ | M | Preserving owner and permissions needs `NSWorkspace.requestAuthorization(to: .replaceFile)`, and the asynchronous authorization has to be joined to the existing transfer queue |
-| **Deselect All** (⌥⌘A) | ❌ | S | A few lines; unavailable while the sidebar or the address bar has focus (the same as Finder) |
+| **Deselect All** (⌥⌘A) | ✅ Implemented | — | File-view focus only; works in all three views. In columns it explicitly clears the root selection and dependent columns |
 | Show Clipboard | ❌ | M | A window listing the URLs on the clipboard, refreshed on a timer |
 
 ## View menu
@@ -45,7 +45,7 @@ How the estimates were made: 7 agents, one per category, estimated every item ag
 | **as Columns** (⌘3) | ✅ | — | `NSBrowser` in item mode with the last column previewing a file through the preview pane's renderer; bound to ⌥⌘3 because ⌘3 is tab 3. Selecting never navigates, unlike Finder (D84). Packaged-app observations are tracked in the versioned release research records |
 | as Gallery (⌘4) | ⛔ | — | Not planned: the owner excluded gallery view on 2026-09-16, along with file and folder comparison, after the Iruka comparison round |
 | **Show Preview** (⇧⌘P, the preview pane on the right) | ✅ | — | A pane docked beside the file view, following the selection and surviving navigation and a quit; Markdown is rendered rather than shown as plain text, which Quick Look does not do (D81, D83). Thumbnails moved to ⌃⌘P so the pane could take Finder's key (D82) |
-| **Show View Options** (⌘J, per-folder view settings) | Per-directory persistence ✅; the full Finder-style dialog ❌ | M for the dialog | The existing mode / sorting / the zoom step of each of the three views / grouping / hidden files / previews are saved per directory; View and Settings have entry points for the policy, the default and a reset. The app uses a private path store and does not write `.DS_Store`; there is no ⌘J, no remembered column widths and no free-placement settings |
+| **Show View Options** (⌘J, per-folder view settings) | ✅ Implemented for supported settings | — | Modeless panel for the active tab/pane, including defaults and reset; list/column widths follow the private folder store. Free placement and recursive apply remain absent; [scope and verification](../research/view-options-2026-09-26.md) |
 | Clean Up / Snap to Grid / free icon placement | ❌ | L | The icon view would change from a flow grid to a free layout with per-folder coordinates persisted; a drag inside NSCollectionView is currently rejected as a file drop |
 | Toolbar (⌥⌘T) / Path Bar (⌥⌘P) / Status Bar (⌘/) / Tab Bar (⇧⌘T) toggles | Sidebar only | M | Simple in itself; ⇧⌘T clashes with our "reopen closed tab" |
 | **Customize Toolbar…** | ❌ | M | `allowsUserCustomization = true` plus more allowed items; the delegate currently also keeps a reference to the palette's copy, which has to change |
@@ -88,9 +88,9 @@ The Dock already offers three entry points — New Window / Downloads / Applicat
 
 ## Suggested order (by cost)
 
-1. S: Deselect All, Move Items Here, aligning Copy as Pathname, New Folder with Selection, Show Package Contents, Always Open With, Print, Slideshow, Eject All, the Go menu shortcuts, Cycle Through Windows, the Services menu, alias resolution
+1. S: Aligning Copy as Pathname, Always Open With, Print, Slideshow, Eject All, the Go menu shortcuts, Cycle Through Windows, the Services menu, alias resolution
 2. M: Make Alias / Show Original, Recent Folders, Customize Toolbar, the bar toggles, Show All Tabs, Merge Windows, the warning when an extension changes, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (each one is already configurable individually)
-3. L: The Date Created / Date Added / Date Last Opened sort keys and the optional list columns with folder sizes are done ([record](../research/sort-columns-folder-sizes.md); the Version / Comments / Tags columns and persisting column widths are still not implemented). The full preference policy, free icon placement, per-volume trash, Quick Actions, Chinese localization, server discovery / history / reconnect; the full Show View Options dialog is listed separately as M (per-directory persistence is implemented)
+3. L: The Date Created / Date Added / Date Last Opened sort keys and the optional list columns with folder sizes are done ([record](../research/sort-columns-folder-sizes.md); the Version / Comments / Tags columns are still not implemented). The full preference policy, free icon placement, per-volume trash, Quick Actions, Chinese localization, server discovery / history / reconnect; the supported View Options panel and column-width memory are implemented, while free placement remains separate
 4. XL / not recommended: Customize Folder, Smart Folders, FinderSync badges
 
 ## 2026-09-12 update
@@ -100,7 +100,7 @@ The Dock already offers three entry points — New Window / Downloads / Applicat
 - [x] Copy / Move / Duplicate as separate progress tasks, supporting pause / resume / cancel part way through a large transfer, a safe Replace and undo of the items that succeeded; for the verification scope and the boundary of system calls that cannot be paused see the [dedicated record](../research/file-operation-tasks.md).
 - [x] Connect to Server (⌘K) and browsing / ejecting network volumes mounted by the system; interoperability with a real server has not been tested yet.
 - [x] A basic settings window, the switch for showing extensions, and a customizable shortcut for the name filter.
-- [x] Per-directory view memory, one shared default, saving the current settings as the default and restoring a directory's default; both the list and the icons are saved, and the full Finder view options dialog is still not implemented. For the automated and on-device verification see the [directory view verification record](../research/computer-use-2026-09-12-directory-views.md).
+- [x] Per-directory view memory, one shared default, saving the current settings as the default and restoring a directory's default; both the list and the icons were saved in this historical stage. The supported View Options panel and width memory arrived in the 2026-09-26 extension below; full Finder parity remains outside this implementation. For the automated and on-device verification see the [directory view verification record](../research/computer-use-2026-09-12-directory-views.md).
 - [x] The terminal panel enabled by default, and the experiment with read-only ZIP browsing in the current pane; an archive supports copying / dragging out, Quick Look and sharing — each extracting only what it needs, since listing a folder extracts nothing — but not writing back.
 - Tags and Import from iPhone are product boundaries that are explicitly out of scope.
 
@@ -124,3 +124,11 @@ The Dock already offers three entry points — New Window / Downloads / Applicat
 - [x] Failed directory listings clear stale icon and grouped-list rows.
 - [x] ZIP Drag/Share report incomplete exports, including a repeated attempt after failure.
 - Automated and packaged-app verification for this change is recorded separately in [the reliability record](../research/reliability-2026-09-26.md).
+
+## Everyday commands and continuity, 2026-09-26
+
+- [x] New Folder Undo/Redo, New Folder with Selection, Move Items Here, Deselect All and Show Package Contents.
+- [x] A modeless View Options panel and remembered list/column widths; no claim of every Finder option.
+- [x] Cancellable ZIP compression with staging-byte progress and indeterminate ZIP creation.
+- [x] Batch numbering/ancestor safety, successful-reload error clearing and selected-preview refresh.
+- The final source passed three consecutive full smoke runs and a signed release build. The [everyday commands](../research/everyday-commands-2026-09-26.md), [View Options](../research/view-options-2026-09-26.md), [compression](../research/compression-tasks-2026-09-26.md) and [workspace continuity](../research/workspace-continuity-2026-09-26.md) records distinguish automated coverage from the actual packaged-app observations; these ticks do not claim complete Finder parity.

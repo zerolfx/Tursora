@@ -5,12 +5,16 @@ Start with the behavior, architecture or workflow document for your task, then u
 | Read this when… | Document |
 |---|---|
 | you need the intended behaviour of a feature | [SPEC.md](SPEC.md) — v1 spec, each section states whether it matches Dolphin or Finder |
-| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D108 |
+| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D113 |
 | you are changing code | [ARCHITECTURE.md](ARCHITECTURE.md) — object graph, per-file map, data flows, notifications, persistence, threading |
 | you are building, testing or releasing | [DEVELOPMENT.md](DEVELOPMENT.md) — toolchain, smoke test, conventions, AppKit pitfalls, release checklist |
 | you are editing or previewing the bilingual product site | [site/README.md](../site/README.md) — English default, Chinese page, shared workflows/screenshots, Python static build and browser checks; [architecture](ARCHITECTURE.md#product-page) |
 | you need a key binding or menu item | [SHORTCUTS.md](SHORTCUTS.md) — every shortcut, menu, gesture and drag rule |
 | you are checking the 2026-09-26 reliability fixes and completion/refactoring work | [research/reliability-2026-09-26.md](research/reliability-2026-09-26.md) — scope, regression checks and packaged-app verification |
+| you are checking everyday commands, New Folder undo or batch safety | [research/everyday-commands-2026-09-26.md](research/everyday-commands-2026-09-26.md) — command boundaries, one-group undo, numbering/ancestor validation and current verification |
+| you are changing View Options or remembered column widths | [research/view-options-2026-09-26.md](research/view-options-2026-09-26.md) — active-pane panel, native resize hooks, width migration and Finder resource evidence |
+| you are changing compression tasks or shared-read cancellation | [research/compression-tasks-2026-09-26.md](research/compression-tasks-2026-09-26.md) — staging versus ZIP creation, cancellation/publication boundaries and subscriber independence |
+| you are changing launch-restored selection/scroll or the recent-tab menu | [research/workspace-continuity-2026-09-26.md](research/workspace-continuity-2026-09-26.md) — optional pane state, delayed restoration and the session-local closed-tab pool |
 | you want to understand the smoke-check count or consolidation | [research/smoke-suite-review-2026-09-26.md](research/smoke-suite-review-2026-09-26.md) — original count breakdown, implemented consolidation, timings and coverage boundaries |
 | you are choosing what to do next | [ROADMAP.md](ROADMAP.md), then [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) and [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md) with difficulty estimates |
 | you are changing file-operation tasks or their lifecycle | [research/file-operation-tasks.md](research/file-operation-tasks.md) — Dolphin routing evidence, transfer boundaries, adversarial review and verification |

@@ -144,6 +144,9 @@ enum BatchRename {
     /// The new name for every entry, in order. Extensions survive every mode
     /// except Replace Text, which — like Finder — rewrites the whole name.
     static func plan(_ entries: [Entry], mode: Mode) -> [String] {
+        // A live preview is constructed before the user can press Rename.
+        // Invalid numbering must never overflow while drawing that preview.
+        guard planningProblem(entries, mode: mode) == nil else { return entries.map(\.name) }
         var names = entries.enumerated().map { newName(for: $0.element, offset: $0.offset, mode: mode) }
         if case .format(.date, _, _, _) = mode { disambiguate(&names, entries: entries) }
         return names
@@ -217,10 +220,10 @@ enum BatchRename {
 
     // MARK: - Validation
 
-    /// Why a plan cannot be applied. The wording is Finder's: RN31 for a name
-    /// the system refuses, RN17 for a name already in use.
+    /// Why a plan cannot be applied. Name errors use Finder's RN31 / RN17;
+    /// sequence overflow and overlapping targets use Tursora's own wording.
     struct Problem: Equatable {
-        enum Kind { case empty, invalid, taken }
+        enum Kind { case empty, invalid, taken, overflow, overlapping }
         let kind: Kind
         /// Index of the offending item in the batch.
         let index: Int
@@ -231,8 +234,35 @@ enum BatchRename {
             case .empty: return "The name can’t be empty."
             case .invalid: return "The name “\(name)” can’t be used."
             case .taken: return "The name “\(name)” is already taken. Please choose a different name."
+            case .overflow: return "The starting number is too large for this selection."
+            case .overlapping: return "Select either a folder or its contents, then rename them separately."
             }
         }
+    }
+
+    static func planningProblem(_ entries: [Entry], mode: Mode) -> Problem? {
+        if case .format(.number, _, let start, _) = mode, !entries.isEmpty,
+           start.addingReportingOverflow(entries.count - 1).overflow {
+            return Problem(kind: .overflow, index: 0, name: entries[0].name)
+        }
+        return overlappingProblem(entries)
+    }
+
+    /// Staging a selected ancestor changes every descendant's absolute path.
+    /// Reject that plan before staging anything, even if one name is unchanged.
+    static func overlappingProblem(_ entries: [Entry]) -> Problem? {
+        let paths = entries.map { $0.directory.appendingPathComponent($0.name).standardizedFileURL.path }
+        let selected = Set(paths)
+        for (index, path) in paths.enumerated() {
+            var parent = (path as NSString).deletingLastPathComponent
+            while !parent.isEmpty, parent != path {
+                if selected.contains(parent) { return Problem(kind: .overlapping, index: index, name: entries[index].name) }
+                let next = (parent as NSString).deletingLastPathComponent
+                if next == parent { break }
+                parent = next
+            }
+        }
+        return nil
     }
 
     /// A file name may contain neither "/" (the path separator) nor ":" (the
@@ -255,6 +285,7 @@ enum BatchRename {
                          siblings: [String: Set<String>] = [:],
                          caseSensitive: Bool = false) -> Problem? {
         guard newNames.count == entries.count else { return nil }
+        if let problem = overlappingProblem(entries) { return problem }
         func fold(_ value: String) -> String { caseSensitive ? value : value.lowercased() }
 
         var leaving: [String: Set<String>] = [:]

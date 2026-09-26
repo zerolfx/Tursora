@@ -13,13 +13,17 @@ extension BrowserViewController {
         }
         searchPanel.onClear = { [weak self] in
             guard let self else { return }
+            self.pendingWorkspaceView = nil
             self.nameFilter = ""
             self.searchReloadCompletions = []
             self.searchSelection = []
             self.searchSession.clear()
             if let currentURL = self.currentURL { self.onLocationChanged?(currentURL) }
         }
-        searchPanel.onCancel = { [weak self] in self?.searchSession.cancel() }
+        searchPanel.onCancel = { [weak self] in
+            self?.pendingWorkspaceView = nil
+            self?.searchSession.cancel()
+        }
         searchPanel.onClose = { [weak self] in self?.closeSearch() }
         searchSession.onChange = { [weak self] in
             guard let self, self.isSearching else { return }
@@ -35,6 +39,10 @@ extension BrowserViewController {
                                     isRunning: status.isSearching, isError: failed)
             if !status.isSearching {
                 self.searchSelection = []
+                if case .finished = status {
+                    self.restorePendingWorkspaceView()
+                    self.host?.contentsDidChange(in: self)
+                }
                 let completions = self.searchReloadCompletions
                 self.searchReloadCompletions = []
                 completions.forEach { $0() }
@@ -96,6 +104,10 @@ extension BrowserViewController {
 
     func startSearch(_ request: SearchRequest) {
         guard !isBrowsingArchive, !isPreparingArchive else { return }
+        // A query the user started supersedes a still-restoring query even
+        // when both originate from the same pane location. Session restore
+        // assigns its own pending snapshot after calling this method.
+        pendingWorkspaceView = nil
         _ = view
         searchPanel.setShowsOptions(true)
         searchPanel.view.isHidden = false

@@ -88,6 +88,8 @@ final class DirectoryModel {
 
     var onChange: (() -> Void)?
     var onError: ((Error) -> Void)?
+    /// A successful filesystem listing, distinct from re-sorting existing rows.
+    var onLoadSuccess: (() -> Void)?
 
     func load(_ target: URL, completion: (() -> Void)? = nil) {
         isSearchResults = false
@@ -114,6 +116,7 @@ final class DirectoryModel {
                     self.allNodes = Self.merge(items, into: previous)
                     self.generation += 1
                     self.resort()
+                    self.onLoadSuccess?()
                 case .failure(let error):
                     self.folderSizes.cancel()
                     self.allNodes = []

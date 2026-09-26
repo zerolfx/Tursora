@@ -54,6 +54,7 @@ enum DirectoryLoadingSmokeTests: SmokeSuite {
             provider.fails = true
             pane.reload()
             await waitUntil("\(mode) failed listing settles") { pane.model.generation > generation }
+            check("\(mode) exposes the failed listing", pane.hasListingError)
             check("\(mode) clears primary and grouped collections",
                   pane.model.allNodes.isEmpty && pane.model.nodes.isEmpty && pane.model.groups.flatMap(\.nodes).isEmpty)
             switch mode {
@@ -73,6 +74,7 @@ enum DirectoryLoadingSmokeTests: SmokeSuite {
             let failedGeneration = pane.model.generation
             pane.reload()
             await waitUntil("\(mode) recovered listing settles") { pane.model.generation > failedGeneration }
+            check("\(mode) clears the old error after successful Reload", !pane.hasListingError)
             check("\(mode) restores consistent arrays on recovery",
                   pane.model.items.map(\.name) == ["retained.txt"]
                     && pane.model.groups.flatMap(\.nodes).map(\.item.name) == ["retained.txt"])

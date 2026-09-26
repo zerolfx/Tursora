@@ -20,6 +20,9 @@ extension WorkspacePaneState {
         if destination.standardizedFileURL == url.standardizedFileURL, let search {
             pane.startSearch(search)
         }
+        if destination.standardizedFileURL == url.standardizedFileURL, let viewState {
+            pane.pendingWorkspaceView = (destination, search != nil, viewState.sanitized())
+        }
     }
 }
 

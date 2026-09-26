@@ -22,6 +22,7 @@ extension BrowserViewController {
             report(error, context: "new folder")
             return nil
         }
+        registerUndoTrash([url], actionName: "New Folder")
         selectAndRenameCreatedFolder(url)
         DirectoryChanges.post([currentURL])
         return url
@@ -82,12 +83,22 @@ extension BrowserViewController {
     }
 
     @objc func paste(_ sender: Any?) {
+        pasteFiles(forceMove: false)
+    }
+
+    @objc func moveItemsHere(_ sender: Any?) {
+        guard hasFileViewFocus else { return }
+        pasteFiles(forceMove: true)
+    }
+
+    private func pasteFiles(forceMove: Bool) {
         guard canModifyCurrentLocation, let dest = currentURL else { return }
         let pb = NSPasteboard.general
         let urls = pb.fileURLs
         guard !urls.isEmpty else { return }
         let pasteboardGeneration = pb.changeCount
-        let isCut = Self.cutState?.changeCount == pb.changeCount
+        let isCut = forceMove || Self.cutState?.changeCount == pb.changeCount
+        guard !isCut || !urls.contains(where: isArchiveContent) else { return }
         transfer(urls, to: dest, kind: isCut ? .move : .copy) { [weak self] in
             // A later Copy/Cut belongs to a different operation.
             if isCut && pb.changeCount == pasteboardGeneration {
@@ -166,10 +177,25 @@ extension BrowserViewController {
 
     func compress(_ urls: [URL], completion: (() -> Void)? = nil) {
         guard canModifyCurrentLocation, !urls.isEmpty, let destination = currentURL else { completion?(); return }
+        let window = view.window
+        let capturedUndo = window?.undoManager
+        let task = TransferTask(sources: urls, destination: destination, kind: .compress)
+        lastCompressionTask = task
+        TransferTasksWindowController.shared.track(task, ownerWindow: window)
+        var options = compressionOptions
+        options.staging = transferOptions
         statusBar.beginBusy()
-        FileOperations.compress(urls: urls, to: destination) { [weak self] result in
-            guard let self else { completion?(); return }
-            self.finishArchive(result, destination: destination, actionName: "Compress")
+        FileOperations.compress(urls: urls, to: destination, task: task, options: options) { [self] result in
+            switch result {
+            case .success(let url):
+                if let capturedUndo { self.registerUndoTrash([url], actionName: "Compress", undo: capturedUndo) }
+                if self.currentURL?.standardizedFileURL == destination.standardizedFileURL {
+                    self.model.reload { [weak self] in self?.fileView.select(urls: [url]) }
+                }
+                DirectoryChanges.post([destination])
+            case .failure(ArchiveBrowsingSession.SessionError.cancelled), .failure(TransferError.cancelled): break
+            case .failure(let error): self.report(error, context: "compress")
+            }
             self.statusBar.endBusy()
             completion?()
         }
@@ -280,8 +306,9 @@ extension BrowserViewController {
         transfer(urls, to: destination, kind: op == .copy ? .copy : .move)
     }
 
-    private func transfer(_ urls: [URL], to destination: URL, kind: FileOperations.Kind,
+    func transfer(_ urls: [URL], to destination: URL, kind: FileOperations.Kind,
                           actionName: String? = nil, duplicateInPlace: Bool = false,
+                          createdDirectoryForUndo: URL? = nil,
                           then: (() -> Void)? = nil) {
         guard !ArchiveWorkspace.shared.containsArchiveLocation(destination), !urls.isEmpty else { return }
         if kind == .move && urls.contains(where: isArchiveContent) { return }
@@ -333,7 +360,12 @@ extension BrowserViewController {
             // even if the originating tab was closed or another pane is active.
             lease?.release()
             self.statusBar.endBusy()
-            if let journal = result.journal, let capturedUndo {
+            var journal = result.journal
+            if let folder = createdDirectoryForUndo {
+                do { journal = try FileOperations.journalIncludingCreatedDirectory(folder, after: journal) }
+                catch { self.report(error, context: "record new folder undo") }
+            }
+            if let journal, let capturedUndo {
                 self.registerTransferUndo(journal, undo: capturedUndo, actionName: name)
             }
             let created = result.created + result.moved.map(\.to)

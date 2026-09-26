@@ -4,8 +4,20 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Added
+
+- **View → Show View Options (⌘J)** gathers view mode, sorting, grouping, icon size, preview and column controls in a panel that follows the active pane. List and column-view widths are remembered with folder settings, with default and reset actions.
+- **Move Items Here (⌥⌘V)**, **Deselect All (⌥⌘A)**, **Invert Selection**, **New Folder with Selection (⌃⌘N)** and **Show Package Contents** fill out everyday file commands across the three views.
+- **File → Recently Closed Tabs** lets you choose from the current window's ten retained tabs. Launch restoration also restores selections and scroll positions after their listings are ready.
+- **Compress** now appears in File Operations with Cancel during input staging and ZIP creation. Staging shows copied input bytes; ZIP creation shows an indeterminate indicator.
+
 ### Fixed
 
+- Changing zoom, icon previews or recursive folder-size calculation keeps the selected files and scroll position.
+- New Folder registers its own Undo/Redo, and New Folder with Selection groups the folder and moved items into one undo operation.
+- Batch rename rejects overflowing sequence numbers and overlapping parent/child selections before changing files.
+- A successful directory reload clears previous errors, and external edits refresh the selected Markdown preview.
+- Cancelling a subscriber waiting on a shared ZIP extraction no longer delivers bytes afterward or cancels another subscriber's work.
 - Renaming one file, including Undo and Redo, refuses to overwrite an existing item. Case-only renames still work.
 - Moving several items to Trash keeps Undo and Put Back for the items that succeeded even when another item fails.
 - Dragging or sharing a folder from a ZIP reports unreadable members instead of delivering an incomplete folder as a successful export.

@@ -175,6 +175,10 @@ final class IconGridViewController: NSViewController, FileViewing, NSCollectionV
         collectionView.selectionIndexPaths.sorted().compactMap { shownItems[$0] }
     }
 
+    var selectionScopeItems: [FileItem] {
+        shownItems.keys.sorted().compactMap { shownItems[$0] }
+    }
+
     var clickedItems: [FileItem] {
         guard let ip = collectionView.clickedIndexPath, let item = node(at: ip)?.item else { return [] }
         return collectionView.selectionIndexPaths.contains(ip) ? selectedItems : [item]

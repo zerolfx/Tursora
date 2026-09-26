@@ -61,7 +61,7 @@ final class TransferTask {
         let elapsed = activeDuration + (activeSince.map { ProcessInfo.processInfo.systemUptime - $0 } ?? 0)
         let speed = state == .running && elapsed > 0.1 && bytes > 0 ? Double(bytes) / elapsed : nil
         let eta = total.flatMap { total in speed.map { max(0, Double(total - bytes)) / $0 } }
-        return Snapshot(id: id, state: state, supportsPause: kind != .extract && pausable, currentItem: item, totalBytes: total,
+        return Snapshot(id: id, state: state, supportsPause: kind != .extract && kind != .compress && pausable, currentItem: item, totalBytes: total,
                         completedBytes: bytes, bytesPerSecond: speed, estimatedTimeRemaining: eta,
                         phaseDetail: detail, successfulItems: successes, skippedItems: skipped, failures: errors,
                         isCancellationRequested: cancelRequested, isPauseRequested: pauseRequested)
@@ -123,6 +123,15 @@ final class TransferTask {
     func setTotal(_ value: Int64?) {
         condition.lock(); defer { condition.unlock() }; total = value
     }
+    /// A new phase measures different work. In particular, copied input bytes
+    /// are not a percentage or rate for the ZIP writer that follows them.
+    func resetProgress(total value: Int64? = nil) {
+        condition.lock(); defer { condition.unlock() }
+        total = value
+        bytes = 0
+        activeDuration = 0
+        activeSince = state == .running ? ProcessInfo.processInfo.systemUptime : nil
+    }
     func addBytes(_ value: Int64) {
         condition.lock(); defer { condition.unlock() }; bytes += value
         // Source contents can grow after scanning; never claim an impossible total.
@@ -148,7 +157,7 @@ final class TransferTask {
         errors = result.failures
         let partial = (successes > 0 && (result.cancelled || !errors.isEmpty)) || (skipped > 0 && !result.cancelled && errors.isEmpty)
         let terminal: State = partial ? .partial : result.cancelled ? .cancelled : !errors.isEmpty ? .failed : .completed
-        let noun = kind == .extract ? "Extraction" : "Transfer"
+        let noun = kind == .extract ? "Extraction" : kind == .compress ? "Compression" : "Transfer"
         detail = terminal == .completed ? "\(noun) complete" : terminal == .partial ? "Some items were completed"
             : terminal == .cancelled ? "\(noun) cancelled" : "\(noun) failed"
         if successes == 0 && skipped > 0 && errors.isEmpty && !result.cancelled { detail = "All items were skipped" }

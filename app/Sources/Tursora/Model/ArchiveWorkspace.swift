@@ -459,6 +459,7 @@ final class ArchiveWorkspace {
                 : session.tree.batchPlan(for: paths, skipping: settled)
             try session.materializer.materialize(plan, cancellation: cancellation)
         }
+        try cancellation?.checkCancellation()
         return materializationResult(for: requests, notifyingFailures: true)
     }
 
@@ -551,7 +552,7 @@ final class ArchiveWorkspace {
         DispatchQueue.global(qos: .userInitiated).async { [self] in
             let result = Result { try materializeBlocking(locations, cancellation: cancellation) }
             DispatchQueue.main.async {
-                completion(result)
+                completion(cancellation.isCancelled ? .failure(ArchiveBrowsingSession.SessionError.cancelled) : result)
                 lease.release()
             }
         }

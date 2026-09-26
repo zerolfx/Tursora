@@ -30,6 +30,10 @@ protocol FileViewing: AnyObject {
     var allowsRenaming: Bool { get set }
     var cutURLs: Set<URL> { get set }
     var selectedItems: [FileItem] { get }
+    /// The displayed selection domain: list rows, icon entries or the current
+    /// browser column. Group headings never become selectable files.
+    var selectionScopeItems: [FileItem] { get }
+    func deselectAllItems()
     /// Targets of a context-menu action: the selection if the clicked item is
     /// in it, else the clicked item alone, else nothing (background).
     var clickedItems: [FileItem] { get }
@@ -66,6 +70,7 @@ protocol FileViewing: AnyObject {
 
 extension FileViewing {
     var displayedDirectoryURLs: [URL] { [] }
+    func deselectAllItems() { select(urls: []) }
 }
 
 /// An inline rename caught by a listing reload. Every view drops the cell that

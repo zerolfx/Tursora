@@ -18,6 +18,8 @@ extension BrowserViewController {
         properties.showHidden = model.showHidden
         properties.showPreviews = showsPreviews
         properties.listColumns = fileList.visibleColumns.sorted()
+        properties.listColumnWidths = fileList.columnWidths
+        properties.columnViewWidths = columnView.columnWidths
         properties.calculateAllSizes = model.folderSizes.calculatesAllSizes
         return properties
     }
@@ -29,6 +31,11 @@ extension BrowserViewController {
     }
 
     func persistViewProperties() {
+        defer {
+            if !isApplyingViewProperties {
+                NotificationCenter.default.post(name: ViewOptionsWindowController.propertiesDidChange, object: self)
+            }
+        }
         guard !isApplyingViewProperties, canPersistViewProperties,
               let key = viewPropertiesKey else { return }
         let properties = currentViewProperties
@@ -55,6 +62,8 @@ extension BrowserViewController {
         model.folderSizes.allowsRecursiveSizes = !isBrowsingArchive
         model.folderSizes.calculatesAllSizes = properties.calculateAllSizes
         fileList.setVisibleColumns(properties.listColumns)
+        fileList.setColumnWidths(properties.listColumnWidths)
+        columnView.setColumnWidths(properties.columnViewWidths)
         fileList.setSort(key: properties.sortKey, ascending: properties.ascending)
         setViewMode(properties.viewMode)
         setZoomIndex(properties.zoomIndex(for: properties.viewMode))
@@ -75,6 +84,10 @@ extension BrowserViewController {
     }
 
     func observeViewProperties() {
+        fileList.setColumnWidths(rememberedViewProperties.listColumnWidths)
+        columnView.setColumnWidths(rememberedViewProperties.columnViewWidths)
+        fileList.onColumnWidthsChanged = { [weak self] in self?.persistViewProperties() }
+        columnView.onColumnWidthsChanged = { [weak self] in self?.persistViewProperties() }
         viewPropertiesObserver = NotificationCenter.default.addObserver(
             forName: DirectoryViewPropertiesStore.didChange, object: viewPropertiesStore, queue: .main
         ) { [weak self] notification in

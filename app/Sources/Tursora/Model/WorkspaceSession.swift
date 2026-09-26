@@ -1,8 +1,8 @@
 import Foundation
 import Darwin
 
-/// Durable navigation only. Tasks, history, selections and view filters belong
-/// to the live workspace and are deliberately absent from this document.
+/// Durable navigation and view position. Running tasks, undo and navigation
+/// history remain confined to the live workspace.
 struct WorkspaceSessionState: Codable, Equatable {
     static let currentVersion = 1
     static let maximumWindows = 16
@@ -180,10 +180,12 @@ struct WorkspaceTabState: Codable, Equatable {
 struct WorkspacePaneState: Codable, Equatable {
     var url: URL
     var search: SearchRequest?
+    var viewState: WorkspacePaneViewState?
 
-    init(url: URL, search: SearchRequest? = nil) {
+    init(url: URL, search: SearchRequest? = nil, viewState: WorkspacePaneViewState? = nil) {
         self.url = url
         self.search = search
+        self.viewState = viewState
     }
 
     func sanitized() -> Self? {
@@ -198,7 +200,7 @@ struct WorkspacePaneState: Codable, Equatable {
                 request = search.validationError == nil ? search : nil
             } else { request = nil }
         }
-        return Self(url: url, search: request)
+        return Self(url: url, search: request, viewState: viewState?.sanitized())
     }
 
     /// Validate syntax only: an absent volume, an inaccessible folder and a
@@ -213,12 +215,41 @@ struct WorkspacePaneState: Codable, Equatable {
         return URL(fileURLWithPath: path, isDirectory: url.hasDirectoryPath).standardizedFileURL
     }
 
-    private enum CodingKeys: String, CodingKey { case url, search }
+    private enum CodingKeys: String, CodingKey { case url, search, viewState }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         url = try values.decode(URL.self, forKey: .url)
         search = try? values.decode(SearchRequest.self, forKey: .search)
+        viewState = try? values.decode(WorkspacePaneViewState.self, forKey: .viewState)
+    }
+}
+
+/// URLs are logical locations, including ZIP members, never extraction paths.
+/// Optional in version 1 so older sessions continue to open unchanged.
+struct WorkspacePaneViewState: Codable, Equatable {
+    var mode: ViewMode
+    var selectedURLs: [URL] = []
+    var scrollOffset: Double = 0
+    var columnScrollOffsets: [String: Double] = [:]
+    var listHorizontalScrollOffset: Double?
+
+    func sanitized() -> Self {
+        var seen = Set<String>()
+        let selection = selectedURLs.prefix(1_000).compactMap(WorkspacePaneState.localURL)
+            .filter { seen.insert($0.path).inserted }
+        var offsets: [String: Double] = [:]
+        for (path, value) in columnScrollOffsets.sorted(by: { $0.key < $1.key }).prefix(64) {
+            guard path.hasPrefix("/"), !path.contains("\0"), path.utf8.count <= 32_768,
+                  value.isFinite else { continue }
+            offsets[path] = min(10_000_000, max(0, value))
+        }
+        return Self(mode: mode, selectedURLs: selection,
+                    scrollOffset: scrollOffset.isFinite ? min(10_000_000, max(0, scrollOffset)) : 0,
+                    columnScrollOffsets: offsets,
+                    listHorizontalScrollOffset: listHorizontalScrollOffset.map {
+                        $0.isFinite ? min(10_000_000, max(0, $0)) : 0
+                    })
     }
 }
 

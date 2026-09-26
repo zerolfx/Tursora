@@ -40,8 +40,8 @@ enum WorkspaceSessionModelSmokeTests: SmokeSuite {
         check("workspace model: search conditions survive without persisting results",
               roundTrip.windows[0].tabs[1].panes[0].search == original.windows[0].tabs[1].panes[0].search)
         let encoded = String(decoding: try JSONEncoder().encode(original), as: UTF8.self)
-        check("workspace model: transient history, selection, tasks and filters are absent",
-              ["history", "selection", "scroll", "nameFilter", "terminal", "transfer", "undo"].allSatisfy { !encoded.contains("\"\($0)\"") })
+        check("workspace model: transient history, tasks and filters are absent",
+              ["history", "nameFilter", "terminal", "transfer", "undo"].allSatisfy { !encoded.contains("\"\($0)\"") })
         check("workspace model: unavailable paths and logical ZIP members are retained",
               !FileManager.default.fileExists(atPath: original.windows[0].tabs[1].panes[1].url.path)
               && roundTrip.windows[0].tabs[1].panes[1].url == original.windows[0].tabs[1].panes[1].url)

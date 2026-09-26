@@ -11,10 +11,10 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 | Tab context menu (New / Detach / Rename / Close Other / Close Left / Close Right / Close) | ✅ | Each action captures the identity of the tab that was right-clicked; a custom name can be cleared; Detach opens a new window from the locations and the search request, and carries over neither history nor tasks. Always showing the tab bar is this app's own default |
 | Filter bar (`show_filter_bar`, filters the current view by name as you type) | ✅ `⌘F` by default, customizable | Substring plus wildcards, cleared when the directory changes |
 | Grouping (`group_by`) | ✅ Follows Finder's Use Groups / Group By, 9 keys (including None; Tags is explicitly out of scope) | Group headers stick in the list, and the icon view is split into sections |
-| **Additional information columns** (`additional_info`, about 30 columns: creation/access time, extension, permissions, owner, link target, path, rating, tags, comment, word count, line count, image dimensions, duration, artist…) | Ordinary directories have Name/Date Modified/Size/Kind; search adds Location | (mac) Most of these can come from Spotlight metadata (`kMDItem*`) |
+| **Additional information columns** (`additional_info`, about 30 columns: creation/access time, extension, permissions, owner, link target, path, rating, tags, comment, word count, line count, image dimensions, duration, artist…) | Name plus optional Date Modified / Date Created / Date Last Opened / Date Added / Size / Kind; search adds Location | (mac) Most of these can come from Spotlight metadata (`kMDItem*`) |
 | Sort options: descending / folders first / **hidden files last** | Ascending and descending ✅; folders lead under Name only | Matches Finder, whose "Keep folders on top" covers only name sorting, so folders take part in every other sort (D76). Still missing: "hidden last", and a switch for the name case |
 | **Folder item count / recursive size column** (`KDirectoryContentsCounter`) | ✅ | The Size column shows the item count by default (Finder's "N items"), and shows recursive bytes once `Calculate all sizes` is on; calculated in the background, remembered per directory, and ZIP and search results only count items ([record](../research/sort-columns-folder-sizes.md)) |
-| **Per-directory view properties** (mode / sorting / zoom / hidden files and restore defaults) | ✅ Per-directory memory / one shared default, save the current settings as the default, restore the current directory | Both zoom steps, grouping and previews are saved along with them; the app keeps its own versioned path store, with no `.directory` file and no xattr. Applying recursively to subdirectories, column widths / further metadata columns and following items as they move are still not implemented; for the evidence and the limits see the [research](../research/directory-view-properties.md) |
+| **Per-directory view properties** (mode / sorting / zoom / hidden files and restore defaults) | ✅ Per-directory memory / one shared default, save the current settings as the default, restore the current directory | All three zoom steps, grouping, previews, optional columns and list/column widths are saved along with them; the app keeps its own versioned path store, with no `.directory` file and no xattr. Show View Options (⌘J) gathers the supported settings. Applying recursively to subdirectories, further metadata columns and following items as they move are still not implemented; for the evidence and the limits see the [research](../research/directory-view-properties.md) |
 | Compact view (a third mode) | ❌ | Low priority |
 | Hover tooltip (metadata plus preview) | ❌ | Quick Look partly covers this |
 | `.hidden` file / `UF_HIDDEN` flag (Dolphin only recognises dot files) | ❌ | (mac) Has to be done: `/usr`, `Icon\r`, `.fseventsd` and so on |
@@ -24,7 +24,7 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 | Dolphin feature | Tursora | Notes |
 |---|---|---|
 | **Folders panel** (a directory tree that can follow the view) | ✅ Implemented and verified | A separate NSOutlineView tree below Places; F7, follows the active pane, reads on demand, hidden-files / Home options, and the vertical ratio and visibility remembered for the session; no free docking or floating, see the [record](../research/folder-tree.md) |
-| Information panel (preview plus metadata plus media autoplay, "show on hover") | ❌ | (mac) Quick Look covers the preview; a metadata panel could be built as an Inspector |
+| Information panel (preview plus metadata plus media autoplay, "show on hover") | Docked preview and separate Get Info / Inspector ✅; full Dolphin panel ❌ | The docked pane follows selection and renders Markdown; metadata stays in Get Info/Inspector. Combined metadata, hover selection and Dolphin media-autoplay policy remain absent |
 | Terminal panel (an embedded terminal that follows the directory, `switch_terminal_url_sync`) | ✅ Enabled by default | Native SwiftTerm 1.15.0 plus a PTY, from the toolbar or F4 by default; the shell, the monospaced font and the text / background colors can be set. Hiding keeps the session, and the task confirmation before termination is in the [lifecycle record](../research/terminal-session-lifecycle.md). zsh, bash and fish all follow automatically in both directions: the browsed directory is handed to the shell (immediately at an empty prompt for zsh, at the next prompt for bash / fish), and when the shell changes directory itself the current pane follows; each direction has its own switch, both on by default, and running programs and uncommitted input are preserved. Other shells need a manual Restart. The top is compact, and the bottom carries no terminal status or capacity; [0.2.1 scope](../research/terminal-navigation-0.2.1.md), [two-way sync with bash / fish](../research/terminal-shell-sync.md) |
 | Places: hide entries / show all, and the "recently used" and "search" groups | partial | We have add, remove, drag to reorder and eject ✅ |
 | Panel locking / layout memory | partial | Session restore already covers sidebar width / collapsed state and the split ratio; this round adds Folders visibility / height ratio / options. Panel locking, free docking and restoring the terminal layout are still not implemented |
@@ -35,8 +35,8 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 |---|---|---|
 | **Batch rename** (Return on a multi-selection → `KIO::RenameFileDialog`, the `name#` pattern) | ✅ Finder-style | A multi-selection goes through the File ▸ Rename N Items… sheet (Dolphin uses Return); the `#` placeholder is implemented with KIO's own semantics — one run, replaced in place, its length setting the leading zeros (D80) — and it replaced Name and Index / Name and Counter, which it subsumes; our preview lists every resulting name, where KIO shows one line |
 | **New ▸ template** (`Create New`: text file/HTML/…, from the Templates directory) | New folder only | |
-| **Invert selection** (`invert_selection`) | ❌ | A few lines of code |
-| **Operation progress and cancellation** (KJob progress, pause/cancel, several tasks at once) | Copy / Move / Duplicate have per-task control; for the verification see the [dedicated record](../research/file-operation-tasks.md) | A large file can be paused / resumed / cancelled part way through (checked between chunks); conflicts are handled separately and undo is safe. ZIP extraction is a task with determinate progress and Cancel, though not Pause. Metadata system calls, same-volume atomic moves and the ZIP compression stage make no claim of byte-by-byte pausing; not every KIO backend is implemented |
+| **Invert selection** (`invert_selection`) | ✅ Implemented | Edit command, unbound by default; complements selectable visible items in the focused file view, excluding group headings and filtered rows |
+| **Operation progress and cancellation** (KJob progress, pause/cancel, several tasks at once) | Copy / Move / Duplicate have per-task control; for the verification see the [dedicated record](../research/file-operation-tasks.md) | A large file can be paused / resumed / cancelled part way through (checked between chunks); conflicts are handled separately and undo is safe. ZIP extraction is a task with determinate progress and Cancel; ZIP compression has Cancel, staged-input progress and an indeterminate creation phase. Neither ZIP task offers Pause. Metadata system calls, same-volume atomic moves and the ZIP compression stage make no claim of byte-by-byte pausing; not every KIO backend is implemented |
 | Bulk options in the conflict dialog (skip all/overwrite all/rename automatically) | ✅ Finder-style | Keep Both / Skip / Stop / Replace / Merge plus "Apply to all" |
 | Properties dialog (`properties`: permissions, size statistics, open with, icon) | ✅ Get Info / Inspector | (mac) Finder's wording and the system preview; permissions are a POSIX subset |
 | Show link target (`show_target`) | ❌ | |
@@ -52,8 +52,8 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 | Dolphin feature | Tursora | Notes |
 |---|---|---|
 | **Search** (`toggle_search`: file name/contents, with date/type/rating/tag chip filters) | Name / contents / type / date / saved conditions ✅, with Dolphin's index-or-scan choice for contents (D85) ✅; rating / tags ❌ | Names are searched recursively in the background; contents go through NSMetadataQuery by default, and `Using: Scan Files` reads the candidates instead so an unindexed folder is searched too (D85). The scope is the current folder or Home, and ZIP archives are not searched; a single run is capped at 50,000 items, and there is no live incremental result stream and no interchange with Finder saved searches |
-| **Session restore** (remember the open tabs/panes and restore them at launch) | ✅ Implemented and verified | By default it restores the window, the tab order / names / active tab, both pane locations / active side / ratio, and the sidebar / window layout; it can be turned off and cleared, and searches that had already been run are re-run. History, selections, filters, the terminal and tasks are not restored; [scope and verification](../research/workspace-sessions.md) |
-| **List of recently closed tabs** (the `closed_tabs` menu, pick one to restore) | Only `⌘⇧T` to bring back the last one | |
+| **Session restore** (remember the open tabs/panes and restore them at launch) | ✅ Implemented; continuity extension passed final automated acceptance | By default it restores the window, the tab order / names / active tab, both pane locations / active side / ratio, and the sidebar / window layout; it can be turned off and cleared, and searches that had already been run are re-run. The 2026-09-26 extension adds selection and scroll positions; history, filters, the terminal and tasks are not restored; [scope and verification](../research/workspace-sessions.md) |
+| **List of recently closed tabs** (the `closed_tabs` menu, pick one to restore) | ✅ Implemented | File > Recently Closed Tabs lists the current window's ten retained tabs newest first; ⇧⌘T still reopens the latest. The pool does not persist across launches |
 | Bookmarks (the `bookmarks` menu) | ❌ | Overlaps with favorites; the two could be merged |
 | An address bar rooted at a Place ("Downloads › …") | Home and volumes only | |
 | Pop out split (move a pane into a new window), Split stash (the `stash:/` staging area) | ❌ | Low priority |
@@ -89,11 +89,11 @@ Quick Look (space bar), moving to the system trash and undoing it, dragging into
 
 The user ranks continuity of work above small features; session restore was implemented in this round, and its build, smoke runs and on-device verification are recorded in the [session record](../research/workspace-sessions.md). The cost ordering of the remaining candidates is kept below.
 
-1. ~~Filter bar~~, invert selection, list of recently closed tabs, `.hidden`/`UF_HIDDEN` — small
+1. `.hidden`/`UF_HIDDEN` behavior — small; Filter, Invert Selection and Recently Closed Tabs are implemented
 2. New from template — medium
 3. ~~Session restore (implemented and verified in this round)~~, ~~copy / move progress with per-task control~~, ~~bulk conflict options~~ — medium
 4. Panel docking / floating, more preference policies, Chinese localization — medium to large
-5. More information columns (Spotlight metadata), applying view properties recursively and persisting column widths — medium to large
+5. More information columns (Spotlight metadata) and applying view properties recursively — medium to large
 6. Multiple terminal sessions / restore, Compact view, ordinary server history / discovery / reconnect (developer-only protocols and version control are excluded) — large / later
 
 ## 2026-09-12 filter interaction review
@@ -119,7 +119,7 @@ For the source evidence see the [filter and search comparison](../research/dolph
 
 - [x] Remember the mode, the sort key and direction, both zoom steps, grouping, hidden files and previews per directory; restored in a new tab / pane and on a repeat visit.
 - [x] A separate default value, a shared policy, and restoring the default for the current directory; versioned storage with a fallback when it is corrupt, and no persistence for logical ZIP pages or temporary paths.
-- [ ] Applying recursively to subdirectories, persisting column widths, following renames / moves by volume and file identity, and dedicated persistence for special logical pages.
+- [ ] Applying recursively to subdirectories, following renames / moves by volume and file identity, and dedicated persistence for special logical pages.
 - The boxes above mark implementation scope; for this feature's three smoke runs and on-device verification see the [directory view verification record](../research/computer-use-2026-09-12-directory-views.md), which does not carry over the earlier 739-check result.
 
 ## 2026-09-12 split-pane paths and the tab menu
@@ -172,7 +172,7 @@ For the source evidence see the [filter and search comparison](../research/dolph
 ## Sorting, columns, folder sizes and drag and drop
 
 - [x] The sort keys now include Date Created / Date Added / Date Last Opened, consistent across all three entry points; items with no date sort to the bottom in both directions.
-- [x] Optional columns in the details view (ticked in the header context menu), persisted per directory; column widths are not persisted, and Version / Comments / Tags are not implemented.
+- [x] Optional columns in the details view (ticked in the header context menu), persisted per directory; column widths now persist under the folder policy; Version / Comments / Tags remain unimplemented.
 - [x] Folder item counts and optional recursive size calculation, with background cancellation and cache invalidation; ZIP and search results only count items.
 - [x] ⌘ to force a move, spring-loaded folders (list / icons / sidebar / folder tree) and drops onto breadcrumb segments.
 - Dolphin's "releasing a drag pops up a copy/move/link menu" is still a design choice and is not implemented.
@@ -188,3 +188,11 @@ For the source evidence see the [filter and search comparison](../research/dolph
 - [x] ZIP listing parsing preserves UTF-8 characters across read boundaries.
 - [x] Smoke preferences use a separate per-run suite; fixture stores flush before removal and the folder-tree stop check waits for its ancestor reveal.
 - See [the reliability record](../research/reliability-2026-09-26.md) for verification status.
+
+## Everyday commands and continuity, 2026-09-26
+
+- [x] Invert Selection and Deselect All work across the three file views with native input focus preserved.
+- [x] Recently Closed Tabs exposes the retained session pool; launch restoration additionally restores selection and scroll positions.
+- [x] View Options gathers supported presentation controls, and widths follow folder/default policy.
+- [x] Compression has its own cancellable task; each waiting archive subscriber can cancel independently.
+- The final source passed three consecutive full smoke runs and a signed release build. Actual packaged-app observations are recorded separately in [View Options](../research/view-options-2026-09-26.md), [everyday commands](../research/everyday-commands-2026-09-26.md), [compression](../research/compression-tasks-2026-09-26.md) and [workspace continuity](../research/workspace-continuity-2026-09-26.md).

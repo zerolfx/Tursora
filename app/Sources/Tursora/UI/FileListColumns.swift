@@ -51,8 +51,14 @@ extension FileListViewController {
 
     func setCalculatesAllSizes(_ on: Bool) {
         guard model.folderSizes.calculatesAllSizes != on else { return }
+        let selected = selectedItems.map(\.url)
+        let offset = scrollOffset
+        let horizontalOffset = horizontalScrollOffset
         model.folderSizes.calculatesAllSizes = on
         reloadData()
+        select(urls: selected)
+        scrollOffset = offset
+        horizontalScrollOffset = horizontalOffset
         onColumnsChanged?()
     }
 }

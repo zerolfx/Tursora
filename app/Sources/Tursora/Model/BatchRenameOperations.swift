@@ -40,6 +40,10 @@ extension FileOperations {
     /// outside the batch, a permission error, …).
     @discardableResult
     static func renameBatch(_ requests: [RenameRequest]) throws -> [(from: URL, to: URL)] {
+        if let problem = BatchRename.overlappingProblem(requests.map { .init(url: $0.url) }) {
+            throw NSError(domain: "Tursora.BatchRename", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: problem.message])
+        }
         for request in requests where !BatchRename.isValidName(request.newName) {
             throw CocoaError(.fileWriteInvalidFileName,
                              userInfo: [NSFilePathErrorKey: request.url.deletingLastPathComponent()

@@ -37,6 +37,8 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | New Window | ⌘N | `plus.rectangle` | New window at home, cascaded | `AppDelegate.newWindow` |
 | New Tab | ⌘T | `macwindow.badge.plus` | Fresh single-pane tab at the active location; reruns its search when applicable | `MainWindowController.newTab` |
 | New Folder | ⇧⌘N | `folder.badge.plus` | "untitled folder" (then " 2", …), selected, with its name opened for editing so you can type straight over it; Escape keeps the default name | `BrowserViewController.newFolder` |
+| New Folder with Selection | ⌃⌘N | `folder.badge.plus` | Creates a folder and moves the selected items into it with one undo journal; opens its name for editing | `BrowserViewController.newFolderWithSelection` |
+| Show Package Contents | — | — | Enters one selected local package directory; also in its context menu | `BrowserViewController.showPackageContents` |
 | Open | ⌘↓ | — | Opens the selection; disabled when empty | `MainWindowController.openSelection` |
 | Quick Look | ⌘Y | `eye` | Toggles `QLPreviewPanel` | `BrowserViewController.quickLook` |
 | Get Info | ⌘I | `info.circle` | One window per item (>10 → summary) | `InfoWindowController.show` |
@@ -44,13 +46,14 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Get Summary Info (⌃ alternate) | ⌃⌘I | `info.circle` | One window for all items | `InfoWindowController.showSummary` |
 | Rename | — | `pencil` | One item: inline rename. Several: the title becomes "Rename N Items…" and opens the batch sheet | `BrowserViewController.renameSelection` |
 | Duplicate | ⌘D | `plus.square.on.square` | Undoable | `BrowserViewController.duplicate` |
-| Compress / Extract | — | `doc.zipper` | ZIP creation/extraction with undo; also in More and context menus | `MainWindowController` → active `BrowserViewController` |
+| Compress / Extract | — | `doc.zipper` | Cancellable ZIP tasks with undo; staging-byte progress then indeterminate creation for Compress, measured extraction progress for Extract; also in More and context menus | `MainWindowController` → active `BrowserViewController` |
 | Move to Trash | ⌘⌫ | `trash` | Undoable; selects the next item (Dolphin; Finder selects nothing) | `BrowserViewController.moveToTrash` |
 | Delete Immediately… | ⌥⌘⌫ | `trash` | Confirmation, then unrecoverable | `BrowserViewController.deletePermanently` |
 | Empty Trash… | — (assignable) | `trash.slash` | Finder's confirmation, then erases every top-level item of the user's Trash; not undoable. Dimmed when the Trash is empty. Ships unbound: NSMenu ignores Shift for a ⌫ key equivalent, so Finder's ⇧⌘⌫ cannot be told apart from ⌘⌫ | `BrowserViewController.emptyTrash` |
 | Close Tab | ⌘W | — | Title flips to "Close Window" with one tab | `MainWindowController.closeTab` |
 | Close Window | ⇧⌘W | — | | `NSWindow.performClose` |
 | Reopen Closed Tab | ⇧⌘T | — | Up to 10 closed tabs kept whole (history + split + custom name) — Finder uses ⇧⌘T for the tab bar | `TabsController.reopenClosedTab` |
+| Recently Closed Tabs ▸ | — | — | Pick a retained tab from this window's newest-first recovery pool; session-local | `RecentlyClosedTabsMenu` → `TabsController.reopenSelectedClosedTab` |
 
 ### Edit
 | Item | Shortcut | Icon | Does |
@@ -58,12 +61,16 @@ Right-click the running app's Dock icon for **New Window**, **Downloads** or **A
 | Undo / Redo | ⌘Z / ⇧⌘Z | `arrow.uturn.backward` / `.forward` | Window undo manager; each file operation is its own group |
 | Cut | ⌘X | `scissors` | App-wide cut state; cut rows drawn at 0.45 alpha |
 | Copy / Paste | ⌘C / ⌘V | `document.on.document` / `document.on.clipboard` | Paste = move if the pasteboard still matches the cut, else copy |
+| Move Items Here (⌥ alternate of Paste) | ⌥⌘V | — | Moves copied local file URLs; rejects archive sources; keeps newer clipboard content |
+| Deselect All (⌥ alternate of Select All) | ⌥⌘A | — | Clears selection only with file-view focus; closes dependent columns in Column mode |
+| Invert Selection | — (assignable) | — | Complements displayed selectable items in the focused view, excluding filtered items and group headings |
 | Select All | ⌘A | `character.textbox` | |
 | Copy to Other Pane / Move to Other Pane | ⇧⌘C / ⇧⌘M | — | Split only (Finder uses ⇧⌘C for Computer) |
 
 ### View
 | Item | Shortcut | Icon | Does |
 |---|---|---|---|
+| Show View Options | ⌘J | `slider.horizontal.3` | Modeless panel follows the active tab/pane; presentation controls, folder/default policy and column-width reset |
 | as Columns | ⌥⌘3 | `rectangle.split.3x1` | Finder's column view; Finder binds ⌘3, which is tab 3 here. Selecting opens the next column and never navigates; opening a folder does |
 | as Icons / as List | ⌥⌘1 / ⌥⌘2 | `square.grid.2x2` / `list.bullet` | Swaps grid/outline, keeps selection and focus (Finder: ⌘1/⌘2; ours are taken by tabs) |
 | Zoom In / Zoom Out | ⌘+ / ⌘- (⌘= also) | `plus.magnifyingglass` / `minus.magnifyingglass` | Steps the per-mode ladder (icons 32…512, list 16…64) |
@@ -110,7 +117,8 @@ Targets: the selection if the clicked row is in it, otherwise the clicked row al
 | Background (no item) | New Folder · Get Info · Paste (enabled only with file URLs on the pasteboard) · — · Reload · Show Hidden Files ✓ · Sort By ▸ · — · Add/Remove from Favourites (current folder) |
 | A file | Open · Open With ▸ (default app first, "(default)", separator, up to 20 apps with icons; "No Applications" when none) · [split: Copy/Move to Other Pane] · — · Quick Look · Get Info · Rename · Duplicate · Move to Trash · — · Cut · Copy · — · Copy Path |
 | A folder | Open · Open in New Tab (or "Open in N New Tabs") · Open in New Window · Open in Other/New Pane · then the file block · — · Add/Remove from Favourites |
-| Several items | As above minus Open With; Rename becomes "Rename N Items…" and opens the batch sheet; "Copy Paths" |
+| A local package | Show Package Contents, then the applicable file commands |
+| Several items | New Folder with Selection when the current location is writable; otherwise as above minus Open With; Rename becomes "Rename N Items…" and opens the batch sheet; "Copy Paths" |
 | Sidebar (`SidebarViewController`) | Open · Open in New Tab · Open in Other Pane · [removable: Remove from Favourites · Reset Favourites] · [volume: Eject "name"]; empty when no row was clicked |
 | Tab | New Tab · Detach Tab · — · Rename Tab · — · Close Other Tabs · Close Tabs to the Left · Close Tabs to the Right · Close Tab; middle-click closes |
 

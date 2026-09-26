@@ -145,6 +145,10 @@ final class ArchiveMaterializer: @unchecked Sendable {
     private var closed = false
     /// Every run in flight, so `shutDown` can stop each child.
     private var activeRuns: [UUID: ArchivePreparationCancellation] = [:]
+    var activeRequestCountForTesting: Int {
+        condition.lock(); defer { condition.unlock() }
+        return activeRuns.count
+    }
     private let drain = DispatchGroup()
     private let sourceIdentity: SourceIdentity?
     private var changedSource = false
@@ -222,6 +226,7 @@ final class ArchiveMaterializer: @unchecked Sendable {
 
     private func materialize(_ plan: ArchiveTree.BatchPlan, cancellation provided: ArchivePreparationCancellation?,
                              retryingOthers: Bool) throws {
+        try provided?.checkCancellation()
         guard !plan.isEmpty else { return }
         // Every batch is cancellable, so closing can stop its child, and every
         // batch is counted, so closing can wait for it before storage goes.
@@ -270,9 +275,18 @@ final class ArchiveMaterializer: @unchecked Sendable {
         // Wait for another batch's members rather than writing them twice.
         guard !others.isEmpty else { return }
         condition.lock()
-        while others.contains(where: { states[$0] == .inFlight }) { condition.wait() }
+        while others.contains(where: { states[$0] == .inFlight }) {
+            if cancellation.isCancelled {
+                condition.unlock()
+                throw ArchiveBrowsingSession.SessionError.cancelled
+            }
+            // This subscriber must be able to leave without stopping the
+            // owner of the shared bytes or waiting for that owner's tool.
+            _ = condition.wait(until: Date().addingTimeInterval(0.05))
+        }
         let leftover = others.filter { (states[$0] ?? .absent) == .absent }
         condition.unlock()
+        try cancellation.checkCancellation()
         // The other batch did not settle them — refused for space, cancelled —
         // so this caller tries once itself and sees the real outcome, rather
         // than listing a folder that was never filled.

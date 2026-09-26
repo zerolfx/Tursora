@@ -2,7 +2,7 @@ import Foundation
 
 /// `CaseIterable` so a check can walk every mode instead of listing two by
 /// hand and silently skipping a third.
-enum ViewMode: String, CaseIterable {
+enum ViewMode: String, CaseIterable, Codable {
     case details, icons, columns
 }
 
@@ -44,4 +44,3 @@ enum ZoomLevel {
     /// thumbnail is an unreadable smudge and the type icon says more.
     static let previewThreshold: CGFloat = 32
 }
-

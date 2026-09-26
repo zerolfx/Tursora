@@ -84,6 +84,41 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
     var onDropFiles: (([URL], URL, NSDragOperation) -> Void)?
     var onSpringLoad: ((URL) -> Void)?
     var onZoomGesture: ((Int) -> Void)?
+    private(set) var columnWidths: [Double] = []
+    var onColumnWidthsChanged: (() -> Void)?
+    private var hasUserColumnResize = false
+
+    func setColumnWidths(_ widths: [Double]) {
+        columnWidths = DirectoryViewProperties.normalizedColumnViewWidths(widths)
+        hasUserColumnResize = false
+        guard isViewLoaded else { return }
+        for column in 0...max(0, browser.lastColumn) {
+            browser.setWidth(CGFloat(column < columnWidths.count ? columnWidths[column] : 245), ofColumn: column)
+        }
+    }
+
+    func browser(_ browser: NSBrowser, shouldSizeColumn columnIndex: Int,
+                 forUserResize: Bool, toWidth suggestedWidth: CGFloat) -> CGFloat {
+        if forUserResize {
+            hasUserColumnResize = true
+            return min(1200, max(100, suggestedWidth))
+        }
+        return columnIndex >= 0 && columnIndex < columnWidths.count ? CGFloat(columnWidths[columnIndex]) : 245
+    }
+
+    func browserColumnConfigurationDidChange(_ notification: Notification) {
+        guard hasUserColumnResize else { return }
+        hasUserColumnResize = false
+        var widths = columnWidths
+        for index in 0..<min(64, max(0, browser.lastColumn + 1)) {
+            if index >= widths.count { widths.append(245) }
+            widths[index] = Double(browser.width(ofColumn: index))
+        }
+        let updated = DirectoryViewProperties.normalizedColumnViewWidths(widths)
+        guard updated != columnWidths else { return }
+        columnWidths = updated
+        onColumnWidthsChanged?()
+    }
 
     var contextMenu: NSMenu? {
         get { browser.menu }
@@ -287,6 +322,21 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         browser.selectionIndexPaths.compactMap { node(at: $0)?.item }
     }
 
+    var selectionScopeItems: [FileItem] {
+        let column = max(0, browser.selectedColumn)
+        return (0..<rowCount(inColumn: column)).compactMap {
+            (browser.item(atRow: $0, inColumn: column) as? FileNode)?.item
+        }
+    }
+
+    func deselectAllItems() {
+        // Unlike navigation's selection restore, explicit Deselect All clears
+        // folder rows too, so their dependent columns consequently close.
+        browser.selectRowIndexes(IndexSet(), inColumn: 0)
+        syncPreviewToSelection()
+        onSelectionChanged?()
+    }
+
     var clickedItems: [FileItem] {
         guard browser.clickedRow >= 0, browser.clickedColumn >= 0,
               let clicked = browser.item(atRow: browser.clickedRow, inColumn: browser.clickedColumn) as? FileNode
@@ -295,11 +345,26 @@ final class ColumnViewController: NSViewController, FileViewing, NSBrowserDelega
         return selected.contains { $0.url == clicked.url } ? selected : [clicked.item]
     }
 
-    /// Scroll state is the horizontal column offset; a column view has no
-    /// meaningful single vertical offset.
+    /// User-resizable NSBrowser columns live in one horizontal scroll view.
+    /// Its clip position is authoritative: firstVisibleColumn can remain zero
+    /// after native scrolling, and scrollColumnToVisible only ensures visibility.
+    var horizontalScrollView: NSScrollView? {
+        browser.subviews.compactMap { $0 as? NSScrollView }.first { $0.hasHorizontalScroller }
+    }
+
+    /// Column view saves horizontal pixels; vertical offsets are per directory.
     var scrollOffset: CGFloat {
-        get { CGFloat(browser.firstVisibleColumn) }
-        set { browser.scrollColumnToVisible(max(0, Int(newValue))) }
+        get { max(0, horizontalScrollView?.contentView.bounds.minX ?? 0) }
+        set {
+            guard let scroll = horizontalScrollView else { return }
+            browser.layoutSubtreeIfNeeded()
+            let clip = scroll.contentView
+            var bounds = clip.bounds
+            let maximum = max(0, (scroll.documentView?.frame.width ?? 0) - bounds.width)
+            bounds.origin.x = newValue.isFinite ? min(maximum, max(0, newValue)) : 0
+            clip.scroll(to: clip.constrainBoundsRect(bounds).origin)
+            scroll.reflectScrolledClipView(clip)
+        }
     }
 
     func select(name: String?) {

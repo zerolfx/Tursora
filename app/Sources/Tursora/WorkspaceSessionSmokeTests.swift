@@ -110,7 +110,9 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
         check("\(mode): directory-view preferences still choose the actual view", freshComparison.panes.allSatisfy { $0.viewMode == mode && ($0.fileView is IconGridViewController) == (mode == .icons) })
         check("\(mode): independently stored folder grouping survives", freshComparison.panes[0].model.groupKey == .kind && freshComparison.panes[1].model.groupKey == .dateModified)
         check("\(mode): history and local filters restart cleanly", restored.tabs.pages.flatMap(\.panes).allSatisfy { $0.history.entries.count == 1 && !$0.isFiltering })
-        check("\(mode): selection, undo and closed-tab stack are not resurrected", restored.tabs.pages.flatMap(\.panes).allSatisfy { $0.fileView.selectedItems.isEmpty } && restored.window?.undoManager?.canUndo == false && !restored.tabs.canReopenClosedTab)
+        check("\(mode): selection returns without replaying undo or the closed-tab pool",
+              freshComparison.panes[0].fileView.selectedItems.map(\.name) == ["needle.txt"]
+                && restored.window?.undoManager?.canUndo == false && !restored.tabs.canReopenClosedTab)
         check("\(mode): originals retain their transient state independently", left.history.entries.count == 3 && left.isFiltering && undo.canUndo)
 
         restored.restoreWorkspaceSession(persisted)

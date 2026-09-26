@@ -30,6 +30,7 @@ final class TabsController: NSViewController {
     var currentPage: TabPage { pages[currentIndex] }
     var current: BrowserViewController { currentPage.active }
     var canReopenClosedTab: Bool { !closedTabs.isEmpty }
+    var recentlyClosedPages: [TabPage] { Array(closedTabs.reversed()) }
     var onCloseLastTab: (() -> Void)?
     var onDetachTab: ((TabSnapshot) -> Bool)?
     /// Tests can supply the sheet result without opening a modal UI headlessly.
@@ -166,7 +167,21 @@ final class TabsController: NSViewController {
 
     @discardableResult
     func reopenClosedTab() -> Bool {
-        guard let page = closedTabs.popLast() else { return false }
+        guard let page = closedTabs.last else { return false }
+        return reopenClosedTab(page)
+    }
+
+    @objc func reopenSelectedClosedTab(_ sender: NSMenuItem) {
+        guard let page = sender.representedObject as? TabPage else { return }
+        reopenClosedTab(page)
+    }
+
+    @discardableResult
+    func reopenClosedTab(_ page: TabPage) -> Bool {
+        // Menus retain the identity they showed. Closing or reopening another
+        // tab while a menu exists cannot silently retarget its action.
+        guard let index = closedTabs.firstIndex(where: { $0 === page }) else { return false }
+        closedTabs.remove(at: index)
         pages.append(page)
         if isViewLoaded { attach(page) }
         selectTab(at: pages.count - 1)

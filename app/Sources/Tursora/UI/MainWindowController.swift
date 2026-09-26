@@ -26,6 +26,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     var isPreviewVisible: Bool { previewItem != nil }
     private var previewWidth: CGFloat?
     private var previewObserver: NSObjectProtocol?
+    private var previewContentWatcher: DirectoryWatcher?
+    private var previewObservedURL: URL?
     private var isCheckingTerminalClose = false
     private var isUpdatingTerminalToolbarPresence = false
     private var preferencesObserver: NSObjectProtocol?
@@ -60,6 +62,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     var onClose: (() -> Void)?
     var onSessionChanged: (() -> Void)?
+    var viewOptionsController: ViewOptionsWindowController?
+
+    @objc func showViewOptions(_ sender: Any?) {
+        if viewOptionsController == nil { viewOptionsController = ViewOptionsWindowController(owner: self) }
+        viewOptionsController?.show()
+    }
 
     private enum ToolbarID {
         static let sidebar = NSToolbarItem.Identifier("tursora.sidebar")
@@ -241,6 +249,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     private func locationChanged(_ url: URL) {
+        viewOptionsController?.refresh()
         guard let window else { return }
         let representedURL = browser.archiveSourceURL ?? url
         window.title = provider.displayName(for: representedURL)
@@ -320,6 +329,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// `QLPreviewView` can keep playing media after its window goes away, so
     /// the pane is torn down explicitly rather than left to ARC.
     func shutdownPreview() {
+        previewContentWatcher = nil
+        previewObservedURL = nil
         if let previewObserver { NotificationCenter.default.removeObserver(previewObserver) }
         previewObserver = nil
         previewPanel?.shutdown()
@@ -328,6 +339,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func hidePreviewPane() {
+        previewContentWatcher = nil
+        previewObservedURL = nil
         guard let previewItem else { return }
         previewWidth = previewPanel?.view.bounds.width
         previewPanel?.paneHidden()
@@ -341,7 +354,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// they already do elsewhere.
     func refreshPreview(force: Bool = false) {
         guard let previewPanel, isPreviewVisible else { return }
-        previewPanel.show(browser.infoTargets.count == 1 ? browser.infoTargets.first : nil, force: force)
+        let target = browser.infoTargets.count == 1 ? browser.infoTargets.first : nil
+        // Search results have no directory watcher. Watch just the selected
+        // file's parent so an external save refreshes its preview without
+        // rerunning an entire recursive search.
+        let watched = browser.isBrowsingArchive ? nil : target?.standardizedFileURL
+        if watched != previewObservedURL {
+            previewObservedURL = watched
+            previewContentWatcher = watched.map { url in
+                let path = url.resolvingSymlinksInPath().path
+                let parent = url.deletingLastPathComponent().resolvingSymlinksInPath().path
+                return DirectoryWatcher(directory: url.deletingLastPathComponent()) { [weak self] paths in
+                    guard let self, self.previewObservedURL == url,
+                          paths.contains(where: {
+                              // FSEvents reports /private/var while Foundation
+                              // may spell the same watched item /var. Resolve
+                              // both sides, as the browser listing watcher does.
+                              let changed = URL(fileURLWithPath: $0).resolvingSymlinksInPath().path
+                              return changed == path || changed == parent
+                          }) else { return }
+                    self.refreshPreview(force: true)
+                }
+            }
+        }
+        previewPanel.show(target, force: force)
     }
 
     func hideTerminal() {
@@ -627,6 +663,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func viewModeDidChange(in pane: BrowserViewController) {
         guard pane === browser else { return }
+        viewOptionsController?.refresh()
         validateNavigation()
     }
 
@@ -790,6 +827,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard pane === browser else { return }
         validateNavigation()
         refreshPreview()
+    }
+
+    func contentsDidChange(in pane: BrowserViewController) {
+        guard pane === browser else { return }
+        refreshPreview(force: true)
     }
 
     private func validateFileAction(_ item: NSMenuItem) -> Bool {
@@ -1038,6 +1080,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func windowWillClose(_ notification: Notification) {
+        viewOptionsController?.close()
         tabs.pages.flatMap(\.panes).forEach {
             $0.suspendPendingNavigation()
             $0.searchPanel.cancelPendingSearch()

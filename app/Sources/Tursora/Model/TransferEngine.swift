@@ -194,8 +194,8 @@ struct TransferReplayError: LocalizedError {
 final class TransferJournal {
     fileprivate let storage: TransferStorage
     fileprivate let steps: [TransferRename]
-    private let strictRoots: [URL]
-    private let fingerprints: [TransferTreeFingerprint?]
+    fileprivate let strictRoots: [URL]
+    fileprivate let fingerprints: [TransferTreeFingerprint?]
     var affectedDirectories: [URL] { steps.flatMap { [$0.from.deletingLastPathComponent(), $0.to.deletingLastPathComponent()] } }
     fileprivate init(storage: TransferStorage, steps: [TransferRename], strictRoots: [URL] = [], capturedFingerprints: [TransferTreeFingerprint?]? = nil) {
         self.storage = storage; self.steps = steps; self.strictRoots = strictRoots
@@ -220,6 +220,20 @@ final class TransferJournal {
             storage.preserveForRecovery = true
             throw TransferReplayError(underlyingError: error, recoveryDirectories: storage.roots)
         }
+    }
+}
+
+extension FileOperations {
+    /// The move and the newly created destination form one atomic undo group.
+    /// The directory is moved into private storage only after its children have
+    /// returned. Unexpected new contents fail the transaction and roll it back.
+    static func journalIncludingCreatedDirectory(_ directory: URL, after journal: TransferJournal?) throws -> TransferJournal {
+        let storage = journal?.storage ?? TransferStorage()
+        let backup = try storage.location(beside: directory)
+        let step = TransferRename(from: directory, to: backup,
+                                  identity: try TransferIdentity.read(directory), requiresEmptyDirectory: true)
+        return TransferJournal(storage: storage, steps: (journal?.steps ?? []) + [step],
+                               strictRoots: journal?.strictRoots ?? [], capturedFingerprints: journal?.fingerprints)
     }
 }
 

@@ -76,6 +76,17 @@ struct ArchiveToolProgress {
     let isCancelled: () -> Bool
 }
 
+/// Internal seams use the real staging and publication path while making
+/// cancellation at each boundary deterministic in the smoke suite.
+struct ArchiveCompressionOptions {
+    enum Phase { case staging, compressing, publishing }
+    var staging = TransferOptions()
+    var checkpoint: ((Phase, TransferTask) throws -> Void)?
+    var tool: (_ input: URL, _ output: URL) -> (String, [String]) = { input, output in
+        ("/usr/bin/ditto", ["-c", "-k", "--rsrc", "--sequesterRsrc", input.path, output.path])
+    }
+}
+
 extension FileOperations {
     enum ArchiveError: LocalizedError {
         case noSelection, duplicateNames, destinationInsideSelection, unsupportedArchive, invalidArchive, emptyArchive
@@ -110,7 +121,31 @@ extension FileOperations {
     /// Work is isolated from user files; only the completed ZIP is published.
     static func compress(urls: [URL], to directory: URL,
                          completion: @escaping (Result<URL, Error>) -> Void) {
-        archiveOperation(completion: completion) {
+        compress(urls: urls, to: directory,
+                 task: TransferTask(sources: urls, destination: directory, kind: .compress), completion: completion)
+    }
+
+    /// Staging reports bytes copied by the existing transfer engine. ditto
+    /// has no verified completion stream, so writing the ZIP is a separate,
+    /// indeterminate phase rather than a misleading overall percentage.
+    static func compress(urls: [URL], to directory: URL, task: TransferTask,
+                         options: ArchiveCompressionOptions = ArchiveCompressionOptions(),
+                         completion: @escaping (Result<URL, Error>) -> Void) {
+        let cancellation = ArchivePreparationCancellation()
+        task.setPausable(false)
+        task.onCancel { cancellation.cancel() }
+        archiveOperation(completion: { result in
+            var outcome = TransferResult()
+            switch result {
+            case .success(let url): outcome.created = [url]
+            case .failure(ArchiveBrowsingSession.SessionError.cancelled), .failure(TransferError.cancelled):
+                outcome.cancelled = true
+            case .failure(let error): outcome.failures = [.init(url: urls.first ?? directory, error: error)]
+            }
+            task.finished(outcome)
+            completion(result)
+        }) {
+            try cancellation.checkCancellation()
             guard !urls.isEmpty else { throw ArchiveError.noSelection }
             let names = urls.map { $0.lastPathComponent.precomposedStringWithCanonicalMapping.lowercased() }
             guard Set(names).count == urls.count else { throw ArchiveError.duplicateNames }
@@ -124,12 +159,38 @@ extension FileOperations {
             return try withArchiveWorkspace(in: directory) { workspace in
                 let input = workspace.appendingPathComponent("input", isDirectory: true)
                 try FileManager.default.createDirectory(at: input, withIntermediateDirectories: false)
-                for source in urls {
-                    // FileManager copies symlinks themselves, never their target trees.
-                    try FileManager.default.copyItem(at: source, to: input.appendingPathComponent(source.lastPathComponent))
+                let stagingTask = TransferTask(sources: urls, destination: input, kind: .copy)
+                stagingTask.setPausable(false)
+                task.onCancel { [weak stagingTask] in stagingTask?.cancel() }
+                var staging = options.staging
+                staging.duplicateInPlace = false
+                staging.prepareSources = nil
+                let originalCheckpoint = staging.checkpoint
+                staging.checkpoint = { point, source, bytes in
+                    let progress = stagingTask.snapshot
+                    task.setTotal(progress.totalBytes)
+                    task.setCompleted(progress.completedBytes)
+                    task.setPhase(progress.totalBytes == nil ? .preparing : .running, item: source,
+                                  detail: progress.totalBytes == nil ? "Calculating size…" : "Preparing files…")
+                    try originalCheckpoint?(point, source, bytes)
+                    try options.checkpoint?(.staging, task)
                 }
+                let staged = TransferEngine(task: stagingTask, options: staging,
+                                           conflict: { _ in .init(resolution: .cancel) }, asyncConflict: nil).run()
+                if staged.cancelled { throw ArchiveBrowsingSession.SessionError.cancelled }
+                if let failure = staged.failures.first { throw failure.error }
+                try cancellation.checkCancellation()
+                guard staged.created.count == stagingTask.sources.count else { throw ArchiveError.commandFailed("The inputs could not be staged completely.") }
                 let output = workspace.appendingPathComponent("result.zip")
-                try runArchiveTool("/usr/bin/ditto", arguments: ["-c", "-k", "--rsrc", "--sequesterRsrc", input.path, output.path], workspace: workspace)
+                task.resetProgress()
+                task.setPhase(.running, detail: "Creating ZIP…")
+                try options.checkpoint?(.compressing, task)
+                try cancellation.checkCancellation()
+                let tool = options.tool(input, output)
+                try runArchiveTool(tool.0, arguments: tool.1, workspace: workspace, cancellation: cancellation)
+                task.setPhase(.finishing, detail: "Publishing ZIP…")
+                try options.checkpoint?(.publishing, task)
+                try cancellation.checkCancellation()
                 return try publishArchiveItem(output, named: archiveName(for: urls), in: directory)
             }
         }
@@ -344,8 +405,29 @@ extension FileOperations {
         // Same volume as the destination: publication is a single exclusive rename.
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: false,
                                                 attributes: [.posixPermissions: 0o700])
-        defer { try? FileManager.default.removeItem(at: workspace) }
+        defer { try? removeArchiveWorkspace(workspace) }
         return try work(workspace)
+    }
+
+    /// The input staging copy can contain locked or read-only originals.
+    /// Only this disposable private tree has its flags/permissions relaxed;
+    /// links are removed themselves and never traversed.
+    private static func removeArchiveWorkspace(_ root: URL) throws {
+        var value = stat()
+        guard lstat(root.path, &value) == 0 else {
+            if errno == ENOENT { return }
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        if value.st_flags & UInt32(UF_IMMUTABLE | UF_APPEND) != 0 {
+            guard lchflags(root.path, value.st_flags & ~UInt32(UF_IMMUTABLE | UF_APPEND)) == 0 else { throw POSIXError(.EACCES) }
+        }
+        if value.st_mode & S_IFMT == S_IFDIR {
+            guard chmod(root.path, value.st_mode | 0o700) == 0 else { throw POSIXError(.EACCES) }
+            for child in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
+                try removeArchiveWorkspace(child)
+            }
+        }
+        try FileManager.default.removeItem(at: root)
     }
 
     private static func runArchiveTool(_ executable: String, arguments: [String], workspace: URL,
@@ -375,6 +457,16 @@ extension FileOperations {
             // property. The loop always falls through to waitUntilExit() below,
             // so the child is reaped whichever way it ends.
             cancelledByReporter = followProgress(progress, log: log, process: process)
+        }
+        if let cancellation {
+            var cancelledAt: Date?
+            while process.isRunning {
+                if cancellation.isCancelled {
+                    if cancelledAt == nil { cancelledAt = Date(); cancellation.cancel() }
+                    if Date().timeIntervalSince(cancelledAt!) >= 0.5 { cancellation.kill() }
+                }
+                Thread.sleep(forTimeInterval: 0.02)
+            }
         }
         process.waitUntilExit()
         if cancelledByReporter { throw ArchiveError.cancelled }

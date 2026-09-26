@@ -81,6 +81,13 @@ enum MainMenu {
                     item.isAlternate = compatible(binding) && (id == "menu.showInspector"
                         || compatible(shortcuts.shortcut(for: "menu.showInspector")))
                 }
+                if let baseID = ["menu.moveItemsHere": "menu.paste", "menu.deselectAllFiles": "menu.selectAll"][id] {
+                    let base = shortcuts.shortcut(for: baseID)
+                    item.isAlternate = binding != nil && base != nil
+                        && binding!.keyEquivalent == base!.keyEquivalent
+                        && binding!.modifierFlags.isSuperset(of: base!.modifierFlags)
+                        && binding!.modifierFlags != base!.modifierFlags
+                }
             }
             if item.action == #selector(MainWindowController.toggleTerminal(_:)) {
                 item.isHidden = !AppPreferences.experimentalTerminalEnabled
@@ -131,8 +138,10 @@ enum MainMenu {
         add(menu, "New Window", #selector(AppDelegate.newWindow(_:)), "n", symbol: "plus.rectangle")
         add(menu, "New Tab", #selector(MainWindowController.newTab(_:)), "t", symbol: "macwindow.badge.plus")
         add(menu, "New Folder", #selector(MainWindowController.newFolder(_:)), "n", [.command, .shift], symbol: "folder.badge.plus")
+        add(menu, "New Folder with Selection", #selector(BrowserViewController.newFolderWithSelection(_:)), "n", [.command, .control], symbol: "folder.badge.plus")
         menu.addItem(.separator())
         add(menu, "Open", #selector(MainWindowController.openSelection(_:)), key(NSDownArrowFunctionKey))
+        add(menu, "Show Package Contents", #selector(BrowserViewController.showPackageContents(_:)))
         add(menu, "Quick Look", #selector(BrowserViewController.quickLook(_:)), "y", symbol: "eye")
         menu.addItem(.separator())
         // Finder: ⌘I, with ⌥ and ⌃ alternates on the same row.
@@ -156,6 +165,9 @@ enum MainMenu {
         add(menu, "Close Tab", #selector(MainWindowController.closeTab(_:)), "w")
         add(menu, "Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift])
         add(menu, "Reopen Closed Tab", #selector(MainWindowController.reopenClosedTab(_:)), "t", [.command, .shift])
+        let recent = NSMenuItem(title: "Recently Closed Tabs", action: nil, keyEquivalent: "")
+        recent.submenu = RecentlyClosedTabsMenu()
+        menu.addItem(recent)
         return item
     }
 
@@ -167,7 +179,10 @@ enum MainMenu {
         add(menu, "Cut", #selector(NSText.cut(_:)), "x", symbol: "scissors")
         add(menu, "Copy", #selector(NSText.copy(_:)), "c", symbol: "document.on.document|doc.on.doc")
         add(menu, "Paste", #selector(NSText.paste(_:)), "v", symbol: "document.on.clipboard|doc.on.clipboard")
+        add(menu, "Move Items Here", #selector(BrowserViewController.moveItemsHere(_:)), "v", [.command, .option], alternate: true)
         add(menu, "Select All", #selector(NSText.selectAll(_:)), "a", symbol: "character.textbox")
+        add(menu, "Deselect All", #selector(BrowserViewController.deselectAllFiles(_:)), "a", [.command, .option], alternate: true)
+        add(menu, "Invert Selection", #selector(BrowserViewController.invertFileSelection(_:)))
         menu.addItem(.separator())
         add(menu, "Copy to Other Pane", #selector(BrowserViewController.copyToOtherPane(_:)), "c", [.command, .shift])
         add(menu, "Move to Other Pane", #selector(BrowserViewController.moveToOtherPane(_:)), "m", [.command, .shift])
@@ -179,6 +194,7 @@ enum MainMenu {
         add(menu, "as Icons", #selector(BrowserViewController.viewAsIcons(_:)), "1", [.command, .option], symbol: "square.grid.2x2")
         add(menu, "as List", #selector(BrowserViewController.viewAsList(_:)), "2", [.command, .option], symbol: "list.bullet")
         add(menu, "as Columns", #selector(BrowserViewController.viewAsColumns(_:)), "3", [.command, .option], symbol: "rectangle.split.3x1")
+        add(menu, "Show View Options", #selector(MainWindowController.showViewOptions(_:)), "j", symbol: "slider.horizontal.3")
         menu.addItem(.separator())
         add(menu, "Zoom In", #selector(BrowserViewController.zoomIn(_:)), "+", symbol: "plus.magnifyingglass")
         add(menu, "Zoom Out", #selector(BrowserViewController.zoomOut(_:)), "-", symbol: "minus.magnifyingglass")

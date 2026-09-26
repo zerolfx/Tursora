@@ -432,7 +432,7 @@ final class TransferTaskRowView: AdaptiveLayerView {
     }
 
     private func buildContent() {
-        let noun = task.kind == .move ? "Move" : task.kind == .extract ? "Extract" : "Copy"
+        let noun = task.kind == .move ? "Move" : task.kind == .extract ? "Extract" : task.kind == .compress ? "Compress" : "Copy"
         titleLabel.stringValue = titleOverride ?? (task.sources.count == 1
             ? "\(noun) “\(task.sources[0].lastPathComponent)”"
             : "\(noun) \(task.sources.count) items")

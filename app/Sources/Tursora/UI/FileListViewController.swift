@@ -1,5 +1,22 @@
 import AppKit
 
+/// Table resize notifications also describe automatic layout. Record only
+/// changes made during the header's native mouse tracking, after it finishes.
+final class FileListHeaderView: NSTableHeaderView {
+    var onUserResizedColumns: (([String: Double]) -> Void)?
+    override func mouseDown(with event: NSEvent) {
+        let before = tableView?.tableColumns.map { ($0.identifier.rawValue, $0.width) } ?? []
+        super.mouseDown(with: event)
+        var changed: [String: Double] = [:]
+        for (identifier, width) in before {
+            if let column = tableView?.tableColumn(withIdentifier: .init(identifier)), abs(column.width - width) > 0.5 {
+                changed[identifier] = Double(column.width)
+            }
+        }
+        if !changed.isEmpty { onUserResizedColumns?(changed) }
+    }
+}
+
 /// Details view: a view-based NSOutlineView over a DirectoryModel. Folders
 /// expand in place with a disclosure triangle, like Finder's list view.
 /// Owns nothing about navigation or file operations — it reports intent
@@ -168,6 +185,33 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
     var visibleColumns = Set(DirectoryViewProperties.defaultListColumns)
     /// The header menu changed a column or "Calculate all sizes".
     var onColumnsChanged: (() -> Void)?
+    private(set) var columnWidths: [String: Double] = [:]
+    var onColumnWidthsChanged: (() -> Void)?
+
+    func setColumnWidths(_ widths: [String: Double]) {
+        columnWidths = DirectoryViewProperties.normalizedListColumnWidths(widths)
+        applyColumnWidths()
+    }
+
+    func userResizedColumns(_ widths: [String: Double]) {
+        let updated = columnWidths.merging(DirectoryViewProperties.normalizedListColumnWidths(widths)) { _, new in new }
+        guard updated != columnWidths else { return }
+        columnWidths = updated
+        applyColumnWidths()
+        onColumnWidthsChanged?()
+    }
+
+    private func applyColumnWidths() {
+        guard isViewLoaded else { return }
+        // Once Name has an explicit size it stays that size even in a narrow
+        // pane. Other folders retain the existing fill-width default.
+        tableView.columnAutoresizingStyle = columnWidths[Column.name.rawValue] == nil
+            ? .firstColumnOnlyAutoresizingStyle : .noColumnAutoresizing
+        for column in Column.allCases {
+            guard let tableColumn = tableView.tableColumn(withIdentifier: column.id) else { continue }
+            tableColumn.width = CGFloat(columnWidths[column.rawValue] ?? Double(column.width))
+        }
+    }
     lazy var headerMenu = ListColumnHeaderMenu(list: self)
 
     init(model: DirectoryModel) {
@@ -193,10 +237,13 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
         }
         // Finder's header right-click: which columns to show, plus the size
         // option. A header with no menu of its own would show the file menu.
-        if tableView.headerView == nil { tableView.headerView = NSTableHeaderView() }
+        let header = FileListHeaderView()
+        header.onUserResizedColumns = { [weak self] in self?.userResizedColumns($0) }
+        tableView.headerView = header
         tableView.headerView?.menu = headerMenu.menu
         applyColumnVisibility()
         tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        applyColumnWidths()
         tableView.allowsMultipleSelection = true
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.style = .fullWidth
@@ -283,6 +330,10 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
 
     var selectedItems: [FileItem] {
         tableView.selectedRowIndexes.compactMap { item(atRow: $0) }
+    }
+
+    var selectionScopeItems: [FileItem] {
+        (0..<tableView.numberOfRows).compactMap { item(atRow: $0) }
     }
 
     var clickedItems: [FileItem] {
@@ -379,6 +430,21 @@ final class FileListViewController: NSViewController, FileViewing, NSOutlineView
             let clip = scrollView.contentView
             var proposed = clip.bounds
             proposed.origin.y = topScrollOrigin + max(0, newValue)
+            clip.scroll(to: clip.constrainBoundsRect(proposed).origin)
+            scrollView.reflectScrolledClipView(clip)
+        }
+    }
+
+    /// Selecting a full-width row can scroll a narrow list horizontally.
+    /// Presentation-only reloads restore this axis independently of vertical
+    /// history scrolling, preserving both Name and deliberate metadata scroll.
+    var horizontalScrollOffset: CGFloat {
+        get { scrollView.contentView.bounds.minX }
+        set {
+            scrollView.layoutSubtreeIfNeeded()
+            let clip = scrollView.contentView
+            var proposed = clip.bounds
+            proposed.origin.x = newValue
             clip.scroll(to: clip.constrainBoundsRect(proposed).origin)
             scrollView.reflectScrolledClipView(clip)
         }

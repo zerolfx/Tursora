@@ -19,7 +19,7 @@ enum BatchRenameSmokeTests: SmokeSuite {
                 pureLabels()
                 pureValidation()
                 try operations(in: fixture)
-                for mode: ViewMode in [.details, .icons] {
+                for mode in ViewMode.allCases {
                     try await sheetFlow(mode: mode, in: fixture)
                 }
                 try await searchResults(in: fixture)
@@ -35,6 +35,22 @@ enum BatchRenameSmokeTests: SmokeSuite {
     private static let stamp = Date(timeIntervalSince1970: 1_789_000_000)
 
     private static func pureNames() {
+        let boundaryEntries = entries(["a.txt", "b.txt"])
+        let overflowing = BatchRename.Mode.format(kind: .number, custom: "#", start: Int.max, position: .afterName)
+        check("overflow is rejected before constructing a preview",
+              BatchRename.planningProblem(boundaryEntries, mode: overflowing)?.kind == .overflow
+                && BatchRename.plan(boundaryEntries, mode: overflowing) == ["a.txt", "b.txt"])
+        check("last representable number remains valid",
+              BatchRename.plan(boundaryEntries, mode: .format(kind: .number, custom: "#", start: Int.max - 1, position: .afterName))
+                == ["\(Int.max - 1).txt", "\(Int.max).txt"])
+        let overlapping = [BatchRename.Entry(url: URL(fileURLWithPath: "/a/folder")),
+                           BatchRename.Entry(url: URL(fileURLWithPath: "/a/folder/child.txt"))]
+        check("overlapping paths are refused regardless of order",
+              BatchRename.overlappingProblem(overlapping)?.kind == .overlapping
+                && BatchRename.overlappingProblem(Array(overlapping.reversed()))?.kind == .overlapping)
+        check("a name prefix is not a path ancestor",
+              BatchRename.overlappingProblem([.init(url: URL(fileURLWithPath: "/a/folder")),
+                                              .init(url: URL(fileURLWithPath: "/a/folder-other/child"))]) == nil)
         check("split keeps a multi-dot base", BatchRename.split("archive.tar.gz") == ("archive.tar", "gz"))
         check("split treats a dotfile as base only", BatchRename.split(".profile") == (".profile", ""))
         check("split without a dot has no extension", BatchRename.split("README") == ("README", ""))
@@ -258,10 +274,28 @@ enum BatchRenameSmokeTests: SmokeSuite {
               siblings == Set([".hidden", "a.txt", "b.txt", "c.txt"]), "\(siblings.sorted())")
         let mapped = FileOperations.siblingNames(forEntries: [BatchRename.Entry(url: root.appendingPathComponent("a.txt"))])
         check("sibling map is keyed by directory path", mapped[root.path] == siblings, "\(mapped.keys)")
+        let parent = root.appendingPathComponent("parent")
+        let child = parent.appendingPathComponent("child.txt")
+        try fm.createDirectory(at: parent, withIntermediateDirectories: false)
+        try Data("untouched".utf8).write(to: child)
+        do {
+            _ = try FileOperations.renameBatch([.init(url: parent, newName: "renamed"), .init(url: child, newName: "other.txt")])
+            check("overlapping batch is refused before mutation", false)
+        } catch {
+            check("overlapping batch is refused before mutation",
+                  (try? String(contentsOf: child)) == "untouched" && !fm.fileExists(atPath: root.appendingPathComponent("renamed").path),
+                  "error \(error); root \(names(in: root)); parent \(names(in: parent))")
+        }
+        let overlapSheet = BatchRenameSheetController(targets: [.init(url: parent), .init(url: child)], siblings: [:])
+        defer { overlapSheet.close() }
+        overlapSheet.selectMode(1)
+        overlapSheet.type(" changed", into: overlapSheet.addTextField)
+        check("overlapping sheet disables confirmation", !overlapSheet.canRename && overlapSheet.problem?.kind == .overlapping,
+              "enabled \(overlapSheet.canRename); problem \(String(describing: overlapSheet.problem)); preview \(overlapSheet.previewRows)")
         try fm.removeItem(at: root)
     }
 
-    // MARK: - The sheet, in both file views
+    // MARK: - The sheet, in all three file views
 
     @MainActor private static func sheetFlow(mode: ViewMode, in fixture: URL) async throws {
         let fm = FileManager.default
@@ -361,6 +395,14 @@ enum BatchRenameSmokeTests: SmokeSuite {
               !sheet.isStartNumberVisible && !sheet.isFormatHintVisible)
         sheet.selectFormatKind(.number)
         sheet.type("Photo #####", into: sheet.customFormatField)
+        sheet.type("7", into: sheet.startNumberField)
+        sheet.type(String(Int.max), into: sheet.startNumberField)
+        check("\(mode): an overflowing start disables Rename without a preview crash",
+              !sheet.canRename && sheet.problem?.kind == .overflow && sheet.previewRows.map(\.new) == originals,
+              "enabled \(sheet.canRename); problem \(String(describing: sheet.problem)); preview \(sheet.previewRows.map(\.new))")
+        sheet.type(String(Int.max) + "0", into: sheet.startNumberField)
+        check("\(mode): an unrepresentable start cannot silently fall back to one", !sheet.canRename,
+              "input \(sheet.startNumberField.stringValue); problem \(String(describing: sheet.problem))")
         sheet.type("7", into: sheet.startNumberField)
         check("\(mode): a # run in the sheet previews padded numbers",
               sheet.isStartNumberVisible && sheet.isFormatHintVisible
@@ -514,10 +556,13 @@ enum BatchRenameSmokeTests: SmokeSuite {
     // MARK: - Helpers
 
     @MainActor private static func listed(_ pane: BrowserViewController, at url: URL) async {
-        await waitUntil("directory listing", detail: { "\(pane.currentURL?.path ?? "nil") vs \(url.path)" }) {
-            pane.currentURL?.standardizedFileURL == url.standardizedFileURL
-                && pane.model.url?.standardizedFileURL == url.standardizedFileURL
-                && pane.model.generation > 0 && !pane.isPreparingArchive && !pane.model.isSearchResults
+        await waitUntil("directory listing", detail: {
+            "expected \(url.standardizedFileURL.path); current \(pane.currentURL?.standardizedFileURL.path ?? "nil"); model \(pane.model.url?.standardizedFileURL.path ?? "nil"); generation \(pane.model.generation); error \(pane.hasListingError); items \(pane.model.items.map { $0.url.standardizedFileURL.path })"
+        }) {
+            pane.currentURL?.standardizedFileURL.path == url.standardizedFileURL.path
+                && pane.model.url?.standardizedFileURL.path == url.standardizedFileURL.path
+                && pane.model.generation > 0 && !pane.hasListingError
+                && !pane.isPreparingArchive && !pane.model.isSearchResults
         }
     }
 

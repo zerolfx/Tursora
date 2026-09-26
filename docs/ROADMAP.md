@@ -34,15 +34,27 @@ Implementation and verification status for per-pane address bars, tab titles on 
 
 ## Completed: work continuity
 
-Following user feedback, session restore was moved ahead of filling in the smaller features. This round restores windows, multiple tabs and two-pane workspaces by default, preserving the active location, names, split ratio, sidebar and window layout; Settings can turn it off and clear what was saved. An executed search is re-run, a missing directory keeps its original path, and terminals, transfers and undo operations are not replayed. **This round's build, 2,418 smoke checks on three consecutive runs and a real quit / restart of the packaged app are all verified**, and the exact scope is collected in the [session restore record](research/workspace-sessions.md). Whether to extend this to selection / scroll position, navigation history and remembering closed tabs should be assessed separately and is not part of what this round completed.
+Following user feedback, session restore was moved ahead of filling in the smaller features. This round restores windows, multiple tabs and two-pane workspaces by default, preserving the active location, names, split ratio, sidebar and window layout; Settings can turn it off and clear what was saved. An executed search is re-run, a missing directory keeps its original path, and terminals, transfers and undo operations are not replayed. **This round's build, 2,418 smoke checks on three consecutive runs and a real quit / restart of the packaged app are all verified**, and the exact scope is collected in the [session restore record](research/workspace-sessions.md). That historical stage did not restore selection or scroll positions; the 2026-09-26 extension below adds them. Navigation history and the recently closed-tab pool still remain session-local.
+
+## Implemented extension: everyday commands and continuity, 2026-09-26
+
+- [x] New Folder has its own Undo/Redo. New Folder with Selection groups folder creation and successful moves into one undoable operation; unexpected later folder contents are never removed silently.
+- [x] Batch rename rejects sequence-number overflow and overlapping ancestor/descendant targets before filesystem staging.
+- [x] Successful directory reloads clear prior errors; external content changes refresh the selected docked preview; shared ZIP reads observe each waiting subscriber's cancellation independently.
+- [x] Move Items Here (⌥⌘V), Deselect All (⌥⌘A), Invert Selection, New Folder with Selection (⌃⌘N), and Show Package Contents are available with their native focus and location guards.
+- [x] Show View Options (⌘J) gathers presentation controls, folder/default policy and width reset. List and column-view widths follow the existing folder policy.
+- [x] Compress is a cancellable File Operations task, covering input staging and ZIP creation; the final creation phase is indeterminate.
+- [x] File > Recently Closed Tabs selects from the existing ten-tab session pool. Launch restoration adds selection and view scroll positions, including selected descendants and column scroll positions, after the real listing arrives.
+
+This extension is implemented and remains unreleased. The final frozen source passed the debug build and three consecutive full smoke runs: 5,400 assertions, 4,926 result lines and 58 named suites per run, in 250.5, 256.5 and 255.0 seconds. The final release build and strict deep signature verification passed. Source fingerprints remained unchanged, no new fixture directories remained after each run, and production preferences and stores retained their prior hashes. Packaged debug and final release interactions are recorded separately: New Folder undo/redo, choosing a recent tab, launch-restored selection/scroll, View Options preview changes and cancelling compression were observed. Native width dragging and canonical screenshot export were not performed in this pass. See [everyday commands](research/everyday-commands-2026-09-26.md), [View Options](research/view-options-2026-09-26.md), [compression](research/compression-tasks-2026-09-26.md) and [workspace continuity](research/workspace-continuity-2026-09-26.md) for the precise observed scope.
 
 ## Next batch (S, under half a day each)
 
-Deselect All, Move Items Here (⌥⌘V), aligning the Copy as Pathname shortcut, New Folder with Selection, Show Package Contents, Always Open With, Print, Slideshow, Eject All, the standard folder shortcuts in the Go menu, Cycle Through Windows, the Services menu, Finder alias resolution, invert selection, open in Terminal.
+Aligning the Copy as Pathname shortcut, Always Open With, Print, Slideshow, Eject All, the standard folder shortcuts in the Go menu, Cycle Through Windows, the Services menu, Finder alias resolution, open in Terminal.
 
 ## After that (M)
 
-Make Alias / Show Original, Recent Folders, Customize Toolbar, Toolbar / Path Bar / Status Bar / Tab Bar switches, Show All Tabs, Merge Windows, the warning when changing an extension, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (individual commands can already be customized one by one), a list of recently closed tabs, additional metadata columns and remembering column widths.
+Make Alias / Show Original, Recent Folders, Customize Toolbar, Toolbar / Path Bar / Status Bar / Tab Bar switches, Show All Tabs, Merge Windows, the warning when changing an extension, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (individual commands can already be customized one by one), additional metadata columns.
 
 ## Completed owner priorities from 2026-09-15
 
@@ -55,7 +67,7 @@ All four priorities below shipped by 0.4.0. Their original order is retained for
 
 ## Big items (L)
 
-Fuller preferences (confirmation policy and so on), free icon placement, per-volume Trash, Quick Actions, Chinese localization, docking / floating panels anywhere, server history / discovery / reconnect, multiple terminal sessions and terminal session restore. The core persistence of per-directory view attributes is implemented; the full Show View Options dialog, persisting column widths and applying recursively are still to do.
+Fuller preferences (confirmation policy and so on), free icon placement, per-volume Trash, Quick Actions, Chinese localization, docking / floating panels anywhere, server history / discovery / reconnect, multiple terminal sessions and terminal session restore. The core persistence of per-directory view attributes is implemented; View Options and column-width memory are implemented in the 2026-09-26 extension; applying properties recursively remains to do.
 
 ## Not doing / waiting for a public API
 
@@ -67,8 +79,8 @@ Also excluded, 2026-09-15, after comparing against Iruka: **Intel support** — 
 
 ## Follow-up verification for the new features
 
-- Per-task progress and pause / resume / cancel for copy / move / Duplicate are implemented; the dedicated automation and hands-on records are in [file operation tasks](research/file-operation-tasks.md). The cross-volume failure branch can be verified by injection, while dedicated hands-on tests on a real separate volume and a real server should each be recorded separately; ZIP extraction is now a task with determinate progress and Cancel (D90); cancelling ZIP **compression**, recovering tasks after a crash, and turning Trash / delete into tasks are still not implemented. Compress is not symmetric with Extract: `ditto -c -k` has no verified per-entry stream to read, and it first copies the whole input tree into the workspace, which is a large untracked phase of its own.
-- Per-directory view attributes use an app-private, path-keyed store; the three smoke runs, the package signing and the hands-on evidence produced after the standalone branch synced `ae5e47a` are in the [directory view verification record](research/computer-use-2026-09-12-directory-views.md), and the combination of the three features cannot reuse that check count. Later items include applying recursively to subdirectories, the column layout and attributes specific to logical pages; following a directory after a rename / move, or restoring across mount points, would require volume identity and bookmarks to be assessed separately, rather than quietly turning this path-keyed behaviour into inode following. Session restore uses its own store, and this round's verification is at the top of this page.
+- Per-task progress and pause / resume / cancel for copy / move / Duplicate are implemented; the dedicated automation and hands-on records are in [file operation tasks](research/file-operation-tasks.md). The cross-volume failure branch can be verified by injection, while dedicated hands-on tests on a real separate volume and a real server should each be recorded separately; ZIP extraction is now a task with determinate progress and Cancel (D90); ZIP compression now also has a cancellable task, with measured input staging followed by indeterminate ZIP creation. `ditto -c -k` still provides no verified compressed-output percentage. Recovering tasks after a crash and turning Trash / delete into tasks remain unimplemented; see the [compression record](research/compression-tasks-2026-09-26.md) for this extension's verification status.
+- Per-directory view attributes use an app-private, path-keyed store; the three smoke runs, the package signing and the hands-on evidence produced after the standalone branch synced `ae5e47a` are in the [directory view verification record](research/computer-use-2026-09-12-directory-views.md), and the combination of the three features cannot reuse that check count. Later items include applying recursively to subdirectories, column ordering and attributes specific to logical pages; following a directory after a rename / move, or restoring across mount points, would require volume identity and bookmarks to be assessed separately, rather than quietly turning this path-keyed behaviour into inode following. Session restore uses its own store, and this round's verification is at the top of this page.
 
 - When a user provides a server, verify authentication, read / write and disconnection for SMB / NFS / WebDAV / legacy AFP; so far only the system mount interface and the state transitions without a network have been verified.
 - [0.1.0](https://github.com/zerolfx/Tursora/releases/tag/v0.1.0) is released; its ZIP checksum, signature, version, architecture and isolated-install verification are in the [Homebrew history](research/homebrew.md#local-verification-of-the-initial-010-cask-historical). A first install / launch of the downloaded artifact on another machine is still unverified; hands-on testing of a locally built package from the same source does not replace that check.
@@ -95,7 +107,6 @@ Smoke-suite consolidation is implemented: status geometry, common IME/model rule
 
 - With a very narrow split or the largest icon size, the smoke test emits a layout warning that the collection-view item width exceeds the available width; a dedicated visual check and a layout regression check still need to be added (2026-09-12).
 
-- New Folder registers nothing with the window's undo manager, so ⌘Z after creating a folder undoes whatever came before it instead. Finder does register it (`NF1` / `NF2` = Redo / Undo New Folder in its strings). Trashing the folder is the obvious undo action, as `registerUndoTrash` already does for Extract. Found while implementing the inline rename (2026-09-22); recorded rather than built, per rule 9.
 - Whether Duplicate, Extract and Compress should also open the new item's name for editing is open. Finder's `selectNodesForTask:startEditing:` suggests the flag is general, but nothing in its symbol table says which tasks pass `YES`, so there is no evidence either way (2026-09-22).
 - A browser pane loses the selection after an **external** rename (the Info window can follow by inode, a pane cannot yet).
 - Folder size in the Info window does not update live as the contents change (to avoid an FSEvents storm).
@@ -109,9 +120,3 @@ Smoke-suite consolidation is implemented: status geometry, common IME/model rule
 - Still to assess: the order of the sources when moving / deleting with a symbolic link and `link/child` both explicitly selected, since moving the link first invalidates the descendant path. Search does not traverse links, so this round's search results cannot produce that combination; an ordinary expanded view or the clipboard still can.
 
 - Folders locates entries under the Home root by a directory's actual spelling; when a valid path is typed in with different casing, file browsing works, but making the tree selection follow still requires handling the volume's real file identity, and cannot simply lower-case every path.
-
-## Further findings outside this reliability change
-
-- Batch rename should either remap selected descendants when their parent is also renamed or reject that overlapping plan before enabling Rename; current staging uses the old absolute descendant path. Validate sequence-number overflow before constructing a live preview (`Int.max` with multiple items).
-- Coalesced archive materialization should observe a waiting subscriber's cancellation before delivering bytes after another request finishes.
-- A successful manual reload after a directory error should clear the previous error label/access banner. External edits of a selected Markdown file should invalidate the docked preview even when its URL is unchanged.

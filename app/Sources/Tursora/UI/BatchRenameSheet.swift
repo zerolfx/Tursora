@@ -316,7 +316,12 @@ final class BatchRenameSheetController: NSWindowController, NSTextFieldDelegate,
     func refresh() {
         let names = BatchRename.plan(entries, mode: mode)
         previewRows = zip(targets.map(\.name), names).map { (old: $0, new: $1) }
-        problem = BatchRename.validate(names, for: entries, siblings: siblings)
+        problem = BatchRename.planningProblem(entries, mode: mode)
+            ?? BatchRename.validate(names, for: entries, siblings: siblings)
+        if case .format(.number, _, _, _) = mode,
+           Int(startNumberField.stringValue.trimmingCharacters(in: .whitespaces)) == nil {
+            problem = .init(kind: .overflow, index: 0, name: startNumberField.stringValue)
+        }
         messageLabel.stringValue = problem?.message ?? ""
         renameButton.isEnabled = problem == nil
         exampleLabel.stringValue = "Example: " + (names.first ?? "")
@@ -336,6 +341,7 @@ final class BatchRenameSheetController: NSWindowController, NSTextFieldDelegate,
     func controlTextDidChange(_ obj: Notification) { refresh() }
 
     @objc func performRename(_ sender: Any?) {
+        refresh()
         guard problem == nil else { return }
         let plan = requests
         dismiss()

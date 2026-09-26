@@ -10,8 +10,13 @@ protocol BrowserHost: AnyObject {
     func openInOtherPane(_ url: URL)
     func transferToOtherPane(_ urls: [URL], move: Bool)
     func selectionDidChange(in pane: BrowserViewController)
+    func contentsDidChange(in pane: BrowserViewController)
     func viewModeDidChange(in pane: BrowserViewController)
     func focusSearch(in pane: BrowserViewController)
+}
+
+extension BrowserHost {
+    func contentsDidChange(in pane: BrowserViewController) {}
 }
 
 /// One browsing pane: its own path navigator, directory model, history, and
@@ -74,8 +79,11 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var chromeLocationURL: URL { currentURL ?? workspaceNavigationURL }
     var workspacePaneState: WorkspacePaneState {
         WorkspacePaneState(url: ArchiveWorkspace.shared.logicalURL(for: workspaceNavigationURL),
-                           search: isSearching ? searchSession.request : nil)
+                           search: isSearching ? searchSession.request : nil,
+                           viewState: pendingWorkspaceView?.state ?? capturedWorkspaceViewState)
     }
+    var pendingWorkspaceView: (location: URL, search: Bool, state: WorkspacePaneViewState)?
+    var isRestoringWorkspaceView = false
     private var navigationGeneration = 0
     private(set) var isPreparingArchive = false
     private var archivePreparation: ArchivePreparationSubscription?
@@ -131,6 +139,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var activeIndicatorForTesting: AdaptiveLayerView { activeIndicator }
     private var indicatorHeight: NSLayoutConstraint?
     private var lastError: Error?
+    var hasListingError: Bool { lastError != nil || !errorLabel.isHidden || locationNotice != nil }
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
     private let contextMenu = FileContextMenu()
     /// Holds whichever file view is current.
@@ -180,6 +189,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         statusBar.onZoomChanged = { [weak self] index in self?.setZoomIndex(index) }
         NotificationCenter.default.addObserver(self, selector: #selector(directoriesChanged(_:)),
                                                name: .tursoraDirectoriesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(workspaceScrollChanged(_:)),
+                                               name: NSView.boundsDidChangeNotification, object: nil)
 
         model.onChange = { [weak self] in
             guard let self else { return }
@@ -195,6 +206,13 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             self.lastError = error
             self.errorLabel.stringValue = "Cannot open this folder.\n\(error.localizedDescription)"
             self.handleListingFailure(error)
+        }
+        model.onLoadSuccess = { [weak self] in
+            guard let self else { return }
+            self.lastError = nil
+            self.errorLabel.isHidden = true
+            self.dismissLocationNotice()
+            self.host?.contentsDidChange(in: self)
         }
         observeViewProperties()
         // Deferred so the owner can wire onLocationChanged first.
@@ -315,6 +333,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         v.onRenameCommitted = { [weak self] item, name in self?.rename(item, to: name) }
         v.onSelectionChanged = { [weak self] in
             self?.updateStatus()
+            if let self, !self.isRestoringWorkspaceView { self.onWorkspaceSessionChanged?() }
             if let self { NotificationCenter.default.post(name: .tursoraSelectionChanged, object: self) }
             if let self, QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
                 // The new item on show, and the one after it, are asked for
@@ -474,7 +493,13 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         guard clamped != zoomIndex else { return }
         zoomIndex = clamped
         rememberedViewProperties.setZoomIndex(clamped, for: viewMode)
+        let selected = fileView.selectedItems.map(\.url)
+        let offset = fileView.scrollOffset
+        let listHorizontalOffset = viewMode == .details ? fileList.horizontalScrollOffset : nil
         fileView.setIconSize(iconSize, showPreviews: showsPreviews)
+        fileView.select(urls: selected)
+        fileView.scrollOffset = offset
+        if let listHorizontalOffset { fileList.horizontalScrollOffset = listHorizontalOffset }
         syncZoomSlider()
         persistViewProperties()
     }
@@ -482,8 +507,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func zoom(by step: Int) { setZoomIndex(zoomIndex + step) }
 
     func setShowsPreviews(_ on: Bool) {
+        let selected = fileView.selectedItems.map(\.url)
+        let offset = fileView.scrollOffset
+        let listHorizontalOffset = viewMode == .details ? fileList.horizontalScrollOffset : nil
         showsPreviews = on
         fileView.setIconSize(iconSize, showPreviews: on)
+        fileView.select(urls: selected)
+        fileView.scrollOffset = offset
+        if let listHorizontalOffset { fileList.horizontalScrollOffset = listHorizontalOffset }
         persistViewProperties()
     }
 
@@ -642,6 +673,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// `remounting` opens a ZIP whatever the ZIP-browsing preference: for a
     /// location that was browsable when it was recorded (D103).
     private func navigate(to url: URL, remounting: Bool) {
+        pendingWorkspaceView = nil
         // A remount from history still preparing: the cursor goes back to the
         // entry on screen first, so its view state is saved there and the new
         // location is pushed after it.
@@ -708,6 +740,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// whatever the ZIP-browsing preference, since it was browsable when it
     /// was recorded — and shown without adding to history.
     private func showHistoryLocation(_ url: URL, returningTo slot: Int) {
+        pendingWorkspaceView = nil
         let workspace = ArchiveWorkspace.shared
         guard workspace.session(for: url) == nil, let archive = workspace.archiveURL(containing: url) else {
             load(url)
@@ -1044,6 +1077,8 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var lastTransferTask: TransferTask?
     /// The last extraction started by this pane, for the smoke suite.
     var lastExtractionTask: TransferTask?
+    var lastCompressionTask: TransferTask?
+    var compressionOptions = ArchiveCompressionOptions()
     /// Injectable so a test can drive progress without a huge fixture.
     var archiveListing: ArchiveListing = BSDTarArchiveListing()
     var archiveProgressPollInterval: TimeInterval = {
@@ -1081,6 +1116,17 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let hasSelection = !fileView.selectedItems.isEmpty
         switch item.action {
+        case #selector(deselectAllFiles(_:)):
+            return hasFileViewFocus && hasSelection
+        case #selector(invertFileSelection(_:)):
+            return hasFileViewFocus && !fileView.selectionScopeItems.isEmpty
+        case #selector(newFolderWithSelection(_:)):
+            return hasFileViewFocus && canCreateFolderWithSelection
+        case #selector(showPackageContents(_:)):
+            return hasFileViewFocus && canShowPackageContents
+        case #selector(moveItemsHere(_:)):
+            return hasFileViewFocus && canModifyCurrentLocation && !NSPasteboard.general.fileURLs.isEmpty
+                && !NSPasteboard.general.fileURLs.contains(where: isArchiveContent)
         case #selector(copy(_:)), #selector(quickLook(_:)): return canPreviewSelection
         case #selector(cut(_:)), #selector(duplicate(_:)), #selector(moveToTrash(_:)):
             return canModifySelectedItems && hasSelection && !isBrowsingTrash
@@ -1267,6 +1313,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         let single = items.count == 1 ? items[0] : nil
 
         add("Open", #selector(ctxOpen(_:)))
+        if let single, single.isPackage, single.isDirectory {
+            add("Show Package Contents", #selector(ctxShowPackageContents(_:)))
+        }
         if let single, !single.isNavigable {
             menu.addItem(openWithMenuItem(for: single.url))
         }
@@ -1279,6 +1328,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         menu.addItem(.separator())
         add("Quick Look", #selector(ctxQuickLook(_:)), symbol: "eye")
         add("Get Info", #selector(ctxGetInfo(_:)), symbol: "info.circle")
+        if canModifyCurrentLocation {
+            add("New Folder with Selection", #selector(ctxNewFolderWithSelection(_:)), symbol: "folder.badge.plus")
+        }
         if items.count == 1 { add("Rename", #selector(ctxRename(_:)), symbol: "pencil") }
         else if items.count > 1, canModifySelectedItems {
             add(Self.batchRenameTitle(count: items.count), #selector(ctxBatchRename(_:)), symbol: "pencil")
@@ -1433,6 +1485,15 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         host.places.isFavourite(url) ? host.places.removeFavourite(url) : host.places.addFavourite(url)
     }
     @objc private func ctxNewFolder(_ s: Any?) { newFolder() }
+    @objc private func ctxNewFolderWithSelection(_ s: Any?) {
+        createFolder(containing: contextTargets(for: s).map(\.url))
+    }
+    @objc private func ctxShowPackageContents(_ s: Any?) {
+        let items = contextTargets(for: s)
+        guard !isBrowsingArchive, !isBrowsingTrash, items.count == 1,
+              let item = items.first, item.isPackage, item.isDirectory else { return }
+        navigate(to: item.url)
+    }
     @objc private func ctxReload(_ s: Any?) { reload() }
     @objc private func ctxToggleHidden(_ s: Any?) { showsHiddenFiles.toggle() }
     @objc private func ctxSort(_ s: NSMenuItem) {
@@ -1514,6 +1575,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         // Before the listing starts: a ZIP on screen is never let go (D103).
         ArchiveWorkspace.shared.setDisplayed(url, by: self)
         workspaceNavigationURL = ArchiveWorkspace.shared.logicalURL(for: url)
+        if pendingWorkspaceView?.location.standardizedFileURL != workspaceNavigationURL.standardizedFileURL {
+            pendingWorkspaceView = nil
+        }
         addressBar.url = url
         viewPropertiesKey = destinationKey
         restoreViewProperties()
@@ -1568,6 +1632,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     }
 
     private func restoreViewState() {
+        if restorePendingWorkspaceView() { return }
         if let pendingSelection {
             self.pendingSelection = nil
             fileView.select(name: pendingSelection)
