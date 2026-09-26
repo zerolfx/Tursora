@@ -60,7 +60,9 @@ enum SearchEntrySmokeTests: SmokeSuite {
         await searched(browser, name: "needle")
         check("\(mode): expanded search includes matching descendants", Set(browser.model.items.map(\.name)) == ["needle.txt", "needle-child.txt"] && !browser.isFiltering)
         check("\(mode): automatic search keeps the toolbar text and editor", field.stringValue == "needle" && wc.window?.firstResponder === focusedEditor)
-        await compositionCommit(mode: mode, in: wc)
+        // Composition belongs to the shared toolbar editor and search session.
+        // Each view still exercises focus, results and pane ownership below.
+        if mode == .details { await compositionCommit(mode: mode, in: wc) }
         type("needle", in: wc)
         browser.searchPanel.search(nil)
         await searched(browser, name: "needle")

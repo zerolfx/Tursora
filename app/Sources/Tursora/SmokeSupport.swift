@@ -1,5 +1,107 @@
 import AppKit
 
+/// Assertion totals remain comparable when a matrix emits one summary instead
+/// of a success line for every input. Suites run sequentially; individual
+/// callbacks may report from a worker, so the counters are synchronized.
+final class SmokeReport {
+    static let shared = SmokeReport()
+    private let lock = NSLock()
+    private var assertions = 0
+    private var resultLines = 0
+    private var openGroups = 0
+    private var activeSuite: (name: String, start: TimeInterval, assertions: Int, lines: Int)?
+    private var durations: [(name: String, seconds: TimeInterval)] = []
+
+    private func counts() -> (assertions: Int, lines: Int) {
+        lock.lock(); defer { lock.unlock() }
+        return (assertions, resultLines)
+    }
+
+    func passed(_ message: String? = nil) {
+        lock.lock()
+        assertions += 1
+        if message != nil { resultLines += 1 }
+        lock.unlock()
+        if let message { print("ok   \(message)") }
+    }
+
+    func beginGroup() {
+        lock.lock(); defer { lock.unlock() }
+        openGroups += 1
+    }
+
+    func finishGroup(_ message: String) {
+        lock.lock()
+        openGroups -= 1
+        resultLines += 1
+        lock.unlock()
+        print("ok   \(message)")
+    }
+
+    var allGroupsFinished: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return openGroups == 0
+    }
+
+    func beginSuite(_ name: String) {
+        precondition(activeSuite == nil)
+        let snapshot = counts()
+        activeSuite = (name, ProcessInfo.processInfo.systemUptime, snapshot.assertions, snapshot.lines)
+        print("SUITE START \(name)")
+    }
+
+    func endSuite() {
+        guard let suite = activeSuite else { return }
+        activeSuite = nil
+        let snapshot = counts()
+        let elapsed = ProcessInfo.processInfo.systemUptime - suite.start
+        durations.append((suite.name, elapsed))
+        print("SUITE PASS \(suite.name): assertions=\(snapshot.assertions - suite.assertions), result_lines=\(snapshot.lines - suite.lines), seconds=\(String(format: "%.3f", elapsed))")
+    }
+
+    func finishRun() {
+        endSuite()
+        let snapshot = counts()
+        print("SMOKE SUMMARY assertions=\(snapshot.assertions) result_lines=\(snapshot.lines) suites=\(durations.count)")
+        for suite in durations.sorted(by: { $0.seconds > $1.seconds }).prefix(5) {
+            print("SLOW SUITE \(suite.name): seconds=\(String(format: "%.3f", suite.seconds))")
+        }
+    }
+}
+
+/// A matrix retains each assertion and fails immediately with its input
+/// context. Only successful output is grouped; finish is explicit so a suite
+/// cannot accidentally report an unfinished matrix as complete.
+final class SmokeCheckGroup {
+    private let name: String
+    private let prefix: String
+    private var count = 0
+    private var finished = false
+
+    init(name: String, prefix: String = "") {
+        self.name = name
+        self.prefix = prefix
+        SmokeReport.shared.beginGroup()
+    }
+
+    func check(_ passed: Bool, _ detail: @autoclosure () -> String = "") {
+        precondition(!finished)
+        guard passed else {
+            let extra = detail()
+            print("FAIL \(prefix)\(name)\(extra.isEmpty ? "" : " — \(extra)")")
+            exit(1)
+        }
+        count += 1
+        SmokeReport.shared.passed()
+    }
+
+    func finish() {
+        precondition(!finished && count > 0)
+        finished = true
+        SmokeReport.shared.finishGroup("\(prefix)\(name) — \(count) cases")
+    }
+}
+
 /// Shared scaffolding for the headless smoke suites (`*SmokeTests.swift`).
 ///
 /// Every suite adopts `SmokeSuite`, optionally supplies a `checkPrefix`
@@ -26,8 +128,9 @@ extension SmokeSuite {
     /// autoclosure is only evaluated when non-empty output is printed.
     static func check(_ name: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") {
         let extra = detail()
-        print("\(ok ? "ok  " : "FAIL") \(checkPrefix)\(name)\(extra.isEmpty ? "" : " — \(extra)")")
-        if !ok { exit(1) }
+        let message = "\(checkPrefix)\(name)\(extra.isEmpty ? "" : " — \(extra)")"
+        guard ok else { print("FAIL \(message)"); exit(1) }
+        SmokeReport.shared.passed(message)
     }
 
     /// Prints a failure line and exits.
@@ -43,7 +146,7 @@ extension SmokeSuite {
             let extra = detail()
             throw SmokeFailure("\(checkPrefix)\(name)\(extra.isEmpty ? "" : " — \(extra)")")
         }
-        print("ok  \(checkPrefix)\(name)")
+        SmokeReport.shared.passed("\(checkPrefix)\(name)")
     }
 
     /// Polls `condition` on the main actor until it holds; silent on success,

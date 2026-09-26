@@ -159,7 +159,7 @@ enum TerminalPreferences {
             return (try? decoded.normalized()) ?? Configuration()
         }
 
-        init(defaults: UserDefaults = .standard, notificationCenter: NotificationCenter = .default,
+        init(defaults: UserDefaults = AppDefaults.shared, notificationCenter: NotificationCenter = .default,
              isExecutable: @escaping (String) -> Bool = TerminalPreferences.isExecutableFile) {
             self.defaults = defaults
             self.notificationCenter = notificationCenter

@@ -1,7 +1,8 @@
 import Foundation
 
 /// Path resolution and completion for the address bar's edit mode.
-/// Pure functions, so they are testable without a window.
+/// Blocking filesystem helpers plus pure prefix matching. Interactive callers
+/// use PathCompletionService so resolution and listing happen off the main queue.
 enum PathCompleter {
 
     /// Expand `~`, resolve relative input against `cwd`, and require an
@@ -58,35 +59,53 @@ enum PathCompleter {
     /// completion round starts inside the chosen folder.
     static func completions(for text: String, cwd: URL, home: URL, includeHidden: Bool = false, workspace: ArchiveWorkspace = .shared) -> [String] {
         let (dirText, partial) = splitLastComponent(text)
+        let entries = directoryEntries(for: DirectoryQuery(directoryText: dirText, cwd: cwd, home: home), workspace: workspace)
+        return completions(in: entries, partial: partial, includeHidden: includeHidden)
+    }
+
+    /// The directory, rather than the prefix being typed, is the cache key.
+    /// Resolving it is deliberately deferred to the worker as mounted volumes
+    /// and symlink targets can block even before enumeration starts.
+    struct DirectoryQuery: Hashable {
+        let directoryText: String
+        let cwd: URL
+        let home: URL
+    }
+
+    struct DirectoryEntry {
+        let name: String
+        let isHidden: Bool
+    }
+
+    static func directoryEntries(for query: DirectoryQuery, workspace: ArchiveWorkspace = .shared) -> [DirectoryEntry] {
         let dir: URL
-        if dirText.isEmpty {
-            dir = cwd
+        if query.directoryText.isEmpty {
+            dir = query.cwd
         } else {
-            guard let resolved = resolveDirectory(dirText, cwd: cwd, home: home, workspace: workspace) else { return [] }
+            guard let resolved = resolveDirectory(query.directoryText, cwd: query.cwd, home: query.home, workspace: workspace) else { return [] }
             dir = resolved
         }
         if workspace.session(for: dir) != nil {
             let provider = ArchiveFileProvider(base: LocalFileProvider(), workspace: workspace)
             guard let items = try? provider.listDirectory(dir) else { return [] }
-            let wantHidden = includeHidden || partial.hasPrefix(".")
-            return items.filter {
-                $0.isNavigable && (wantHidden || !$0.isHidden)
-                    && (partial.isEmpty || $0.name.lowercased().hasPrefix(partial.lowercased()))
-            }.map { $0.name + "/" }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            return items.filter(\.isNavigable).map { DirectoryEntry(name: $0.name, isHidden: $0.isHidden) }
         }
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: dir, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey, .isHiddenKey],
             options: []) else { return [] }
-        let wantHidden = includeHidden || partial.hasPrefix(".")
-        return entries.compactMap { url -> String? in
+        return entries.compactMap { url -> DirectoryEntry? in
             guard let v = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .isHiddenKey]),
                   v.isDirectory == true, v.isPackage != true else { return nil }
-            if v.isHidden == true, !wantHidden { return nil }
-            let name = url.lastPathComponent
-            guard partial.isEmpty || name.lowercased().hasPrefix(partial.lowercased()) else { return nil }
-            return name + "/"
+            return DirectoryEntry(name: url.lastPathComponent, isHidden: v.isHidden == true)
         }
-        .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    static func completions(in entries: [DirectoryEntry], partial: String, includeHidden: Bool = false) -> [String] {
+        let wantHidden = includeHidden || partial.hasPrefix(".")
+        let prefix = partial.lowercased()
+        return entries.filter {
+            (wantHidden || !$0.isHidden) && (prefix.isEmpty || $0.name.lowercased().hasPrefix(prefix))
+        }.map { $0.name + "/" }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     /// "~/Work/Do" → ("~/Work/", "Do");  "Do" → ("", "Do");  "/" → ("/", "")

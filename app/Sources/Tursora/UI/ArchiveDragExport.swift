@@ -14,7 +14,9 @@ enum ArchiveDragExport {
     static func writer(for item: FileItem) -> NSPasteboardWriting? {
         guard item.canAccess else { return nil }
         guard item.isArchiveEntry else { return item.publishedContentURL.map { $0 as NSURL } }
-        if let url = item.publishedContentURL { return ArchiveHandoffPasteboardItem.make(physical: url, logical: item.url) }
+        if let url = ArchiveExport.publishedURL(for: item.url) {
+            return ArchiveHandoffPasteboardItem.make(physical: url, logical: item.url)
+        }
         return ArchiveEntryPromiseProvider(item: item)
     }
 
@@ -25,7 +27,9 @@ enum ArchiveDragExport {
         guard item.isArchiveEntry else { return item.publishedContentURL }
         // A sharing service reads the file when it likes: it is given a
         // hand-off copy, outside the ZIP's private copy (D103).
-        if let url = item.publishedContentURL { return ArchiveHandoffStore.shared.handOff(url, logical: item.url) }
+        if let url = ArchiveExport.publishedURL(for: item.url) {
+            return ArchiveHandoffStore.shared.handOff(url, logical: item.url)
+        }
         let provider = NSItemProvider()
         provider.suggestedName = item.name
         let location = item.url
@@ -38,11 +42,7 @@ enum ArchiveDragExport {
             progress.cancellationHandler = { cancellation.cancel() }
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let result = try ArchiveWorkspace.shared.materializeBlocking([location], cancellation: cancellation)
-                    guard let url = result.urls.first,
-                          let copy = ArchiveHandoffStore.shared.handOff(url, logical: location) else {
-                        throw result.failures.first?.error ?? ArchiveBrowsingSession.SessionError.unavailableItem
-                    }
+                    let copy = try ArchiveExport.handOff(location, cancellation: cancellation)
                     // Not coordinated: the receiver is given its own copy.
                     completion(copy, false, nil)
                     lease.release()
@@ -160,11 +160,7 @@ final class ArchiveEntryPromiseProvider: NSFilePromiseProvider, NSFilePromisePro
         let lease = ArchiveWorkspace.shared.lease([logicalURL])
         defer { lease.release() }
         do {
-            let result = try ArchiveWorkspace.shared.materializeBlocking([logicalURL])
-            guard let source = result.urls.first else {
-                throw result.failures.first?.error ?? ArchiveBrowsingSession.SessionError.unavailableItem
-            }
-            try FileManager.default.copyItem(at: source, to: url)
+            try ArchiveExport.writePromise(from: logicalURL, to: url)
             completionHandler(nil)
         } catch {
             completionHandler(error)

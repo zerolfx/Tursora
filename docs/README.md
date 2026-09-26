@@ -5,11 +5,13 @@ Start with the behavior, architecture or workflow document for your task, then u
 | Read this when… | Document |
 |---|---|
 | you need the intended behaviour of a feature | [SPEC.md](SPEC.md) — v1 spec, each section states whether it matches Dolphin or Finder |
-| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D74 |
+| you wonder why something is the way it is | [DECISIONS.md](DECISIONS.md) — decision log D0–D108 |
 | you are changing code | [ARCHITECTURE.md](ARCHITECTURE.md) — object graph, per-file map, data flows, notifications, persistence, threading |
 | you are building, testing or releasing | [DEVELOPMENT.md](DEVELOPMENT.md) — toolchain, smoke test, conventions, AppKit pitfalls, release checklist |
 | you are editing or previewing the bilingual product site | [site/README.md](../site/README.md) — English default, Chinese page, shared workflows/screenshots, Python static build and browser checks; [architecture](ARCHITECTURE.md#product-page) |
 | you need a key binding or menu item | [SHORTCUTS.md](SHORTCUTS.md) — every shortcut, menu, gesture and drag rule |
+| you are checking the 2026-09-26 reliability fixes and completion/refactoring work | [research/reliability-2026-09-26.md](research/reliability-2026-09-26.md) — scope, regression checks and packaged-app verification |
+| you want to understand the smoke-check count or consolidation | [research/smoke-suite-review-2026-09-26.md](research/smoke-suite-review-2026-09-26.md) — original count breakdown, implemented consolidation, timings and coverage boundaries |
 | you are choosing what to do next | [ROADMAP.md](ROADMAP.md), then [gaps/GAP-vs-FINDER.md](gaps/GAP-vs-FINDER.md) and [gaps/GAP-vs-DOLPHIN.md](gaps/GAP-vs-DOLPHIN.md) with difficulty estimates |
 | you are changing file-operation tasks or their lifecycle | [research/file-operation-tasks.md](research/file-operation-tasks.md) — Dolphin routing evidence, transfer boundaries, adversarial review and verification |
 | you are checking the three feature PRs together | [research/pr-integration-2026-09-12.md](research/pr-integration-2026-09-12.md) — merge stages, cross-feature fixes and validation status |
@@ -21,7 +23,8 @@ Start with the behavior, architecture or workflow document for your task, then u
 | you are preparing README or site screenshots | [images/README.md](images/README.md), [research/screenshot-transparency.md](research/screenshot-transparency.md) — deterministic alpha preparation and pixel verification |
 | you are preparing a versioned release, drag-install DMG or future Apple signing | [RELEASING.md](RELEASING.md), [../CHANGELOG.md](../CHANGELOG.md); older implementation entries are in [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md) |
 | you are checking the published 0.2.0 assets and verification scope | [research/release-0.2.0.md](research/release-0.2.0.md) — exact tag/build, downloaded bytes, signatures and production-feed boundaries |
-| you are checking the current 0.4.1 release | [research/release-0.4.1.md](research/release-0.4.1.md) — the bug-fix round: what the reported defects were, what fixing them exposed, the mutation testing of every new check, the "flaky" check that was not flaky, and what is still unverified |
+| you are checking the current 0.5.0 release | [research/release-0.5.0.md](research/release-0.5.0.md) — published assets and verification scope |
+| you are checking the earlier 0.4.1 release | [research/release-0.4.1.md](research/release-0.4.1.md) — the bug-fix round: what the reported defects were, what fixing them exposed, the mutation testing of every new check, the "flaky" check that was not flaky, and what is still unverified |
 | you are checking the previous 0.4.0 release | [research/release-0.4.0.md](research/release-0.4.0.md) — the round's scope, what was verified locally, the review findings worth remembering, and what is still unverified |
 | you are checking the earlier 0.3.0 release | [research/release-0.3.0.md](research/release-0.3.0.md) — the published tag, assets downloaded again, the signature and feed checks, and the single-source version change |
 | you are checking the earlier 0.2.1 release | [research/release-0.2.1.md](research/release-0.2.1.md) — exact commit/build, public assets, signatures, app launch and production-feed check |

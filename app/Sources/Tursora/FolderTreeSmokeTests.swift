@@ -68,6 +68,11 @@ enum FolderTreeSmokeTests: SmokeSuite {
         model.showsHiddenFolders = true
         await expectEventually("Show Hidden refresh finishes") { model.root?.children?.contains { $0.name == ".Hidden" } == true }
         check("hidden preference survives a model refresh", model.showsHiddenFolders)
+        var hiddenRevealFinished = false
+        model.follow(alpha.appendingPathComponent("Nested/Deep")) { _ in hiddenRevealFinished = true }
+        await expectEventually("hidden refresh and ancestor reveal finish before stopping") {
+            hiddenRevealFinished && model.loadedNodes.allSatisfy { !$0.isLoading }
+        }
         model.setActive(false)
         let stoppedCount = provider.requestCount
         model.refresh()

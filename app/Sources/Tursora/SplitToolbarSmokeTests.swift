@@ -13,7 +13,7 @@ enum SplitToolbarSmokeTests: SmokeSuite {
     private static func runChecks() async {
         print("== split toolbar ==")
         let provider = SmokeFixtures.EmptyProvider()
-        let defaults = UserDefaults.standard
+        let defaults = AppDefaults.shared
         let savedFavorites = defaults.object(forKey: "favouritesOrder")
         defer {
             if let savedFavorites { defaults.set(savedFavorites, forKey: "favouritesOrder") }

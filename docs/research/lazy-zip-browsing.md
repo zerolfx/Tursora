@@ -496,3 +496,7 @@ Still missing: the computer-use pass above, and browsing a ZIP nested inside ano
 
 No computer-use pass on the packaged app has been made for any of this, so no claim is made about how
 opening a large archive, dragging to Finder or sharing actually feels.
+
+## Reliability follow-up, 2026-09-26
+
+External Drag/Share now reject incomplete requested subtrees through ArchiveExport, including already-failed or still-unpublished members; promised destinations are staged before publication. The listing parser preserves raw line bytes across read boundaries so Unicode names remain intact. Implementation and current automated/packaged verification are recorded in [the reliability record](reliability-2026-09-26.md).

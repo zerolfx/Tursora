@@ -151,7 +151,7 @@ final class ShortcutStore {
         }
     }
 
-    init(defaults: UserDefaults = .standard, notificationCenter: NotificationCenter = .default) {
+    init(defaults: UserDefaults = AppDefaults.shared, notificationCenter: NotificationCenter = .default) {
         self.defaults = defaults
         self.notificationCenter = notificationCenter
     }

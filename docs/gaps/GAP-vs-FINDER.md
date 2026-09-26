@@ -42,10 +42,10 @@ How the estimates were made: 7 agents, one per category, estimated every item ag
 
 | Finder | Tursora | Difficulty | Notes |
 |---|---|---|---|
-| **as Columns** (⌘3) | ✅ | — | `NSBrowser` in item mode with the last column previewing a file through the preview pane's renderer; bound to ⌥⌘3 because ⌘3 is tab 3. Selecting never navigates, unlike Finder (D84). Not yet looked at in a packaged build |
+| **as Columns** (⌘3) | ✅ | — | `NSBrowser` in item mode with the last column previewing a file through the preview pane's renderer; bound to ⌥⌘3 because ⌘3 is tab 3. Selecting never navigates, unlike Finder (D84). Packaged-app observations are tracked in the versioned release research records |
 | as Gallery (⌘4) | ⛔ | — | Not planned: the owner excluded gallery view on 2026-09-16, along with file and folder comparison, after the Iruka comparison round |
 | **Show Preview** (⇧⌘P, the preview pane on the right) | ✅ | — | A pane docked beside the file view, following the selection and surviving navigation and a quit; Markdown is rendered rather than shown as plain text, which Quick Look does not do (D81, D83). Thumbnails moved to ⌃⌘P so the pane could take Finder's key (D82) |
-| **Show View Options** (⌘J, per-folder view settings) | Per-directory persistence ✅; the full Finder-style dialog ❌ | M for the dialog | The existing mode / sorting / the zoom step of each of the three views / grouping / hidden files / previews are saved per directory; View and Settings have entry points for the policy, the default and a reset. The app uses a private path store and does not write `.DS_Store`; there is no ⌘J, no column layout and no free-placement settings |
+| **Show View Options** (⌘J, per-folder view settings) | Per-directory persistence ✅; the full Finder-style dialog ❌ | M for the dialog | The existing mode / sorting / the zoom step of each of the three views / grouping / hidden files / previews are saved per directory; View and Settings have entry points for the policy, the default and a reset. The app uses a private path store and does not write `.DS_Store`; there is no ⌘J, no remembered column widths and no free-placement settings |
 | Clean Up / Snap to Grid / free icon placement | ❌ | L | The icon view would change from a flow grid to a free layout with per-folder coordinates persisted; a drag inside NSCollectionView is currently rejected as a file drop |
 | Toolbar (⌥⌘T) / Path Bar (⌥⌘P) / Status Bar (⌘/) / Tab Bar (⇧⌘T) toggles | Sidebar only | M | Simple in itself; ⇧⌘T clashes with our "reopen closed tab" |
 | **Customize Toolbar…** | ❌ | M | `allowsUserCustomization = true` plus more allowed items; the delegate currently also keeps a reference to the palette's copy, which has to change |
@@ -89,8 +89,8 @@ The Dock already offers three entry points — New Window / Downloads / Applicat
 ## Suggested order (by cost)
 
 1. S: Deselect All, Move Items Here, aligning Copy as Pathname, New Folder with Selection, Show Package Contents, Always Open With, Print, Slideshow, Eject All, the Go menu shortcuts, Cycle Through Windows, the Services menu, alias resolution
-2. M: Make Alias / Show Original, Recent Folders, the Show Preview pane, Customize Toolbar, the bar toggles, Show All Tabs, Move Tab to New Window, the warning when an extension changes, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (each one is already configurable individually)
-3. L: The Date Created / Date Added / Date Last Opened sort keys and the optional list columns with folder sizes are done ([record](../research/sort-columns-folder-sizes.md); the Version / Comments / Tags columns and persisting column widths are still not implemented). ~~Column view~~ (done, D84), Gallery view, the full preference policy, free icon placement, the trash view, Quick Actions, Chinese localization, server discovery / history / reconnect; the full Show View Options dialog is listed separately as M (per-directory persistence is implemented)
+2. M: Make Alias / Show Original, Recent Folders, Customize Toolbar, the bar toggles, Show All Tabs, Merge Windows, the warning when an extension changes, Paste Exactly, Show Clipboard, Add to Dock, a preset of Finder's default shortcuts (each one is already configurable individually)
+3. L: The Date Created / Date Added / Date Last Opened sort keys and the optional list columns with folder sizes are done ([record](../research/sort-columns-folder-sizes.md); the Version / Comments / Tags columns and persisting column widths are still not implemented). The full preference policy, free icon placement, per-volume trash, Quick Actions, Chinese localization, server discovery / history / reconnect; the full Show View Options dialog is listed separately as M (per-directory persistence is implemented)
 4. XL / not recommended: Customize Folder, Smart Folders, FinderSync badges
 
 ## 2026-09-12 update
@@ -116,3 +116,11 @@ The Dock already offers three entry points — New Window / Downloads / Applicat
 - [x] The terminal shell / monospaced font / font size / theme / custom text background color, and the toolbar toggle.
 - [x] The Folders tree below Places is a Dolphin-style addition; the Finder-style favorites sidebar stays, and the two kinds of navigation are not merged into one tree.
 - [x] The final 3,194-check smoke test over 95 Swift sources passed three times in a row; for the scope of the delivered app / DMG, the on-device run and the screenshot verification see the [customization integration record](../research/customization-integration.md); remote CI and releases are still handled separately.
+
+## Reliability follow-up, 2026-09-26
+
+- [x] Single-item rename and undo refuse an occupied destination, including dangling symlinks; case-only changes remain supported.
+- [x] Partial Trash success retains undo and Tursora Put Back entries for the items moved.
+- [x] Failed directory listings clear stale icon and grouped-list rows.
+- [x] ZIP Drag/Share report incomplete exports, including a repeated attempt after failure.
+- Automated and packaged-app verification for this change is recorded separately in [the reliability record](../research/reliability-2026-09-26.md).

@@ -19,9 +19,9 @@ enum DragAndDropSmokeTests: SmokeSuite {
             let fixture = FileManager.default.temporaryDirectory
                 .appendingPathComponent("tursora-drag-drop-" + UUID().uuidString)
                 .resolvingSymlinksInPath()
-            let savedFavourites = UserDefaults.standard.stringArray(forKey: "favouritesOrder")
+            let savedFavourites = AppDefaults.shared.stringArray(forKey: "favouritesOrder")
             defer {
-                UserDefaults.standard.set(savedFavourites, forKey: "favouritesOrder")
+                AppDefaults.shared.set(savedFavourites, forKey: "favouritesOrder")
                 try? FileManager.default.removeItem(at: fixture)
             }
             do {

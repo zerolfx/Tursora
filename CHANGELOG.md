@@ -4,6 +4,20 @@ User-visible changes are recorded here. Add changes under Unreleased, then move 
 
 ## [Unreleased]
 
+### Fixed
+
+- Renaming one file, including Undo and Redo, refuses to overwrite an existing item. Case-only renames still work.
+- Moving several items to Trash keeps Undo and Put Back for the items that succeeded even when another item fails.
+- Dragging or sharing a folder from a ZIP reports unreadable members instead of delivering an incomplete folder as a successful export.
+- Unicode names in large ZIP listings retain characters that cross a read boundary.
+- A directory that can no longer be read clears its old file rows in every view.
+
+### Changed
+
+- Address-bar completion runs off the main thread, reuses recent directory listings and ignores results from an editor session that has already changed.
+- Browser file commands and undo are separated from archive reads and navigation. Smoke tests isolate application preferences, flush fixture stores before cleanup and wait for folder-tree work before asserting inactivity.
+- Smoke verification removes duplicated status, search and archive work, groups large parameter matrices without dropping their inputs, and reports actual assertion totals separately from result lines with timings for each suite.
+
 ## [0.5.0] - 2026-09-25
 
 ### Added

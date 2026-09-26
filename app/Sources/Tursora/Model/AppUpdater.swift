@@ -17,9 +17,9 @@ protocol AppUpdateDriver: AnyObject {
 final class AppUpdater: NSObject {
     static let didChange = Notification.Name("Tursora.updaterChanged")
     static let shared: AppUpdater = {
-        // Do not even construct Sparkle in a smoke run or an unbundled SPM tool:
+        // Do not even construct Sparkle in an isolated run or unbundled SPM tool:
         // it must never display permission/error UI or schedule network requests.
-        if SmokeTest.isRequested {
+        if AppDefaults.isolatedDomain != nil {
             return AppUpdater(driver: nil, unavailableReason: "Updates are disabled during automated tests.")
         }
         guard Bundle.main.bundleURL.pathExtension == "app" else {

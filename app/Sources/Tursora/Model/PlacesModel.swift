@@ -82,12 +82,12 @@ final class PlacesModel {
     }
 
     private func storedOrder() -> [String] {
-        if let order = UserDefaults.standard.stringArray(forKey: orderKey) { return order }
+        if let order = AppDefaults.shared.stringArray(forKey: orderKey) { return order }
         return Self.builtIns().map { "builtin:" + $0.key }   // first run
     }
 
     private func saveOrder(_ order: [String]) {
-        UserDefaults.standard.set(order, forKey: orderKey)
+        AppDefaults.shared.set(order, forKey: orderKey)
         rebuild(); notify()
     }
 
@@ -168,7 +168,7 @@ final class PlacesModel {
 
     /// Back to the default built-in set and order.
     func resetFavourites() {
-        UserDefaults.standard.removeObject(forKey: orderKey)
+        AppDefaults.shared.removeObject(forKey: orderKey)
         rebuild(); notify()
     }
 

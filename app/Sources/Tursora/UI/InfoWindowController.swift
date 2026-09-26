@@ -130,7 +130,7 @@ final class InfoWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var watcher: DirectoryWatcher?
     private var rebuildWork: DispatchWorkItem?
 
-    init(mode: Mode, urls: [URL], disclosureDefaults: UserDefaults = .standard) {
+    init(mode: Mode, urls: [URL], disclosureDefaults: UserDefaults = AppDefaults.shared) {
         self.mode = mode
         self.urls = urls
         self.disclosureDefaults = disclosureDefaults
@@ -943,7 +943,7 @@ final class InfoSection: NSStackView {
         key == "general" || key == "preview"
     }
 
-    static func initialExpansion(for key: String, defaults: UserDefaults = .standard) -> Bool {
+    static func initialExpansion(for key: String, defaults: UserDefaults = AppDefaults.shared) -> Bool {
         if let explicit = defaults.object(forKey: explicitPreferenceKey(for: key)) as? Bool { return explicit }
         // Older versions wrote true merely by constructing every section. A
         // stored false reflects a collapse, while true is ambiguous and adopts
@@ -967,7 +967,7 @@ final class InfoSection: NSStackView {
 
     var hasChevron: Bool { chevron.image != nil }
 
-    init(key: String, title: String, content: NSView, defaults: UserDefaults = .standard) {
+    init(key: String, title: String, content: NSView, defaults: UserDefaults = AppDefaults.shared) {
         self.key = key
         self.content = content
         self.defaults = defaults

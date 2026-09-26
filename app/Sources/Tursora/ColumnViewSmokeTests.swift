@@ -70,7 +70,7 @@ enum ColumnViewSmokeTests: SmokeSuite {
         let store = DirectoryViewPropertiesStore(fileURL: viewFile)
         let controller = MainWindowController(provider: provider, places: PlacesModel(), initialURL: root,
                                               viewPropertiesStore: store)
-        defer { controller.close() }
+        defer { controller.close(); try? store.flush() }
         controller.window?.setContentSize(NSSize(width: 1300, height: 700))
         controller.window?.makeKeyAndOrderFront(nil)
         await expectEventually("fixture loaded") { controller.browser.model.generation > 0 }

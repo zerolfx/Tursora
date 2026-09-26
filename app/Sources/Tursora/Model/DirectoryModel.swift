@@ -115,8 +115,13 @@ final class DirectoryModel {
                     self.generation += 1
                     self.resort()
                 case .failure(let error):
+                    self.folderSizes.cancel()
                     self.allNodes = []
                     self.nodes = []
+                    // Groups are a second view of the same listing. The icon
+                    // grid uses them even with grouping turned off; retaining
+                    // them leaves old, actionable rows beneath a failed path.
+                    self.groups = Grouping.split([], by: self.groupKey)
                     self.generation += 1
                     self.onError?(error)
                     self.onChange?()
