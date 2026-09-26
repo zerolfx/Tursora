@@ -98,7 +98,7 @@ enum AppPreferences {
         let shortcuts: ShortcutStore
         let notificationCenter: NotificationCenter
 
-        init(defaults: UserDefaults = .standard, notificationCenter: NotificationCenter = .default) {
+        init(defaults: UserDefaults = AppDefaults.shared, notificationCenter: NotificationCenter = .default) {
             self.defaults = defaults
             self.notificationCenter = notificationCenter
             self.shortcuts = ShortcutStore(defaults: defaults, notificationCenter: notificationCenter)

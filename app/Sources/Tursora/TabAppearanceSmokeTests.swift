@@ -281,21 +281,36 @@ enum TabAppearanceSmokeTests: SmokeSuite {
     }
 
     private static func geometry() {
+        let finiteChecks = SmokeCheckGroup(name: "finite nonnegative geometry across strip sizes", prefix: checkPrefix)
+        let newTabChecks = SmokeCheckGroup(name: "new tab remains outside viewport", prefix: checkPrefix)
+        let readableChecks = SmokeCheckGroup(name: "titles remain readable", prefix: checkPrefix)
+        let tabOverlapChecks = SmokeCheckGroup(name: "tab slots never overlap", prefix: checkPrefix)
+        let documentChecks = SmokeCheckGroup(name: "document contains last tab", prefix: checkPrefix)
+        let overflowChecks = SmokeCheckGroup(name: "overflow controls never overlap", prefix: checkPrefix)
         for width: CGFloat in [0, 50, 240, 400, 720, 1200, 1800] {
             for count in [0, 1, 2, 3, 8, 40] {
                 let layout = TabStripLayout(width: width, height: TabBarView.height, tabCount: count)
-                check("\(width)/\(count) finite nonnegative geometry", layout.tabWidth.isFinite && layout.tabWidth >= 0 && layout.viewportFrame.width >= 0 && layout.contentWidth >= 0)
+                finiteChecks.check(layout.tabWidth.isFinite && layout.tabWidth >= 0 && layout.viewportFrame.width >= 0 && layout.contentWidth >= 0,
+                                   "width=\(width), tabCount=\(count)")
                 guard width >= 240, count > 0 else { continue }
-                check("\(width)/\(count) new tab remains outside viewport", layout.viewportFrame.maxX <= layout.addButtonFrame.minX)
-                check("\(width)/\(count) titles remain readable", layout.tabWidth >= 120)
+                newTabChecks.check(layout.viewportFrame.maxX <= layout.addButtonFrame.minX, "width=\(width), tabCount=\(count)")
+                readableChecks.check(layout.tabWidth >= 120, "width=\(width), tabCount=\(count)")
                 let frames = (0..<count).map { layout.frameForTab($0) }
-                check("\(width)/\(count) tab slots never overlap", zip(frames, frames.dropFirst()).allSatisfy { $0.maxX <= $1.minX + 0.01 })
-                check("\(width)/\(count) document contains last tab", frames.last!.maxX <= layout.contentWidth + 0.01)
+                tabOverlapChecks.check(zip(frames, frames.dropFirst()).allSatisfy { $0.maxX <= $1.minX + 0.01 },
+                                       "width=\(width), tabCount=\(count)")
+                documentChecks.check(frames.last!.maxX <= layout.contentWidth + 0.01, "width=\(width), tabCount=\(count)")
                 if let overflow = layout.overflowButtonFrame {
-                    check("\(width)/\(count) overflow controls never overlap", overflow.minX >= layout.viewportFrame.maxX && overflow.maxX <= layout.addButtonFrame.minX)
+                    overflowChecks.check(overflow.minX >= layout.viewportFrame.maxX && overflow.maxX <= layout.addButtonFrame.minX,
+                                         "width=\(width), tabCount=\(count)")
                 }
             }
         }
+        finiteChecks.finish()
+        newTabChecks.finish()
+        readableChecks.finish()
+        tabOverlapChecks.finish()
+        documentChecks.finish()
+        overflowChecks.finish()
     }
 
     private static func luminance(_ color: NSColor) -> CGFloat {

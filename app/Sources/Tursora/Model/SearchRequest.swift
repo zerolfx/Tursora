@@ -193,7 +193,7 @@ final class SavedSearchStore {
     private let defaults: UserDefaults
     private let key = "savedSearches.v1"
 
-    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    init(defaults: UserDefaults = AppDefaults.shared) { self.defaults = defaults }
 
     var items: [SavedSearch] {
         guard let data = defaults.data(forKey: key),

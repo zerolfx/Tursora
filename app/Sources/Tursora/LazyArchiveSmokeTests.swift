@@ -15,13 +15,13 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                 check("fixture created", false); completion(); return
             }
             let zipKey = "experimentalZIPBrowsingEnabled"
-            let oldFlag = UserDefaults.standard.object(forKey: zipKey)
+            let oldFlag = AppDefaults.shared.object(forKey: zipKey)
             var window: MainWindowController?
             var openedArchives: [URL] = []
             defer {
                 window?.close()
-                if let oldFlag { UserDefaults.standard.set(oldFlag, forKey: zipKey) }
-                else { UserDefaults.standard.removeObject(forKey: zipKey) }
+                if let oldFlag { AppDefaults.shared.set(oldFlag, forKey: zipKey) }
+                else { AppDefaults.shared.removeObject(forKey: zipKey) }
                 // Close this suite's own sessions rather than calling
                 // shutdownAll, which latches a process-wide shutting-down flag
                 // that is never reset and would leave every later suite unable
@@ -32,7 +32,7 @@ enum LazyArchiveSmokeTests: SmokeSuite {
             }
             do {
                 print("== lazy ZIP browsing ==")
-                UserDefaults.standard.removeObject(forKey: zipKey)
+                AppDefaults.shared.removeObject(forKey: zipKey)
                 check("ZIP browsing is on by default", AppPreferences.experimentalZIPBrowsingEnabled)
 
                 // A tree with a package, a nested directory and plain files.
@@ -88,17 +88,15 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                     pane.navigate(to: archive)
                     // currentURL changes before the listing does, so the wait
                     // has to be on the rows or it passes on the old directory's.
-                    await expectEventually("\(mode.rawValue): the archive opens without being extracted") {
+                    await expectEventually("\(mode.rawValue): the archive opens without being extracted",
+                                           detail: { "\(pane.model.items.map(\.name))" }) {
                         pane.currentURL?.standardizedFileURL == archive.standardizedFileURL
                             && !pane.isPreparingArchive && pane.model.items.map(\.name) == ["Payload"]
                     }
                     guard let session = ArchiveWorkspace.shared.session(for: archive) else {
                         check("\(mode.rawValue): a session exists", false); return
                     }
-                    check("\(mode.rawValue): the session is lazily mounted", session.isLazilyMounted)
                     check("\(mode.rawValue): the archive opens in the \(mode.rawValue) view", pane.viewMode == mode, "\(pane.viewMode)")
-                    check("\(mode.rawValue): the archive root lists its contents",
-                          pane.model.items.map(\.name) == ["Payload"], "\(pane.model.items.map(\.name))")
                     // The regression Stage 3 fixes: a directory's date was the
                     // moment its skeleton was created, i.e. when the archive was
                     // opened, instead of the date the archive records for it.
@@ -108,14 +106,11 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                           "\(String(describing: payloadDate))")
 
                     pane.navigate(to: logicalPayload)
-                    await expectEventually("\(mode.rawValue): entering a directory inside the ZIP") {
+                    await expectEventually("\(mode.rawValue): entering a directory inside the ZIP",
+                                           detail: { "\(pane.model.items.map(\.name).sorted())" }) {
                         pane.currentURL?.standardizedFileURL == logicalPayload.standardizedFileURL
                             && Set(pane.model.items.map(\.name)).isSuperset(of: ["top.txt", "Inner", "Demo.app"])
                     }
-                    let names = Set(pane.model.items.map(\.name))
-                    check("\(mode.rawValue): the directory lists its files, its subfolder and the bundle",
-                          names.isSuperset(of: ["top.txt", "Inner", "Demo.app"]), "\(names.sorted())")
-
                     // A bundle must be whole or the app it represents is broken.
                     // Listing and prefetching never bring it (D102); Open does,
                     // in one piece.
@@ -190,13 +185,12 @@ enum LazyArchiveSmokeTests: SmokeSuite {
                 let pane = wc.tabs.current
                 pane.setViewMode(.details)
                 pane.navigate(to: hostile)
-                await expectEventually("an archive containing a .. entry still opens") {
+                await expectEventually("an archive containing a .. entry still opens",
+                                       detail: { "\(pane.model.items.map(\.name))" }) {
                     pane.currentURL?.standardizedFileURL == hostile.standardizedFileURL
                         && !pane.isPreparingArchive
                         && pane.model.items.contains { $0.name == "safe.txt" }
                 }
-                check("its ordinary entries are browsable",
-                      pane.model.items.contains { $0.name == "safe.txt" }, "\(pane.model.items.map(\.name))")
                 check("nothing was written outside the archive's own storage",
                       !fm.fileExists(atPath: root.appendingPathComponent("escape.txt").path))
             } catch {

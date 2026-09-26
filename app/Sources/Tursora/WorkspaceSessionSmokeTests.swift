@@ -220,7 +220,7 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
         let logical = archive.appendingPathComponent(source.lastPathComponent).appendingPathComponent(nested.lastPathComponent)
         let views = DirectoryViewPropertiesStore(fileURL: fixture.appendingPathComponent("zip-session-views.json"))
         let zipKey = "experimentalZIPBrowsingEnabled"
-        let originalPreference = UserDefaults.standard.object(forKey: zipKey)
+        let originalPreference = AppDefaults.shared.object(forKey: zipKey)
         var windows: [MainWindowController] = []
         var extracted: [ArchiveBrowsingSession] = []
         defer {
@@ -408,7 +408,7 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
 
     @MainActor private static func applicationLifecycle(folders: [URL], fixture: URL) async throws {
         let terminalKey = "experimentalTerminalEnabled"
-        let originalTerminalPreference = UserDefaults.standard.object(forKey: terminalKey)
+        let originalTerminalPreference = AppDefaults.shared.object(forKey: terminalKey)
         defer { restorePreference(originalTerminalPreference, forKey: terminalKey) }
         restorePreference(nil, forKey: terminalKey)
         check("workspace lifecycle uses the fresh enabled terminal preference", AppPreferences.experimentalTerminalEnabled)
@@ -612,8 +612,8 @@ enum WorkspaceSessionSmokeTests: SmokeSuite {
     }
 
     private static func restorePreference(_ value: Any?, forKey key: String) {
-        if let value { UserDefaults.standard.set(value, forKey: key) }
-        else { UserDefaults.standard.removeObject(forKey: key) }
+        if let value { AppDefaults.shared.set(value, forKey: key) }
+        else { AppDefaults.shared.removeObject(forKey: key) }
         NotificationCenter.default.post(name: .tursoraPreferencesChanged, object: AppPreferences.shared)
     }
 

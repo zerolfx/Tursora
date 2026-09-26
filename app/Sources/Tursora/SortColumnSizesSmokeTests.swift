@@ -122,6 +122,7 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
 
         let file = fixture.appendingPathComponent("columns.json")
         let store = DirectoryViewPropertiesStore(fileURL: file)
+        defer { try? store.flush() }
         properties.listColumns = ["size", "dateAdded", "dateCreated"]
         properties.calculateAllSizes = true
         properties.sortKey = .dateLastOpened
@@ -269,7 +270,13 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
               && counts.displaySize(for: empty) == "0 items")
         check("counts alone order a Size sort", counts.sortValue(for: empty) == 0
               && counts.sortValue(for: deep) == 1 && counts.sortValue(for: wide) == 5)
-        check("the calculator reported its results at least once", updates > 0)
+        // Metrics land before their coalesced notification runs on main.
+        // Wait for the callback itself so ready values cannot race this check.
+        await expectEventually("the calculator reported its results at least once", detail: {
+            "\(updates) updates after all folder counts arrived"
+        }) {
+            updates > 0
+        }
 
         // Turning the option on measures the same folders recursively.
         counts.calculatesAllSizes = true
@@ -376,7 +383,7 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
         let store = DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("views.json"))
         let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(),
                                       initialURL: root, viewPropertiesStore: store)
-        defer { wc.close() }
+        defer { closeFixtureWindow(wc, store: store) }
         wc.window?.setContentSize(NSSize(width: 1100, height: 640))
         wc.window?.makeKeyAndOrderFront(nil)
         await listed(wc.browser, at: root)
@@ -405,7 +412,7 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
         let store = DirectoryViewPropertiesStore(fileURL: fixture.store)
         let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(),
                                       initialURL: fixture.root, viewPropertiesStore: store)
-        defer { wc.close() }
+        defer { closeFixtureWindow(wc, store: store) }
         wc.window?.setContentSize(NSSize(width: 1100, height: 640))
         wc.window?.makeKeyAndOrderFront(nil)
         await listed(wc.browser, at: fixture.root)
@@ -413,18 +420,32 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
         check("the date fixture listed every entry", browser.model.items.count == 5,
               browser.model.items.map(\.name).joined(separator: ", "))
 
-        for mode: ViewMode in [.details, .icons] {
+        // Every view shares this model comparator; cover its permutations once.
+        for (key, date) in Self.dateKeys {
+            for ascending in [true, false] {
+                browser.fileList.setSort(key: key, ascending: ascending)
+                let shown = browser.model.items
+                let expected = expectedOrder(browser.model.allNodes.map(\.item), date: date, ascending: ascending)
+                check("\(key.rawValue)/\(ascending ? "ascending" : "descending"): the listing follows the key",
+                      shown.map(\.name) == expected.map(\.name),
+                      "got \(shown.map(\.name)) want \(expected.map(\.name))")
+            }
+        }
+
+        // The integration check reads native rows/cells, not the shared model.
+        // Reverse the sort while each view is active to exercise its reload path.
+        let expectedNames = expectedOrder(browser.model.allNodes.map(\.item), date: \.creationDate,
+                                          ascending: true).map(\.displayName)
+        for mode in ViewMode.allCases {
             browser.setViewMode(mode)
-            for (key, date) in Self.dateKeys {
-                for ascending in [true, false] {
-                    browser.fileList.setSort(key: key, ascending: ascending)
-                    await drainMainQueue()
-                    let shown = browser.model.items
-                    let expected = expectedOrder(browser.model.allNodes.map(\.item), date: date, ascending: ascending)
-                    check("\(mode)/\(key.rawValue)/\(ascending ? "ascending" : "descending"): the listing follows the key",
-                          shown.map(\.name) == expected.map(\.name),
-                          "got \(shown.map(\.name)) want \(expected.map(\.name))")
-                }
+            browser.fileList.setSort(key: .dateCreated, ascending: false)
+            await drainMainQueue()
+            browser.fileList.setSort(key: .dateCreated, ascending: true)
+            await expectEventually("\(mode): native file rows follow the changed date order", detail: {
+                "got \(displayedNames(in: browser)) want \(expectedNames)"
+            }) {
+                wc.window?.contentView?.layoutSubtreeIfNeeded()
+                return displayedNames(in: browser) == expectedNames
             }
         }
 
@@ -513,7 +534,7 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
             .appendingPathComponent("columns-views.json"))
         let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(),
                                       initialURL: fixture.root, viewPropertiesStore: store)
-        defer { wc.close() }
+        defer { closeFixtureWindow(wc, store: store) }
         wc.window?.setContentSize(NSSize(width: 1100, height: 640))
         wc.window?.makeKeyAndOrderFront(nil)
         await listed(wc.browser, at: fixture.root)
@@ -610,7 +631,7 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
         let store = DirectoryViewPropertiesStore(fileURL: fixture.store)
         let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(),
                                       initialURL: fixture.root, viewPropertiesStore: store)
-        defer { wc.close() }
+        defer { closeFixtureWindow(wc, store: store) }
         wc.window?.setContentSize(NSSize(width: 1100, height: 640))
         wc.window?.makeKeyAndOrderFront(nil)
         await listed(wc.browser, at: fixture.root)
@@ -727,9 +748,56 @@ enum SortColumnSizesSmokeTests: SmokeSuite {
               right.fileList.visibleColumns == ["dateLastOpened", "size"]
               && !browser.fileList.visibleColumns.contains("dateLastOpened"),
               browser.fileList.visibleColumns.sorted().joined(separator: ", "))
+        // setVisibleColumns restores a set without invoking the user-change callback.
+        right.persistViewProperties()
+        check("the split pane's final column set is saved before teardown",
+              store.properties(forKey: DirectoryViewPropertiesStore.directoryKey(for: fixture.root) ?? "")
+                  .listColumns == ["dateLastOpened", "size"])
     }
 
     // MARK: - Helpers
+
+    @MainActor private static func displayedNames(in pane: BrowserViewController) -> [String] {
+        switch pane.viewMode {
+        case .details:
+            let table = pane.fileList.tableView
+            let nameColumn = table.column(withIdentifier: FileListViewController.Column.name.id)
+            guard nameColumn >= 0 else { return [] }
+            return (0..<table.numberOfRows).compactMap {
+                (table.view(atColumn: nameColumn, row: $0, makeIfNecessary: true) as? NSTableCellView)?
+                    .textField?.stringValue
+            }
+        case .icons:
+            let collection = pane.iconGrid.collectionView
+            collection.layoutSubtreeIfNeeded()
+            return (0..<collection.numberOfSections).flatMap { section in
+                (0..<collection.numberOfItems(inSection: section)).compactMap { item in
+                    let cell = collection.item(at: IndexPath(item: item, section: section)) as? FileCollectionItem
+                    return cell?.label.stringValue
+                }
+            }
+        case .columns:
+            let columns = pane.columnView
+            return (0..<columns.rowCountForTesting(0)).compactMap {
+                (columns.browser.loadedCell(atRow: $0, column: 0) as? NSCell)?
+                    .attributedStringValue.string.trimmingCharacters(in: CharacterSet(charactersIn: "\u{FFFC} "))
+            }
+        }
+    }
+
+    @MainActor private static func closeFixtureWindow(
+        _ window: MainWindowController, store: DirectoryViewPropertiesStore
+    ) {
+        // Closing a window need not release panes immediately. Stop their work
+        // and detach callbacks before flushing, including a metrics notification
+        // already queued on main, so nothing saves into the removed fixture.
+        for pane in window.tabs.pages.flatMap(\.panes) {
+            pane.model.folderSizes.cancel()
+            pane.model.onChange = nil
+        }
+        window.close()
+        try? store.flush()
+    }
 
     @MainActor private static func listed(_ pane: BrowserViewController, at url: URL) async {
         await waitUntil("directory listing", detail: { "\(pane.currentURL?.path ?? "nil") vs \(url.path)" }) {

@@ -183,3 +183,7 @@ That is, for a non-letter key equivalent such as `⌫` AppKit ignores Shift but 
 The command therefore carries no key equivalent by default ([D74](../DECISIONS.md)) and stays in the shortcut catalogue for users to assign themselves. `TrashSmokeTests.menuBinding()` asserts both that the menu item has no key equivalent and that AppKit still ignores Shift; should the latter change on a future macOS, the check fails and signals that this decision can be re-evaluated. `ShortcutMenu`'s global matching logic was not rewritten: changing the dispatch path of every menu for the sake of one command is more risk than benefit.
 
 This one came out of the integration stage: after merging, the smoke test failed at `shortcuts: physical Backspace cannot dispatch the Forward Delete binding`, which was traced back to the newly added ⇧⌘⌫ binding.
+
+## Reliability follow-up, 2026-09-26
+
+Partial Move to Trash now returns successful moves and per-item failures together. Successful items retain their origin journal, Undo/Redo and cross-pane refresh even when another source fails. Undo/Redo keeps using the originating window manager after the source tab closes. Implementation and current automated/packaged verification are recorded in [the reliability record](reliability-2026-09-26.md).

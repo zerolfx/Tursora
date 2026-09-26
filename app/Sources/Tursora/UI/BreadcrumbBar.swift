@@ -7,8 +7,15 @@ import AppKit
 /// collapse into a `…` menu; the first segment is always kept.
 final class BreadcrumbBar: NSView, NSTextFieldDelegate {
 
-    var url: URL? { didSet { if !isEditing { rebuild() } } }
-    var homeURL = FileManager.default.homeDirectoryForCurrentUser
+    var url: URL? {
+        didSet {
+            if url != oldValue { cancelCompletion() }
+            if !isEditing { rebuild() }
+        }
+    }
+    var homeURL = FileManager.default.homeDirectoryForCurrentUser {
+        didSet { if homeURL != oldValue { cancelCompletion() } }
+    }
     var onNavigate: ((URL) -> Void)?
     var onInvalidPath: ((String) -> Void)?
     /// Activate this navigator's pane before its field takes keyboard focus.
@@ -23,6 +30,15 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     private var isBeginningEditing = false
     let textField = NSTextField()
     let completion = CompletionPopup()
+    var completionProvider: PathCompletionProviding = PathCompletionService() {
+        willSet { cancelCompletion() }
+    }
+    private(set) var isCompletingPath = false
+    private var completionGeneration = 0
+    private var editSession = UUID()
+    private enum PendingCompletionAction { case accept(backward: Bool), navigate }
+    private var pendingCompletionAction: PendingCompletionAction?
+    private var completionWillFillInline = false
     private var segments: [Segment] = []
     private var segmentButtons: [NSButton] = []
     private var chevronButtons: [NSButton] = []
@@ -327,6 +343,8 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         defer { isBeginningEditing = false }
         let wasEditing = isEditing
         if !wasEditing {
+            editSession = UUID()
+            cancelCompletion()
             isEditing = true
             segmentButtons.forEach { $0.isHidden = true }
             chevronButtons.forEach { $0.isHidden = true }
@@ -344,6 +362,8 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
 
     func endEditing(returnFocus: Bool = true) {
         guard isEditing else { return }
+        cancelCompletion()
+        editSession = UUID()
         isEditing = false
         completion.hide()
         if window?.firstResponder === textField.currentEditor() { window?.makeFirstResponder(nil) }
@@ -396,12 +416,67 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     /// Recompute candidates for what has been typed; fill inline when typing
     /// forward (never while deleting), and keep the list in step.
     func textChanged() {
+        cancelCompletion()
+        guard isEditing, editor?.hasMarkedText() != true else { return }
         let typed = typedText
         let growing = typed.count > lastTypedCount
         lastTypedCount = typed.count
-        let candidates = PathCompleter.completions(for: typed, cwd: url ?? homeURL, home: homeURL)
+        requestCandidates(for: typed, fillInline: growing)
+    }
+
+    private func cancelCompletion() {
+        completionGeneration += 1
+        completionProvider.cancel()
+        isCompletingPath = false
+        completionWillFillInline = false
+        pendingCompletionAction = nil
+        completion.hide()
+    }
+
+    private func requestCandidates(for typed: String, fillInline: Bool) {
+        guard let editor, isEditing else { return }
+        let generation = completionGeneration
+        let session = editSession
+        let original = editor.string
+        let caret = editor.selectedRange
+        let cwd = url ?? homeURL
+        let home = homeURL
+        isCompletingPath = true
+        completionWillFillInline = fillInline && !PathCompleter.splitLastComponent(typed).partial.isEmpty
+        completionProvider.request(for: typed, cwd: cwd, home: home) { [weak self, weak editor] candidates in
+            guard let self, self.completionGeneration == generation else { return }
+            self.isCompletingPath = false
+            let pending = self.pendingCompletionAction
+            self.pendingCompletionAction = nil
+            // A field editor is shared by a window. Matching text alone is
+            // insufficient after switching panes, reopening the editor, or
+            // moving the caret while a network directory is still listing.
+            guard self.isEditing, self.editSession == session,
+                  let editor, self.editor === editor,
+                  editor.string == original, editor.selectedRange == caret,
+                  !editor.hasMarkedText(), !self.isHiddenOrHasHiddenAncestor,
+                  (self.url ?? self.homeURL) == cwd, self.homeURL == home else { return }
+            self.receiveCandidates(candidates, typed: typed, fillInline: fillInline, editor: editor)
+            if let pending {
+                let accepted = self.acceptCompletion()
+                switch pending {
+                case .navigate: self.commit(self.textField.stringValue)
+                case .accept(let backward) where !accepted:
+                    // These are source-view operations, not window menu
+                    // actions. The action variants silently do nothing when
+                    // this window is not key; an asynchronous reply must keep
+                    // the editor and direction it was requested from.
+                    if backward { self.window?.selectKeyView(preceding: self.textField) }
+                    else { self.window?.selectKeyView(following: self.textField) }
+                case .accept: break
+                }
+            }
+        }
+    }
+
+    private func receiveCandidates(_ candidates: [String], typed: String, fillInline: Bool, editor: NSTextView) {
         let (_, partial) = PathCompleter.splitLastComponent(typed)
-        if growing, !partial.isEmpty, let first = candidates.first, let editor {
+        if fillInline, !partial.isEmpty, let first = candidates.first {
             fill(inline: first, replacing: partial, in: editor)
         }
         showCandidates(candidates)
@@ -437,24 +512,31 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
         guard let editor else { return }
         let typed = typedText
         let (dir, _) = PathCompleter.splitLastComponent(typed)
+        cancelCompletion()
         isFilling = true
         editor.string = dir + candidate
         isFilling = false
         editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
         lastTypedCount = editor.string.count
-        showCandidates(PathCompleter.completions(for: editor.string, cwd: url ?? homeURL, home: homeURL))
+        requestCandidates(for: editor.string, fillInline: false)
     }
 
     /// Accept whatever completion is on offer: the list's selection, else the inline tail.
     @discardableResult
-    func acceptCompletion() -> Bool {
-        if let chosen = completion.selectedCandidate {
+    func acceptCompletion(backward: Bool = false) -> Bool {
+        if isCompletingPath {
+            guard completionWillFillInline else { return false }
+            pendingCompletionAction = .accept(backward: backward)
+            return true
+        }
+        if completion.isVisible, let chosen = completion.selectedCandidate {
             accept(candidate: chosen); return true
         }
         if inlineCompletion != nil, let editor {
+            cancelCompletion()
             editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
             lastTypedCount = editor.string.count
-            showCandidates(PathCompleter.completions(for: editor.string, cwd: url ?? homeURL, home: homeURL))
+            requestCandidates(for: editor.string, fillInline: false)
             return true
         }
         return false
@@ -465,12 +547,18 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         switch commandSelector {
         case #selector(NSResponder.insertNewline(_:)):
+            if isCompletingPath, completionWillFillInline {
+                pendingCompletionAction = .navigate
+                return true
+            }
             // Return takes the offered completion first, then navigates.
             if completion.selectedCandidate != nil || inlineCompletion != nil { acceptCompletion() }
             commit(textField.stringValue)
             return true
-        case #selector(NSResponder.insertTab(_:)), #selector(NSResponder.insertBacktab(_:)):
+        case #selector(NSResponder.insertTab(_:)):
             return acceptCompletion()
+        case #selector(NSResponder.insertBacktab(_:)):
+            return acceptCompletion(backward: true)
         case #selector(NSResponder.moveRight(_:)):
             return inlineCompletion != nil ? acceptCompletion() : false
         case #selector(NSResponder.moveDown(_:)):
@@ -480,7 +568,7 @@ final class BreadcrumbBar: NSView, NSTextFieldDelegate {
             guard completion.isVisible else { return false }
             completion.moveSelection(by: -1); return true
         case #selector(NSResponder.cancelOperation(_:)):
-            if completion.isVisible { completion.hide() } else { endEditing() }
+            if completion.isVisible || isCompletingPath { cancelCompletion() } else { endEditing() }
             return true
         default:
             return false

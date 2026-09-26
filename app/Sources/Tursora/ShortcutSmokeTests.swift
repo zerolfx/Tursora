@@ -90,16 +90,25 @@ enum ShortcutSmokeTests: SmokeSuite {
         if shiftedEquals.isEquivalent(to: plus) {
             check("current layout conflicts with its actual Plus owner", store.validationError(shiftedEquals, for: ShortcutCatalog.filterID) != nil)
         }
+        let clearChecks = SmokeCheckGroup(name: "can clear every catalog command", prefix: checkPrefix)
+        let rebindChecks = SmokeCheckGroup(name: "can rebind every catalog command", prefix: checkPrefix)
+        let resetChecks = SmokeCheckGroup(name: "can reset every catalog command", prefix: checkPrefix)
         for action in actions {
+            var operation = "clear"
             do {
                 try store.set(nil, for: action.id)
-                check("can clear \(action.id)", store.shortcut(for: action.id) == nil)
+                clearChecks.check(store.shortcut(for: action.id) == nil, "action=\(action.id)")
+                operation = "rebind"
                 try store.set(f8, for: action.id)
-                check("can rebind \(action.id)", store.shortcut(for: action.id) == f8)
+                rebindChecks.check(store.shortcut(for: action.id) == f8, "action=\(action.id)")
+                operation = "reset"
                 try store.reset(action.id)
-                check("can reset \(action.id)", store.shortcut(for: action.id) == action.defaultShortcut)
-            } catch { check("catalog command edit failed: \(error.localizedDescription)", false) }
+                resetChecks.check(store.shortcut(for: action.id) == action.defaultShortcut, "action=\(action.id)")
+            } catch { check("catalog command \(operation) failed", false, "action=\(action.id): \(error.localizedDescription)") }
         }
+        clearChecks.finish()
+        rebindChecks.finish()
+        resetChecks.finish()
         do {
             try store.set(f8, for: "menu.toggleTerminal")
             let restored = ShortcutStore(defaults: defaults)
@@ -175,7 +184,7 @@ enum ShortcutSmokeTests: SmokeSuite {
 
     @MainActor
     private static func routing() async {
-        let defaults = UserDefaults.standard
+        let defaults = AppDefaults.shared
         let saved = defaults.object(forKey: ShortcutStore.defaultsKey)
         let store = AppPreferences.shared.shortcuts
         let oldKey = NSApp.keyWindow
@@ -198,9 +207,10 @@ enum ShortcutSmokeTests: SmokeSuite {
         store.resetAll()
         let viewFile = FileManager.default.temporaryDirectory.appendingPathComponent("tursora-shortcut-views-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: viewFile) }
+        let viewStore = DirectoryViewPropertiesStore(fileURL: viewFile)
         let controller = MainWindowController(provider: provider, places: PlacesModel(), initialURL: provider.homeURL,
-                                              viewPropertiesStore: DirectoryViewPropertiesStore(fileURL: viewFile))
-        defer { controller.close() }
+                                              viewPropertiesStore: viewStore)
+        defer { controller.close(); try? viewStore.flush() }
         controller.window?.makeKeyAndOrderFront(nil)
         await loaded(controller.browser)
         controller.tabs.newTab(at: provider.homeURL)
@@ -332,7 +342,7 @@ enum ShortcutSmokeTests: SmokeSuite {
         try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
         try? "x".write(to: root.appendingPathComponent("file.txt"), atomically: true, encoding: .utf8)
 
-        let defaults = UserDefaults.standard
+        let defaults = AppDefaults.shared
         let saved = defaults.object(forKey: ShortcutStore.defaultsKey)
         let oldKey = NSApp.keyWindow
         let store = AppPreferences.shared.shortcuts
@@ -347,9 +357,10 @@ enum ShortcutSmokeTests: SmokeSuite {
 
         let viewFile = fm.temporaryDirectory.appendingPathComponent("tursora-shortcut-open-\(UUID().uuidString).json")
         defer { try? fm.removeItem(at: viewFile) }
+        let viewStore = DirectoryViewPropertiesStore(fileURL: viewFile)
         let controller = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(), initialURL: root,
-                                              viewPropertiesStore: DirectoryViewPropertiesStore(fileURL: viewFile))
-        defer { controller.close() }
+                                              viewPropertiesStore: viewStore)
+        defer { controller.close(); try? viewStore.flush() }
         controller.window?.makeKeyAndOrderFront(nil)
         await loaded(controller.browser)
         let browser = controller.browser

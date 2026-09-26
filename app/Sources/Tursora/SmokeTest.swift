@@ -2,37 +2,22 @@ import AppKit
 import Quartz
 
 /// Headless-ish self check, enabled with TURSORA_SMOKE_TEST=1. Exercises the
-/// real window, model, history, tabs and address bar, prints one line per
-/// check, and exits non-zero on the first failure. Used because CI (and
+/// real window, model, history, tabs and address bar, reports assertions and
+/// suite timings, and exits non-zero on the first failure. Used because CI (and
 /// sandboxed terminals) cannot look at the screen.
 enum SmokeTest: SmokeSuite {
 
     static var isRequested: Bool { ProcessInfo.processInfo.environment["TURSORA_SMOKE_TEST"] != nil }
 
-    private static var savedPreferences: [String: Any] = [:]
-    private static let infoSectionKeys = ["general", "moreInfo", "name", "comments", "openWith", "preview", "sharing", "smoke-layout"]
-    private static let appPreferenceKeys = ["showFileExtensions", "restoreWorkspaceOnLaunch", "experimentalTerminalEnabled", "experimentalZIPBrowsingEnabled", "filterShortcutKey", "filterShortcutModifiers"]
-        + [ShortcutStore.defaultsKey, "terminalPreferences.v1"]
-        + infoSectionKeys.flatMap { ["InfoSection.\($0)", InfoSection.explicitPreferenceKey(for: $0)] }
-    static func restorePreferences() {
-        for key in appPreferenceKeys { UserDefaults.standard.set(savedPreferences[key], forKey: key) }
-        UserDefaults.standard.synchronize()
-    }
-
     static func run(_ wc: MainWindowController) {
         // Keep the last completed check available even if AppKit catches an
         // Objective-C exception before the asynchronous suite can report it.
         setvbuf(stdout, nil, _IOLBF, 0)
-        for key in appPreferenceKeys { savedPreferences[key] = UserDefaults.standard.object(forKey: key) }
-        for key in infoSectionKeys {
-            UserDefaults.standard.removeObject(forKey: "InfoSection.\(key)")
-            UserDefaults.standard.removeObject(forKey: InfoSection.explicitPreferenceKey(for: key))
-        }
         atexit {
             try? DirectoryViewPropertiesStore.shared.flush()
             try? FileManager.default.removeItem(at: DirectoryViewPropertiesStore.shared.fileURL.deletingLastPathComponent())
-            SmokeTest.restorePreferences()
             ArchiveWorkspace.shared.shutdownAll()
+            try? FileManager.default.removeItem(at: TrashOrigins.shared.fileURL.deletingLastPathComponent())
         }
         AppPreferences.showFileExtensions = true
         AppPreferences.restoreWorkspaceOnLaunch = true
@@ -48,69 +33,75 @@ enum SmokeTest: SmokeSuite {
         // A failed earlier run may have left view state behind; start from defaults.
         wc.browser.setGroupKey(.none)
         wc.browser.setViewMode(.details)
-        // The suites run in this fixed order; each step receives the
-        // continuation that starts the next one, so asynchronous suites hand
-        // over from their completion and synchronous ones are grouped.
-        typealias Step = (@escaping () -> Void) -> Void
+        // Each named step owns its asynchronous continuation and timing.
+        // The legacy navigation chain closes its final timing at run completion.
+        typealias Step = (name: String, run: (@escaping () -> Void) -> Void)
         let steps: [Step] = [
-            DockMenuSmokeTests.run,
-            DirectoryViewPropertiesSmokeTests.run,
-            SortColumnSizesSmokeTests.run,
-            { done in
-                MarkdownRendererSmokeTests.run()
-                IconAssetsSmokeTests.run()
-                ServerConnectionSmokeTests.run()
-                SettingsSmokeTests.run()
-                UpdateSmokeTests.run()
-                WorkspaceSessionModelSmokeTests.run()
-                done()
-            },
-            PreviewPaneSmokeTests.run,
-            ColumnViewSmokeTests.run,
-            WorkspaceSessionSmokeTests.run,
-            { done in TabAppearanceSmokeTests.run(); InfoDisclosureSmokeTests.run(); done() },
-            { done in AppearanceSmokeTests.run(browser: wc.browser, completion: done) },
-            TextThumbnailSmokeTests.run,
-            { done in TransferSmokeTests.run(wc, completion: done) },
-            ArchiveSmokeTests.run,
-            ArchiveWorkspaceSmokeTests.run,
-            ArchivePreparationSmokeTests.run,
-            ArchiveBrowserSmokeTests.run,
-            ExtractTaskSmokeTests.run,
-            LazyArchiveSmokeTests.run,
-            ArchiveOpenSmokeTests.run,
-            ArchiveEvictionSmokeTests.run,
-            SplitToolbarSmokeTests.run,
-            FolderTreeSmokeTests.run,
-            TrashSmokeTests.run,
-            ShortcutSmokeTests.run,
-            CommandPaletteSmokeTests.run,
-            TerminalToolbarSmokeTests.run,
-            TerminalSmokeTests.run,
-            TerminalDirectorySyncSmokeTests.run,
-            TerminalShellSyncSmokeTests.run,
-            TerminalPreferencesSmokeTests.run,
-            TerminalActivitySmokeTests.run,
-            StatusBarSmokeTests.run,
-            TerminalSessionSmokeTests.run,
-            SearchEntrySmokeTests.run,
-            ContentSearchSmokeTests.run,
-            SearchSmokeTests.run,
-            IntegratedSearchSmokeTests.run,
-            PanePathsSmokeTests.run,
-            TabActionsSmokeTests.run,
-            BatchRenameSmokeTests.run,
-            DragAndDropSmokeTests.run,
-            delayedListing,
-            { _ in
+            ("Preferences isolation", { done in PreferencesIsolationSmokeTests.run(); done() }),
+            ("Dock menu", DockMenuSmokeTests.run),
+            ("Directory view properties", DirectoryViewPropertiesSmokeTests.run),
+            ("Directory loading", DirectoryLoadingSmokeTests.run),
+            ("Path completion", PathCompletionSmokeTests.run),
+            ("File mutation safety", FileMutationSafetySmokeTests.run),
+            ("Sort, columns and sizes", SortColumnSizesSmokeTests.run),
+            ("Markdown rendering", { done in MarkdownRendererSmokeTests.run(); done() }),
+            ("Icon assets", { done in IconAssetsSmokeTests.run(); done() }),
+            ("Server connections", { done in ServerConnectionSmokeTests.run(); done() }),
+            ("Settings", { done in SettingsSmokeTests.run(); done() }),
+            ("Updates", { done in UpdateSmokeTests.run(); done() }),
+            ("Workspace session model", { done in WorkspaceSessionModelSmokeTests.run(); done() }),
+            ("Preview pane", PreviewPaneSmokeTests.run),
+            ("Column view", ColumnViewSmokeTests.run),
+            ("Workspace session UI", WorkspaceSessionSmokeTests.run),
+            ("Tab appearance", { done in TabAppearanceSmokeTests.run(); done() }),
+            ("Info disclosures", { done in InfoDisclosureSmokeTests.run(); done() }),
+            ("Appearance", { done in AppearanceSmokeTests.run(browser: wc.browser, completion: done) }),
+            ("Text thumbnails", TextThumbnailSmokeTests.run),
+            ("Transfers", { done in TransferSmokeTests.run(wc, completion: done) }),
+            ("Archive operations", ArchiveSmokeTests.run),
+            ("Archive workspace", ArchiveWorkspaceSmokeTests.run),
+            ("Archive preparation", ArchivePreparationSmokeTests.run),
+            ("Archive browser", ArchiveBrowserSmokeTests.run),
+            ("Extract task", ExtractTaskSmokeTests.run),
+            ("Lazy archive", LazyArchiveSmokeTests.run),
+            ("Archive open", ArchiveOpenSmokeTests.run),
+            ("Archive eviction", ArchiveEvictionSmokeTests.run),
+            ("Archive export", ArchiveExportSmokeTests.run),
+            ("Split toolbar", SplitToolbarSmokeTests.run),
+            ("Folder tree", FolderTreeSmokeTests.run),
+            ("Trash", TrashSmokeTests.run),
+            ("Shortcuts", ShortcutSmokeTests.run),
+            ("Command palette", CommandPaletteSmokeTests.run),
+            ("Terminal toolbar", TerminalToolbarSmokeTests.run),
+            ("Terminal", TerminalSmokeTests.run),
+            ("Terminal directory sync", TerminalDirectorySyncSmokeTests.run),
+            ("Terminal shell sync", TerminalShellSyncSmokeTests.run),
+            ("Terminal preferences", TerminalPreferencesSmokeTests.run),
+            ("Terminal activity", TerminalActivitySmokeTests.run),
+            ("Status bar", StatusBarSmokeTests.run),
+            ("Terminal session", TerminalSessionSmokeTests.run),
+            ("Search entry", SearchEntrySmokeTests.run),
+            ("Content search", ContentSearchSmokeTests.run),
+            ("Search", SearchSmokeTests.run),
+            ("Integrated search", IntegratedSearchSmokeTests.run),
+            ("Pane paths", PanePathsSmokeTests.run),
+            ("Tab actions", TabActionsSmokeTests.run),
+            ("Batch rename", BatchRenameSmokeTests.run),
+            ("Drag and drop", DragAndDropSmokeTests.run),
+            ("Delayed listing", delayedListing),
+            ("Legacy navigation and file operations", { _ in
                 infoSectionLayout()
                 savedViewModes(wc.provider)
                 preferencesIntegration(wc) { windowChrome(wc) { navigation(wc) } }
-            },
+            }),
         ]
         func runSteps(_ remaining: ArraySlice<Step>) {
             guard let step = remaining.first else { return }
-            step { runSteps(remaining.dropFirst()) }
+            SmokeReport.shared.beginSuite(step.name)
+            step.run {
+                SmokeReport.shared.endSuite()
+                runSteps(remaining.dropFirst())
+            }
         }
         // A cold directory listing can outlive the old one-second delay.
         // Generation records completion, including an empty result or an error.
@@ -122,10 +113,11 @@ enum SmokeTest: SmokeSuite {
     }
 
     private static func awaitCondition(_ name: String, timeout: TimeInterval = 5,
+                                       recordsSuccess: Bool = true,
                                        condition: @escaping () -> Bool, completion: @escaping () -> Void) {
         let deadline = ProcessInfo.processInfo.systemUptime + timeout
         func poll() {
-            if condition() { check(name, true); completion() }
+            if condition() { if recordsSuccess { check(name, true) }; completion() }
             else if ProcessInfo.processInfo.systemUptime >= deadline { check(name, false, "Timed out after \(timeout)s") }
             else { after(0.05, poll) }
         }
@@ -183,8 +175,8 @@ enum SmokeTest: SmokeSuite {
         print("== Info section layout ==")
         let key = "smoke-layout"
         let preferenceKey = InfoSection.explicitPreferenceKey(for: key)
-        let remembered = UserDefaults.standard.object(forKey: preferenceKey)
-        defer { UserDefaults.standard.set(remembered, forKey: preferenceKey) }
+        let remembered = AppDefaults.shared.object(forKey: preferenceKey)
+        defer { AppDefaults.shared.set(remembered, forKey: preferenceKey) }
         let content = NSView()
         content.heightAnchor.constraint(equalToConstant: 200).isActive = true
         let section = InfoSection(key: key, title: "Preview:", content: content)
@@ -396,7 +388,7 @@ enum SmokeTest: SmokeSuite {
         check("tab bar stays visible with one tab", !wc.tabs.tabBar.isHidden)
 
         guard let folder = b.model.items.first(where: { $0.isNavigable }) else {
-            print("skip: no subfolder in home"); exit(0)
+            fail("navigation fixture has a subfolder", "Home contains no navigable folder; the remaining integration checks cannot run")
         }
         print("→ select \(folder.name) and Open (double-click / ⌘↓ path)")
         b.fileList.select(name: folder.name)
@@ -479,61 +471,68 @@ enum SmokeTest: SmokeSuite {
     // MARK: 3. Address bar edit mode + completion
 
     private static func addressBarEditing(_ wc: MainWindowController, _ folder: FileItem) {
-        print("== address bar ==")
-        let home = wc.provider.homeURL
-        let bar = wc.tabs.addressBar
-        check("resolve ~", PathCompleter.resolveDirectory("~", cwd: home, home: home) == home.standardizedFileURL)
-        check("resolve ~/folder", PathCompleter.resolveDirectory("~/\(folder.name)", cwd: home, home: home)?.lastPathComponent == folder.name)
-        check("resolve relative", PathCompleter.resolveDirectory(folder.name, cwd: home, home: home)?.lastPathComponent == folder.name)
-        check("resolve rejects a file / nonsense", PathCompleter.resolveDirectory("/definitely/not/here", cwd: home, home: home) == nil)
-        let partial = String(folder.name.prefix(2))
-        let comps = PathCompleter.completions(for: "~/\(partial)", cwd: home, home: home)
-        check("completion for ~/\(partial) contains \(folder.name)/", comps.contains(folder.name + "/"), "\(comps)")
-        check("completions end with /", comps.allSatisfy { $0.hasSuffix("/") })
-        check("split last component", PathCompleter.splitLastComponent("~/Work/Do") == ("~/Work/", "Do"))
+        Task { @MainActor in
+            print("== address bar ==")
+            let home = wc.provider.homeURL
+            let bar = wc.tabs.addressBar
+            check("resolve ~", PathCompleter.resolveDirectory("~", cwd: home, home: home) == home.standardizedFileURL)
+            check("resolve ~/folder", PathCompleter.resolveDirectory("~/\(folder.name)", cwd: home, home: home)?.lastPathComponent == folder.name)
+            check("resolve relative", PathCompleter.resolveDirectory(folder.name, cwd: home, home: home)?.lastPathComponent == folder.name)
+            check("resolve rejects a file / nonsense", PathCompleter.resolveDirectory("/definitely/not/here", cwd: home, home: home) == nil)
+            let partial = String(folder.name.prefix(2))
+            let comps = PathCompleter.completions(for: "~/\(partial)", cwd: home, home: home)
+            check("completion for ~/\(partial) contains \(folder.name)/", comps.contains(folder.name + "/"), "\(comps)")
+            check("completions end with /", comps.allSatisfy { $0.hasSuffix("/") })
+            check("split last component", PathCompleter.splitLastComponent("~/Work/Do") == ("~/Work/", "Do"))
 
-        bar.beginEditing()
-        check("beginEditing enters edit mode", bar.isEditing)
-        check("text field is first responder", wc.window?.firstResponder is NSTextView)
-        check("commit rejects bad path", !bar.commit("/definitely/not/here") && bar.isEditing)
+            bar.beginEditing()
+            check("beginEditing enters edit mode", bar.isEditing)
+            check("text field is first responder", wc.window?.firstResponder is NSTextView)
+            check("commit rejects bad path", !bar.commit("/definitely/not/here") && bar.isEditing)
 
-        // inline completion: type "~/Ap" (two chars of the folder name) after select-all
-        guard let ed = bar.textField.currentEditor() as? NSTextView else { check("field editor", false); return }
-        let typed = "~/" + partial
-        ed.string = typed; ed.setSelectedRange(NSRange(location: (typed as NSString).length, length: 0))
-        bar.textChanged()
-        check("inline fill completes the folder name", bar.textField.stringValue == "~/\(folder.name)/", bar.textField.stringValue)
-        check("typed part stays before the caret", bar.typedText == typed, bar.typedText)
-        check("completed tail is selected", bar.inlineCompletion == String(folder.name.dropFirst(partial.count)) + "/", "\(bar.inlineCompletion ?? "nil")")
-        check("candidate list is showing", bar.completion.isVisible && bar.completion.candidates.first == folder.name + "/", "\(bar.completion.candidates)")
-        let g = bar.completion.geometryForTesting
-        check("popup height fits its rows", g.panelHeight == CGFloat(bar.completion.candidates.count) * 22 + 8 && g.clipHeight >= g.tableHeight - 0.5, "panel \(g.panelHeight) clip \(g.clipHeight) table \(g.tableHeight)")
-        check("first row is fully inside the popup", g.firstRow.minY >= 0 && g.firstRow.maxY <= g.panelHeight + 0.5, "\(g.firstRow) in \(g.panelHeight)")
-        check("first row sits at the top, not the bottom", abs(g.firstRow.maxY - (g.panelHeight - 4)) < 1, "row maxY \(g.firstRow.maxY), expected \(g.panelHeight - 4)")
-        // deleting must not re-fill
-        ed.string = "~/" + String(partial.prefix(1)); ed.setSelectedRange(NSRange(location: 3, length: 0))
-        bar.textChanged()
-        check("no inline fill while deleting", bar.textField.stringValue == "~/" + String(partial.prefix(1)), bar.textField.stringValue)
-        // Tab accepts, then the list moves on to the folder's children
-        ed.string = typed; ed.setSelectedRange(NSRange(location: (typed as NSString).length, length: 0)); bar.textChanged()
-        check("Tab accepts the inline completion", bar.acceptCompletion() && bar.inlineCompletion == nil && bar.textField.stringValue == "~/\(folder.name)/")
-        let inside = PathCompleter.completions(for: "~/\(folder.name)/", cwd: home, home: home)
-        check("after accept the list shows the folder's subfolders", bar.completion.candidates == inside, "\(bar.completion.candidates.count) vs \(inside.count)")
-        if !inside.isEmpty {
-            let g2 = bar.completion.geometryForTesting
-            check("re-shown list is pinned to the top too", abs(g2.firstRow.maxY - (g2.panelHeight - 4)) < 1 && g2.firstRow.minY >= 0, "row \(g2.firstRow) panel \(g2.panelHeight)")
-        }
-        // ↓ selects in the list, Return accepts and navigates
-        ed.string = typed; ed.setSelectedRange(NSRange(location: (typed as NSString).length, length: 0)); bar.textChanged()
-        _ = bar.control(bar.textField, textView: ed, doCommandBy: #selector(NSResponder.moveDown(_:)))
-        check("↓ selects the first candidate", bar.completion.selectedCandidate == folder.name + "/")
-        _ = bar.control(bar.textField, textView: ed, doCommandBy: #selector(NSResponder.insertNewline(_:)))
-        check("Return commits the completed path", !bar.isEditing && !bar.completion.isVisible)
-        after(0.5) {
-            check("edit-commit landed", wc.browser.currentURL?.lastPathComponent == folder.name)
-            check("focus returned to list", wc.window?.firstResponder === wc.browser.fileList.tableView)
-            narrowAddressBar(wc)
-            contextMenus(wc, folder)
+            // inline completion: type "~/Ap" (two chars of the folder name) after select-all
+            guard let ed = bar.textField.currentEditor() as? NSTextView else { check("field editor", false); return }
+            let typed = "~/" + partial
+            ed.string = typed; ed.setSelectedRange(NSRange(location: (typed as NSString).length, length: 0))
+            bar.textChanged()
+            await waitUntil("address completion finishes") { !bar.isCompletingPath }
+            check("inline fill completes the folder name", bar.textField.stringValue == "~/\(folder.name)/", bar.textField.stringValue)
+            check("typed part stays before the caret", bar.typedText == typed, bar.typedText)
+            check("completed tail is selected", bar.inlineCompletion == String(folder.name.dropFirst(partial.count)) + "/", "\(bar.inlineCompletion ?? "nil")")
+            check("candidate list is showing", bar.completion.isVisible && bar.completion.candidates.first == folder.name + "/", "\(bar.completion.candidates)")
+            let g = bar.completion.geometryForTesting
+            check("popup height fits its rows", g.panelHeight == CGFloat(bar.completion.candidates.count) * 22 + 8 && g.clipHeight >= g.tableHeight - 0.5, "panel \(g.panelHeight) clip \(g.clipHeight) table \(g.tableHeight)")
+            check("first row is fully inside the popup", g.firstRow.minY >= 0 && g.firstRow.maxY <= g.panelHeight + 0.5, "\(g.firstRow) in \(g.panelHeight)")
+            check("first row sits at the top, not the bottom", abs(g.firstRow.maxY - (g.panelHeight - 4)) < 1, "row maxY \(g.firstRow.maxY), expected \(g.panelHeight - 4)")
+            // deleting must not re-fill
+            ed.string = "~/" + String(partial.prefix(1)); ed.setSelectedRange(NSRange(location: 3, length: 0))
+            bar.textChanged()
+            await waitUntil("address completion finishes") { !bar.isCompletingPath }
+            check("no inline fill while deleting", bar.textField.stringValue == "~/" + String(partial.prefix(1)), bar.textField.stringValue)
+            // Tab accepts, then the list moves on to the folder's children
+            ed.string = typed; ed.setSelectedRange(NSRange(location: (typed as NSString).length, length: 0)); bar.textChanged()
+            await waitUntil("address completion finishes") { !bar.isCompletingPath }
+            check("Tab accepts the inline completion", bar.acceptCompletion() && bar.inlineCompletion == nil && bar.textField.stringValue == "~/\(folder.name)/")
+            await waitUntil("accepted completion lists subfolders") { !bar.isCompletingPath }
+            let inside = PathCompleter.completions(for: "~/\(folder.name)/", cwd: home, home: home)
+            check("after accept the list shows the folder's subfolders", bar.completion.candidates == inside, "\(bar.completion.candidates.count) vs \(inside.count)")
+            if !inside.isEmpty {
+                let g2 = bar.completion.geometryForTesting
+                check("re-shown list is pinned to the top too", abs(g2.firstRow.maxY - (g2.panelHeight - 4)) < 1 && g2.firstRow.minY >= 0, "row \(g2.firstRow) panel \(g2.panelHeight)")
+            }
+            // ↓ selects in the list, Return accepts and navigates
+            ed.string = typed; ed.setSelectedRange(NSRange(location: (typed as NSString).length, length: 0)); bar.textChanged()
+            await waitUntil("address completion finishes") { !bar.isCompletingPath }
+            _ = bar.control(bar.textField, textView: ed, doCommandBy: #selector(NSResponder.moveDown(_:)))
+            check("↓ selects the first candidate", bar.completion.selectedCandidate == folder.name + "/")
+            _ = bar.control(bar.textField, textView: ed, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+            check("Return commits the completed path", !bar.isEditing && !bar.completion.isVisible)
+            after(0.5) {
+                check("edit-commit landed", wc.browser.currentURL?.lastPathComponent == folder.name)
+                check("focus returned to list", wc.window?.firstResponder === wc.browser.fileList.tableView)
+                narrowAddressBar(wc)
+                contextMenus(wc, folder)
+            }
         }
     }
 
@@ -1005,7 +1004,8 @@ enum SmokeTest: SmokeSuite {
                   let folder = b.model.items.first(where: { $0.isNavigable }) else { check("find items", false); return }
             var got: NSImage? = nil, done = false
             let cached = ThumbnailProvider.shared.thumbnail(for: note, size: 128, scale: 2) { img in got = img; done = true }
-            after(2.0) {
+            awaitCondition("thumbnail completion", timeout: 15, recordsSuccess: false,
+                           condition: { cached != nil || done }) {
                 check("thumbnail generated for a text file", cached != nil || (done && got != nil), "cached=\(cached != nil) done=\(done) got=\(got != nil)")
                 check("thumbnail cached on the second ask", ThumbnailProvider.shared.thumbnail(for: note, size: 128, scale: 2) { _ in } != nil)
                 check("folders never get thumbnails", !ThumbnailProvider.canPreview(folder))
@@ -1051,7 +1051,8 @@ enum SmokeTest: SmokeSuite {
         b.fileView.select(name: "note.txt")
         // 1. something outside the app creates a file in the shown folder
         try? "x".write(to: tmp.appendingPathComponent("external.txt"), atomically: true, encoding: .utf8)
-        after(1.8) {
+        awaitCondition("external file appears", timeout: 15, recordsSuccess: false,
+                       condition: { b.model.items.contains { $0.name == "external.txt" } }) {
             check("external change shows up via FSEvents", b.model.items.contains { $0.name == "external.txt" }, "\(b.model.items.map(\.name))")
             check("refresh kept the selection", b.fileView.selectedItems.map(\.name) == ["note.txt"], "\(b.fileView.selectedItems.map(\.name))")
             // 2. an expanded subfolder is watched too
@@ -1059,7 +1060,8 @@ enum SmokeTest: SmokeSuite {
             b.fileList.expand(subNode)
             check("expanded folder is a displayed directory", b.displayedDirectories.contains { $0.standardizedFileURL == sub.standardizedFileURL })
             try? "y".write(to: sub.appendingPathComponent("inner-external.txt"), atomically: true, encoding: .utf8)
-            after(1.8) {
+            awaitCondition("external child appears", timeout: 15, recordsSuccess: false,
+                           condition: { subNode.children.contains { $0.item.name == "inner-external.txt" } }) {
                 check("change inside an expanded folder shows up", subNode.children.contains { $0.item.name == "inner-external.txt" }, "\(subNode.children.map(\.item.name))")
                 b.fileList.collapse(subNode)
                 // 3. a move performed by the OTHER pane refreshes this one at once
@@ -1633,7 +1635,7 @@ enum SmokeTest: SmokeSuite {
             let itemMenu = b.buildContextMenu(for: b.model.items.filter { $0.name == "info.txt" })
             check("item menu offers Get Info", itemMenu.item(withTitle: "Get Info") != nil)
             b.fileList.select(name: "info.txt")
-            UserDefaults.standard.set(false, forKey: InfoSection.explicitPreferenceKey(for: "comments"))
+            AppDefaults.shared.set(false, forKey: InfoSection.explicitPreferenceKey(for: "comments"))
             b.getInfo(nil)
             after(0.4) { infoWindow(wc, tmp, file, dir) }
         }
@@ -1662,7 +1664,7 @@ enum SmokeTest: SmokeSuite {
         check("sections show a chevron", info.section("general")?.hasChevron == true)
         info.section("comments")?.toggle()
         check("toggling expands it", info.section("comments")?.isExpanded == true && info.section("comments")?.content.isHidden == false)
-        UserDefaults.standard.removeObject(forKey: InfoSection.explicitPreferenceKey(for: "comments"))
+        AppDefaults.shared.removeObject(forKey: InfoSection.explicitPreferenceKey(for: "comments"))
         check("the Info window never becomes main", NSApp.mainWindow !== info.window,
               "active=\(NSApp.isActive) main=\(NSApp.mainWindow?.title ?? "nil") key=\(NSApp.keyWindow?.title ?? "nil")")
         after(0.6) {
@@ -1815,7 +1817,6 @@ enum SmokeTest: SmokeSuite {
         check("favourites removed", !places.isFavourite(a) && !places.isFavourite(c))
         places.resetFavourites()
         check("reset restores the built-ins", places.sections[0].places.count == builtInCount && places.favouriteIndex(of: home) == 0)
-        check("status bar shows counts", wc.browser.statusBar.description.isEmpty || true)
         archiveUI(wc, tmp) {
             try? FileManager.default.removeItem(at: tmp)
             // Across the whole run, the archive tool never ran on the main
@@ -1824,6 +1825,9 @@ enum SmokeTest: SmokeSuite {
             check("the archive tool never ran on the main thread in the whole run",
                   SystemArchiveToolRunner.shared.mainThreadInvocations == 0,
                   "\(SystemArchiveToolRunner.shared.mainThreadInvocations) of \(SystemArchiveToolRunner.shared.invocations) runs")
+            PreferencesIsolationSmokeTests.verifyProductionUnchanged()
+            check("all grouped matrices completed", SmokeReport.shared.allGroupsFinished)
+            SmokeReport.shared.finishRun()
             print("SMOKE TEST PASSED")
             exit(0)
         }

@@ -53,6 +53,13 @@ enum FileOperations {
         let error: Error
     }
 
+    /// A batch can make useful progress before another item fails. Keep the
+    /// successful destinations so callers can always record Put Back and undo.
+    struct TrashResult {
+        var moved: [(original: URL, trashed: URL)] = []
+        var failures: [Failure] = []
+    }
+
     struct TransferResult {
         var created: [URL] = []
         /// (original, new) pairs for moves — what undo needs.
@@ -137,37 +144,48 @@ enum FileOperations {
         }
     }
 
-    /// Rename via the name resource, which — unlike moveItem — handles a
-    /// case-only rename on case-insensitive APFS ("Foo" → "foo").
+    /// Exclusive publication prevents both an existing sibling and one created
+    /// concurrently from being overwritten. Unlike Foundation's moveItem, the
+    /// native rename also accepts a case-only change on case-insensitive APFS.
+    /// URLResourceValues.name must not be used here: it overwrites a sibling.
     @discardableResult
     static func rename(_ url: URL, to name: String) throws -> URL {
-        var values = URLResourceValues()
-        values.name = name
-        var target = url
-        try target.setResourceValues(values)
-        return url.deletingLastPathComponent().appendingPathComponent(name)
+        guard url.isFileURL, BatchRename.isValidName(name), !name.contains("\0") else {
+            throw CocoaError(.fileWriteInvalidFileName, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        let target = url.deletingLastPathComponent().appendingPathComponent(name)
+        guard renamex_np(url.path, target.path, UInt32(RENAME_EXCL)) == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno),
+                          userInfo: [NSFilePathErrorKey: target.path])
+        }
+        return target
     }
 
-    /// Finder-visible trash with Put Back. Returns (original, trashed) pairs.
+    /// Finder-visible trash with Put Back. Every successful move is returned,
+    /// even when another source cannot be trashed; failures do not stop the batch.
     /// While `TrashLocation.userTrashOverride` is set the items move into that
     /// fixture directory instead, so a check can never write into the real
     /// `~/.Trash`; with no override this is `FileManager.trashItem` unchanged.
-    static func trash(_ urls: [URL]) throws -> [(original: URL, trashed: URL)] {
-        var out: [(URL, URL)] = []
+    static func trash(_ urls: [URL]) -> TrashResult {
+        var result = TrashResult()
         for url in mutationSources(urls) {
-            if let fixture = TrashLocation.userTrashOverride {
-                let base = fixture.appendingPathComponent(url.lastPathComponent)
-                let destination = itemExists(base) ? uniqueURL(for: base) : base
-                try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
-                try FileManager.default.moveItem(at: url, to: destination)
-                out.append((url, destination))
-                continue
+            do {
+                if let fixture = TrashLocation.userTrashOverride {
+                    let base = fixture.appendingPathComponent(url.lastPathComponent)
+                    let destination = itemExists(base) ? uniqueURL(for: base) : base
+                    try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+                    try FileManager.default.moveItem(at: url, to: destination)
+                    result.moved.append((url, destination))
+                    continue
+                }
+                var trashed: NSURL?
+                try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+                if let destination = trashed as URL? { result.moved.append((url, destination)) }
+            } catch {
+                result.failures.append(Failure(url: url, error: error))
             }
-            var result: NSURL?
-            try FileManager.default.trashItem(at: url, resultingItemURL: &result)
-            if let r = result as URL? { out.append((url, r)) }
         }
-        return out
+        return result
     }
 
     static func delete(_ urls: [URL]) throws {

@@ -267,7 +267,7 @@ enum TrashSmokeTests: SmokeSuite {
         let store = DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("views.json"))
         let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(), initialURL: origin,
                                       viewPropertiesStore: store)
-        defer { wc.close() }
+        defer { wc.close(); try? store.flush() }
         wc.window?.setContentSize(NSSize(width: 1000, height: 640))
         wc.window?.center()
         wc.window?.makeKeyAndOrderFront(nil)
@@ -495,7 +495,7 @@ enum TrashSmokeTests: SmokeSuite {
         let store = DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("views.json"))
         let wc = MainWindowController(provider: LocalFileProvider(), places: PlacesModel(), initialURL: root,
                                       viewPropertiesStore: store)
-        defer { wc.close() }
+        defer { wc.close(); try? store.flush() }
         wc.window?.setContentSize(NSSize(width: 900, height: 600))
         wc.window?.makeKeyAndOrderFront(nil)
         let browser = wc.browser

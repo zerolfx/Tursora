@@ -14,7 +14,7 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 | **Additional information columns** (`additional_info`, about 30 columns: creation/access time, extension, permissions, owner, link target, path, rating, tags, comment, word count, line count, image dimensions, duration, artist…) | Ordinary directories have Name/Date Modified/Size/Kind; search adds Location | (mac) Most of these can come from Spotlight metadata (`kMDItem*`) |
 | Sort options: descending / folders first / **hidden files last** | Ascending and descending ✅; folders lead under Name only | Matches Finder, whose "Keep folders on top" covers only name sorting, so folders take part in every other sort (D76). Still missing: "hidden last", and a switch for the name case |
 | **Folder item count / recursive size column** (`KDirectoryContentsCounter`) | ✅ | The Size column shows the item count by default (Finder's "N items"), and shows recursive bytes once `Calculate all sizes` is on; calculated in the background, remembered per directory, and ZIP and search results only count items ([record](../research/sort-columns-folder-sizes.md)) |
-| **Per-directory view properties** (mode / sorting / zoom / hidden files and restore defaults) | ✅ Per-directory memory / one shared default, save the current settings as the default, restore the current directory | Both zoom steps, grouping and previews are saved along with them; the app keeps its own versioned path store, with no `.directory` file and no xattr. Applying recursively to subdirectories, column widths / additional columns and following items as they move are still not implemented; for the evidence and the limits see the [research](../research/directory-view-properties.md) |
+| **Per-directory view properties** (mode / sorting / zoom / hidden files and restore defaults) | ✅ Per-directory memory / one shared default, save the current settings as the default, restore the current directory | Both zoom steps, grouping and previews are saved along with them; the app keeps its own versioned path store, with no `.directory` file and no xattr. Applying recursively to subdirectories, column widths / further metadata columns and following items as they move are still not implemented; for the evidence and the limits see the [research](../research/directory-view-properties.md) |
 | Compact view (a third mode) | ❌ | Low priority |
 | Hover tooltip (metadata plus preview) | ❌ | Quick Look partly covers this |
 | `.hidden` file / `UF_HIDDEN` flag (Dolphin only recognises dot files) | ❌ | (mac) Has to be done: `/usr`, `Icon\r`, `.fseventsd` and so on |
@@ -44,7 +44,7 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 | Releasing a drag pops up a copy/move/link menu | Decided automatically by Finder's rules | A design choice that could become a preference. ⌘ to force a move, spring-loaded folders and breadcrumb drops are implemented ([record](../research/drag-and-drop.md)) |
 | Open in terminal (`open_terminal_here`) | ❌ | (mac) Terminal.app / iTerm |
 | Compress/extract (the Ark service menu) | ✅ Plain ZIP | The system ditto / libarchive; passwords and other formats are not implemented |
-| Compare files (Kompare), disk usage (Filelight) | ❌ | External tools, low priority |
+| Compare files (Kompare), disk usage (Filelight) | File/folder comparison is excluded; disk-usage visualization is not implemented | Comparison is a product non-goal; a separate disk-usage tool remains low priority |
 | Undo/redo, copy/move to the other pane, copy path, Open With, copy/cut/paste | ✅ | |
 
 ## D. Navigation and finding
@@ -74,7 +74,7 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 |---|---|---|
 | **Preferences window** (general/startup/view modes/context menu/trash/confirmation dialogs/previews) | ✅ General / Shortcuts / Terminal / Updates plus the directory view policy | Startup offers the session-restore switch, on by default, and a retry when saving fails; there are also showing extensions, shortcuts for every application command, terminal appearance / shell, the terminal and ZIP switches, and per-directory memory / one shared default. A separate Updates page offers the automatic-check switch, optional download and install, and a manual check. Updates are Tursora's own macOS distribution feature; the other behaviour policies are still to be implemented |
 | **Localization** | The app's interface is English only; the website is English / Chinese | A Chinese interface for the app is still to be implemented; the website defaults to English and offers a separate Chinese page |
-| Version-control plugins (git/svn status badges and commands) | ❌ | |
+| Version-control plugins (git/svn status badges and commands) | Excluded by product scope | |
 | Service menu / file-action plugins | ❌ | (mac) The equivalents are Finder extensions and the Services menu |
 | Shortcut customization, toolbar customization | Shortcuts for application commands ✅; toolbar customization ❌ | Every main-menu command and the existing extra keyboard actions can be searched, recorded, cleared and reset one at a time or all at once, with a hint about which command owns a conflicting key; native text and shell controls are not redefined. For the combined three smoke runs and the on-device scope see the [customization integration record](../research/customization-integration.md) |
 | Completion notifications (KNotification) | ❌ | (mac) `UNUserNotification` needs a signed bundle |
@@ -83,18 +83,18 @@ Compiled from the actions, panels, settings pages and context-menu entries actua
 
 ## What Tursora has and Dolphin does not
 
-Quick Look (space bar), moving to the system trash and undoing it, dragging into Finder or another app, inline address completion with a candidate panel, dragging a tab to split a pane, and native appearance and gestures. Trash browsing and Put Back are not yet implemented.
+Quick Look (space bar), moving to the system trash and undoing it, dragging into Finder or another app, inline address completion with a candidate panel, dragging a tab to split a pane, and native appearance and gestures. User Trash browsing, Put Back and Empty Trash are also implemented; per-volume Trash remains a gap.
 
 ## Suggested next batch (by value for effort)
 
-The user ranks continuity of work above small features; session restore was implemented in this round, and the job right now is to finish its build, three smoke runs and on-device verification, see the [record](../research/workspace-sessions.md). The cost ordering of the remaining candidates is kept below.
+The user ranks continuity of work above small features; session restore was implemented in this round, and its build, smoke runs and on-device verification are recorded in the [session record](../research/workspace-sessions.md). The cost ordering of the remaining candidates is kept below.
 
 1. ~~Filter bar~~, invert selection, list of recently closed tabs, `.hidden`/`UF_HIDDEN` — small
 2. New from template — medium
 3. ~~Session restore (implemented and verified in this round)~~, ~~copy / move progress with per-task control~~, ~~bulk conflict options~~ — medium
 4. Panel docking / floating, more preference policies, Chinese localization — medium to large
-5. More information columns (Spotlight metadata), applying view properties recursively and persisting the column layout — medium to large
-6. Multiple terminal sessions / restore, Compact view, version control, more remote protocols — large / later
+5. More information columns (Spotlight metadata), applying view properties recursively and persisting column widths — medium to large
+6. Multiple terminal sessions / restore, Compact view, ordinary server history / discovery / reconnect (developer-only protocols and version control are excluded) — large / later
 
 ## 2026-09-12 filter interaction review
 
@@ -119,7 +119,7 @@ For the source evidence see the [filter and search comparison](../research/dolph
 
 - [x] Remember the mode, the sort key and direction, both zoom steps, grouping, hidden files and previews per directory; restored in a new tab / pane and on a repeat visit.
 - [x] A separate default value, a shared policy, and restoring the default for the current directory; versioned storage with a fallback when it is corrupt, and no persistence for logical ZIP pages or temporary paths.
-- [ ] Applying recursively to subdirectories, persisting the column layout, following renames / moves by volume and file identity, and dedicated persistence for special logical pages.
+- [ ] Applying recursively to subdirectories, persisting column widths, following renames / moves by volume and file identity, and dedicated persistence for special logical pages.
 - The boxes above mark implementation scope; for this feature's three smoke runs and on-device verification see the [directory view verification record](../research/computer-use-2026-09-12-directory-views.md), which does not carry over the earlier 739-check result.
 
 ## 2026-09-12 split-pane paths and the tab menu
@@ -181,3 +181,10 @@ For the source evidence see the [filter and search comparison](../research/dolph
 
 - [x] Browsing the user trash, Put Back (our own log), Empty Trash… (Finder's wording plus a confirmation), and an in-pane banner when permission is missing.
 - Per-volume trash, and putting back items that were moved in outside Finder, are still not implemented; for the scope see the [trash record](../research/trash.md).
+
+## Reliability follow-up, 2026-09-26
+
+- [x] Address completion resolves and enumerates off the main thread, with debounce, bounded short-lived directory caching and stale editor-result rejection.
+- [x] ZIP listing parsing preserves UTF-8 characters across read boundaries.
+- [x] Smoke preferences use a separate per-run suite; fixture stores flush before removal and the folder-tree stop check waits for its ancestor reveal.
+- See [the reliability record](../research/reliability-2026-09-26.md) for verification status.

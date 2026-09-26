@@ -31,17 +31,19 @@ enum StatusBarSmokeTests: SmokeSuite {
         for (expected, update) in cases {
             update()
             check("exact file status: \(expected)", bar.statusText == expected)
-            for width: CGFloat in [178, 220, 359, 360, 720] {
-                bar.setFrameSize(NSSize(width: width, height: StatusBarView.height))
-                bar.needsLayout = true
-                bar.layoutSubtreeIfNeeded()
-                check("\(width)pt status keeps counts/context separate from file progress", label.frame.width >= 64
-                    && bar.bounds.contains(label.frame) && bar.bounds.contains(spinner.frame) && !label.frame.intersects(spinner.frame))
-                check("\(width)pt zoom yields space in a narrow pane", bar.zoomSlider.isHidden == (width < 360))
-                if !bar.zoomSlider.isHidden {
-                    check("\(width)pt visible zoom stays separate", bar.bounds.contains(bar.zoomSlider.frame)
-                        && !bar.zoomSlider.frame.intersects(label.frame) && !bar.zoomSlider.frame.intersects(spinner.frame))
-                }
+        }
+        // Geometry depends on pane width, independently of the status wording.
+        // Keep both sides of the compact-layout boundary in this matrix.
+        for width: CGFloat in [178, 220, 359, 360, 720] {
+            bar.setFrameSize(NSSize(width: width, height: StatusBarView.height))
+            bar.needsLayout = true
+            bar.layoutSubtreeIfNeeded()
+            check("\(width)pt status keeps counts/context separate from file progress", label.frame.width >= 64
+                && bar.bounds.contains(label.frame) && bar.bounds.contains(spinner.frame) && !label.frame.intersects(spinner.frame))
+            check("\(width)pt zoom yields space in a narrow pane", bar.zoomSlider.isHidden == (width < 360))
+            if !bar.zoomSlider.isHidden {
+                check("\(width)pt visible zoom stays separate", bar.bounds.contains(bar.zoomSlider.frame)
+                    && !bar.zoomSlider.frame.intersects(label.frame) && !bar.zoomSlider.frame.intersects(spinner.frame))
             }
         }
         check("ZIP context retains its read-only explanation", label.toolTip?.contains("temporary copies") == true)

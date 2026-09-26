@@ -8,8 +8,8 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
             let fixture = fm.temporaryDirectory.appendingPathComponent("tursora-zip-pane-" + UUID().uuidString).resolvingSymlinksInPath()
             let zipKey = "experimentalZIPBrowsingEnabled"
             let terminalKey = "experimentalTerminalEnabled"
-            let oldFlag = UserDefaults.standard.object(forKey: zipKey)
-            let oldTerminal = UserDefaults.standard.object(forKey: terminalKey)
+            let oldFlag = AppDefaults.shared.object(forKey: zipKey)
+            let oldTerminal = AppDefaults.shared.object(forKey: terminalKey)
             let viewStore = DirectoryViewPropertiesStore(fileURL: fixture.appendingPathComponent("views/state.json"))
             var window: MainWindowController?
             defer {
@@ -474,8 +474,8 @@ enum ArchiveBrowserSmokeTests: SmokeSuite {
     }
 
     private static func restorePreference(_ value: Any?, forKey key: String) {
-        if let value { UserDefaults.standard.set(value, forKey: key) }
-        else { UserDefaults.standard.removeObject(forKey: key) }
+        if let value { AppDefaults.shared.set(value, forKey: key) }
+        else { AppDefaults.shared.removeObject(forKey: key) }
         NotificationCenter.default.post(name: .tursoraPreferencesChanged, object: AppPreferences.shared)
     }
 

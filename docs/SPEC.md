@@ -72,6 +72,7 @@ The window name follows the active pane's folder (so the Window menu and accessi
 
 - Breadcrumb mode: each path segment is its own button and clicking it jumps straight there; **clicking the `▸` between segments opens the list of sibling folders at that level**, so you can jump sideways.
 - Clicking the empty area, `⌘L` or `⌘⇧G` switches to an editable text field; `Esc` returns to the breadcrumbs.
+- Completion resolves and enumerates folders off the main thread after a 120 ms debounce. Each navigator caches at most eight directory snapshots for one second, excluding oversized snapshots. Results only update the same editor session, text and caret; navigation, dismissal and newer input invalidate older requests. Tab can accept a pending result once it arrives.
 - Editing mode: **inline completion** (the completed part is selected, so typing on replaces it; Tab or → accepts it) plus a candidate list panel (↑↓ to select, Return to accept and navigate, Esc to close, click to select). Completion skips packages (.app).
 - An over-long path collapses from the **left**, keeping the first segment; over-long segments are compressed.
 - Narrow windows and split panes always keep the root folder, the collapsed-path entry point and the trailing folder menu, shortening the text where necessary; resizing the window repeatedly causes neither a persistent layout loop nor blocked navigation.
@@ -123,6 +124,8 @@ The toolbar's split button shows the current tab's split state, and switching ta
 
 ## 5. View modes, zoom and previews (matches Dolphin)
 
+A failed directory listing clears all root rows and groups together. No view may retain selectable rows from the previous successful listing under an error state.
+
 | | List (details) | Icons | Columns |
 |---|---|---|---|
 | Implementation | `NSOutlineView`, folders expand in place (▸) | `NSCollectionView` grid, top level only | `NSBrowser` in item mode, as in Finder; a selected folder opens the column to its right |
@@ -155,6 +158,8 @@ The toolbar's split button shows the current tab's split state, and switching ta
 - The folder-view store does not restore windows, tabs or history; windows and tabs are restored by §22's separate session store, and navigation history is still not persisted. Settings are not applied recursively to subfolders, and there is no equivalent of Finder's full Show View Options dialog. The pinned Dolphin source references and the storage trade-offs are in the [per-folder view research](research/directory-view-properties.md); the automated and on-device verification for the corresponding version is in the [folder view verification record](research/computer-use-2026-09-12-directory-views.md).
 
 ## 6. File operations (semantics match Finder)
+
+Single-item rename, including Undo and Redo, publishes exclusively: it never overwrites an existing destination, including a dangling symbolic link or a destination created concurrently. Case-only changes remain supported on case-insensitive APFS. A partial Move to Trash reports the failed items while retaining Undo and Tursora Put Back for every successful move; other panes are notified of those successes.
 
 | Operation | Behaviour |
 |---|---|
@@ -305,6 +310,10 @@ The settings implementation and where it differs from the Rascal source are in [
 - Every row comes from the archive's table of contents, so it is the same before and after its bytes are extracted (D97). Kind reads as the extracted item's would — an extensionless command-line tool is a Unix Executable File, an application an Application, a symbolic link an Alias. Date Modified and Date Created are the archive's date; Date Added and Date Last Opened show "--". An application or other package shows the size of everything it holds. Two names the volume treats as one — `A.txt` and `a.txt`, or the two Unicode forms of `café.txt` — are one row, the later entry's, because extracting them leaves one file. A symbolic link shows where it leads, and a link to a folder can be entered whether or not that folder has been visited; a link that points outside the archive, at nothing, or round in a loop is shown but unavailable. An entry whose extraction failed, such as a damaged member, stays listed as unavailable until Reload (⌘R), which tries it again. Grouping by Application groups archive files under the application that would open them.
 - A failed preparation shows an inline error with Retry and Open Enclosing Folder, keeping the visible original folder and selection; a failed restore at launch still remembers the original logical target, the tab and the window show the name of the requested location, and Reload / ⌘R retries; once the original ZIP is repaired, the inner target can still be opened through the system directory alias. A symbolic link that has gone from the temporary copy reads as leading nowhere without blanking its folder, while other read errors are still reported.
 - With the ZIP browsing toggle off, existing archive tabs and their history remain safely browsable read-only, while newly opening a ZIP in an ordinary folder falls back to extraction. A plain Open on a ZIP nested inside an archive uses the system default application rather than entering another archive session automatically. Only plain ZIP is supported; a password-protected archive is refused by name before anything is staged, and other formats, writing back into an archive, and automatic reloading after the original ZIP changes externally are not part of this implementation. Opening an archive writes only its folder structure, so it needs little space; each extraction afterwards is checked against the free space on the volume holding the temporary directory before it runs, and one that would not fit is refused with the space it needs and tried again when asked again. A damaged archive reports what the archive tool itself said rather than appearing to be empty. The implementation and verification boundaries are in the [archive browsing research](research/archive-browsing.md).
+
+### External ZIP export integrity
+
+Dragging or sharing a ZIP member externally requires the requested file, package or entire folder subtree to be readable. A partially materialized folder is not a successful export: the receiver gets an error naming unreadable members, including when an earlier attempt already recorded their failures. File promises copy into private staging at the destination before publishing, and never replace an existing destination. Internal copy operations retain their separate explicit partial-result reporting. ZIP listing text is decoded only after complete line bytes arrive, preserving multi-byte filenames across read boundaries.
 
 ## 19. Search (Dolphin semantics, macOS backend)
 

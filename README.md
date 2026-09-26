@@ -115,7 +115,7 @@ The features below are in the latest release. See the [version history](CHANGELO
       <td>
         <strong>Search across folders, then save the search</strong>
         <p>Choose Search Options or press <code>⇧⌘F</code>. Keep editing the same toolbar field to search subfolders or Home by filename, content, type and modification date. Search runs after a typing pause or on Return. Save named searches for later; each pane keeps its own query, cancellation and results.</p>
-        <p>Name search works in unindexed folders. Content search depends on Spotlight's index and supported formats. Results retain their original locations and support file commands, Quick Look and Reveal in Enclosing Folder. ZIP contents are excluded.</p>
+        <p>Name search works in unindexed folders. Content search can use Spotlight's index or Scan Files for unindexed folders; scanning reads bounded text content and reports skipped files. Results retain their original locations and support file commands, Quick Look and Reveal in Enclosing Folder. ZIP contents are excluded.</p>
       </td>
       <td><a href="docs/images/features/search.png"><img src="docs/images/features/search.png" width="600" alt="Recursive search results with original locations"></a></td>
     </tr>

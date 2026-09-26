@@ -91,7 +91,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .automatic
         window.tabbingMode = .disallowed          // D1: tabs are ours, not the window's
-        window.setFrameAutosaveName("TursoraMainWindow")
+        // AppKit's frame autosave always writes UserDefaults.standard, even
+        // when our own stores use an isolated smoke/QA suite.
+        if AppDefaults.isolatedDomain == nil { window.setFrameAutosaveName("TursoraMainWindow") }
         window.center()
         super.init(window: window)
         window.delegate = self

@@ -149,6 +149,7 @@ enum PanePathsSmokeTests: SmokeSuite {
               left.addressBar.isEditing && left.addressBar.textField.currentEditor() is NSTextView
               && window.firstResponder === left.addressBar.textField.currentEditor())
         type("Al", in: left.addressBar)
+        await waitUntil("left path completion finishes") { !left.addressBar.isCompletingPath }
         check("\(mode): left completion uses its own current directory",
               wc.browser === left && left.addressBar.completion.isVisible
               && Set(left.addressBar.completion.candidates) == ["Alpha One/", "Alternative/"])
@@ -159,6 +160,7 @@ enum PanePathsSmokeTests: SmokeSuite {
               && window.firstResponder === right.addressBar.textField.currentEditor()
               && samePath(left.currentURL, leftURL) && samePath(right.currentURL, rightURL))
         type("Be", in: right.addressBar)
+        await waitUntil("right path completion finishes") { !right.addressBar.isCompletingPath }
         check("\(mode): the new editor completes from the other pane's directory",
               right.addressBar.completion.isVisible && right.addressBar.completion.candidates == ["Beta One/"])
         let third = wc.tabs.newTab(at: thirdURL)

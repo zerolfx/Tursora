@@ -260,7 +260,7 @@ enum TerminalShellSyncSmokeTests: SmokeSuite {
                                 workspaceStore: workspace, preferences: preferences,
                                 viewPropertiesStore: DirectoryViewPropertiesStore(fileURL: root.appendingPathComponent("views.json")))
         let savedEnabled = AppPreferences.experimentalTerminalEnabled
-        let savedTerminalPreferences = UserDefaults.standard.object(forKey: TerminalPreferences.storageKey)
+        let savedTerminalPreferences = AppDefaults.shared.object(forKey: TerminalPreferences.storageKey)
         AppPreferences.experimentalTerminalEnabled = true
         // Panels created by a window use the shared store; start it from the
         // documented defaults and put the user's own value back afterwards.
@@ -271,7 +271,7 @@ enum TerminalShellSyncSmokeTests: SmokeSuite {
                 controller.close()
             }
             AppPreferences.experimentalTerminalEnabled = savedEnabled
-            UserDefaults.standard.set(savedTerminalPreferences, forKey: TerminalPreferences.storageKey)
+            AppDefaults.shared.set(savedTerminalPreferences, forKey: TerminalPreferences.storageKey)
             defaults.removePersistentDomain(forName: suite)
             try? manager.removeItem(at: root)
         }

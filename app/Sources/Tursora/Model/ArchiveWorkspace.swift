@@ -449,17 +449,7 @@ final class ArchiveWorkspace {
     func materializeBlocking(_ locations: [URL],
                              cancellation: ArchivePreparationCancellation? = nil) throws -> ArchiveMaterializationResult {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        struct Request { let physical: URL; let session: ArchiveBrowsingSession?; let path: String? }
-        var requests: [Request] = []
-        for location in locations {
-            let physical = try physicalURL(for: location)
-            if let record = record(for: location) {
-                requests.append(Request(physical: physical, session: record.session,
-                                        path: record.session.resolvedArchivePath(of: physical)))
-            } else {
-                requests.append(Request(physical: physical, session: nil, path: nil))
-            }
-        }
+        let requests = try materializationRequests(for: locations)
         let entries = requests.compactMap { request in request.session.flatMap { session in request.path.map { (session, $0) } } }
         for (session, paths) in grouped(entries) {
             try cancellation?.checkCancellation()
@@ -469,7 +459,34 @@ final class ArchiveWorkspace {
                 : session.tree.batchPlan(for: paths, skipping: settled)
             try session.materializer.materialize(plan, cancellation: cancellation)
         }
+        return materializationResult(for: requests, notifyingFailures: true)
+    }
 
+    /// A settled result without extracting anything. A folder can be settled
+    /// with failed descendants, so external exports still validate its errors
+    /// instead of treating its published URL as proof that it is complete.
+    func publishedResult(for locations: [URL]) throws -> ArchiveMaterializationResult? {
+        guard locations.allSatisfy({ publishedURL(for: $0) != nil }) else { return nil }
+        return materializationResult(for: try materializationRequests(for: locations))
+    }
+
+    private struct MaterializationRequest {
+        let physical: URL
+        let session: ArchiveBrowsingSession?
+        let path: String?
+    }
+
+    private func materializationRequests(for locations: [URL]) throws -> [MaterializationRequest] {
+        try locations.map { location in
+            let physical = try physicalURL(for: location)
+            let session = record(for: location)?.session
+            return MaterializationRequest(physical: physical, session: session,
+                                          path: session?.resolvedArchivePath(of: physical))
+        }
+    }
+
+    private func materializationResult(for requests: [MaterializationRequest],
+                                       notifyingFailures: Bool = false) -> ArchiveMaterializationResult {
         var result = ArchiveMaterializationResult()
         var failedMembers: [URL] = []
         func fail(_ url: URL, _ reason: String, sticky: Bool = false) {
@@ -502,11 +519,19 @@ final class ArchiveWorkspace {
                 let url = request.physical.appendingPathComponent(String(member.path.dropFirst(prefix)))
                 if let reason = member.inertReason { fail(url, reason.explanation) }
                 else if case .failed(let reason) = materializer.state(of: member.path) { fail(url, reason, sticky: true) }
+                else if !member.insidePackage, member.kind == .file || member.isPackage,
+                        tree.isReachable(member.path), materializer.state(of: member.path) != .published {
+                    // A truncated/unrecognized tool log can leave a member
+                    // absent without an attributed error. That still makes a
+                    // folder incomplete; it must never look like a successful
+                    // external export merely because its skeleton exists.
+                    fail(url, "Its extraction has not been confirmed.")
+                }
             }
         }
         // A failure is sticky and turns its row unavailable; tell the panes
         // showing its folder so they list it again (M54).
-        if !failedMembers.isEmpty {
+        if notifyingFailures, !failedMembers.isEmpty {
             let folders = failedMembers.map { logicalURL(for: $0).deletingLastPathComponent() }
             DispatchQueue.main.async { DirectoryChanges.post(folders) }
         }

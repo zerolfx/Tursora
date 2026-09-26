@@ -53,7 +53,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var usesGroups: Bool { model.groupKey != .none }
 
     /// ⌘X state is app-wide: cut in one tab, paste in another.
-    private static var cutState: (changeCount: Int, urls: [URL])?
+    static var cutState: (changeCount: Int, urls: [URL])?
 
     var onLocationChanged: ((URL) -> Void)?
     /// Includes pending navigation, before a ZIP has finished preparing.
@@ -111,7 +111,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     var previewSelectionURLs: [URL] { fileView.selectedItems.compactMap(\.previewContentURL) }
     /// Requests for archive bytes this pane started. Closing the pane cancels
     /// them; navigating does not, so an Open already asked for still happens.
-    private var archiveRequests: [UUID: ArchivePreparationCancellation] = [:]
+    var archiveRequests: [UUID: ArchivePreparationCancellation] = [:]
     /// The history entry on screen while a remount from history prepares.
     private var pendingHistorySlot: Int?
     /// The failure notice on screen is for a remount, which Retry repeats as one.
@@ -119,30 +119,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// The ZIP location a closed tab was showing, to mount again on reopen.
     private var suspendedArchiveLocation: URL?
     /// The background fetch of the ZIP folder on screen.
-    private(set) var prefetchRequest: ArchivePreparationCancellation?
+    var prefetchRequest: ArchivePreparationCancellation?
     /// Quick Look's request for bytes, and what it covers.
-    private var quickLookRequest: (locations: Set<URL>, token: ArchivePreparationCancellation)?
+    var quickLookRequest: (locations: Set<URL>, token: ArchivePreparationCancellation)?
     /// How many times Quick Look's bytes arrived and the panel was refreshed.
     private(set) var quickLookRefreshesForTesting = 0
     /// Opens asked for in this main-queue pass, sent as one request.
-    private var pendingArchiveOpens: [URL] = []
-    private var archiveOpensInFlight = Set<URL>()
-    /// A file handed to something Tursora cannot watch — another application,
-    /// Finder pasting it, the Quick Look panel — goes as a copy outside the
-    /// ZIP's private copy, which is let go once no pane shows the ZIP (D103).
-    private func handOff(_ url: URL) -> URL? {
-        guard isArchiveContent(url) else { return url }
-        return ArchiveHandoffStore.shared.handOff(url, logical: ArchiveWorkspace.shared.logicalURL(for: url))
-    }
-
-    private func reportHandOffFailure() {
-        showArchiveError(ArchiveBrowsingSession.SessionError.notExtracted("A copy for another application could not be made."))
-    }
-
-    private func isArchiveContent(_ url: URL) -> Bool {
-        guard let session = ArchiveWorkspace.shared.session(for: url) else { return false }
-        return url.resolvingSymlinksInPath().standardizedFileURL != session.archiveURL.resolvingSymlinksInPath().standardizedFileURL
-    }
+    var pendingArchiveOpens: [URL] = []
+    var archiveOpensInFlight = Set<URL>()
     private let activeIndicator = AdaptiveLayerView()
     var activeIndicatorForTesting: AdaptiveLayerView { activeIndicator }
     private var indicatorHeight: NSLayoutConstraint?
@@ -864,29 +848,6 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         ArchiveWorkspace.shared.setDisplayed(nil, by: self)
     }
 
-    /// Fetches the small files of the ZIP folder now on screen, in the
-    /// background, so opening, previewing or copying one of them rarely waits.
-    /// Owned by the pane: navigating away or closing it cancels the fetch.
-    private func startArchivePrefetch(for url: URL) {
-        guard isBrowsingArchive, currentURL?.standardizedFileURL == url.standardizedFileURL else { return }
-        prefetchRequest?.cancel()
-        prefetchRequest = ArchiveWorkspace.shared.prefetch(url)
-    }
-
-    /// Stops every archive extraction this pane asked for. A transfer owns its
-    /// own, and is not stopped here.
-    func cancelArchiveRequests() {
-        prefetchRequest?.cancel()
-        prefetchRequest = nil
-        let requests = archiveRequests.values
-        archiveRequests.removeAll()
-        quickLookRequest?.token.cancel()
-        quickLookRequest = nil
-        pendingArchiveOpens.removeAll()
-        archiveOpensInFlight.removeAll()
-        requests.forEach { $0.cancel() }
-    }
-
     func resumePendingNavigation() {
         if let suspendedNavigation { navigate(to: suspendedNavigation); return }
         guard let location = suspendedArchiveLocation else { return }
@@ -902,7 +863,7 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
     }
 
-    private func showArchiveError(_ error: Error, archive: URL? = nil, target: URL? = nil) {
+    func showArchiveError(_ error: Error, archive: URL? = nil, target: URL? = nil) {
         // Failed navigation leaves the existing directory on screen. Persist
         // that location, so a subsequent search keeps its true browsing origin.
         // With no prior directory (startup), retain the requested ZIP to retry.
@@ -1007,33 +968,6 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
 
     func openSelection() { fileView.openSelection() }
 
-    // MARK: - File operations
-
-    /// Creates "untitled folder" (or "untitled folder 2", …), selects it and
-    /// opens its name for editing once the listing settles — Finder's
-    /// behaviour (`setPendingNodesToSelect:startEditing:runNewFolderAnimation:`,
-    /// see docs/research/finder-new-folder-rename.md).
-    @discardableResult
-    func newFolder() -> URL? {
-        guard canModifyCurrentLocation, let currentURL else { return nil }
-        let url: URL
-        do {
-            url = try FileOperations.createFolder(in: currentURL)
-        } catch {
-            report(error, context: "new folder")
-            return nil
-        }
-        // A filter the new folder does not match would hide the folder the user
-        // just asked for, leaving no feedback at all. Clearing it is the only
-        // outcome where the name they are about to type is visible.
-        if isFiltering { nameFilter = "" }
-        pendingSelection = url.lastPathComponent
-        armPendingRename(url)
-        model.reload { [weak self] in self?.restoreViewState() }
-        DirectoryChanges.post([currentURL])
-        return url
-    }
-
     // MARK: - Edit a newly created item
 
     /// The item whose name should open for editing once its listing settles,
@@ -1048,6 +982,14 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
     /// folder under continuous external change would never be editable.
     private static let pendingRenameDelay: TimeInterval = 0.3
     private static let pendingRenameAttemptLimit = 5
+
+    /// Reveals a newly created item and waits for listing refreshes before editing.
+    func selectAndRenameCreatedFolder(_ url: URL) {
+        if isFiltering { nameFilter = "" }
+        pendingSelection = url.lastPathComponent
+        armPendingRename(url)
+        model.reload { [weak self] in self?.restoreViewState() }
+    }
 
     private func armPendingRename(_ url: URL) {
         pendingRenameURL = url.standardizedFileURL
@@ -1089,8 +1031,6 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         else { schedulePendingRename() }
     }
 
-    private var selectedURLs: [URL] { fileView.selectedItems.map(\.url) }
-    private var undo: UndoManager? { view.window?.undoManager }
     /// Optional process-local pacing for packaged-app verification. It never
     /// changes the data path, totals or persisted preferences.
     var transferOptions: TransferOptions = {
@@ -1101,9 +1041,9 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
         }
         return options
     }()
-    private(set) var lastTransferTask: TransferTask?
+    var lastTransferTask: TransferTask?
     /// The last extraction started by this pane, for the smoke suite.
-    private(set) var lastExtractionTask: TransferTask?
+    var lastExtractionTask: TransferTask?
     /// Injectable so a test can drive progress without a huge fixture.
     var archiveListing: ArchiveListing = BSDTarArchiveListing()
     var archiveProgressPollInterval: TimeInterval = {
@@ -1134,421 +1074,6 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
                          archiveStatus: archiveStatus, searchStatus: isSearching ? "Search Results" : nil,
                          locationStatus: trashStatus)
         host?.selectionDidChange(in: self)
-    }
-
-    // Edit menu — reached via the responder chain when the list has focus.
-
-    @objc func copy(_ sender: Any?) {
-        if isBrowsingArchive { copyArchiveItems(fileView.selectedItems); return }
-        putOnPasteboard(selectedURLs, cut: false)
-    }
-    @objc func cut(_ sender: Any?) { putOnPasteboard(selectedURLs, cut: true) }
-
-    private func putOnPasteboard(_ urls: [URL], cut: Bool) {
-        guard !urls.isEmpty, !isPreparingArchive else { return }
-        if cut && (!canModifySelectedItems || isBrowsingTrash || urls.contains(where: isArchiveContent)) { return }
-        guard !urls.contains(where: isArchiveContent) else { return }
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.writeObjects(urls as [NSURL])
-        Self.cutState = cut ? (pb.changeCount, urls) : nil
-        setCutMarkers(cut ? Set(urls) : [])
-    }
-
-    /// Copy inside an archive. What is already extracted is written at once;
-    /// otherwise the pasteboard is claimed now — so the previous Copy cannot
-    /// be pasted by mistake while this one is prepared — and written when the
-    /// bytes are here, unless something else has been copied meanwhile (D98).
-    private func copyArchiveItems(_ items: [FileItem]) {
-        let readable = items.filter(\.canAccess)
-        guard !readable.isEmpty, !isPreparingArchive else { return }
-        let pb = NSPasteboard.general
-        Self.cutState = nil
-        setCutMarkers([])
-        let ready = readable.map(\.publishedContentURL)
-        // A paste may be read by Finder long after this pane has moved on, so
-        // the pasteboard holds hand-off copies (D103).
-        if !ready.contains(nil) {
-            pb.clearContents()
-            let handed = ready.compactMap { $0 }.compactMap(handOff)
-            if handed.count < ready.count { reportHandOffFailure() }
-            pb.writeObjects(handed as [NSURL])
-            return
-        }
-        let claimed = pb.clearContents()
-        requestArchiveBytes(readable.map(\.url), title: Self.readingTitle(readable.map(\.name), from: archiveSourceURL)) { [weak self] result in
-            guard pb.changeCount == claimed, !result.urls.isEmpty else { return }
-            let handed = result.urls.compactMap { self?.handOff($0) }
-            if handed.count < result.urls.count { self?.reportHandOffFailure() }
-            pb.writeObjects(handed as [NSURL])
-        }
-    }
-
-    private func setCutMarkers(_ urls: Set<URL>) {
-        fileList.cutURLs = urls
-        if viewMode == .icons { iconGrid.cutURLs = urls }
-        if viewMode == .columns { columnView.cutURLs = urls }
-    }
-
-    @objc func paste(_ sender: Any?) {
-        guard canModifyCurrentLocation, let dest = currentURL else { return }
-        let pb = NSPasteboard.general
-        let urls = pb.fileURLs
-        guard !urls.isEmpty else { return }
-        let pasteboardGeneration = pb.changeCount
-        let isCut = Self.cutState?.changeCount == pb.changeCount
-        transfer(urls, to: dest, kind: isCut ? .move : .copy) { [weak self] in
-            // A later Copy/Cut belongs to a different operation.
-            if isCut && pb.changeCount == pasteboardGeneration {
-                Self.cutState = nil; pb.clearContents(); self?.setCutMarkers([])
-            }
-        }
-    }
-
-    @objc func duplicate(_ sender: Any?) {
-        guard canModifySelectedItems, !isBrowsingTrash, let destination = currentURL else { return }
-        transfer(selectedURLs, to: destination, kind: .copy, actionName: "Duplicate", duplicateInPlace: true)
-    }
-
-    @objc func moveToTrash(_ sender: Any?) { trash(selectedURLs) }
-
-    func trash(_ urls: [URL]) {
-        guard canModifySelectedItems, !isBrowsingTrash, !urls.isEmpty,
-              !urls.contains(where: isArchiveContent) else { return }
-        // Dolphin selects the next item after deleting; Finder selects nothing. Dolphin wins here.
-        let nextURL = fileView.itemAfterSelection()?.url
-        do {
-            let pairs = try FileOperations.trash(urls)
-            TrashOrigins.shared.record(pairs)
-            if SmokeTest.isRequested { for p in pairs { print("   trashed \(p.original.lastPathComponent) → \(p.trashed.path)") } }
-            registerUndoMove(pairs.map { (from: $0.original, to: $0.trashed) }, actionName: "Move to Trash")
-            reloadSelectingURLs(nextURL.map { [$0] } ?? [])
-            DirectoryChanges.post(DirectoryChanges.affected(sources: urls))
-        } catch {
-            report(error, context: "trash")
-            reload()
-        }
-    }
-
-    @objc func deletePermanently(_ sender: Any?) {
-        guard canModifySelectedItems else { return }
-        let urls = selectedURLs
-        guard !urls.isEmpty else { return }
-        let alert = NSAlert()
-        alert.messageText = urls.count == 1
-            ? "Are you sure you want to delete “\(urls[0].lastPathComponent)”?"
-            : "Are you sure you want to delete the \(urls.count) selected items?"
-        alert.informativeText = "This item will be deleted immediately. You can’t undo this action."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        if SmokeTest.isRequested { print("ERROR delete: confirmation unavailable during smoke test"); return }
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        do { try FileOperations.delete(urls) } catch { report(error, context: "delete") }
-        reload()
-        DirectoryChanges.post(DirectoryChanges.affected(sources: urls))
-    }
-
-    @objc func renameSelection(_ sender: Any?) {
-        guard canModifySelectedItems, !isBrowsingTrash else { return }
-        // Finder: several items go to the batch sheet, one is edited in place.
-        if fileView.selectedItems.count > 1 { presentBatchRename(for: fileView.selectedItems); return }
-        renameSelectionInline(sender)
-    }
-
-    /// The Return / click-to-rename path: never opens the batch sheet.
-    @objc func renameSelectionInline(_ sender: Any?) {
-        guard canModifySelectedItems, !isBrowsingTrash else { return }
-        guard let item = fileView.selectedItems.first, fileView.selectedItems.count == 1 else { return }
-        fileView.beginRename(item: item)
-    }
-
-    static func compressionTitle(for urls: [URL]) -> String {
-        urls.count == 1 ? "Compress “\(urls[0].lastPathComponent)”" : urls.isEmpty ? "Compress" : "Compress \(urls.count) Items"
-    }
-    var compressionTitle: String { Self.compressionTitle(for: selectedURLs) }
-    var canExtractSelection: Bool {
-        canModifyCurrentLocation && !fileView.selectedItems.isEmpty && fileView.selectedItems.allSatisfy { !$0.isDirectory && FileOperations.canExtractArchive($0.url) }
-    }
-
-    @objc func compressSelection(_ sender: Any?) {
-        compress(selectedURLs)
-    }
-
-    @objc func extractSelection(_ sender: Any?) {
-        guard canExtractSelection else { return }
-        extract(selectedURLs)
-    }
-
-    func compress(_ urls: [URL], completion: (() -> Void)? = nil) {
-        guard canModifyCurrentLocation, !urls.isEmpty, let destination = currentURL else { completion?(); return }
-        statusBar.beginBusy()
-        FileOperations.compress(urls: urls, to: destination) { [weak self] result in
-            guard let self else { completion?(); return }
-            self.finishArchive(result, destination: destination, actionName: "Compress")
-            self.statusBar.endBusy()
-            completion?()
-        }
-    }
-
-    /// Each archive gets its own File Operations row with real progress and a
-    /// Cancel, and the batch keeps one "Extract" undo group and one directory
-    /// broadcast (D90). Archives are still extracted one at a time: several
-    /// bsdtar processes writing into the same folder would contend for it and
-    /// make each one's progress meaningless.
-    func extract(_ archives: [URL], completion: (() -> Void)? = nil) {
-        guard canModifyCurrentLocation, !archives.isEmpty else { completion?(); return }
-        let startingURL = currentURL
-        let window = view.window
-        // Captured up front, as `transfer` does: a batch that is still running
-        // when its tab closes must still register what it already created.
-        let capturedUndo = window?.undoManager
-        statusBar.beginBusy()
-        var created: [URL] = []
-        var failures: [FileOperations.Failure] = []
-        let tasks = TransferTasksWindowController.shared
-
-        func finish() {
-            self.statusBar.endBusy()
-            if let capturedUndo, !created.isEmpty {
-                self.registerUndoTrash(created, actionName: "Extract", undo: capturedUndo)
-            }
-            if self.currentURL == startingURL {
-                self.model.reload { [weak self] in self?.fileView.select(urls: created) }
-            }
-            else { self.reload() }
-            DirectoryChanges.post(DirectoryChanges.affected(sources: created))
-            FileOperations.report(failures, in: window)
-            completion?()
-        }
-
-        func next(_ index: Int) {
-            guard index < archives.count else { finish(); return }
-            let archive = archives[index]
-            let destination = archive.deletingLastPathComponent()
-            let task = TransferTask(sources: [archive], destination: destination, kind: .extract)
-            lastExtractionTask = task
-            tasks.track(task, ownerWindow: window, destinationDescription: destination.lastPathComponent)
-            task.setPhase(.running, item: archive, detail: "Reading \(archive.lastPathComponent)…")
-            FileOperations.extract(
-                archive: archive, to: destination, listing: archiveListing,
-                onProgress: { bytes, total, entry in
-                    DispatchQueue.main.async {
-                        if task.snapshot.totalBytes != total { task.setTotal(total) }
-                        task.setCompleted(bytes)
-                        task.setPhase(.running, item: archive, detail: entry.map { "Extracting \($0)" } ?? "Extracting…")
-                    }
-                },
-                isCancelled: { task.isCancellationRequested },
-                pollInterval: self.archiveProgressPollInterval
-            ) { result in
-                var outcome = FileOperations.TransferResult()
-                switch result {
-                case .success(let url):
-                    created.append(url)
-                    outcome.created = [url]
-                case .failure(let error):
-                    if case FileOperations.ArchiveError.cancelled = error { outcome.cancelled = true }
-                    else {
-                        failures.append(.init(url: archive, error: error))
-                        outcome.failures = [.init(url: archive, error: error)]
-                    }
-                }
-                task.finished(outcome)
-                // Cancelling one archive cancels the batch: the alternative is
-                // the next ZIP starting the instant the user pressed Cancel.
-                if outcome.cancelled { finish() } else { next(index + 1) }
-            }
-        }
-        next(0)
-    }
-
-    private func finishArchive(_ result: Result<URL, Error>, destination: URL, actionName: String) {
-        switch result {
-        case .success(let url):
-            registerUndoTrash([url], actionName: actionName)
-            if currentURL?.standardizedFileURL == destination.standardizedFileURL {
-                model.reload { [weak self] in self?.fileView.select(urls: [url]) }
-            }
-            DirectoryChanges.post([destination])
-        case .failure(let error): report(error, context: actionName.lowercased())
-        }
-    }
-
-    @objc func quickLook(_ sender: Any?) { toggleQuickLook() }
-
-    func rename(_ item: FileItem, to name: String) {
-        guard canModifySelectedItems, !isBrowsingTrash, !item.isArchiveEntry else { return }
-        do {
-            let newURL = try FileOperations.rename(item.url, to: name)
-            registerUndoRename(from: newURL, to: item.name, actionName: "Rename")
-            reloadSelectingURLs([newURL])
-            DirectoryChanges.post(DirectoryChanges.affected(sources: [item.url]), renamed: (from: item.url, to: newURL))
-        } catch {
-            report(error, context: "rename")
-            reload()
-        }
-    }
-
-    /// Drop or sidebar-drop: op is .copy or .move.
-    func dropFiles(_ urls: [URL], to destination: URL, op: NSDragOperation) {
-        guard !ArchiveWorkspace.shared.containsArchiveLocation(destination) else { return }
-        transfer(urls, to: destination, kind: op == .copy ? .copy : .move)
-    }
-
-    private func transfer(_ urls: [URL], to destination: URL, kind: FileOperations.Kind,
-                          actionName: String? = nil, duplicateInPlace: Bool = false,
-                          then: (() -> Void)? = nil) {
-        guard !ArchiveWorkspace.shared.containsArchiveLocation(destination), !urls.isEmpty else { return }
-        if kind == .move && urls.contains(where: isArchiveContent) { return }
-        // An archive entry is handed over as where its bytes will be, and the
-        // transfer itself brings them first, on its own worker (D98).
-        let archiveSources = urls.filter(isArchiveContent)
-        let urls = urls.compactMap { isArchiveContent($0) ? try? ArchiveWorkspace.shared.physicalURL(for: $0) : $0 }
-        guard !urls.isEmpty else { return }
-        statusBar.beginBusy()
-        let window = view.window
-        let capturedUndo = window?.undoManager
-        let name = actionName ?? (kind == .copy ? "Copy" : "Move")
-        var options = transferOptions
-        options.duplicateInPlace = duplicateInPlace
-        // The transfer reads from the ZIP's private copy until it ends (D103).
-        let lease = archiveSources.isEmpty ? nil : ArchiveWorkspace.shared.lease(archiveSources)
-        if !archiveSources.isEmpty {
-            let archiveName = ArchiveWorkspace.shared.archiveURL(containing: archiveSources[0])?.lastPathComponent ?? "the ZIP"
-            let prepareArchiveSources = options.prepareSources
-            options.prepareSources = { task in
-                var failures = try prepareArchiveSources?(task) ?? []
-                // No checkpoint of the task's own runs while the archive tool
-                // does, so Pause is off for exactly this wait.
-                task.setPausable(false)
-                task.setPhase(.preparing, detail: "Reading from “\(archiveName)”…")
-                defer { task.setPausable(true) }
-                let cancellation = ArchivePreparationCancellation()
-                task.onCancel { cancellation.cancel() }
-                do {
-                    failures += try ArchiveWorkspace.shared.materializeBlocking(archiveSources, cancellation: cancellation).failures
-                } catch ArchiveBrowsingSession.SessionError.cancelled {
-                    throw TransferError.cancelled
-                }
-                try task.checkpoint()
-                return failures
-            }
-        }
-        let task = TransferTask(sources: urls, destination: destination, kind: kind)
-        lastTransferTask = task
-        let tasks = TransferTasksWindowController.shared
-        tasks.track(task, ownerWindow: window,
-                    title: duplicateInPlace ? "Duplicate \(task.sources.count) item\(task.sources.count == 1 ? "" : "s")" : nil,
-                    destinationDescription: duplicateInPlace ? "Beside each original" : nil)
-        FileOperations.transfer(urls, to: destination, kind: kind,
-            conflict: { _ in .init(resolution: .cancel) }, task: task, options: options,
-            asyncConflict: { conflict, reply in tasks.resolveConflict(for: task, conflict: conflict, reply: reply) }
-        ) { [self] result in
-            // Retain this pane and its original undo manager through completion,
-            // even if the originating tab was closed or another pane is active.
-            lease?.release()
-            self.statusBar.endBusy()
-            if let journal = result.journal, let capturedUndo {
-                self.registerTransferUndo(journal, undo: capturedUndo, actionName: name)
-            }
-            let created = result.created + result.moved.map(\.to)
-            if self.isSearching || destination.standardizedFileURL == self.currentURL?.standardizedFileURL {
-                self.reloadSelectingURLs(created)
-            } else {
-                self.reload()
-            }
-            then?()
-            // The source folder is usually another pane, tab or window: tell it.
-            DirectoryChanges.post(DirectoryChanges.affected(sources: urls, destination: destination)
-                                  + (result.journal?.affectedDirectories ?? []))
-            if SmokeTest.isRequested { FileOperations.report(result.failures, in: window) }
-        }
-    }
-
-    private func registerTransferUndo(_ journal: TransferJournal, undo: UndoManager, actionName: String) {
-        registerUndo(on: undo, actionName: actionName) { me, undo in
-            do {
-                let inverse = try FileOperations.replay(journal)
-                me.registerTransferUndo(inverse, undo: undo, actionName: actionName)
-                me.reload()
-                DirectoryChanges.post(journal.affectedDirectories)
-            } catch {
-                if let reporter = me.transferReplayErrorReporter { reporter(error) }
-                else { me.report(error, context: "undo \(actionName.lowercased())") }
-            }
-        }
-    }
-
-    // Undo — registered on the window's undo manager so Edit ▸ Undo just works.
-
-    /// Every file operation becomes its own undo group. Registrations arrive
-    /// from async completions, and NSUndoManager's automatic per-event group
-    /// can still be open from an earlier operation — observed in testing: a
-    /// Copy and a later Move landed in one group and were undone together,
-    /// which trashed the file the Move had just restored. So: close any stale
-    /// automatic group (undo() itself does the same), then group explicitly.
-    /// Registers `body` as the undo of one operation on `manager` (default: the
-    /// window's undo manager); `body` receives the pane and that manager.
-    func registerUndo(on manager: UndoManager? = nil, actionName: String,
-                              _ body: @escaping (BrowserViewController, UndoManager) -> Void) {
-        guard let undo = manager ?? self.undo else { return }
-        if !undo.isUndoing, !undo.isRedoing {
-            while undo.groupingLevel > 0 { undo.endUndoGrouping() }
-        }
-        undo.beginUndoGrouping()
-        undo.registerUndo(withTarget: self) { [weak undo] me in
-            guard let undo else { return }
-            body(me, undo)
-        }
-        undo.setActionName(actionName)
-        undo.endUndoGrouping()
-        // With groupsByEvent on, NSUndoManager wraps a top-level group of ours
-        // in an event group that stays open until the run loop turns. Close it
-        // now so the operation is complete and self-contained immediately.
-        if !undo.isUndoing, !undo.isRedoing {
-            while undo.groupingLevel > 0 { undo.endUndoGrouping() }
-        }
-        if SmokeTest.isRequested { print("   [undo] \(actionName) registered (undoing=\(undo.isUndoing), top=\(undo.undoActionName), level=\(undo.groupingLevel))") }
-    }
-
-    private func registerUndoMove(_ pairs: [(from: URL, to: URL)], actionName: String) {
-        guard !pairs.isEmpty else { return }
-        registerUndo(actionName: actionName) { me, _ in
-            var reversed: [(from: URL, to: URL)] = []
-            for (from, to) in pairs {
-                do { try FileOperations.moveItem(at: to, to: from); reversed.append((from: to, to: from)) }
-                catch { me.report(error, context: "undo move \(to.path) → \(from.path)") }
-            }
-            me.registerUndoMove(reversed, actionName: actionName)     // redo
-            me.reloadSelectingURLs(reversed.map(\.to))
-            DirectoryChanges.post(pairs.flatMap { [$0.from.deletingLastPathComponent(), $0.to.deletingLastPathComponent()] })
-        }
-    }
-
-    private func registerUndoTrash(_ urls: [URL], actionName: String, undo: UndoManager? = nil) {
-        guard !urls.isEmpty else { return }
-        registerUndo(on: undo, actionName: actionName) { me, _ in
-            do {
-                let pairs = try FileOperations.trash(urls)
-                TrashOrigins.shared.record(pairs)
-                me.registerUndoMove(pairs.map { (from: $0.original, to: $0.trashed) }, actionName: actionName)
-            } catch { me.report(error, context: "undo copy (trash)") }
-            me.reload()
-            DirectoryChanges.post(DirectoryChanges.affected(sources: urls))
-        }
-    }
-
-    private func registerUndoRename(from url: URL, to oldName: String, actionName: String) {
-        registerUndo(actionName: actionName) { me, _ in
-            do {
-                let newName = url.lastPathComponent
-                let back = try FileOperations.rename(url, to: oldName)
-                me.registerUndoRename(from: back, to: newName, actionName: actionName)
-                me.reloadSelectingURLs([back])
-                DirectoryChanges.post(DirectoryChanges.affected(sources: [url, back]), renamed: (from: url, to: back))
-            } catch { me.report(error, context: "undo rename"); me.reload() }
-        }
     }
 
     // MARK: - Menu validation for the file operations
@@ -2034,88 +1559,6 @@ final class BrowserViewController: NSViewController, NSMenuDelegate, NSMenuItemV
             }
             else { _ = fileOpener(item.url) }
         }
-    }
-
-    /// Opens asked for in one main-queue pass go out as one request, so three
-    /// selected files cost one run of the archive tool, and an entry already
-    /// on its way is not asked for twice (D98).
-    private func enqueueArchiveOpen(_ location: URL) {
-        guard !archiveOpensInFlight.contains(location), !pendingArchiveOpens.contains(location) else { return }
-        pendingArchiveOpens.append(location)
-        guard pendingArchiveOpens.count == 1 else { return }
-        DispatchQueue.main.async { [weak self] in self?.flushArchiveOpens() }
-    }
-
-    private func flushArchiveOpens() {
-        let batch = pendingArchiveOpens
-        pendingArchiveOpens.removeAll()
-        guard !batch.isEmpty else { return }
-        archiveOpensInFlight.formUnion(batch)
-        requestArchiveBytes(batch, title: Self.readingTitle(batch.map(\.lastPathComponent), from: archiveSourceURL),
-                            finally: { [weak self] in self?.archiveOpensInFlight.subtract(batch) }) { [weak self] result in
-            guard let self else { return }
-            for url in result.urls {
-                guard let handed = self.handOff(url) else { self.reportHandOffFailure(); continue }
-                if !self.archiveFileOpener(handed) { self.showArchiveError(ArchiveBrowsingSession.SessionError.unavailableItem) }
-            }
-        }
-    }
-
-    /// Runs `body` with the readable URLs of the items that can be read.
-    /// Anything outside an archive, or already extracted, is handed over at
-    /// once, in this turn; otherwise the entries are extracted first.
-    private func withPublishedURLs(_ items: [FileItem], title: String, _ body: @escaping ([URL]) -> Void) {
-        let readable = items.filter(\.canAccess)
-        let ready = readable.map(\.publishedContentURL)
-        guard ready.contains(nil) else { body(ready.compactMap { $0 }); return }
-        requestArchiveBytes(readable.map(\.url), title: title) { body($0.urls) }
-    }
-
-    /// Extracts entries of a mounted archive off the main thread, with the
-    /// pane busy meanwhile and, for a request estimated at more than a second
-    /// or 128 MiB, a row in File Operations that can cancel it. Closing the
-    /// pane cancels it too. `completion` runs on the main thread unless the
-    /// request was cancelled; a failure is reported here, and `finally` runs
-    /// either way.
-    private func requestArchiveBytes(_ locations: [URL], title: String, finally: (() -> Void)? = nil,
-                                     completion: @escaping (ArchiveMaterializationResult) -> Void) {
-        let workspace = ArchiveWorkspace.shared
-        var row: TransferTask?
-        if workspace.estimate(for: locations).warrantsProgressRow, let archive = workspace.archiveURL(containing: locations[0]) {
-            let task = TransferTask(sources: locations, destination: archive, kind: .extract)
-            task.setPhase(.running, detail: "Reading from “\(archive.lastPathComponent)”…")
-            TransferTasksWindowController.shared.track(task, ownerWindow: view.window, title: title,
-                                                       destinationDescription: "From “\(archive.lastPathComponent)”")
-            row = task
-        }
-        let id = UUID()
-        statusBar.beginBusy()
-        let token = workspace.materialize(locations) { [weak self] result in
-            var summary = FileOperations.TransferResult()
-            if case .failure(ArchiveBrowsingSession.SessionError.cancelled) = result { summary.cancelled = true }
-            if case .failure(let error) = result, !summary.cancelled { summary.failures = [.init(url: locations[0], error: error)] }
-            if case .success(let brought) = result { summary.failures = brought.failures }
-            row?.finished(summary)
-            finally?()
-            guard let self else { return }
-            self.statusBar.endBusy()
-            self.archiveRequests[id] = nil
-            switch result {
-            case .success(let brought):
-                completion(brought)
-                if let failure = brought.failures.first { self.showArchiveError(failure.error) }
-            case .failure(let error):
-                if !summary.cancelled { self.showArchiveError(error) }
-            }
-        }
-        archiveRequests[id] = token
-        row?.onCancel { token.cancel() }
-    }
-
-    /// "Reading “notes.txt” from “A.zip”", or a count for several.
-    static func readingTitle(_ names: [String], from archive: URL?) -> String {
-        let what = names.count == 1 ? "“\(names[0])”" : "\(names.count) items"
-        return "Reading \(what)" + (archive.map { " from “\($0.lastPathComponent)”" } ?? "")
     }
 
     private func saveViewState() {

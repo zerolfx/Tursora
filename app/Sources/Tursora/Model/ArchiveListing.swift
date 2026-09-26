@@ -141,19 +141,25 @@ struct BSDTarArchiveListing: ArchiveListing {
         let reader = try FileHandle(forReadingFrom: output)
         defer { try? reader.close() }
         var entries: [ArchiveEntrySummary] = []
-        var pending = ""
+        // Keep the unfinished line as bytes: a read boundary can split a
+        // multibyte filename, and decoding each chunk would replace each half
+        // with U+FFFD before the next chunk could complete it.
+        var pending = Data()
         func take(_ line: String) throws {
             guard let entry = BSDTarListingParser.entry(from: line) else { return }
             guard entries.count < maximumEntries else { throw ArchiveListingError.tooManyEntries(maximumEntries) }
             entries.append(entry)
         }
         while let chunk = try reader.read(upToCount: readChunkBytes), !chunk.isEmpty {
-            pending += String(decoding: chunk, as: UTF8.self)
-            var lines = pending.components(separatedBy: "\n")
-            pending = lines.removeLast()
-            for line in lines { try take(line) }
+            pending.append(chunk)
+            var start = pending.startIndex
+            for newline in pending.indices where pending[newline] == 0x0a {
+                try take(String(decoding: pending[start..<newline], as: UTF8.self))
+                start = pending.index(after: newline)
+            }
+            pending.removeSubrange(..<start)
         }
-        if !pending.isEmpty { try take(pending) }
+        if !pending.isEmpty { try take(String(decoding: pending, as: UTF8.self)) }
         return entries
     }
 
